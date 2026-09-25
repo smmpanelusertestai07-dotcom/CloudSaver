@@ -10,7 +10,10 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 class RoomFilesTest {
     @get:Rule val temp = TemporaryFolder()
@@ -43,6 +46,36 @@ class RoomFilesTest {
             assertFalse(File(outside, "AGENTS.md").exists())
         }
         assertFalse(files.isFile(".codex/key"))
+    }
+
+    @Test fun `a file swapped for a link while it is read is never followed`() {
+        val (home, files) = home()
+        val secret = temp.newFile("auth.json").apply { writeText("the other room's token") }
+        val folder = File(home, ".codex").apply { mkdirs() }
+        File(folder, "AGENTS.md").writeText("rules")
+        val swapping = AtomicBoolean(true)
+        // A program in the room keeps putting a link to the token where a plain file was.
+        val swapper = thread {
+            var n = 0
+            while (swapping.get()) {
+                val next = File(folder, ".next-${n++}").toPath()
+                if (n % 2 == 0) Files.write(next, "rules".toByteArray()) else Files.createSymbolicLink(next, secret.toPath())
+                Files.move(next, File(folder, "AGENTS.md").toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+        try {
+            val deadline = System.nanoTime() + 3_000_000_000L
+            var plain = 0
+            while (System.nanoTime() < deadline) {
+                val read = files.read(".codex/AGENTS.md")
+                assertFalse("the token was read through a swapped link", read?.contains("token") == true)
+                if (read == "rules") plain++
+            }
+            assertTrue("the plain file was still read between swaps", plain > 0)
+        } finally {
+            swapping.set(false)
+            swapper.join()
+        }
     }
 
     @Test fun `a link at the target is replaced, not written through`() {

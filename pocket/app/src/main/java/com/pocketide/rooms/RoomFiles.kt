@@ -1,8 +1,11 @@
 package com.pocketide.rooms
 
 import com.pocketide.core.AgentFiles
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.channels.SeekableByteChannel
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -10,15 +13,18 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 
 /**
  * Reads and writes under a folder that programs inside Linux can change (a room's home, or the
- * computer's /opt). No symbolic link is ever followed: a link planted there must not lead the
- * app to read or overwrite anything else, such as its own tokens or another room's files. A
- * write goes to a temporary file that is renamed over the target, so a link at the target is
- * replaced, never written through.
+ * computer's /opt). A link planted there must not lead the app to read or overwrite anything
+ * else, such as its own tokens or another room's files, even when a program swaps a file or a
+ * folder for a link while the app is at work: a file is opened without following a link, and
+ * the folder it was opened in is checked, once open, to still be inside [base]. A write goes to
+ * a temporary file that is renamed over the target, so a link at the target is replaced, never
+ * written through.
  *
  * With [guardSecrets] (a room's home) the app refuses to touch credential files at all: those
  * are for the agent alone (AgentFiles.SECRET).
@@ -29,13 +35,7 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
     fun read(relative: String, limit: Long = MAX_READ): String? {
         checkAllowed(relative)
         val path = existing(relative) ?: return null
-        val attributes = attributes(path) ?: return null
-        if (!attributes.isRegularFile || attributes.size() > limit) return null
-        return try {
-            String(Files.readAllBytes(path), Charsets.UTF_8)
-        } catch (unreadable: IOException) {
-            null
-        }
+        return readRegular(path, limit)?.let { String(it, Charsets.UTF_8) }
     }
 
     /** True when [relative] is a regular file (not a link to one). */
@@ -56,8 +56,14 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
         if (sameContent(target, bytes)) return false
         val temporary = Files.createTempFile(parent, ".pocketide-", ".tmp")
         try {
-            Files.write(temporary, bytes)
+            // A folder on the way swapped for a link since it was walked would take the file elsewhere.
+            if (!inside(parent)) throw IOException(OUTSIDE)
+            Files.newByteChannel(temporary, WRITE_NO_LINK).use { channel ->
+                val buffer = ByteBuffer.wrap(bytes)
+                while (buffer.hasRemaining()) channel.write(buffer)
+            }
             Files.setPosixFilePermissions(temporary, if (executable) EXECUTABLE else PRIVATE)
+            if (!inside(parent)) throw IOException(OUTSIDE)
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } finally {
             Files.deleteIfExists(temporary)
@@ -72,6 +78,7 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
     fun delete(relative: String) {
         checkAllowed(relative)
         val parent = directory(parentOf(relative), create = false) ?: return
+        if (!inside(parent)) return
         Files.deleteIfExists(parent.resolve(nameOf(relative)))
     }
 
@@ -80,7 +87,7 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
         checkAllowed(relative)
         val parent = directory(parentOf(relative), create = false) ?: return
         val target = parent.resolve(nameOf(relative))
-        if (attributes(target)?.isRegularFile != true) return
+        if (attributes(target)?.isRegularFile != true || !inside(parent)) return
         Files.move(target, parent.resolve(nameOf(relative) + ".pocketide-broken"), StandardCopyOption.REPLACE_EXISTING)
     }
 
@@ -172,18 +179,53 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
         require(!guardSecrets || !AgentFiles.isSecret(relative)) { "$relative is a sign-in file; PocketIDE never touches those." }
     }
 
-    private fun sameContent(target: Path, bytes: ByteArray): Boolean {
-        val attributes = attributes(target) ?: return false
-        if (!attributes.isRegularFile || attributes.size() != bytes.size.toLong()) return false
+    private fun sameContent(target: Path, bytes: ByteArray): Boolean =
+        attributes(target)?.size() == bytes.size.toLong() && readRegular(target, bytes.size.toLong())?.contentEquals(bytes) == true
+
+    /**
+     * The bytes of the regular file at [path], at most [limit] of them, or null. The file is
+     * opened without following a link (a link swapped in after the check is refused), and its
+     * folder is checked once the file is open: a folder on the way swapped for a link after it
+     * was walked would have led outside [base].
+     */
+    private fun readRegular(path: Path, limit: Long): ByteArray? {
+        val attributes = attributes(path) ?: return null
+        if (!attributes.isRegularFile || attributes.size() > limit) return null
         return try {
-            Files.readAllBytes(target).contentEquals(bytes)
+            Files.newByteChannel(path, READ_NO_LINK).use { channel ->
+                if (inside(path.parent)) readAtMost(channel, limit) else null
+            }
         } catch (unreadable: IOException) {
-            false
+            null
         }
+    }
+
+    /** At most [limit] bytes; null when there are more (the file grew, or is not what it seemed). */
+    private fun readAtMost(channel: SeekableByteChannel, limit: Long): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteBuffer.allocate(READ_CHUNK)
+        while (true) {
+            buffer.clear()
+            val n = channel.read(buffer)
+            if (n < 0) return out.toByteArray()
+            if (out.size() + n > limit) return null
+            out.write(buffer.array(), 0, n)
+        }
+    }
+
+    /** [folder], with every link resolved, is still inside the real [base]. */
+    private fun inside(folder: Path?): Boolean = try {
+        folder != null && folder.toRealPath().startsWith(base.toPath().toRealPath())
+    } catch (unreadable: IOException) {
+        false
     }
 
     companion object {
         const val MAX_READ = 4L * 1024 * 1024
+        private const val READ_CHUNK = 8192
+        private const val OUTSIDE = "A folder on the way was swapped for a link."
+        private val READ_NO_LINK = setOf(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)
+        private val WRITE_NO_LINK = setOf(StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS)
         private val PRIVATE = setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
         private val PRIVATE_DIR = PRIVATE + PosixFilePermission.OWNER_EXECUTE
         private val EXECUTABLE = PRIVATE_DIR + setOf(
