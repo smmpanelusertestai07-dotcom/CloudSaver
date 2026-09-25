@@ -37,7 +37,7 @@ internal object GuideStart {
             row("Internet", "Wi-Fi for set-up (about 1.5 GB)", "Wi-Fi or good 4G/5G"),
             row("Accounts", "GitHub, Google, and each agent's own plan", "2-step sign-in on Google and GitHub"),
         ),
-        p("Phones below the minimum are refused with a clear message, rather than left to crash."),
+        p("Phones below the minimum are refused with a clear message."),
         info(
             "$BEING_TESTED: the memory each agent needs and the size of the set-up. As of " +
                 "${DocLinks.CHECKED_ON}, before any agent, set-up downloads Ubuntu (29.9 MB), package lists " +
@@ -56,13 +56,17 @@ internal object GuideStart {
         ),
         p(
             "Rooms. Each agent runs in its own room, with its own home folder. Other rooms' folders are not " +
-                "placed inside it, so for it they do not exist. Claude Code also gets rules that deny reading them.",
+                "placed inside it, and Claude Code's rules also deny reading them.",
         ),
         p(
             "Sessions. Every chat is a session with its own branch and working folder, such as " +
                 "pocket/claude/2026-09-24-login-fix. Agents commit there; PocketIDE pushes. Put on main (the " +
                 "button, or ask the agent) merges exactly that session's work after the check-post. Merged " +
                 "sessions lose their branch; unmerged ones stay until you delete them.",
+        ),
+        p(
+            "Files from the phone: the attach button takes photos; Add file to this session (agent's menu) or a " +
+                "share to PocketIDE takes any file.",
         ),
         table(
             listOf("What", "Where it goes", "Who holds it"),
@@ -100,8 +104,7 @@ internal object GuideStart {
         ),
         p(
             "Official vs Verified publisher. Open VSX proves who owns a publisher name, not who makes the model, " +
-                "so agents found later show Verified publisher. Community ones warn that your code also goes to " +
-                "the model service they use. Settings → Only official agents hides them all.",
+                "so agents found later show Verified publisher. Settings → Only official agents hides them all.",
         ),
         p(
             "Your claude.ai and ChatGPT chats do not appear here; Codex can show your Codex cloud tasks. Each " +
@@ -118,13 +121,12 @@ internal object GuideStart {
                 "more company, so others are added only when they pass the checks and you tap.",
         ),
         p(
-            "No local models. Models small enough for a phone cannot do agent work across many files; good " +
-                "coding models need a large graphics card on a server.",
+            "No local models: models small enough for a phone cannot do agent work across many files.",
         ),
         p(
-            "Open VSX, not the Marketplace. Extensions come only from Open VSX, run by the Eclipse Foundation. " +
-                "Microsoft's VS Code Marketplace may be used only by Microsoft's own products, so an extension " +
-                "published only there does not appear here. Most AI companies also publish on Open VSX.",
+            "Open VSX, not the Marketplace. Extensions come only from Open VSX, run by the Eclipse Foundation: " +
+                "Microsoft's VS Code Marketplace may be used only by Microsoft's own products. Most AI companies " +
+                "publish on both.",
         ),
         link("Open VSX", DocLinks.OPEN_VSX),
     )

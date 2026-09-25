@@ -22,8 +22,8 @@ internal object GuideData {
             row("The computer", "About 2.5 GB", "Never", "Never"),
         ),
         p(
-            "Sizes. A project's source is usually a few MB; web dependencies add a few hundred. A long, heavy " +
-                "chat can reach a few hundred MB, and much less once compressed.",
+            "Sizes: a project's source is usually a few MB, web dependencies a few hundred, and a long chat a " +
+                "few hundred MB before compression.",
         ),
         p(
             "The Your data screen lists everything by type and size, largest first, with Secrets masked until " +
@@ -31,9 +31,8 @@ internal object GuideData {
                 "Move to another Google account.",
         ),
         p(
-            "A reopened chat shows what you saw, on any phone: text and images in the agent's screen, its " +
-                "screenshots and videos in Media. Sync sends only new parts, compressed; videos and big downloads " +
-                "wait for Wi-Fi unless you allow mobile data.",
+            "A reopened chat shows what you saw, on any phone. Sync sends only new parts, compressed; videos " +
+                "and big downloads wait for Wi-Fi unless you allow mobile data.",
         ),
         link("Your Google storage", DocLinks.GOOGLE_STORAGE),
     )
@@ -88,8 +87,7 @@ internal object GuideData {
                 "data.",
         ),
         p(
-            "The phone's own clean-up never counts as a delete. The AI companies' copies are deleted only on " +
-                "their side.",
+            "The phone's own clean-up never counts as a delete.",
         ),
     )
 

@@ -297,10 +297,11 @@ internal object Faq {
                 "network is back, ask the agent to continue; sync resumes by itself.",
         ),
         faq(
-            "file-from-phone", "limits",
+            "file-from-phone", "how-it-works",
             "How do I get a file from my phone into a project?",
-            "Photos and videos: the agent's attach button opens Android's photo picker. Other files: upload " +
-                "them to the project's repo on GitHub, then ask the agent to bring main into its session.",
+            "Photos and videos: the agent's attach button opens Android's photo picker. Any other file: in the " +
+                "agent's menu, tap Add file to this session, or share it to PocketIDE from another app and pick " +
+                "the session. Then choose: into the project, for the agent to use and commit, or to Media.",
         ),
     )
 }

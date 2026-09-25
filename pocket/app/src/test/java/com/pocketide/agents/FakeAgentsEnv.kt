@@ -40,6 +40,9 @@ internal class FakeAgentsEnv(base: File) : AgentsEnv {
     val inUse = mutableSetOf<String>()
     val configured = mutableListOf<String>()
     val deleted = mutableListOf<String>()
+    /** What [saveBeforeRemoving] reports as still only on the phone. */
+    var unsaved = emptyList<String>()
+    val savedFirst = mutableListOf<String>()
     val announced = mutableListOf<List<AgentCandidate>>()
     val commands = mutableListOf<List<String>>()
     var recorded = 0L
@@ -49,6 +52,11 @@ internal class FakeAgentsEnv(base: File) : AgentsEnv {
     override fun roomInUse(agentId: String) = agentId in inUse
     override suspend fun configureRoom(agentId: String) {
         configured += agentId
+    }
+
+    override suspend fun saveBeforeRemoving(agentId: String): List<String> {
+        savedFirst += agentId
+        return unsaved
     }
 
     override suspend fun deleteRoom(agentId: String) {

@@ -17,8 +17,10 @@ import com.pocketide.linux.GuestRoot
 import com.pocketide.linux.LinuxCommand
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.Decision
+import com.pocketide.model.SessionRecord
 import com.pocketide.rooms.RoomLayout
 import com.pocketide.rooms.RoomState
+import com.pocketide.sync.SessionBackup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -94,6 +96,8 @@ private class GraphAgentsEnv(private val graph: AppGraph) : AgentsEnv {
 
     override suspend fun configureRoom(agentId: String) = graph.rooms.configure(agentId)
 
+    override suspend fun saveBeforeRemoving(agentId: String): List<String> = AgentRemoval(RemovalPorts(graph)).saveFirst(agentId)
+
     override suspend fun deleteRoom(agentId: String) = graph.rooms.delete(agentId)
 
     override fun allowDownload(bytes: Long): Decision = graph.dataBudget.allow(bytes, DATA_KIND, big = true)
@@ -120,6 +124,19 @@ private class GraphAgentsEnv(private val graph: AppGraph) : AgentsEnv {
         /** A "4 GB" phone reports about 3.6 GB to apps; a "3 GB" one well under 3 GB. */
         const val MIN_RAM_BYTES = 3_400_000_000L
     }
+}
+
+/** Saving a room's sessions before it is removed, through the rooms, sessions and sync modules. */
+private class RemovalPorts(private val graph: AppGraph) : AgentRemoval.Ports {
+    override suspend fun stopRoom(agentId: String) = graph.rooms.stop(agentId)
+
+    override fun sessions(): List<SessionRecord> = graph.sessions.all.value
+
+    override suspend fun saveNow(sessionId: String): String? = graph.sessions.saveNow(sessionId)
+
+    override suspend fun upload(sessionIds: List<String>) = graph.sync.uploadNow(sessionIds)
+
+    override fun backup(sessionId: String): SessionBackup? = graph.sync.backups.value[sessionId]
 }
 
 /** "New agents on Open VSX", on the agents channel. Names come from the registry, so they are shown as plain, short text. */

@@ -108,7 +108,6 @@ internal object GuideSafety {
             "Small work runs on the phone; heavy work goes to GitHub Actions, and the agent checks the result.",
             "An agent never declines work that can be done somewhere; it names the place in one line.",
             "It asks you only for real decisions: money, accounts, deleting.",
-            "It never reads outside its room, never pushes secrets, and touches main only when asked.",
         ),
         p(
             "The limiter watches memory, heat, battery, storage and Android's process cap. It queues or pauses " +
