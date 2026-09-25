@@ -69,6 +69,9 @@ class RoomManagerTest {
     private lateinit var rooms: RoomManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** How often the rooms' activity is sampled in the tests that let idle time pass. */
+    private val sampleMs = 100L
+
     private val session = SessionRecord(
         id = "s1", agentId = "claude", projectId = "octo/app", title = "Login", branch = "pocket/claude/2026-09-24-login",
         startedAt = 0, lastActivityAt = 0, deviceId = "phone",
@@ -346,6 +349,33 @@ class RoomManagerTest {
         assertEquals(listOf("claude|write|true", "claude|write|false"), env.busyReports)
     }
 
+    @Test fun `a build the agent waits on keeps its room awake past the idle time`() = runBlocking {
+        rooms = RoomManager(env, sampleMs = sampleMs)
+        env.buildTemplates = listOf(BuildTemplate("apk", "Android APK", "", "apk.yml", "ubuntu-latest"))
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        val started = env.phone.handlers["mcp"]!!("claude", buildJsonObject {
+            put("tool", "run_build")
+            put("args", buildJsonObject { put("template", "apk") })
+            put("cwd", "/work/octo__app/s1")
+        })
+        assertTrue(started.toString(), started.jsonObject["text"]!!.jsonPrimitive.content.contains("run 42"))
+        // The build runs on GitHub: the room's own programs use no CPU for half an hour.
+        env.skew = 31 * 60_000L
+        delay(sampleMs * 10)
+        assertTrue(rooms.states.value["claude"].toString(), rooms.states.value["claude"] is RoomState.Running)
+        assertEquals(null, rooms.stops.value["claude"])
+    }
+
+    @Test fun `a room with nothing to do sleeps after the idle time`() = runBlocking {
+        rooms = RoomManager(env, sampleMs = sampleMs)
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        env.skew = 31 * 60_000L
+        withTimeout(10_000) {
+            while (rooms.states.value["claude"] !is RoomState.Stopped) delay(sampleMs)
+        }
+        assertEquals(StopReason.IDLE, rooms.stops.value["claude"]?.reason)
+    }
+
     @Test fun `signing out runs each signed-in agent's own CLI in its room`() = runBlocking {
         File(dirs.roomHome("claude"), ".claude").mkdirs()
         File(dirs.roomHome("claude"), ".claude/.credentials.json").writeText("{}")
@@ -598,7 +628,9 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         val busyReports = CopyOnWriteArrayList<String>()
         @Volatile var engineKeptAlive = 0
 
-        override fun now() = System.currentTimeMillis()
+        /** Moves the rooms' clock ahead of the real one, so idle time passes without waiting for it. */
+        @Volatile var skew = 0L
+        override fun now() = System.currentTimeMillis() + skew
         override fun agentInfo(agentId: String): AgentInfo? = null
         override fun agents() = listOf("claude", "codex", "antigravity")
         override fun sessions() = all
@@ -641,8 +673,9 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         override fun ownerPresent() = true
         override suspend fun autosave(sessionId: String): String? = null
         override suspend fun putOnMain(sessionId: String): PutOnMainResult = PutOnMainResult.Merged
-        override fun templates() = emptyList<BuildTemplate>()
-        override suspend fun runBuild(projectId: String, templateId: String, ref: String): Long? = null
+        @Volatile var buildTemplates = emptyList<BuildTemplate>()
+        override fun templates() = buildTemplates
+        override suspend fun runBuild(projectId: String, templateId: String, ref: String): Long? = 42L.takeIf { buildTemplates.isNotEmpty() }
         override suspend fun buildProgress(projectId: String, runId: Long): BuildProgress? = null
         override suspend fun collect(projectId: String, sessionId: String, runId: Long) = 0
         override suspend fun openPullRequest(project: Project, head: String, title: String, body: String): PullRequest = throw UnsupportedOperationException()
