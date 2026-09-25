@@ -432,6 +432,41 @@ jobs:
         working-directory: pocket
         run: ./gradlew --no-daemon connectedDebugAndroidTest
 
+      # Pictures of every main screen, drawn by this emulator, for the owner and the release
+      # notes. ScreenTour runs only when asked and saves into the app's own files, which a
+      # debuggable build lets run-as read back.
+      - name: Screen tour
+        timeout-minutes: 15
+        working-directory: pocket
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon installDebug installDebugAndroidTest
+          adb="$ANDROID_HOME/platform-tools/adb"
+          result=$("$adb" shell am instrument -w -e tour true -e class com.pocketide.ui.ScreenTour \
+            com.pocketide.debug.test/androidx.test.runner.AndroidJUnitRunner | tr -d '\r')
+          echo "$result" | tail -n 40
+          screens="$RUNNER_TEMP/screens"
+          mkdir -p "$screens"
+          for name in $("$adb" shell run-as com.pocketide.debug ls files/tour 2> /dev/null | tr -d '\r'); do
+            case "$name" in
+              *.png) "$adb" exec-out run-as com.pocketide.debug cat "files/tour/$name" > "$screens/$name" ;;
+            esac
+          done
+          echo "Screens saved: $(find "$screens" -name '*.png' | wc -l)"
+          if ! grep -q '^OK (' <<< "$result"; then
+            echo "::error::The screen tour failed; its output is above."
+            exit 1
+          fi
+
+      - name: Upload the screens
+        if: success() || failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: PocketIDE-screens
+          path: ${{ runner.temp }}/screens/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload the instrumented test reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
