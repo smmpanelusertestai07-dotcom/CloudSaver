@@ -89,3 +89,12 @@ internal class QuotaJson(
 
 @Serializable
 internal class UserJson(val emailAddress: String? = null)
+
+@Serializable
+internal class HeadRevisionJson(val headRevisionId: String? = null)
+
+@Serializable
+internal class RevisionJson(val id: String = "")
+
+@Serializable
+internal class RevisionListJson(val revisions: List<RevisionJson> = emptyList(), val nextPageToken: String? = null)

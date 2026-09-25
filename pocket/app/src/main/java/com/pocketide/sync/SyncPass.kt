@@ -6,6 +6,7 @@ import com.pocketide.model.Lease
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.VaultIndex
 import com.pocketide.sessions.Sessions
+import kotlinx.coroutines.CancellationException
 
 internal data class PassOptions(
     /** "Upload now" for these sessions only; their videos may use mobile data. */
@@ -42,9 +43,10 @@ internal class SyncPass(
 
     suspend fun run(run: Run, opts: PassOptions): PassOutcome {
         kit.queue.recover()
+        val online = ports.network.online()
+        if (online) checkKeyring()
         run.account()
         val book = book(run)
-        val online = ports.network.online()
         val drive = run.drive()
         val snapshot = if (online) fetchOrNull(run, drive) else null
         collect(run, book, snapshot?.index ?: run.index)
@@ -67,6 +69,22 @@ internal class SyncPass(
         }
         committer.deleteUnused(run, drive)
         return settle(run, book, committed, report)
+    }
+
+    /**
+     * The keyring's visibility and collaborators are checked on every sync (§5.1), before anything
+     * is sealed, so a key the check replaces is not used for this pass's new pieces. Without
+     * GitHub the key is kept on this phone only (the vault says so); any other failure is tried
+     * again at the next pass. Either way the sync goes on.
+     */
+    private suspend fun checkKeyring() {
+        try {
+            ports.checkKeyring()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // See above.
+        }
     }
 
     /** The newest index, or null when Drive cannot be reached right now. */

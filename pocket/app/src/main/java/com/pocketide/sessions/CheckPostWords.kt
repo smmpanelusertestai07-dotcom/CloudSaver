@@ -3,6 +3,7 @@ package com.pocketide.sessions
 import com.pocketide.core.Redact
 import com.pocketide.git.Finding
 import com.pocketide.git.FindingKind
+import com.pocketide.git.HoldKind
 import com.pocketide.git.Verdict
 import com.pocketide.sessions.transcripts.oneLine
 
@@ -11,12 +12,26 @@ internal object CheckPostWords {
     private const val SHOWN = 3
 
     fun blocked(verdict: Verdict): String {
-        val findings = verdict.findings
-        if (findings.isEmpty()) return "The check-post stopped the push."
-        val listed = findings.take(SHOWN).joinToString("; ") { describe(it) }
-        val more = findings.size - SHOWN
-        val tail = if (more > 0) "; and $more more" else ""
-        return "The check-post stopped the push: $listed$tail. Ask the agent to take them out of the commits, then try again."
+        // Build outputs cannot be approved: like findings, they must leave the commits.
+        val remove = verdict.findings.map(::describe) +
+            verdict.holds.filter { it.kind == HoldKind.BUILD_OUTPUT }.map { "${it.path} is a build output (builds are kept in Media)" }
+        val approve = verdict.holds.filter { it.kind == HoldKind.WORKFLOW_CHANGE }.map { it.path }.distinct()
+        if (remove.isEmpty() && approve.isEmpty()) return "The check-post stopped the push."
+        val sentences = mutableListOf<String>()
+        if (remove.isNotEmpty()) {
+            sentences += "The check-post stopped the push: ${listed(remove)}. Ask the agent to take them out of the commits, then try again."
+        }
+        if (approve.isNotEmpty()) {
+            val lead = if (remove.isEmpty()) "The check-post holds the push" else "Also"
+            sentences += "$lead: changed GitHub Actions code in ${listed(approve)} waits for your approval. " +
+                "Read the change and approve it, then try again."
+        }
+        return sentences.joinToString(" ")
+    }
+
+    private fun listed(items: List<String>): String {
+        val more = items.size - SHOWN
+        return items.take(SHOWN).joinToString("; ") + if (more > 0) "; and $more more" else ""
     }
 
     private fun describe(finding: Finding): String {

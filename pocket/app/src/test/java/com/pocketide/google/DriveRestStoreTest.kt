@@ -313,6 +313,54 @@ class DriveRestStoreTest {
     }
 
     @Test
+    fun `old revisions are deleted, every page of them, and the head stays`() = runBlocking<Unit> {
+        drive.enqueue(200, """{"nextPageToken":"p2","revisions":[{"id":"r1"},{"id":"r2"}]}""")
+        drive.enqueue(200, """{"revisions":[{"id":"r3"}]}""")
+        drive.enqueue(200, """{"headRevisionId":"r3"}""")
+        drive.enqueue(204)
+        drive.fail(404, "notFound")
+
+        store.deleteOldRevisions("half")
+
+        val list = server.takeRequest()
+        assertEquals("GET", list.method)
+        assertEquals("/drive/v3/files/half/revisions", list.url.encodedPath)
+        assertEquals("nextPageToken,revisions(id)", list.url.queryParameter("fields"))
+        assertEquals("p2", server.takeRequest().url.queryParameter("pageToken"))
+        val head = server.takeRequest()
+        assertEquals("/drive/v3/files/half", head.url.encodedPath)
+        assertEquals("headRevisionId", head.url.queryParameter("fields"))
+        val deletes = List(2) { server.takeRequest() }
+        assertEquals(listOf("DELETE", "DELETE"), deletes.map { it.method })
+        assertEquals(listOf("/drive/v3/files/half/revisions/r1", "/drive/v3/files/half/revisions/r2"), deletes.map { it.url.encodedPath })
+        assertEquals(5, server.requestCount)
+    }
+
+    @Test
+    fun `a revision written meanwhile is newer than the listed ones, which all go`() = runBlocking<Unit> {
+        drive.enqueue(200, """{"revisions":[{"id":"r1"}]}""")
+        drive.enqueue(200, """{"headRevisionId":"r2"}""")
+        drive.enqueue(204)
+
+        store.deleteOldRevisions("half")
+
+        server.takeRequest()
+        server.takeRequest()
+        assertEquals("/drive/v3/files/half/revisions/r1", server.takeRequest().url.encodedPath)
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun `a file with one revision needs nothing deleted`() = runBlocking<Unit> {
+        drive.enqueue(200, """{"revisions":[{"id":"r1"}]}""")
+        drive.enqueue(200, """{}""")
+
+        store.deleteOldRevisions("half")
+
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
     fun `quota reads Google's strings and sums the hidden folder briefly cached`() = runBlocking<Unit> {
         drive.enqueue(200, """{"storageQuota":{"limit":"16106127360","usage":"5000","usageInDrive":"4000","usageInDriveTrash":"0"},"user":{"emailAddress":"owner@example.com"}}""")
         drive.enqueue(200, """{"files":[${fileJson("1", "a", 10, quotaBytesUsed = 12)},${fileJson("2", "b", 20)}]}""")

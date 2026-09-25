@@ -82,6 +82,27 @@ class AccountTest {
     }
 
     @Test
+    fun aMoveWaitingForItsNewAccountKeepsSyncingTheOldOne() = runBlocking {
+        val phone = syncedPhone()
+        phone.newAccount = DriveAuthResult.NeedsConsent(mockPendingIntent())
+        phone.engine.moveToAnotherAccount()
+        assertTrue(phone.engine.move.value is MoveState.NeedsConsent)
+
+        // Google's sheet was approved: the new account is the one in use before the move is told which it is.
+        phone.account = newEmail
+        phone.homeFile("claude", path).appendText("more\n")
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+        assertTrue("the move survives a background sync", phone.state().move != null)
+        assertEquals(TestPhone.OWNER, phone.state().account)
+        assertTrue(accounts[newEmail].objectNames().isEmpty())
+
+        phone.engine.moveToAccount(newEmail)
+        assertEquals(MoveState.ReadyToEraseOld(TestPhone.OWNER, newEmail), phone.engine.move.value)
+        assertEquals(accounts[TestPhone.OWNER].objectNames(), accounts[newEmail].objectNames())
+    }
+
+    @Test
     fun deleteEverythingErasesDriveAndThePhone() = runBlocking {
         val phone = syncedPhone()
         phone.homeFile("claude", ".codex/auth.json")
@@ -94,6 +115,7 @@ class AccountTest {
             assertFalse(dir.path, dir.exists())
         }
         assertTrue(phone.secureStoreWiped)
+        assertTrue("the old key goes from memory too, so set-up makes a new vault", phone.vaultKeyForgotten)
         assertFalse(phone.settings.settings.value.onboardingDone)
         assertEquals(1, phone.scheduler.cancelled)
         assertEquals(SyncStatus.Idle, phone.engine.status.value)

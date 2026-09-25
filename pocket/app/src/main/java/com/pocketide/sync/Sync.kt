@@ -209,4 +209,11 @@ interface DataBudget {
     fun allow(bytes: Long, kind: String, big: Boolean): com.pocketide.model.Decision
 
     fun record(bytes: Long, kind: String)
+
+    /**
+     * The owner saw the size of one big transfer of [kind] and confirmed it on mobile data (set-up
+     * on mobile data, §6.7): [allow] lets that kind through today until about [bytes] of it were
+     * recorded, without changing the owner's data settings. Kept in memory only.
+     */
+    fun allowOnce(kind: String, bytes: Long) = Unit
 }

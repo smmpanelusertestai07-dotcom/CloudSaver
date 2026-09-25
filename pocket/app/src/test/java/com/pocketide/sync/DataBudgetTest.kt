@@ -64,6 +64,27 @@ class DataBudgetTest {
     }
 
     @Test
+    fun aConfirmedTransferPassesOnceWithoutTouchingTheSettings() {
+        settings = settings.copy(mobileDailyLimitMb = 0)
+        budget.allowOnce("setup", 300 * mb)
+        assertTrue(budget.allow(200 * mb, "setup", big = true).allowed)
+        assertFalse("only the confirmed kind", budget.allow(mb, "sync", big = false).allowed)
+        budget.record(200 * mb, "setup")
+        assertTrue(budget.allow(100 * mb, "setup", big = true).allowed)
+        budget.record(100 * mb, "setup")
+        assertFalse("used up", budget.allow(mb, "setup", big = true).allowed)
+        assertEquals(0, settings.mobileDailyLimitMb)
+        assertEquals(300 * mb, budget.usage.value.byType["setup"])
+    }
+
+    @Test
+    fun aConfirmedTransferEndsWithTheDay() {
+        budget.allowOnce("setup", 300 * mb)
+        clock.now = Instant.parse("2026-09-25T00:00:01Z").toEpochMilli()
+        assertFalse(budget.allow(mb, "setup", big = true).allowed)
+    }
+
+    @Test
     fun dataSaverHoldsBackBigTransfersOnly() {
         settings = settings.copy(wifiOnlyBigDownloads = false)
         network.dataSaver = true

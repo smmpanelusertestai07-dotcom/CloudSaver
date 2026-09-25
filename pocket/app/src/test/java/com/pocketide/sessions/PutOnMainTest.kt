@@ -2,6 +2,8 @@ package com.pocketide.sessions
 
 import com.pocketide.git.Finding
 import com.pocketide.git.FindingKind
+import com.pocketide.git.Hold
+import com.pocketide.git.HoldKind
 import com.pocketide.git.Verdict
 import com.pocketide.model.SessionStatus
 import kotlinx.coroutines.CoroutineScope
@@ -124,6 +126,35 @@ class PutOnMainTest {
         assertEquals(SessionStatus.OPEN, sessions.all.value.single().status)
         assertTrue(rig.localHas("refs/heads/${session.branch}"))
         assertTrue(mergeFolders().isEmpty())
+    }
+
+    @Test
+    fun `held workflow changes come back for the owner to read and approve`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "CI")
+        rig.agentCommits(session, ".github/workflows/ci.yml", "on: push\n")
+        val workflow = Hold(HoldKind.WORKFLOW_CHANGE, ".github/workflows/ci.yml", "abc1234", "Adds a workflow.", "key-1", "+on: push")
+        val build = Hold(HoldKind.BUILD_OUTPUT, "app-release.apk", "abc1234", "A build output (.apk).")
+        rig.gate.blockNextPush = Verdict(false, emptyList(), 1, listOf(workflow))
+
+        val held = sessions.putOnMain(session.id) as PutOnMainResult.Blocked
+
+        assertEquals(listOf(workflow), held.holds)
+        assertEquals(
+            "The check-post holds the push: changed GitHub Actions code in .github/workflows/ci.yml waits for your approval. " +
+                "Read the change and approve it, then try again.",
+            held.why,
+        )
+        rig.gate.blockNextPush = Verdict(false, emptyList(), 1, listOf(build, workflow))
+        val both = sessions.putOnMain(session.id) as PutOnMainResult.Blocked
+        assertEquals(
+            "The check-post stopped the push: app-release.apk is a build output (builds are kept in Media). " +
+                "Ask the agent to take them out of the commits, then try again. " +
+                "Also: changed GitHub Actions code in .github/workflows/ci.yml waits for your approval. " +
+                "Read the change and approve it, then try again.",
+            both.why,
+        )
+        assertEquals(SessionStatus.OPEN, sessions.all.value.single().status)
     }
 
     @Test

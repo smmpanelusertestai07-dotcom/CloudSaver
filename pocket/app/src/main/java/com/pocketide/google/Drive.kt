@@ -81,6 +81,12 @@ interface DriveStore {
     suspend fun open(id: String): InputStream
     /** Permanent delete (not Drive's Trash). */
     suspend fun delete(id: String)
+
+    /**
+     * Deletes every revision of [id] except its current content. Drive keeps replaced content of
+     * a file for about 30 days; this is for files whose old content must not stay, like a key half.
+     */
+    suspend fun deleteOldRevisions(id: String) = Unit
     suspend fun quota(): DriveQuota
 
     /** The same store, acting as another authorized account (used only by the move). */

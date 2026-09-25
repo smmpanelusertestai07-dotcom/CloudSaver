@@ -1,5 +1,6 @@
 package com.pocketide.sessions
 
+import com.pocketide.git.Hold
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
@@ -9,7 +10,12 @@ sealed interface PutOnMainResult {
     data object Merged : PutOnMainResult
     /** Merge conflicts: the agent in that session resolves them, then the owner taps again. */
     data class Conflicts(val files: List<String>) : PutOnMainResult
-    data class Blocked(val why: String) : PutOnMainResult
+    /**
+     * The check-post stopped the push. [holds] are the check-post's holds: a workflow change is
+     * shown with its diff for the owner to approve (`GitGate.approveWorkflowChange` with its
+     * approval key, then Put on main again); a build output has no approval, the agent removes it.
+     */
+    data class Blocked(val why: String, val holds: List<Hold> = emptyList()) : PutOnMainResult
     data class Failed(val why: String) : PutOnMainResult
 }
 

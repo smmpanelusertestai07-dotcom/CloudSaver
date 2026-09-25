@@ -184,7 +184,7 @@ internal class MainMerger(
     }
 
     private fun refused(pushed: PushResult, project: Project): PutOnMainResult = when (pushed) {
-        is PushResult.Blocked -> PutOnMainResult.Blocked(CheckPostWords.blocked(pushed.verdict))
+        is PushResult.Blocked -> PutOnMainResult.Blocked(CheckPostWords.blocked(pushed.verdict), pushed.verdict.holds)
         is PushResult.Rejected -> PutOnMainResult.Failed(
             "GitHub did not accept the new ${project.defaultBranch}: ${pushed.why} Tap Put on main again.",
         )
