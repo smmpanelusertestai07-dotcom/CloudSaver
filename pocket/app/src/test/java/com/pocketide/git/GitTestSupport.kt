@@ -45,14 +45,23 @@ internal class GitWorld(val root: File) {
         listOf(github, repos, work, home).forEach(File::mkdirs)
     }
 
-    fun gate(scanner: CheckPost = CheckPost()) = JGitGate(repos, state, LocalRemotes, scanner, Dispatchers.IO)
+    fun gate(scanner: CheckPost = CheckPost(), remotes: RemotePolicy = LocalRemotes) =
+        JGitGate(repos, state, remotes, scanner, Dispatchers.IO)
 
     fun url(remote: File) = "file://" + remote.absolutePath
 
     fun bare(name: String) = File(repos, "$name.git")
 
     fun git(dir: File, vararg args: String): String {
-        val process = ProcessBuilder(listOf("git") + args).directory(dir).redirectErrorStream(true).apply {
+        val process = command(dir, *args).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        check(process.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$output" }
+        return output.trim()
+    }
+
+    /** The system git in [dir], with no user or system config. */
+    fun command(dir: File, vararg args: String): ProcessBuilder =
+        ProcessBuilder(listOf("git") + args).directory(dir).apply {
             val env = environment()
             env.keys.filter { it.startsWith("GIT_") }.forEach { env.remove(it) }
             env["HOME"] = home.path
@@ -64,11 +73,7 @@ internal class GitWorld(val root: File) {
             env["GIT_AUTHOR_EMAIL"] = "test@example.com"
             env["GIT_COMMITTER_NAME"] = "Test"
             env["GIT_COMMITTER_EMAIL"] = "test@example.com"
-        }.start()
-        val output = process.inputStream.bufferedReader().readText()
-        check(process.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$output" }
-        return output.trim()
-    }
+        }
 
     /** The object a revision names, or null when there is none. */
     fun revParse(dir: File, revision: String): String? =
@@ -125,12 +130,16 @@ internal class TestCommits(dir: File) : AutoCloseable {
     /** A blob of [size] zero bytes, streamed rather than held in memory. */
     fun zeros(size: Long): ObjectId = inserter.insert(Constants.OBJ_BLOB, size, Zeros(size)).also { inserter.flush() }
 
-    /** [files] maps a path to its text, its bytes or a blob ID; [modes] overrides a file's mode. */
+    /**
+     * [files] maps a path to its text, its bytes or a blob ID; [modes] overrides a file's mode (a
+     * gitlink's ID is taken as is). [author] replaces the test identity.
+     */
     fun commit(
         files: Map<String, Any>,
         vararg parents: ObjectId,
         message: String = "Change",
         modes: Map<String, FileMode> = emptyMap(),
+        author: PersonIdent? = null,
     ): ObjectId {
         val index = DirCache.newInCore()
         val builder = index.builder()
@@ -149,11 +158,11 @@ internal class TestCommits(dir: File) : AutoCloseable {
         }
         builder.finish()
         // Distinct times keep the order of commits obvious.
-        val ident = PersonIdent(PersonIdent("Test", "test@example.com"), Date(1_700_000_000_000L + 1000L * tick++))
+        val ident = PersonIdent(author ?: PersonIdent("Test", "test@example.com"), Date(1_700_000_000_000L + 1000L * tick++))
         val commit = CommitBuilder().apply {
             setTreeId(index.writeTree(inserter))
             setParentIds(*parents)
-            author = ident
+            this.author = ident
             committer = ident
             this.message = message
         }

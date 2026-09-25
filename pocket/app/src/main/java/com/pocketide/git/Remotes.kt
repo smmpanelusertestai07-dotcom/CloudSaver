@@ -30,9 +30,7 @@ internal object GitHubRemotes : RemotePolicy {
 
     /** Bare repos are named `<owner>__<repo>.git` (see AppDirs); owners never contain "__". */
     override fun remoteFor(gitDir: File): String? {
-        val name = gitDir.name
-        if (!name.endsWith(".git")) return null
-        val project = name.removeSuffix(".git")
+        val project = repoName(gitDir.name)?.removeSuffix(".git") ?: return null
         val owner = project.substringBefore("__", missingDelimiterValue = "")
         val repo = project.substringAfter("__", missingDelimiterValue = "")
         return urlOf(owner, repo).takeIf { shape.matches(it) }

@@ -35,6 +35,8 @@ internal object GitMessages {
     const val SIGN_IN = "GitHub did not accept the sign-in. Connect GitHub again."
     const val NOT_PERMITTED = "PocketIDE's GitHub App is not allowed to do this in this repository."
     const val FAILED = "Git could not finish this step. Try again."
+    const val STORAGE_FULL = "The phone's storage is full. Free some space, then try again."
+    const val NOT_AN_APPROVAL = "This approval does not name a workflow change. Run the check-post again."
 
     fun missingBranch(name: String) = "The branch $name is not on the phone."
 
@@ -76,6 +78,8 @@ internal fun plainReason(error: Throwable): String {
         chain.any { it is NoRemoteRepositoryException } || "repository not found" in said -> GitMessages.NO_REPO
         "not authorized" in said || "authentication" in said -> GitMessages.SIGN_IN
         "not permitted" in said -> GitMessages.NOT_PERMITTED
+        // The system's words for ENOSPC, whichever file ran out of room.
+        "no space left" in said -> GitMessages.STORAGE_FULL
         else -> GitMessages.FAILED
     }
 }

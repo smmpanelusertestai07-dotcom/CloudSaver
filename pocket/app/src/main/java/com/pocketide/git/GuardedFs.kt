@@ -16,24 +16,32 @@ import java.io.OutputStream
  * - The repo's config is read from [privateConfig], a copy Linux cannot see. JGit re-reads the
  *   config file whenever it changes, so reading the shared file would let Linux swap in
  *   `http.sslVerify`, `http.extraHeader` or a cookie file in the middle of a push.
- * - An alternate object directory outside the repo resolves to nothing, even if Linux rewrites
- *   `objects/info/alternates` after the gate checked it.
+ * - Reflogs are looked for in [shadow], where there are none, so JGit writes none. JGit appends
+ *   to any log file that exists, and a log file Linux swapped for a link while a step runs would
+ *   send the lines into whatever app file the link names.
+ * - Alternates lead into [shadow] as well, so JGit never reads another object store: not one
+ *   outside the repo, not one chained behind an entry inside it, and not a repository nested in
+ *   it, which JGit would open without this file system. The gate's repos have no alternates.
  */
 internal class GuardedFs : FS_POSIX {
     private val gitDir: File
     private val objectsDir: File
     private val privateConfig: File
+    private val shadow: File
 
-    constructor(gitDir: File, privateConfig: File) : super() {
+    /** [shadow] is app-private; only JGit's empty reflog folders are ever made in it. */
+    constructor(gitDir: File, privateConfig: File, shadow: File) : super() {
         this.gitDir = gitDir
         this.objectsDir = File(gitDir, Constants.OBJECTS)
         this.privateConfig = privateConfig
+        this.shadow = shadow
     }
 
     private constructor(source: GuardedFs) : super(source) {
         gitDir = source.gitDir
         objectsDir = source.objectsDir
         privateConfig = source.privateConfig
+        shadow = source.shadow
     }
 
     override fun newInstance(): FS = GuardedFs(this)
@@ -53,19 +61,20 @@ internal class GuardedFs : FS_POSIX {
     ): ProcessResult = NOT_RUN
 
     override fun resolve(dir: File?, name: String?): File {
-        val resolved = super.resolve(dir, name)
         val parent = dir?.absoluteFile
         return when {
             parent == gitDir && name == Constants.CONFIG -> privateConfig
-            parent == objectsDir && !resolved.isInside(gitDir) -> File(objectsDir, NO_ALTERNATE)
-            else -> resolved
+            parent == gitDir && (name == Constants.LOGS || name == LOG_REFS) -> File(shadow, name)
+            // Only alternates are resolved against the objects folder.
+            parent == objectsDir -> File(shadow, Constants.OBJECTS)
+            else -> super.resolve(dir, name)
         }
     }
 
     private companion object {
         val NOT_RUN = ProcessResult(ProcessResult.Status.NOT_PRESENT)
 
-        /** Never created, so JGit finds no objects there. */
-        const val NO_ALTERNATE = "info/no-alternate"
+        /** How JGit names the folder of branch and tag reflogs. */
+        const val LOG_REFS = "${Constants.LOGS}/${Constants.R_REFS}"
     }
 }

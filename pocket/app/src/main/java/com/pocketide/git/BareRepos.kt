@@ -23,12 +23,15 @@ internal class BareRepos(reposRoot: File, private val states: RemoteStates) {
     fun placed(bareRepo: File): File {
         val absolute = bareRepo.absoluteFile
         val dir = File(absolute.parentOrRoot().canonicalFile, absolute.name)
-        if (dir.parentFile != root || !dir.name.endsWith(Constants.DOT_GIT_EXT)) {
+        if (dir.parentFile != root || repoName(dir.name) == null) {
             throw GitGateException(GitMessages.UNSAFE_COPY)
         }
         if (Files.isSymbolicLink(dir.toPath())) throw GitGateException(GitMessages.UNSAFE_COPY)
         return dir
     }
+
+    /** One file per repo, whichever of its names ([repoName]) [placedDir] has; for locking. */
+    fun identity(placedDir: File): File = File(root, repoName(placedDir.name) ?: placedDir.name)
 
     /** The resolved directory of an existing bare repo that passes every check. */
     fun existing(bareRepo: File): File {
@@ -49,30 +52,40 @@ internal class BareRepos(reposRoot: File, private val states: RemoteStates) {
         if (linked) throw GitGateException(GitMessages.UNSAFE_COPY)
     }
 
-    /** Writes the canonical config for Linux git and the private copy JGit reads. */
+    /**
+     * Writes the canonical config for Linux git and the private copy JGit reads, and drops a
+     * `shallow` list: the gate's clones are never shallow, and one planted there would cut
+     * history short for git on both sides.
+     */
     fun resetConfig(gitDir: File, url: String) {
         val text = canonicalConfig(url)
         writeAtomically(states.privateConfig(gitDir), text)
         writeAtomically(File(gitDir, Constants.CONFIG), text)
+        Files.deleteIfExists(File(gitDir, Constants.SHALLOW).toPath())
     }
 
     fun open(gitDir: File): Repository = FileRepositoryBuilder()
         .setGitDir(gitDir)
         .setBare()
         .setMustExist(true)
-        .setFS(GuardedFs(gitDir, states.privateConfig(gitDir)))
+        .setFS(GuardedFs(gitDir, states.privateConfig(gitDir), states.shadow(gitDir)))
         .build()
 
     /**
-     * A new empty bare repo in [staging] whose config is the canonical one for [url]. It reads the
-     * private config of [target], where it will be moved once complete.
+     * A new empty bare repo in [staging] whose config is the canonical one for [url]. It uses the
+     * private files of [target], where it will be moved once complete.
      */
     fun create(staging: File, target: File, url: String): Repository {
         val privateConfig = states.privateConfig(target)
+        // JGit refuses to create a repo whose config exists; the finished repo under its other
+        // name has one, rewritten before each of its own steps anyway.
+        Files.deleteIfExists(privateConfig.toPath())
+        // JGit makes its reflog folders here and needs the folder to exist.
+        val shadow = states.shadow(target).apply { mkdirs() }
         val repo = FileRepositoryBuilder()
             .setGitDir(staging)
             .setBare()
-            .setFS(GuardedFs(staging, privateConfig))
+            .setFS(GuardedFs(staging, privateConfig, shadow))
             .build()
         try {
             repo.create(true)
@@ -120,6 +133,23 @@ internal fun canonicalConfig(url: String): String = Config().apply {
     setString("remote", "origin", "fetch", TRACKING_SPEC)
     setString("gc", null, "worktreePruneExpire", "never")
 }.toText()
+
+/**
+ * The name a bare repo in the repos folder is known by, or null when [dirName] is not one. The
+ * projects module clones into `.<name>.partial` and renames it when complete, so both names are
+ * the same repo to the gate: one record, one lock.
+ */
+internal fun repoName(dirName: String): String? {
+    val name = if (dirName.startsWith(".") && dirName.endsWith(PARTIAL_SUFFIX)) {
+        dirName.substring(1, dirName.length - PARTIAL_SUFFIX.length)
+    } else {
+        dirName
+    }
+    val named = name.length > Constants.DOT_GIT_EXT.length && name.endsWith(Constants.DOT_GIT_EXT)
+    return name.takeIf { named && !it.startsWith(".") }
+}
+
+private const val PARTIAL_SUFFIX = ".partial"
 
 internal const val TRACKING_PREFIX = "refs/remotes/origin/"
 internal const val TRACKING_SPEC = "+refs/heads/*:$TRACKING_PREFIX*"
