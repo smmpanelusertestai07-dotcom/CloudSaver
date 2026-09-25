@@ -28,7 +28,7 @@ class SourceTreeTest {
     }
 
     private fun write(relative: String, text: String): File = File(root, relative).apply {
-        parentFile.mkdirs()
+        parentFile?.mkdirs()
         writeText(text)
     }
 

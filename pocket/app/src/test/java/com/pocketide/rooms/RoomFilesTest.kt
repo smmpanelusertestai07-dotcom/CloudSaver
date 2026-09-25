@@ -268,7 +268,7 @@ class RoomFilesTest(private val holdFolders: Boolean) {
 
     @Test fun `files skips the folders named and stops at the depth`() {
         val (home, files) = home()
-        for (path in listOf("a/1", "a/b/2", "a/b/c/3", "skip/4")) File(home, path).apply { parentFile.mkdirs(); writeText("x") }
+        for (path in listOf("a/1", "a/b/2", "a/b/c/3", "skip/4")) File(home, path).apply { parentFile?.mkdirs(); writeText("x") }
         assertEquals(listOf("a/1", "a/b/2"), files.files("", depth = 2, skip = setOf("skip")))
         assertEquals(listOf("a/1", "a/b/2", "a/b/c/3"), files.files("a", depth = 5))
         assertEquals(emptyList<String>(), files.files("missing", depth = 5))
