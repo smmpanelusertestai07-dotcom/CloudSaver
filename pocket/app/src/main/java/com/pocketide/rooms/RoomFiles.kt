@@ -9,7 +9,6 @@ import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
 import java.nio.file.DirectoryIteratorException
 import java.nio.file.FileAlreadyExistsException
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
@@ -17,7 +16,6 @@ import java.nio.file.OpenOption
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.SecureDirectoryStream
-import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributeView
@@ -232,6 +230,9 @@ internal class RoomFiles(
 
         fun delete(name: String)
 
+        /** Removes the empty folder [name]. */
+        fun deleteFolder(name: String)
+
         fun rename(from: String, to: String)
 
         /** Of [name], or of this folder itself when [name] is null. */
@@ -307,6 +308,14 @@ internal class RoomFiles(
         override fun delete(name: String) {
             try {
                 handle.deleteFile(Paths.get(name))
+            } catch (missing: NoSuchFileException) {
+                // Already gone.
+            }
+        }
+
+        override fun deleteFolder(name: String) {
+            try {
+                handle.deleteDirectory(Paths.get(name))
             } catch (missing: NoSuchFileException) {
                 // Already gone.
             }
@@ -393,6 +402,8 @@ internal class RoomFiles(
             if (inside()) Files.deleteIfExists(path.resolve(name))
         }
 
+        override fun deleteFolder(name: String) = delete(name)
+
         override fun rename(from: String, to: String) {
             if (inside()) Files.move(path.resolve(from), path.resolve(to), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         }
@@ -472,33 +483,44 @@ internal class RoomFiles(
         }
 
         /**
-         * Deletes [root] and everything under it. Links are removed, never followed; folders are
-         * made writable first, because tools inside Linux leave read-only folders behind.
+         * Deletes [root] and everything under it. Links are removed, never followed, not even one
+         * swapped in while the delete runs: each folder is opened from the one above it, as for
+         * reads and writes. Folders are made writable first, because tools inside Linux leave
+         * read-only folders behind.
          */
         fun deleteTree(root: File) {
             val start = root.toPath()
-            if (attributes(start) == null) return
-            Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
-                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    dir.toFile().setWritable(true, true)
-                    return FileVisitResult.CONTINUE
+            val attributes = attributes(start) ?: return
+            if (attributes.isDirectory) {
+                RoomFiles(root, guardSecrets = false).within(emptyList(), create = false) { folder ->
+                    folder.unlock(null)
+                    folder.empty()
                 }
+            }
+            Files.deleteIfExists(start)
+        }
 
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    Files.deleteIfExists(file)
-                    return FileVisitResult.CONTINUE
+        /** Deletes everything in this folder: a link itself, a file, a folder once it is empty. */
+        private fun Folder.empty() {
+            for (name in namesOrEmpty()) {
+                val attributes = attributes(name) ?: continue
+                if (!attributes.isDirectory) {
+                    delete(name)
+                    continue
                 }
+                unlock(name)
+                folder(name)?.use { it.empty() }
+                deleteFolder(name)
+            }
+        }
 
-                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
-                    Files.deleteIfExists(file)
-                    return FileVisitResult.CONTINUE
-                }
-
-                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                    Files.deleteIfExists(dir)
-                    return FileVisitResult.CONTINUE
-                }
-            })
+        /** Makes the folder [name] (or this one) the owner's to empty; one that stays locked fails to go, and says so. */
+        private fun Folder.unlock(name: String?) {
+            try {
+                setPermissions(name, PRIVATE_DIR)
+            } catch (locked: IOException) {
+                // Removing it reports why it cannot go.
+            }
         }
 
         fun attributes(path: Path): BasicFileAttributes? = try {

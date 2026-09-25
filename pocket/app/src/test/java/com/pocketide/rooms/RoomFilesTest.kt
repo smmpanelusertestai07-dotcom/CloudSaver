@@ -152,6 +152,39 @@ class RoomFilesTest(private val holdFolders: Boolean) {
         assertTrue("the real folder was still written between swaps", written > 0)
     }
 
+    @Test fun `a folder swapped for a link while the room is deleted never gets anything outside deleted`() {
+        assumeTrue("only held folders close this race", holdFolders)
+        val otherRoom = temp.newFolder("other-room")
+        val names = (1..FILES).map { "config-$it.toml" }
+        names.forEach { File(otherRoom, it).writeText("the other room's") }
+        val deadline = System.nanoTime() + SWAP_NANOS
+        var rounds = 0
+        while (System.nanoTime() < deadline) {
+            val home = temp.newFolder("home-${rounds++}")
+            val folder = File(home, ".codex").apply { mkdirs() }
+            names.forEach { File(folder, it).writeText("this room's") }
+            whileSwapping(folder, otherRoom) {
+                try {
+                    RoomFiles.deleteTree(home)
+                } catch (raced: IOException) {
+                    // The folder was a link at the moment it was to go: refused, as it must be.
+                }
+            }
+            assertEquals("nothing in the other room was deleted", names.sorted(), otherRoom.list()!!.sorted())
+        }
+        assertTrue(rounds > 0)
+    }
+
+    @Test fun `a read-only folder is still deleted`() {
+        val (home, _) = home()
+        val folder = File(home, "node_modules/pkg").apply { mkdirs() }
+        File(folder, "index.js").writeText("x")
+        folder.setWritable(false, false)
+        home.setWritable(false, false)
+        RoomFiles.deleteTree(home)
+        assertFalse(home.exists())
+    }
+
     @Test fun `a link at the target is replaced, not written through`() {
         val (home, files) = home()
         val victim = temp.newFile("victim")
@@ -319,6 +352,7 @@ class RoomFilesTest(private val holdFolders: Boolean) {
 
     companion object {
         private const val SWAP_NANOS = 3_000_000_000L
+        private const val FILES = 40
 
         @JvmStatic
         @Parameterized.Parameters(name = "holdFolders={0}")
