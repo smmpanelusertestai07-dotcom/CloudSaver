@@ -43,8 +43,14 @@ internal object GuideSafety {
             row("Your phone's files, photos and apps", "No: Android keeps the app apart"),
         ),
         p(
-            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex may run " +
-                "without its own sandbox inside its room ($BEING_TESTED). That is why only checked agents run.",
+            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex runs " +
+                "without its own sandbox here: its Linux sandbox needs features PRoot does not give, so the room " +
+                "is the only boundary. Scheduled Codex tasks run the same way. That is why only checked agents run.",
+        ),
+        p(
+            "The agents' test browser, installed only when an agent asks, runs Chromium without its own " +
+                "sandbox, because PRoot looks like root to it. A harmful page can reach what that agent's room " +
+                "can reach, nothing more. It stays off for someone else's projects.",
         ),
         table(
             listOf("Risk", "Safeguard"),

@@ -47,7 +47,17 @@ class DocsContentTest {
     @Test
     fun `what is still being tested on phones says so`() {
         val marked = DocsContent.guide.filter { sectionText(it).contains(BEING_TESTED) }.map { it.id }
-        assertTrue("sections marked: $marked", marked.containsAll(listOf("requirements", "security", "conditions")))
+        assertTrue("sections marked: $marked", marked.containsAll(listOf("requirements", "your-data", "conditions")))
+    }
+
+    @Test
+    fun `a chat back in the agent's own screen on a new phone is not promised for Codex and Antigravity`() {
+        val reopen = DocsContent.faq.single { it.id == "reopen-media" }.answer.flatMap(::blockLines).joinToString(" ")
+        val guide = sectionText(requireSection("your-data"))
+        for (text in listOf(reopen, guide)) {
+            assertTrue(text, text.contains("Codex and Antigravity should too on a new phone ($BEING_TESTED)"))
+            assertTrue(text, text.contains("can always be read in Chats"))
+        }
     }
 
     @Test
@@ -61,6 +71,10 @@ class DocsContentTest {
         val text = sectionText(security)
         assertTrue(text.contains("prompt injection", ignoreCase = true))
         assertTrue(text.contains("PRoot is not a sandbox"))
+        // Codex's sandbox is always off here (ConfigFiles.codexConfig), so it is said plainly, not as a test.
+        assertTrue(text.contains("Codex runs without its own sandbox here"))
+        assertFalse(text.contains("Codex may run"))
+        assertTrue(text.contains("test browser") && text.contains("runs Chromium without its own sandbox"))
     }
 
     @Test
@@ -370,6 +384,7 @@ class DocsContentTest {
             "Is this VS Code, and can I add Pylance?",
             "What if the network drops mid-answer?",
             "How do I get a file from my phone into a project?",
+            "Can the agents test my app in a browser?",
         )
     }
 }
