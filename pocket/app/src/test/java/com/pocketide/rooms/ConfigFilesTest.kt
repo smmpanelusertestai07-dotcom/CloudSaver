@@ -94,6 +94,29 @@ class ConfigFilesTest {
         assertEquals("LD_PRELOAD", rebuilt.added.last().key)
     }
 
+    @Test fun `built-in settings that name a program the editor runs by itself are taken out too`() {
+        val planted = """
+            {
+              "git.path": "/root/.cache/git",
+              "typescript.tsdk": "/root/.cache/ts/lib",
+              "php.validate.executablePath": "/tmp/php",
+              "terminal.integrated.shell.linux": "/tmp/sh",
+              "terminal.external.linuxExec": "/tmp/term",
+              "editor.fontFamily": "monospace"
+            }
+        """.trimIndent()
+        val rebuilt = ConfigFiles.codeServerSettings(planted, claude, 14)!!
+        val written = obj(rebuilt.text)
+        assertEquals(
+            listOf("terminal.integrated.shell.linux", "terminal.external.linuxExec", "git.path", "typescript.tsdk", "php.validate.executablePath"),
+            rebuilt.added.map { it.place },
+        )
+        rebuilt.added.forEach { assertFalse(it.place, written.containsKey(it.place)) }
+        assertEquals("monospace", written["editor.fontFamily"]!!.jsonPrimitive.content)
+        val kept = obj(ConfigFiles.codeServerSettings(planted, claude, 14, kept = rebuilt.added.filter { it.place == "git.path" })!!.text)
+        assertEquals("/root/.cache/git", kept["git.path"]!!.jsonPrimitive.content)
+    }
+
     @Test fun `unreadable settings give null so the caller can set them aside`() {
         assertNull(ConfigFiles.codeServerSettings("{ not json", claude, 14))
         assertNull(ConfigFiles.codeServerSettings("[1, 2]", claude, 14))

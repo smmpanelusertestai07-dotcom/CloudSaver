@@ -103,7 +103,8 @@ internal object ConfigFiles {
      * With [careful] (someone else's code) Codex asks before it runs commands (approval on request);
      * back on the owner's own code that value goes again, and any other the owner chose stays.
      * MCP servers, inline hooks, model providers (they can run a command for their key), the
-     * environment given to commands and the notify program are rebuilt.
+     * environment given to commands and the notify program are rebuilt. Null for a file with a
+     * line this reader cannot place (TomlDocument.understood): Codex might read a setting there.
      */
     fun codexConfig(
         existing: String?,
@@ -111,8 +112,9 @@ internal object ConfigFiles {
         notify: List<String>,
         careful: Boolean = false,
         kept: List<Entry> = emptyList(),
-    ): Rebuilt {
+    ): Rebuilt? {
         val toml = TomlDocument(existing.orEmpty())
+        if (!toml.understood()) return null
         val found = (CODEX_PLACES + CODEX_NOTIFY).flatMap { place ->
             toml.settings(listOf(place)).map { (name, text) -> Entry(place, name, text, keepable = name.isNotEmpty() || place != CODEX_MCP) }
         }
@@ -273,7 +275,11 @@ internal object ConfigFiles {
         Slot.Members(listOf("extraKnownMarketplaces")),
     )
 
-    /** code-server settings that start a program for the agent, give it an environment, or loosen its permissions. */
+    /**
+     * code-server settings that start a program for the agent, give it an environment, or loosen
+     * its permissions, and the built-in ones that name a program the editor runs by itself (git,
+     * the TypeScript server, PHP's checker, the terminals).
+     */
     private val CODE_SERVER_SLOTS = listOf(
         Slot.Value(listOf("chatgpt.cliExecutable")),
         Slot.Value(listOf("claudeCode.claudeProcessWrapper")),
@@ -284,6 +290,13 @@ internal object ConfigFiles {
         Slot.Members(listOf("terminal.integrated.profiles.linux")),
         Slot.Value(listOf("terminal.integrated.defaultProfile.linux")),
         Slot.Value(listOf("terminal.integrated.automationProfile.linux")),
+        Slot.Value(listOf("terminal.integrated.shell.linux")),
+        Slot.Value(listOf("terminal.integrated.shellArgs.linux")),
+        Slot.Value(listOf("terminal.integrated.automationShell.linux")),
+        Slot.Value(listOf("terminal.external.linuxExec")),
+        Slot.Value(listOf("git.path")),
+        Slot.Value(listOf("typescript.tsdk")),
+        Slot.Value(listOf("php.validate.executablePath")),
     )
 
     private val ANTIGRAVITY_MCP_SLOTS = listOf(Slot.Members(listOf(MCP_SERVERS)))
