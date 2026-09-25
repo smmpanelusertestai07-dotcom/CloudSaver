@@ -73,6 +73,7 @@ fun DriveStepScreen(onDone: () -> Unit) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { secure = graph.appLock.deviceSecure() }
     val connected = email != null || justAuthorized
     var keyReady by remember { mutableStateOf(false) }
+    val restoreOffer = rememberRestoreOffer()
 
     ShellPage {
         StepHeader(OnboardingStep.DRIVE)
@@ -140,6 +141,8 @@ fun DriveStepScreen(onDone: () -> Unit) {
                 // Opened with the extra password: this phone's settings must know it is on.
                 onPasswordUsed = { graph.settings.update { it.copy(extraPassword = true) } },
                 onReady = { keyReady = true },
+                // A rebuilt key means chats may wait in Drive: the restore is offered until it starts.
+                onKeyMade = restoreOffer::keyReady,
             )
             if (keyReady) {
                 Gap(24.dp)
@@ -163,7 +166,13 @@ private sealed interface KeyPhase {
  * that exists but cannot be rebuilt is never silently replaced: the owner decides.
  */
 @Composable
-private fun KeySetup(vault: VaultKeys, openInstallPage: () -> Unit, onPasswordUsed: () -> Unit, onReady: () -> Unit) {
+private fun KeySetup(
+    vault: VaultKeys,
+    openInstallPage: () -> Unit,
+    onPasswordUsed: () -> Unit,
+    onReady: () -> Unit,
+    onKeyMade: (restored: Boolean) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf<KeyPhase>(KeyPhase.Working) }
     var confirmNewKey by remember { mutableStateOf(false) }
@@ -182,7 +191,10 @@ private fun KeySetup(vault: VaultKeys, openInstallPage: () -> Unit, onPasswordUs
             } catch (e: Exception) {
                 KeyPhase.Failed(Redact.text(e.message ?: "The key could not be set up.").take(200))
             }
-            if (phase is KeyPhase.Ready) onReady()
+            (phase as? KeyPhase.Ready)?.let { ready ->
+                onKeyMade(ready.restored)
+                onReady()
+            }
         }
     }
 
