@@ -24,13 +24,11 @@ fun createAppUpdater(graph: AppGraph): AppUpdater {
         ),
         fetcher = ApkFetcher(
             client = Http.downloads,
-            allow = { bytes -> graph.dataBudget.allow(bytes, DATA_KIND, big = true) },
-            record = { bytes -> graph.dataBudget.record(bytes, DATA_KIND) },
+            allow = { bytes -> graph.dataBudget.allow(bytes, ApkFetcher.DATA_KIND, big = true) },
+            record = { bytes -> graph.dataBudget.record(bytes, ApkFetcher.DATA_KIND) },
         ),
     )
 }
-
-private const val DATA_KIND = "app update"
 
 private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
     private val context: Context get() = graph.context

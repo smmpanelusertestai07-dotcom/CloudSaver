@@ -4,6 +4,8 @@ import android.app.Activity
 import com.pocketide.agents.SemVer
 import com.pocketide.github.PublicReleases
 import com.pocketide.model.Decision
+import com.pocketide.sync.MeteredDataBudget
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -226,6 +228,20 @@ class UpdaterTest {
         val failure = assertThrows(UpdateWaits::class.java) { runBlocking { updater.download() } }
 
         assertEquals("The update waits for Wi-Fi.", failure.message)
+        assertTrue(updater.state.value is UpdateState.Available)
+    }
+
+    @Test
+    fun onMobileDataTheOwnerIsAskedWithTheUpdatesSize() = runBlocking<Unit> {
+        publish(release("pocketide-v3.1.0", apk()))
+        allowed = Decision.no(MeteredDataBudget.WAITS_FOR_WIFI)
+        val updater = updater()
+        updater.check()
+
+        val ask = assertThrows(NeedsMobileData::class.java) { runBlocking { updater.download() } }
+
+        assertEquals("app update", ask.kind)
+        assertEquals(apk().size.toLong(), ask.bytes)
         assertTrue(updater.state.value is UpdateState.Available)
     }
 

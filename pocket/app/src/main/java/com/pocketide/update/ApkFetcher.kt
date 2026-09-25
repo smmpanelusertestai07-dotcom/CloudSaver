@@ -2,6 +2,7 @@ package com.pocketide.update
 
 import com.pocketide.core.await
 import com.pocketide.model.Decision
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -33,7 +34,10 @@ internal class ApkFetcher(
     suspend fun fetch(release: AppRelease, target: File, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
         val url = release.apkUrl.toHttpUrlOrNull() ?: throw IOException("The update's download link is not valid.")
         val decision = allow(release.apkBytes)
-        if (!decision.allowed) throw UpdateWaits(decision.reason ?: "The update waits for Wi-Fi.")
+        if (!decision.allowed) {
+            // Waiting only for Wi-Fi: the owner may take it on mobile data (§6.7).
+            throw NeedsMobileData.of(decision, DATA_KIND, release.apkBytes) ?: UpdateWaits(decision.reason ?: "The update waits for Wi-Fi.")
+        }
         target.parentFile?.let { Files.createDirectories(it.toPath()) }
         val part = File(target.parentFile, target.name + ".part")
         try {
@@ -81,8 +85,10 @@ internal class ApkFetcher(
         }
     }
 
-    private companion object {
-        const val BUFFER = 128 * 1024
-        const val MAX_APK_BYTES = 512L * 1024 * 1024
+    internal companion object {
+        /** The app update's kind in the data rules and in Settings → Mobile data. */
+        const val DATA_KIND = "app update"
+        private const val BUFFER = 128 * 1024
+        private const val MAX_APK_BYTES = 512L * 1024 * 1024
     }
 }
