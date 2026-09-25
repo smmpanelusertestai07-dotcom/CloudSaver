@@ -192,6 +192,8 @@ class OpenVsxFixture {
     private fun pem(): String = "-----BEGIN PUBLIC KEY-----\n" + Base64.getMimeEncoder().encodeToString(key.public.encoded) + "\n-----END PUBLIC KEY-----\n"
 
     companion object {
+        private const val ZIP_TIME = 1_700_000_000_000L
+
         fun sign(bytes: ByteArray, key: KeyPair): ByteArray =
             Signature.getInstance("Ed25519").apply { initSign(key.private); update(bytes) }.sign()
 
@@ -201,7 +203,8 @@ class OpenVsxFixture {
             val out = ByteArrayOutputStream()
             ZipOutputStream(out).use { zip ->
                 for ((name, bytes) in entries) {
-                    zip.putNextEntry(ZipEntry(name))
+                    // A fixed time: the same entries always make the same bytes (and checksum).
+                    zip.putNextEntry(ZipEntry(name).apply { time = ZIP_TIME })
                     zip.write(bytes)
                     zip.closeEntry()
                 }

@@ -7,11 +7,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -40,9 +35,9 @@ class UpdaterTest {
     private val server = MockWebServer()
     private val client = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build()
     private val repo = "owner/CloudSaver"
-    private var releases: JsonArray = JsonArray(emptyList())
+    private var feed = ""
     private val files = mutableMapOf<String, ByteArray>()
-    private var listStatus = 200
+    private var feedStatus = 200
     private val self = ApkFacts("com.pocketide", 300, "3.0.0", setOf("aa"))
     private var allowed = Decision.YES
 
@@ -51,10 +46,12 @@ class UpdaterTest {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.url.encodedPath
+                val body = files[path]
                 return when {
-                    path == "/api/repos/$repo/releases" -> MockResponse.Builder().code(listStatus).body(releases.toString()).build()
-                    files.containsKey(path) -> MockResponse.Builder().body(Buffer().write(files.getValue(path))).build()
-                    else -> MockResponse.Builder().code(404).build()
+                    path == "/$repo/releases.atom" -> MockResponse.Builder().code(feedStatus).body(feed).build()
+                    body == null -> MockResponse.Builder().code(404).build()
+                    request.method == "HEAD" -> MockResponse.Builder().addHeader("Content-Length", body.size.toString()).build()
+                    else -> MockResponse.Builder().body(Buffer().write(body)).build()
                 }
             }
         }
@@ -64,39 +61,33 @@ class UpdaterTest {
     @After
     fun tearDown() = server.close()
 
-    private fun github() = GitHubReleases(client, repo, "pocketide-v", api = server.url("/api/"), downloads = server.url("/"))
+    private fun github() = GitHubReleases(client, repo, "pocketide-v", web = server.url("/"))
 
     /** An APK stand-in: Android's reading of it is "package|versionCode|signer". */
     private fun apk(pkg: String = "com.pocketide", code: Long = 310, signer: String = "aa") = "$pkg|$code|$signer".toByteArray()
 
-    private fun release(tag: String, apk: ByteArray? = null, draft: Boolean = false, prerelease: Boolean = false, url: String? = null, digest: String? = null): JsonObject {
-        val path = "/$repo/releases/download/$tag/PocketIDE-$tag.apk"
-        if (apk != null) files[path] = apk
-        return buildJsonObject {
-            put("tag_name", tag)
-            put("draft", draft)
-            put("prerelease", prerelease)
-            put("body", "Notes for $tag")
-            put("published_at", "2026-10-01T00:00:00Z")
-            put(
-                "assets",
-                buildJsonArray {
-                    add(
-                        buildJsonObject {
-                            put("name", "PocketIDE-$tag.apk")
-                            put("size", apk?.size ?: 10)
-                            put("browser_download_url", url ?: server.url(path).toString())
-                            digest?.let { put("digest", it) }
-                        },
-                    )
-                    add(buildJsonObject { put("name", "notes.txt"); put("size", 3); put("browser_download_url", server.url("/$repo/releases/download/$tag/notes.txt").toString()) })
-                },
-            )
+    /** A release as the release job publishes it (the APK, and SHA256SUMS naming it), and its feed entry. */
+    private fun release(tag: String, apk: ByteArray? = null, sums: String? = null): String {
+        val version = tag.substringAfterLast("-v")
+        val name = "PocketIDE-$version-arm64-v8a-release.apk"
+        if (apk != null) {
+            files["/$repo/releases/download/$tag/$name"] = apk
+            files["/$repo/releases/download/$tag/SHA256SUMS"] = (sums ?: "${sha256(apk)}  $name\n").toByteArray()
         }
+        return """
+            <entry>
+              <id>tag:github.com,2008:Repository/1/$tag</id>
+              <updated>2026-10-01T00:00:00Z</updated>
+              <link rel="alternate" type="text/html" href="https://github.com/$repo/releases/tag/$tag"/>
+              <title>$tag</title>
+              <content type="html">&lt;p&gt;Notes for $tag &amp;amp; more&lt;/p&gt;</content>
+            </entry>
+        """.trimIndent()
     }
 
-    private fun publish(vararg items: JsonObject) {
-        releases = JsonArray(items.toList())
+    private fun publish(vararg entries: String) {
+        feed = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\">\n" +
+            entries.joinToString("\n") + "\n</feed>"
     }
 
     private fun updater(env: FakeUpdaterEnv = FakeUpdaterEnv()) = SelfUpdater(env, github(), ApkFetcher(client, { allowed }, {}))
@@ -118,35 +109,38 @@ class UpdaterTest {
     }
 
     @Test
-    fun theNewestFullReleaseAboveThisVersionIsOffered() = runBlocking<Unit> {
+    fun theNewestReleaseAboveThisVersionIsOfferedWithItsChecksumAndSize() = runBlocking<Unit> {
+        val bytes = apk()
         publish(
-            release("pocketide-v3.2.0", draft = true),
-            release("pocketide-v3.1.5", prerelease = true),
-            release("pocketide-v3.1.0-beta.1"),
-            release("pocketide-v3.1.0", digest = "sha256:" + "ab".repeat(32)),
-            release("pocketide-v2.9.0"),
-            release("cloudsaver-v9.0.0"),
+            release("pocketide-v3.2.0"),
+            release("pocketide-v3.1.0-beta.1", apk()),
+            release("pocketide-v3.1.0", bytes),
+            release("pocketide-v2.9.0", apk()),
+            release("cloudsaver-v9.0.0", apk()),
         )
 
         val found = github().newest(SemVer(3, 0, 0))
 
+        // 3.2.0 publishes no checksums, so it is passed over.
         assertEquals("3.1.0", found?.version)
         assertEquals("pocketide-v3.1.0", found?.tag)
-        assertEquals("ab".repeat(32), found?.sha256)
-        assertTrue(found!!.apkUrl.endsWith("/PocketIDE-pocketide-v3.1.0.apk"))
+        assertEquals(sha256(bytes), found?.sha256)
+        assertEquals(bytes.size.toLong(), found?.apkBytes)
+        assertEquals("Notes for pocketide-v3.1.0 & more", found?.notes)
+        assertTrue(found!!.apkUrl.endsWith("/releases/download/pocketide-v3.1.0/PocketIDE-3.1.0-arm64-v8a-release.apk"))
         assertNull(github().newest(SemVer(3, 1, 0)))
     }
 
     @Test
-    fun anApkFromAnywhereElseIsNotOffered() = runBlocking<Unit> {
-        publish(release("pocketide-v3.1.0", url = "https://example.com/owner/CloudSaver/releases/download/pocketide-v3.1.0/x.apk"))
+    fun checksumsThatDoNotNameOneApkAreNotEnough() = runBlocking<Unit> {
+        publish(release("pocketide-v3.1.0", apk(), sums = "${"ab".repeat(32)}  ../evil.apk\n"))
 
         assertNull(github().newest(SemVer(3, 0, 0)))
     }
 
     @Test
     fun githubRefusingSaysSoPlainly() {
-        listStatus = 403
+        feedStatus = 429
 
         val failure = assertThrows(IOException::class.java) { runBlocking { github().newest(SemVer(3, 0, 0)) } }
 
@@ -155,8 +149,7 @@ class UpdaterTest {
 
     @Test
     fun anUpdateSignedWithThisAppsKeyBecomesReady() = runBlocking<Unit> {
-        val bytes = apk()
-        publish(release("pocketide-v3.1.0", bytes, digest = "sha256:" + sha256(bytes)))
+        publish(release("pocketide-v3.1.0", apk()))
         val updater = updater()
 
         updater.check()
@@ -187,8 +180,8 @@ class UpdaterTest {
     }
 
     @Test
-    fun aFileThatDoesNotMatchGitHubsChecksumIsNotKept() = runBlocking<Unit> {
-        publish(release("pocketide-v3.1.0", apk(), digest = "sha256:" + "00".repeat(32)))
+    fun aFileThatDoesNotMatchItsPublishedChecksumIsNotKept() = runBlocking<Unit> {
+        publish(release("pocketide-v3.1.0", apk(), sums = "${"00".repeat(32)}  PocketIDE-3.1.0-arm64-v8a-release.apk\n"))
         val updater = updater()
 
         updater.check()

@@ -83,7 +83,7 @@ internal class SelfUpdater(
         mutable.value = UpdateState.Downloading(0f)
         try {
             val file = fetcher.fetch(release, apkFile(release.version)) { fraction -> publishProgress(fraction) }
-            mutable.value = verified(release, file)
+            mutable.value = withContext(Dispatchers.IO) { verified(release, file) }
         } catch (cancelled: CancellationException) {
             mutable.value = UpdateState.Available(release)
             throw cancelled
@@ -107,7 +107,7 @@ internal class SelfUpdater(
                     mutable.value = UpdateState.Failed(problem)
                     return@withLock
                 }
-                if (!env.mayInstall(activity)) return@withLock
+                if (!withContext(Dispatchers.Main) { env.mayInstall(activity) }) return@withLock
                 try {
                     env.install(activity, file) { result -> finished(ready, result) }
                 } catch (cancelled: CancellationException) {
@@ -126,7 +126,7 @@ internal class SelfUpdater(
     private suspend fun checkLocked() {
         val current = SemVer.parse(env.currentVersion)?.core() ?: return
         val release = try {
-            releases.newest(current)
+            withContext(Dispatchers.IO) { releases.newest(current) }
         } catch (failed: IOException) {
             mutable.value = UpdateState.Failed(failed.message ?: "PocketIDE could not check for updates. Try again later.")
             return

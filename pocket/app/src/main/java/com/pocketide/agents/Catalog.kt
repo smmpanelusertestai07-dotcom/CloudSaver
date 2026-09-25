@@ -58,7 +58,7 @@ internal class OpenVsxCatalog(
     override suspend fun discover() {
         if (env.onlyOfficial.value) return
         val known = state.value.added.mapNotNull { it.extensionId?.lowercase() }.toSet()
-        val found = discovery.run(known).filterIsInstance<Verdict.Offered>().map { it.found }
+        val found = withContext(Dispatchers.IO) { discovery.run(known) }.filterIsInstance<Verdict.Offered>().map { it.found }
         var fresh: List<AgentCandidate> = emptyList()
         change { current ->
             fresh = found.map { it.candidate }.filter { it.extensionId !in current.announced }
@@ -74,7 +74,7 @@ internal class OpenVsxCatalog(
 
     override suspend fun add(candidate: AgentCandidate): DoctorReport = installLock.withLock {
         check(!env.onlyOfficial.value) { "Turn off \"Only official agents\" to add other agents." }
-        val agent = agentFrom(recheck(candidate))
+        val agent = agentFrom(withContext(Dispatchers.IO) { recheck(candidate) })
         check(find(agent.id) == null) { "${agent.displayName} is already on this phone." }
         change { it.copy(added = it.added + agent) }
         var kept = false
@@ -97,21 +97,27 @@ internal class OpenVsxCatalog(
         installLock.withLock { forget(agentId) }
     }
 
+    /**
+     * An agent that is already installed stays usable when its update cannot be checked or
+     * fetched now (offline, waiting for Wi-Fi): only a missing agent, or a rejected update, is
+     * an error here. [updateAll] reports every problem.
+     */
     override suspend fun ensureInstalled(agentId: String) {
         val agent = usable(agentId)
-        installLock.withLock {
-            val report = bringUpToDate(agent)
-            if (report != null && !report.ok) throw PackageRejected(report.note ?: "${agent.displayName} did not pass its test on this phone.")
+        try {
+            update(agent)
+        } catch (notNow: IOException) {
+            if (notNow is PackageRejected || !present(agent)) throw notNow
         }
     }
 
-    override suspend fun doctor(agentId: String): DoctorReport = doctor.check(usable(agentId))
+    override suspend fun doctor(agentId: String): DoctorReport = withContext(Dispatchers.IO) { doctor.check(usable(agentId)) }
 
     override suspend fun updateAll() {
         val failures = mutableListOf<Exception>()
         for (agent in installed.value) {
             try {
-                ensureInstalled(agent.id)
+                update(agent)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failed: IOException) {
@@ -124,6 +130,19 @@ internal class OpenVsxCatalog(
         failures.firstOrNull()?.let { throw it }
     }
 
+    private suspend fun update(agent: AgentInfo) = installLock.withLock {
+        val report = bringUpToDate(agent)
+        if (report != null && !report.ok) throw PackageRejected(report.note ?: "${agent.displayName} did not pass its test on this phone.")
+    }
+
+    private suspend fun present(agent: AgentInfo): Boolean {
+        val extensionId = agent.extensionId ?: return agyPresent(agent.id)
+        return doctor.installed(agent.id, extensionId) != null
+    }
+
+    private suspend fun agyPresent(agentId: String): Boolean =
+        withContext(Dispatchers.IO) { File(env.dirs.roomHome(agentId), RoomPaths.AGY_IN_HOME).isFile }
+
     private fun usable(agentId: String): AgentInfo {
         val agent = find(agentId) ?: throw IllegalStateException("PocketIDE does not know the agent \"$agentId\".")
         check(agent.official || !env.onlyOfficial.value) { "\"Only official agents\" is on, so ${agent.displayName} is not used." }
@@ -135,9 +154,9 @@ internal class OpenVsxCatalog(
      * changed. A failed update puts the version before it back and throws; a failed first
      * install is removed again and its report returned.
      */
-    private suspend fun bringUpToDate(agent: AgentInfo): DoctorReport? {
+    private suspend fun bringUpToDate(agent: AgentInfo): DoctorReport? = withContext(Dispatchers.IO) {
         env.computerProblem()?.let { throw IllegalStateException(it) }
-        return when (agent.surface) {
+        when (agent.surface) {
             AgentSurface.NATIVE_HUB -> bringAgyUpToDate(agent)
             AgentSurface.CODE_SERVER_EXTENSION -> bringExtensionUpToDate(agent)
         }
@@ -192,7 +211,7 @@ internal class OpenVsxCatalog(
     private suspend fun bringAgyUpToDate(agent: AgentInfo): DoctorReport? {
         val manifest = agy.latest()
         val record = state.value.install(agent.id)
-        val present = withContext(Dispatchers.IO) { File(env.dirs.roomHome(agent.id), RoomPaths.AGY_IN_HOME).isFile }
+        val present = agyPresent(agent.id)
         if (present && record != null && !newer(manifest.version, record.version)) return null
         if (present && env.roomInUse(agent.id)) return null
 

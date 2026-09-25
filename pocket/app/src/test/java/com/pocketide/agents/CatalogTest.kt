@@ -219,6 +219,19 @@ class CatalogTest {
     }
 
     @Test
+    fun anInstalledAgentStaysUsableWhenItsUpdateCannotBeFetched() = runBlocking<Unit> {
+        claude.versions += claudeVersion("2.1.200")
+        catalog.ensureInstalled("claude")
+        claude.versions += claudeVersion("2.1.281")
+        env.allowed = Decision.no("Waiting for Wi-Fi.")
+
+        catalog.ensureInstalled("claude")
+
+        assertEquals("2.1.200", installedClaude())
+        assertThrows(DownloadWaits::class.java) { runBlocking { catalog.updateAll() } }
+    }
+
+    @Test
     fun nothingIsInstalledBeforeTheComputerIsReady() {
         claude.versions += claudeVersion("2.1.281")
         env.computer = "Set up the computer first."
