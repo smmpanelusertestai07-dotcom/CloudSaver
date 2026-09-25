@@ -33,7 +33,7 @@ class ClaudeStateTest {
 
     @Test fun `anything room py would not have written is skipped`() {
         val other = """["","mcpServers","x",{"command":"sh"}]"""
-        val notAscii = """["","mcpServers","caf""" + "é" + """",{"command":"sh"}]"""
+        val notAscii = """["","mcpServers","caf""" + "\u00e9" + """",{"command":"sh"}]"""
         val threeParts = """["","mcpServers","x"]"""
         val noPlace = """["","","x",{}]"""
         val listed = ClaudeState.parse(
