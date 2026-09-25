@@ -61,6 +61,7 @@ fun HandOffFlow(session: SessionRecord, to: AgentInfo, onClose: () -> Unit, onOp
     val context = LocalContext.current
     var result by remember(session.id, to.id) { mutableStateOf<Result<HandOff>?>(null) }
     LaunchedEffect(session.id, to.id) { result = finish { graph.sessions.handOff(session.id, to.id) } }
+    val takesPrompts = remember(to.id) { runCatching { graph.rooms.takesPrompts(to.id) }.getOrDefault(false) }
     val handOff = result?.getOrNull()
     AlertDialog(
         onDismissRequest = { if (result != null) onClose() },
@@ -74,7 +75,8 @@ fun HandOffFlow(session: SessionRecord, to: AgentInfo, onClose: () -> Unit, onOp
                         color = MaterialTheme.colorScheme.error,
                     )
                     else -> {
-                        Text(HAND_OFF_TEXT.format(to.displayName), style = MaterialTheme.typography.bodyMedium)
+                        val text = if (takesPrompts) HAND_OFF_PROMPT_TEXT else HAND_OFF_TEXT
+                        Text(text.format(to.displayName), style = MaterialTheme.typography.bodyMedium)
                         SelectableText(handOff.note, Modifier.fillMaxWidth(), sizeSp = 13f)
                     }
                 }
@@ -82,16 +84,28 @@ fun HandOffFlow(session: SessionRecord, to: AgentInfo, onClose: () -> Unit, onOp
         },
         confirmButton = {
             if (handOff != null) {
-                TextButton(onClick = {
-                    copyText(context, "Hand-off note", handOff.note)
-                    onClose()
-                    onOpenSession(handOff.session.id)
-                }) { Text("Copy note and open") }
+                if (takesPrompts) {
+                    TextButton(onClick = {
+                        // The room starts detached from this dialog; the agent screen then waits on the same room.
+                        graph.scope.launch { runCatching { graph.rooms.open(to.id, handOff.session.id, handOff.note) } }
+                        onClose()
+                        onOpenSession(handOff.session.id)
+                    }) { Text("Open with the note") }
+                } else {
+                    TextButton(onClick = {
+                        copyText(context, "Hand-off note", handOff.note)
+                        onClose()
+                        onOpenSession(handOff.session.id)
+                    }) { Text("Copy note and open") }
+                }
             }
         },
         dismissButton = { TextButton(enabled = result != null, onClick = onClose) { Text("Close") } },
     )
 }
+
+private const val HAND_OFF_PROMPT_TEXT =
+    "The new session is ready; this one stays as it is. %s opens with this note in its message box, ready to send."
 
 private const val HAND_OFF_TEXT =
     "The new session is ready; this one stays as it is. Give %s this note as your first message: it is copied when you open the session."
@@ -142,7 +156,6 @@ fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, scop
 /** Where a picked file goes: into the project, for the agent to work on, or to Media as an attachment. */
 @Composable
 fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: CoroutineScope, onClose: () -> Unit) {
-    val graph = rememberGraph()
     val context = LocalContext.current
     var picked by remember { mutableStateOf<Uri?>(null) }
     var launched by remember { mutableStateOf(false) }
@@ -161,6 +174,17 @@ fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: Coroutine
         }
     }
     val uri = picked ?: return
+    AddFileChoice(sessionId, uri, scope, say = { snackbar.showSnackbar(it) }, onClose = onClose)
+}
+
+/**
+ * Asks where [uri] goes in session [sessionId] and adds it there. [scope] outlives the dialog,
+ * which closes before the file is copied; [say] tells the owner how it went.
+ */
+@Composable
+fun AddFileChoice(sessionId: String, uri: Uri, scope: CoroutineScope, say: suspend (String) -> Unit, onClose: () -> Unit) {
+    val graph = rememberGraph()
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("Add the file where?") },
@@ -175,8 +199,8 @@ fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: Coroutine
                             ?: throw IllegalStateException("The file could not be opened.")
                         graph.sessions.addFile(sessionId, name, input, intoProject = true)
                     }
-                        .onSuccess { snackbar.showSnackbar("Added. The agent finds it at ${it.guestPath}.") }
-                        .onFailure { snackbar.showSnackbar("Could not add the file: ${plainReason(it)}") }
+                        .onSuccess { say("Added. The agent finds it at ${it.guestPath}.") }
+                        .onFailure { say("Could not add the file: ${plainReason(it)}") }
                 }
             }) { Text("Into the project") }
         },
@@ -185,8 +209,8 @@ fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: Coroutine
                 onClose()
                 scope.launch {
                     finish { graph.media.addFromPhone(sessionId, uri) }
-                        .onSuccess { snackbar.showSnackbar("Added ${it.name} to this session's Media.") }
-                        .onFailure { snackbar.showSnackbar("Could not add the file: ${plainReason(it)}") }
+                        .onSuccess { say("Added ${it.name} to this session's Media.") }
+                        .onFailure { say("Could not add the file: ${plainReason(it)}") }
                 }
             }) { Text("To Media") }
         },

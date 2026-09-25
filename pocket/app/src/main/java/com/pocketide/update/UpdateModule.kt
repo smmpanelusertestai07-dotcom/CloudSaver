@@ -29,7 +29,7 @@ private const val DATA_KIND = "app update"
 
 private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
     private val context: Context get() = graph.context
-    private val installer = SessionInstaller(graph.context)
+    private val installer = SessionInstaller(graph.context, leaving = { graph.appLock.leavingOnErrand() })
 
     override val scope: CoroutineScope get() = graph.scope
     override val apkFolder: File get() = File(graph.dirs.apk, "update")

@@ -23,12 +23,13 @@ import java.lang.ref.WeakReference
  * Android answers through a broadcast only this app can receive: first "pending user action",
  * with the confirm screen to open, then how it ended.
  */
-internal class SessionInstaller(context: Context) {
+internal class SessionInstaller(context: Context, private val leaving: () -> Unit) {
     private val app = context.applicationContext
 
     /** False when the owner must first allow PocketIDE to install apps; that settings page is opened. */
     fun mayInstall(activity: Activity): Boolean {
         if (app.packageManager.canRequestPackageInstalls()) return true
+        leaving()
         activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}")))
         return false
     }
@@ -74,6 +75,7 @@ internal class SessionInstaller(context: Context) {
                     val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
                     if (confirm != null) {
                         confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        leaving()
                         (activity.get() ?: app).startActivity(confirm)
                         return
                     }

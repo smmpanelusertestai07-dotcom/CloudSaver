@@ -37,6 +37,13 @@ object SettingChoices {
         Choice(3, "3 at a time"),
     )
 
+    val idleSleepMinutes = listOf(
+        Choice(0, "Off: never"),
+        Choice(15, "15 minutes"),
+        Choice(30, "30 minutes", isDefault = true),
+        Choice(60, "60 minutes"),
+    )
+
     private val phoneLimitsGb = listOf(4, 8, 16, 32, 64, 128)
 
     val driveLimitGb = listOf(

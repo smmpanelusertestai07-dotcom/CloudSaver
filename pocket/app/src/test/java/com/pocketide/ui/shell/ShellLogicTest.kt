@@ -90,6 +90,7 @@ class ShellLogicTest {
         assertEquals(defaults.theme, defaultOf(SettingChoices.theme))
         assertEquals(defaults.mobileDailyLimitMb, defaultOf(SettingChoices.dailyMobileLimitMb))
         assertEquals(defaults.maxAgents, defaultOf(SettingChoices.maxAgents))
+        assertEquals(defaults.idleSleepMinutes, defaultOf(SettingChoices.idleSleepMinutes))
         assertEquals(defaults.driveLimitGb, defaultOf(SettingChoices.driveLimitGb))
         assertEquals(defaults.keepChatsMonths, defaultOf(SettingChoices.keepChatsMonths))
         assertEquals(defaults.phoneChatDays, defaultOf(SettingChoices.phoneChatDays))

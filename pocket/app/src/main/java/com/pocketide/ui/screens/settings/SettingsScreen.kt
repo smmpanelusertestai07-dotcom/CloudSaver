@@ -211,6 +211,16 @@ private fun AgentsSection(settings: Settings, update: ((Settings) -> Settings) -
                 )
             },
             {
+                ChoiceRow(
+                    "Idle agents sleep after",
+                    SettingChoices.idleSleepMinutes,
+                    settings.idleSleepMinutes,
+                    onPick = { m -> update { it.copy(idleSleepMinutes = m) } },
+                    why = "An agent with no work for this long closes its room to save memory and battery. Its session and chat are kept.",
+                    fallbackLabel = { "$it minutes" },
+                )
+            },
+            {
                 SwitchRow(
                     "Only official agents",
                     "Show only Claude Code, Codex and Antigravity. Other verified publishers stay hidden.",

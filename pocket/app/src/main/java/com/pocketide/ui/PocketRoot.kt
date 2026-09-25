@@ -27,6 +27,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.pocketide.AppGraph
+import com.pocketide.MainActivity
 import com.pocketide.core.ThemeMode
 import com.pocketide.graph
 import com.pocketide.lock.AppLock
@@ -78,12 +79,26 @@ fun PocketRoot(activity: FragmentActivity) {
                     is RootGate.Locked -> saved.SaveableStateProvider("locked:${shown.reason::class.simpleName}") { LockScreen(shown.reason) }
                     RootGate.Onboarding -> saved.SaveableStateProvider("onboarding") { OnboardingFlow() }
                     RootGate.Main -> saved.SaveableStateProvider("main") {
-                        AppNav(navController = navController, banner = access.banner)
+                        AppNav(navController = navController, banner = access.banner, launch = rememberLaunch(activity))
                     }
                 }
             }
         }
     }
+}
+
+/** The session and the shared file the activity holds, taken only once the app is unlocked and set up. */
+@Composable
+private fun rememberLaunch(activity: FragmentActivity): Launch {
+    val main = activity as? MainActivity ?: return Launch.NONE
+    val session by main.sessionToOpen.collectAsStateWithLifecycle()
+    val shared by main.sharedFile.collectAsStateWithLifecycle()
+    return Launch(
+        sessionToOpen = session,
+        onSessionOpened = main::sessionOpened,
+        sharedFile = shared,
+        onSharedFileHandled = main::sharedFileHandled,
+    )
 }
 
 @Composable

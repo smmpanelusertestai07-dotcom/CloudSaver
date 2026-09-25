@@ -28,6 +28,7 @@ fun createLimiter(graph: AppGraph): Limiter = LimiterImpl(
     host = AndroidLimiterHost(graph),
     scope = graph.scope,
     clock = graph.clock,
+    idleSleepMinutes = { graph.settings.settings.value.idleSleepMinutes },
 ).also { it.start() }
 
 /** Room kinds and names from the agent catalog; Antigravity is the hub even before the catalog loads. */

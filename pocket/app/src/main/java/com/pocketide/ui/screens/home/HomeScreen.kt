@@ -294,6 +294,7 @@ private fun syncBanner(status: SyncStatus): Pair<String, Tone>? = when (status) 
 private fun openSettings(context: Context, action: String): String? {
     val intent = Intent(action)
     if (needsPackageUri(action)) intent.data = Uri.parse("package:${context.packageName}")
+    External.leaving(context)
     return try {
         context.startActivity(intent)
         null

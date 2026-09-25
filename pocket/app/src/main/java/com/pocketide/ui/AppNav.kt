@@ -1,6 +1,7 @@
 package com.pocketide.ui
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -41,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -143,9 +145,20 @@ private fun NavHostController.tabOf(pattern: String?): Tab = Routes.tabOf(patter
  * full-screen agent, the access banner, and every screen of `ui/screens`.
  */
 @Composable
-fun AppNav(navController: NavHostController = rememberNavController(), banner: String? = null) {
+fun AppNav(
+    navController: NavHostController = rememberNavController(),
+    banner: String? = null,
+    launch: Launch = Launch.NONE,
+) {
     val context = LocalContext.current
     val nav = remember(navController, context) { AppNavigator(navController, context) }
+    // A notification or shortcut named a session: open its agent once, then forget it.
+    LaunchedEffect(launch.sessionToOpen) {
+        val sessionId = launch.sessionToOpen ?: return@LaunchedEffect
+        nav.agent(sessionId)
+        launch.onSessionOpened()
+    }
+    launch.sharedFile?.let { uri -> SharedFilePicker(uri, onOpenSession = nav::agent, onHandled = launch.onSharedFileHandled) }
     val entry by navController.currentBackStackEntryAsState()
     val pattern = entry?.destination?.route
     val tab = remember(entry) { navController.tabOf(pattern) }
@@ -175,6 +188,21 @@ fun AppNav(navController: NavHostController = rememberNavController(), banner: S
                 destinations(nav)
             }
         }
+    }
+}
+
+/**
+ * What the launch asked for, held by the activity until taken: a session to open (from a
+ * notification or a pinned shortcut) and a file shared from another app.
+ */
+class Launch(
+    val sessionToOpen: String? = null,
+    val onSessionOpened: () -> Unit = {},
+    val sharedFile: Uri? = null,
+    val onSharedFileHandled: () -> Unit = {},
+) {
+    companion object {
+        val NONE = Launch()
     }
 }
 
