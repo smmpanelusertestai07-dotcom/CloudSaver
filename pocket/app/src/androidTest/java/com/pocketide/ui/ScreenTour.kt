@@ -3,7 +3,11 @@ package com.pocketide.ui
 import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -102,7 +106,13 @@ class ScreenTour {
     @Test fun driveDisconnected() = shoot("19-locked-drive") { LockScreen(LockReason.DriveDisconnected) }
 
     private fun shoot(name: String, mode: ThemeMode = ThemeMode.LIGHT, screen: @Composable () -> Unit) {
-        compose.setContent { PocketTheme(mode) { screen() } }
+        // The same frame PocketRoot gives every screen: the theme's background, and the text colour
+        // that goes with it.
+        compose.setContent {
+            PocketTheme(mode) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { screen() }
+            }
+        }
         compose.waitForIdle()
         // Lists and states load from disk off the main thread; give them a moment to arrive.
         SystemClock.sleep(SETTLE_MS)
