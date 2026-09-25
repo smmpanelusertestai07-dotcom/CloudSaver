@@ -1,5 +1,6 @@
 package com.pocketide.rooms
 
+import com.pocketide.agents.OfficialAgents
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.AgentSurface
 import kotlinx.serialization.json.JsonElement
@@ -57,39 +58,8 @@ internal object RoomProfiles {
 
     /** The room for [agentId]: built in for the official three, from [info] for a discovered agent. */
     fun of(agentId: String, info: AgentInfo?): RoomProfile? = when (agentId) {
-        CLAUDE -> RoomProfile(
-            agentId = CLAUDE,
-            name = info?.displayName ?: "Claude Code",
-            engine = Engine.CODE_SERVER,
-            extensionId = "anthropic.claude-code",
-            // Opens in the primary editor and never splits; editor.open would split and lock a group.
-            openCommand = "claude-vscode.primaryEditor.open",
-            place = ViewPlace.EDITOR,
-            viewTypes = listOf("claudeVSCodePanel"),
-            extensionSettings = mapOf(
-                "claudeCode.useCtrlEnterToSend" to JsonPrimitive(true),
-                "claudeCode.lockEditorGroups" to JsonPrimitive(false),
-                "claudeCode.hideOnboarding" to JsonPrimitive(true),
-            ),
-            carefulSettings = mapOf("claudeCode.initialPermissionMode" to JsonPrimitive("default")),
-            promptCommand = "claude-vscode.primaryEditor.open",
-            instructionFiles = listOf(".claude/CLAUDE.md"),
-        )
-        CODEX -> RoomProfile(
-            agentId = CODEX,
-            name = info?.displayName ?: "Codex",
-            engine = Engine.CODE_SERVER,
-            extensionId = "openai.chatgpt",
-            // The sidebar command is safe to repeat on every reload; the panel command opens a new chat each time.
-            openCommand = "chatgpt.openSidebar",
-            place = ViewPlace.SIDEBAR,
-            extensionSettings = mapOf(
-                "chatgpt.composerEnterBehavior" to JsonPrimitive("cmdAlways"),
-                "chatgpt.openOnStartup" to JsonPrimitive(false),
-                "workbench.secondarySideBar.defaultVisibility" to JsonPrimitive("maximized"),
-            ),
-            instructionFiles = listOf(".codex/AGENTS.md"),
-        )
+        CLAUDE -> claude(info)
+        CODEX -> codex(info)
         ANTIGRAVITY -> RoomProfile(
             agentId = ANTIGRAVITY,
             name = info?.displayName ?: "Antigravity",
@@ -97,6 +67,56 @@ internal object RoomProfiles {
             instructionFiles = listOf(".gemini/GEMINI.md"),
         )
         else -> discovered(agentId, info)
+    }
+
+    /**
+     * The command that opens the installed version, as the agent doctor found it in that
+     * version's package.json, or the pinned one before the doctor has run.
+     */
+    private fun installedOpenCommand(info: AgentInfo?, pinned: String): String =
+        info?.openCommand?.takeIf { COMMAND_ID.matches(it) } ?: pinned
+
+    private fun claude(info: AgentInfo?): RoomProfile {
+        // Opens in the primary editor and never splits; editor.open would split and lock a group.
+        val open = installedOpenCommand(info, OfficialAgents.CLAUDE_OPEN)
+        val pinned = open == OfficialAgents.CLAUDE_OPEN
+        return RoomProfile(
+            agentId = CLAUDE,
+            name = info?.displayName ?: "Claude Code",
+            engine = Engine.CODE_SERVER,
+            extensionId = "anthropic.claude-code",
+            openCommand = open,
+            place = if (pinned || open.startsWith("claude-vscode.editor.")) ViewPlace.EDITOR else ViewPlace.AUTO,
+            viewTypes = listOf("claudeVSCodePanel"),
+            extensionSettings = mapOf(
+                "claudeCode.useCtrlEnterToSend" to JsonPrimitive(true),
+                "claudeCode.lockEditorGroups" to JsonPrimitive(false),
+                "claudeCode.hideOnboarding" to JsonPrimitive(true),
+            ),
+            carefulSettings = mapOf("claudeCode.initialPermissionMode" to JsonPrimitive("default")),
+            // Only the pinned command is known to take (session id, prompt).
+            promptCommand = OfficialAgents.CLAUDE_OPEN.takeIf { pinned },
+            instructionFiles = listOf(".claude/CLAUDE.md"),
+        )
+    }
+
+    private fun codex(info: AgentInfo?): RoomProfile {
+        // The sidebar command is safe to repeat on every reload; the panel command opens a new chat each time.
+        val open = installedOpenCommand(info, OfficialAgents.CODEX_OPEN)
+        return RoomProfile(
+            agentId = CODEX,
+            name = info?.displayName ?: "Codex",
+            engine = Engine.CODE_SERVER,
+            extensionId = "openai.chatgpt",
+            openCommand = open,
+            place = if (open == OfficialAgents.CODEX_OPEN) ViewPlace.SIDEBAR else ViewPlace.AUTO,
+            extensionSettings = mapOf(
+                "chatgpt.composerEnterBehavior" to JsonPrimitive("cmdAlways"),
+                "chatgpt.openOnStartup" to JsonPrimitive(false),
+                "workbench.secondarySideBar.defaultVisibility" to JsonPrimitive("maximized"),
+            ),
+            instructionFiles = listOf(".codex/AGENTS.md"),
+        )
     }
 
     private fun discovered(agentId: String, info: AgentInfo?): RoomProfile? {

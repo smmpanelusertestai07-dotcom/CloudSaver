@@ -3,6 +3,7 @@ package com.pocketide.agents
 import com.pocketide.linux.TarBuilder
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.Decision
+import com.pocketide.rooms.RoomProfiles
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
@@ -82,22 +83,26 @@ class CatalogTest {
         )
     }
 
-    private fun claudeVersion(version: String, engine: String = "^1.94.0", preRelease: Boolean = false, command: Boolean = true, wrongChecksum: Boolean = false, wrongSignature: Boolean = false, verified: Boolean = true) =
-        FakeVersion(
-            version = version,
-            engine = engine,
-            preRelease = preRelease,
-            verified = verified,
-            wrongChecksum = wrongChecksum,
-            wrongSignature = wrongSignature,
-            packageJson = OpenVsxFixture.packageJson(
-                "Anthropic",
-                "claude-code",
-                version,
-                engine,
-                commands = if (command) listOf("claude-vscode.primaryEditor.open") else listOf("claude-vscode.editor.open"),
-            ),
-        )
+    private fun claudeVersion(
+        version: String,
+        engine: String = "^1.94.0",
+        preRelease: Boolean = false,
+        commands: List<String> = listOf(OfficialAgents.CLAUDE_OPEN),
+        screen: Boolean = true,
+        wrongChecksum: Boolean = false,
+        wrongSignature: Boolean = false,
+        verified: Boolean = true,
+    ) = FakeVersion(
+        version = version,
+        engine = engine,
+        preRelease = preRelease,
+        verified = verified,
+        wrongChecksum = wrongChecksum,
+        wrongSignature = wrongSignature,
+        packageJson = OpenVsxFixture.packageJson("Anthropic", "claude-code", version, engine, commands = commands, screen = screen),
+    )
+
+    private fun vsixDownloads(version: String) = vsx.requests.count { it.contains("/$version/file/") && it.endsWith(".vsix") }
 
     private fun installedClaude(): String? = runBlocking { AgentDoctor(env).installed("claude", "anthropic.claude-code")?.version }
 
@@ -136,10 +141,10 @@ class CatalogTest {
     }
 
     @Test
-    fun anUpdateThatLosesThePinnedCommandIsRolledBack() = runBlocking<Unit> {
+    fun anUpdateWithNoScreenToOpenIsRolledBackAndNotFetchedAgain() = runBlocking<Unit> {
         claude.versions += claudeVersion("2.1.200")
         catalog.ensureInstalled("claude")
-        claude.versions += claudeVersion("2.1.281", command = false)
+        claude.versions += claudeVersion("2.1.281", commands = emptyList(), screen = false)
 
         val failure = assertThrows(PackageRejected::class.java) { runBlocking { catalog.ensureInstalled("claude") } }
 
@@ -147,6 +152,77 @@ class CatalogTest {
         assertEquals("2.1.200", installedClaude())
         assertEquals("2.1.200", catalog.find("claude")?.version)
         assertEquals(listOf("2.1.200.vsix"), packages("claude"))
+        assertEquals(1, vsixDownloads("2.1.281"))
+
+        catalog.ensureInstalled("claude")
+        newCatalog().ensureInstalled("claude")
+
+        assertEquals("the rejected version was downloaded again", 1, vsixDownloads("2.1.281"))
+        assertEquals("2.1.200", installedClaude())
+
+        claude.versions += claudeVersion("2.1.300")
+        catalog.ensureInstalled("claude")
+        assertEquals("2.1.300", installedClaude())
+    }
+
+    @Test
+    fun aRenamedOpenCommandFallsBackToTheScreenTheVersionHas() = runBlocking<Unit> {
+        claude.versions += claudeVersion("2.1.200")
+        catalog.ensureInstalled("claude")
+        assertEquals(OfficialAgents.CLAUDE_OPEN, catalog.find("claude")?.openCommand)
+
+        claude.versions += claudeVersion("2.1.281", commands = listOf("claude-vscode.somethingElse"))
+        catalog.ensureInstalled("claude")
+
+        assertEquals("2.1.281", installedClaude())
+        val agent = catalog.find("claude")
+        assertEquals("claude-code.chat.focus", agent?.openCommand)
+        val room = RoomProfiles.of("claude", agent)!!
+        assertEquals("claude-code.chat.focus", room.openCommand)
+        assertNull("a prompt command the version may not have", room.promptCommand)
+        assertEquals("claude-code.chat.focus", newCatalog().find("claude")?.openCommand)
+    }
+
+    @Test
+    fun aFreshInstallFallsBackToTheNewestVersionThatOpens() = runBlocking<Unit> {
+        claude.versions += claudeVersion("2.1.200")
+        claude.versions += claudeVersion("2.1.281", commands = emptyList(), screen = false)
+
+        assertThrows(PackageRejected::class.java) { runBlocking { catalog.ensureInstalled("claude") } }
+        assertNull(installedClaude())
+
+        catalog.ensureInstalled("claude")
+
+        assertEquals("2.1.200", installedClaude())
+        assertEquals(OfficialAgents.CLAUDE_OPEN, RoomProfiles.of("claude", catalog.find("claude"))?.promptCommand)
+    }
+
+    @Test
+    fun aVersionTurnedDownForThePhonesStateIsTriedAgain() = runBlocking<Unit> {
+        claude.versions += claudeVersion("2.1.200")
+        catalog.ensureInstalled("claude")
+        claude.versions += claudeVersion("2.1.281")
+        env.memory = "Close some apps first."
+
+        assertThrows(PackageRejected::class.java) { runBlocking { catalog.ensureInstalled("claude") } }
+        env.memory = null
+        catalog.ensureInstalled("claude")
+
+        assertEquals("2.1.281", installedClaude())
+    }
+
+    @Test
+    fun codexReleasesAreFoundBehindAYearOfPreReleases() = runBlocking<Unit> {
+        fun codexVersion(version: String, preRelease: Boolean) =
+            FakeVersion(version, engine = "^1.96.2", preRelease = preRelease, packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", version, "^1.96.2", listOf(OfficialAgents.CODEX_OPEN)))
+        codex.versions += codexVersion("26.908.40401", preRelease = false)
+        codex.versions += codexVersion("26.901.1", preRelease = false)
+        // Open VSX orders by number: every 26.5MDD pre-release comes before the 26.MDD releases.
+        repeat(250) { codex.versions += codexVersion("26.5${100 + it}.1", preRelease = true) }
+
+        catalog.ensureInstalled("codex")
+
+        assertEquals("26.908.40401", catalog.find("codex")?.version)
     }
 
     @Test

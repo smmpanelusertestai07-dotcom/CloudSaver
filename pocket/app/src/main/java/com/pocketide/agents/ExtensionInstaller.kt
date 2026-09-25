@@ -34,11 +34,15 @@ internal class ExtensionInstaller(
     private val installTimeoutMs: Long = INSTALL_TIMEOUT_MS,
 ) {
 
-    /** The newest version of [extensionId] this computer can run, from [namespace] only. */
-    suspend fun newest(extensionId: String, namespace: String, vscode: SemVer): ExtensionRelease {
+    /**
+     * The newest version of [extensionId] this computer can run, from [namespace] only, leaving
+     * out the versions in [skip] (ones the doctor already turned down on this phone).
+     */
+    suspend fun newest(extensionId: String, namespace: String, vscode: SemVer, skip: Set<String> = emptySet()): ExtensionRelease {
         val (overview, target) = overview(extensionId, namespace)
-        val best = vsx.allVersions(overview.namespace, overview.name, target)
-            .filter { acceptable(it, namespace, target, vscode) }
+        val fits = { version: ExtensionVersion -> version.version !in skip && acceptable(version, namespace, target, vscode) }
+        val best = vsx.allVersions(overview.namespace, overview.name, target, enough = fits)
+            .filter(fits)
             .maxWithOrNull(compareBy { SemVer.parse(it.version) })
             ?: throw PackageRejected("No version of $extensionId works with this computer's code-server (VS Code $vscode).")
         return release(extensionId, overview, target, best.version, namespace, vscode)

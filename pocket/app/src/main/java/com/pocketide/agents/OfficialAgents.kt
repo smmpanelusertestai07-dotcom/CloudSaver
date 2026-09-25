@@ -12,6 +12,12 @@ internal object OfficialAgents {
     const val CODEX = "codex"
     const val ANTIGRAVITY = "antigravity"
 
+    /** Opens the chat as a tab in the main editor area; it also takes a prompt. */
+    const val CLAUDE_OPEN = "claude-vscode.primaryEditor.open"
+
+    /** The secondary side bar, which the room maximises. */
+    const val CODEX_OPEN = "chatgpt.openSidebar"
+
     val claude = AgentInfo(
         id = CLAUDE,
         displayName = "Claude Code",
@@ -25,7 +31,7 @@ internal object OfficialAgents {
         instructionsFile = "~/.claude/CLAUDE.md",
         // Opens the chat as a tab in the main editor area without splitting it
         // (claude-vscode.editor.open splits and locks a new group when tabs are open).
-        openCommand = "claude-vscode.primaryEditor.open",
+        openCommand = CLAUDE_OPEN,
     )
 
     val codex = AgentInfo(
@@ -41,7 +47,7 @@ internal object OfficialAgents {
         instructionsFile = "~/.codex/AGENTS.md",
         // The secondary side bar, maximised by the room; safe to repeat on every reload, while
         // chatgpt.newCodexPanel would open a new chat each time.
-        openCommand = "chatgpt.openSidebar",
+        openCommand = CODEX_OPEN,
     )
 
     /** Runs Google's agy hub in its own screen. Its Open VSX extension is never installed (it fetches agy by itself). */
@@ -71,4 +77,16 @@ internal object OfficialAgents {
     val extensionIds = setOf("anthropic.claude-code", "openai.chatgpt", "google.google-antigravity")
 
     fun find(agentId: String): AgentInfo? = all.firstOrNull { it.id == agentId }
+
+    /**
+     * The commands that open an official agent's screen, best first: the pinned one, then the
+     * one it had before. The doctor takes the first one the installed version declares and
+     * otherwise the view that version contributes, so a renamed command costs a slightly
+     * different layout instead of every update until a new PocketIDE.
+     */
+    fun openCommands(agentId: String): List<String> = when (agentId) {
+        CLAUDE -> listOf(CLAUDE_OPEN, "claude-vscode.editor.open")
+        CODEX -> listOf(CODEX_OPEN)
+        else -> emptyList()
+    }
 }

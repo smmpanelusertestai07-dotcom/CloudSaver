@@ -67,14 +67,13 @@ internal class AgentDoctor(private val env: AgentsEnv, private val runTimeoutMs:
         check(FITS, vscode != null && engine?.accepts(vscode) == true) {
             "This version of ${agent.displayName} needs a newer code-server than the computer has."
         }
-        val command = openCommand(agent, found?.packageJson)
-        val opens = command != null && found != null && AgentScreens.commandExists(found.packageJson, command)
-        check(FULL_SCREEN, opens) { "This version of ${agent.displayName} no longer has the screen PocketIDE opens." }
+        val command = found?.packageJson?.let { openCommand(agent, it) }
+        check(FULL_SCREEN, command != null) { "This version of ${agent.displayName} no longer has the screen PocketIDE opens." }
         val starts = found != null && listed(agent.id, extensionId, found.version)
         check(STARTS, starts) { "code-server did not load ${agent.displayName}." }
         val memory = env.memoryProblem()
         check(MEMORY, memory == null) { memory.orEmpty() }
-        return DoctorReport(agent.id, ok = checks.all { it.second }, checks = checks, note = note)
+        return DoctorReport(agent.id, ok = checks.all { it.second }, checks = checks, note = note, openCommand = command)
     }
 
     private suspend fun agy(agent: AgentInfo): DoctorReport {
@@ -93,9 +92,15 @@ internal class AgentDoctor(private val env: AgentsEnv, private val runTimeoutMs:
         return DoctorReport(agent.id, ok = checks.all { it.second }, checks = checks, note = note)
     }
 
-    /** The command that opens the agent: pinned for the official ones, from its own details for the others. */
-    private fun openCommand(agent: AgentInfo, packageJson: JsonObject?): String? =
-        OfficialAgents.find(agent.id)?.openCommand ?: agent.openCommand ?: packageJson?.let(AgentScreens::openCommand)
+    /**
+     * The command that opens this version of the agent, chosen from what its package.json
+     * declares: the pinned ones for an official agent, the one it was added with, then the
+     * view the version contributes. Null when it has none of them.
+     */
+    private fun openCommand(agent: AgentInfo, packageJson: JsonObject): String? =
+        (OfficialAgents.openCommands(agent.id) + listOfNotNull(agent.openCommand) + AgentScreens.openCommands(packageJson))
+            .distinct()
+            .firstOrNull { AgentScreens.commandExists(packageJson, it) }
 
     /** True when code-server, started in the room, lists the extension at this version. */
     private suspend fun listed(agentId: String, extensionId: String, version: String): Boolean {

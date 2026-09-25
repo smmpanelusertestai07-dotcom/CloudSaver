@@ -112,10 +112,19 @@ internal class OpenVsx(
         if (target == ExtensionVersion.UNIVERSAL) json(api(namespace, name, version)) else json(api(namespace, name, target, version))
 
     /**
-     * Every version published for [target], with its details (pre-release flag, engine range,
-     * files), from the all-versions query. Stops after [pages] pages: the newest come first.
+     * Versions published for [target], with their details (pre-release flag, engine range,
+     * files), from the all-versions query, highest version number first. Reads page after page
+     * until a page holds a version that is [enough], or the list ends, or [pages] were read.
+     * Open VSX orders by number, not date, so a publisher whose pre-releases carry higher
+     * numbers (Codex's 26.5MDD against 26.MDD) puts a whole year of them before its releases.
      */
-    suspend fun allVersions(namespace: String, name: String, target: String, pages: Int = VERSION_PAGES): List<ExtensionVersion> {
+    suspend fun allVersions(
+        namespace: String,
+        name: String,
+        target: String,
+        pages: Int = VERSION_PAGES,
+        enough: (ExtensionVersion) -> Boolean = { false },
+    ): List<ExtensionVersion> {
         val found = mutableListOf<ExtensionVersion>()
         var offset = 0
         repeat(pages) {
@@ -130,7 +139,7 @@ internal class OpenVsx(
             val page = json<QueryPage>(url) ?: return found
             found += page.extensions
             offset += page.extensions.size
-            if (page.extensions.isEmpty() || offset >= page.totalSize) return found
+            if (page.extensions.isEmpty() || offset >= page.totalSize || page.extensions.any(enough)) return found
         }
         return found
     }
@@ -222,7 +231,8 @@ internal class OpenVsx(
         val DEFAULT_BASE = "https://open-vsx.org/".toHttpUrl()
         const val MAX_JSON_BYTES = 4 * 1024 * 1024
         private const val QUERY_PAGE = 50
-        private const val VERSION_PAGES = 4
+        /** 1,000 versions: years of Codex's pre-releases. */
+        private const val VERSION_PAGES = 20
         private const val MAX_CHECKSUM_BYTES = 1024
         private const val MAX_KEY_BYTES = 16 * 1024
         private const val MAX_SIGZIP_BYTES = 64 * 1024
