@@ -616,8 +616,9 @@ class LoopbackPortBridgeTest {
             try {
                 Socket(address, port).use { socket ->
                     socket.soTimeout = 2_000
-                    socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n\r\n".toByteArray())
+                    // A listener that closes between the connect and the write resets the connection.
                     val answer = try {
+                        socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n\r\n".toByteArray())
                         socket.getInputStream().read()
                     } catch (e: IOException) {
                         -1
