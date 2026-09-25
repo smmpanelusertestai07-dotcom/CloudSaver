@@ -243,6 +243,13 @@ class PermissionsGate(TreeTest):
         self.edit("app/src/main/AndroidManifest.xml", "<application", '<uses-permission android:name="android.permission.CAMERA" />\n  <application')
         self.assertFailsWith(permissions.check(self.root, allow=self.allow), "CAMERA")
 
+    def test_permission_removed_from_the_merge_passes(self):
+        self.edit("app/src/main/AndroidManifest.xml", '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
+                  'xmlns:tools="http://schemas.android.com/tools">\n'
+                  '  <uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove" />')
+        self.assertPasses(permissions.check(self.root, allow=self.allow))
+
     def test_missing_merged_manifest_fails_when_built(self):
         self.assertFailsWith(permissions.check(self.root, built=True, allow=self.allow), "run assembleRelease first")
 

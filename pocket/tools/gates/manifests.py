@@ -8,6 +8,7 @@ from pathlib import Path
 import common
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
+TOOLS = "{http://schemas.android.com/tools}"
 MERGED_RELEASE = "app/build/intermediates/merged_manifests/release"
 
 
@@ -22,8 +23,9 @@ class Manifest:
 
 def parse(path: Path) -> Manifest:
     root = ET.parse(path).getroot()
+    # tools:node="remove" strikes a library's permission out of the merge; it is not a request.
     uses = [e.get(ANDROID + "name", "") for e in root.iter()
-            if e.tag in ("uses-permission", "uses-permission-sdk-23")]
+            if e.tag in ("uses-permission", "uses-permission-sdk-23") and e.get(TOOLS + "node") != "remove"]
     declared = {e.get(ANDROID + "name", ""): e.get(ANDROID + "protectionLevel", "normal")
                 for e in root.findall("permission")}
     application = root.find("application")

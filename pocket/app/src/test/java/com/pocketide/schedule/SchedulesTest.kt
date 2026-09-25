@@ -101,6 +101,9 @@ internal fun task(everyHours: Int = 24, agentId: String = "claude") =
 class ScheduledRunTest {
     @get:Rule val temp = TemporaryFolder()
 
+    /** Built at run time, so no literal in the sources looks like a real token. */
+    private val fakeToken = "ghp_" + "a".repeat(36)
+
     private lateinit var ports: FakeRunPorts
 
     @Before
@@ -110,7 +113,7 @@ class ScheduledRunTest {
 
     @Test
     fun aRunMakesASessionSavesTheOutputAndTellsTheOwner() = runTest {
-        ports.lines = listOf("Ran 12 tests", "token=ghp_abcdefghijklmnopqrstuvwxyz0123456789")
+        ports.lines = listOf("Ran 12 tests", "token=$fakeToken")
         val outcome = ScheduledRun(ports).run(task())
 
         assertTrue(outcome.succeeded)
@@ -124,7 +127,7 @@ class ScheduledRunTest {
         val saved = ports.saved.single()
         assertEquals("s-new", saved.first)
         assertTrue(saved.second.contains("Ran 12 tests"))
-        assertFalse("tokens are hidden in saved output", saved.second.contains("ghp_abcdefghijklmnopqrstuvwxyz"))
+        assertFalse("tokens are hidden in saved output", saved.second.contains(fakeToken))
         assertEquals(listOf("t1" to "s-new"), ports.recorded)
         assertEquals("Scheduled task finished", ports.notices.single().first)
         assertEquals(listOf("s-new"), ports.afterRuns)

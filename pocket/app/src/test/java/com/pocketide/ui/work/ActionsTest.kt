@@ -81,8 +81,10 @@ class ActionsTest {
     fun reasonsAreShortAndRedacted() {
         assertEquals("Something went wrong. Please try again.", plainReason(RuntimeException()))
         assertEquals(240, plainReason(RuntimeException("y".repeat(1_000))).length)
-        val reason = plainReason(RuntimeException("push refused for ghp_abcdefghijklmnopqrstuvwxyz0123456789"))
-        assertFalse(reason.contains("ghp_abcdefghijklmnopqrstuvwxyz0123456789"))
+        // Built at run time, so no literal in the sources looks like a real token.
+        val token = "ghp_" + "a".repeat(36)
+        val reason = plainReason(RuntimeException("push refused for $token"))
+        assertFalse(reason.contains(token))
     }
 
     @Test
