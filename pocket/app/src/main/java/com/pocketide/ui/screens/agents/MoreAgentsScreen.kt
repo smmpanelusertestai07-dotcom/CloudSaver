@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.agents.CandidateFacts
 import com.pocketide.agents.DoctorReport
 import com.pocketide.core.Ist
 import com.pocketide.docs.DocLinks
@@ -63,6 +64,7 @@ import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.nav.PocketNav
+import java.util.Locale
 
 private const val COMMUNITY_NOTE =
     "\"Verified\" on Open VSX means the publisher proved it owns this name. It is not a review of the code, and it does " +
@@ -122,7 +124,7 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 }
             }
             items(fresh, key = { it.extensionId }) { candidate ->
-                CandidateCard(candidate, runner, nav) {
+                CandidateCard(candidate, graph.agents.facts(candidate.extensionId), runner, nav) {
                     runner.run(
                         key = "add:${candidate.extensionId}",
                         onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
@@ -208,7 +210,7 @@ private fun NewHeader(runner: ActionRunner, onCheck: () -> Unit) {
 }
 
 @Composable
-private fun CandidateCard(candidate: AgentCandidate, runner: ActionRunner, nav: PocketNav, onAdd: () -> Unit) {
+private fun CandidateCard(candidate: AgentCandidate, facts: CandidateFacts?, runner: ActionRunner, nav: PocketNav, onAdd: () -> Unit) {
     val busy = runner.isBusy("add:${candidate.extensionId}")
     val problem = AgentTrust.problem(candidate.extensionId)
     SectionCard(null) {
@@ -225,7 +227,8 @@ private fun CandidateCard(candidate: AgentCandidate, runner: ActionRunner, nav: 
             }
             StatusChip("Verified publisher", Tone.NEUTRAL)
         }
-        Text(candidate.extensionId, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
+        // The identifier exactly as the publisher wrote it, so a look-alike name can be read letter by letter.
+        Text(facts?.identifier ?: candidate.extensionId, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
         if (candidate.description.isNotBlank()) {
             Text(candidate.description, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
@@ -233,6 +236,7 @@ private fun CandidateCard(candidate: AgentCandidate, runner: ActionRunner, nav: 
             "${ManageFormat.downloads(candidate.downloads)} downloads · version ${candidate.version} · " +
                 "first published ${Ist.date(candidate.firstPublishedAt)}",
         )
+        facts?.let { CandidateFactLines(it) }
         Text(DATA_NOTE, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         Text(COMMUNITY_NOTE, style = MaterialTheme.typography.bodyMedium, color = toneColor(Tone.WARN))
         DocLinks.openVsxPage(candidate.extensionId)?.let { LinkRow("Its page on Open VSX", it, nav, note = "Licence, source and reviews") }
@@ -247,6 +251,19 @@ private fun CandidateCard(candidate: AgentCandidate, runner: ActionRunner, nav: 
             }
         }
     }
+}
+
+/** Licence, source and reviews from Open VSX, and what "verified" does and does not mean. */
+@Composable
+private fun CandidateFactLines(facts: CandidateFacts) {
+    Hint("Licence: ${facts.license?.takeIf { it.isNotBlank() } ?: "not given"}")
+    Hint(facts.repository?.let { "Source: $it" } ?: "Source: closed source (no repository given)")
+    val rating = facts.averageRating
+    Hint(
+        if (rating == null || facts.reviewCount == 0L) "No reviews yet"
+        else "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating),
+    )
+    Hint(CandidateFacts.VERIFIED_MEANS)
 }
 
 @Composable

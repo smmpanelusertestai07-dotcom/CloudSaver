@@ -24,7 +24,7 @@ fun createSchedules(graph: AppGraph): Schedules {
     lateinit var schedules: TaskSchedules
     val runner = ScheduledRun(GraphRunPorts(graph) { schedules })
     schedules = TaskSchedules(
-        file = File(graph.dirs.base, "schedules.json"),
+        file = graph.dirs.schedules,
         scheduler = ScheduleWork.Manager(graph.context),
         powerAndWifi = AndroidPowerAndWifi(graph.context),
         io = Dispatchers.IO,

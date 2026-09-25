@@ -47,6 +47,8 @@ internal class ProotComputer(
     private val dirs: AppDirs,
     private val dataBudget: () -> DataBudget,
     private val clock: Clock,
+    /** The computer has just become ready after a set-up, a reset or a repair: the agents go in next. */
+    private val onReady: () -> Unit = {},
 ) : Computer {
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val oneAtATime = Mutex()
@@ -102,6 +104,7 @@ internal class ProotComputer(
 
     override suspend fun install() {
         exclusively { setup.install() }
+        announceIfReady()
     }
 
     override suspend fun reset() {
@@ -115,6 +118,7 @@ internal class ProotComputer(
                 reopen()
             }
         }
+        announceIfReady()
     }
 
     override suspend fun remove() {
@@ -133,6 +137,10 @@ internal class ProotComputer(
 
     override suspend fun repair(): List<RepairItem> = exclusively {
         hostItems() + setup.repair()
+    }.also { announceIfReady() }
+
+    private fun announceIfReady() {
+        if (state.value == ComputerState.Ready) runCatching(onReady)
     }
 
     override fun start(command: LinuxCommand): Process = gate.read {

@@ -50,7 +50,6 @@ import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.SettingChoices
 import com.pocketide.ui.shell.rememberGraph
 import com.pocketide.update.UpdateState
-import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -145,7 +144,7 @@ private fun DataUsageCard(usage: DataUsage, limitMb: Int) {
             usage.byType.entries
                 .filter { it.value > 0 }
                 .sortedByDescending { it.value }
-                .forEach { (type, bytes) -> InfoRow("  ${usageLabel(type)}", Formats.bytes(bytes)) }
+                .forEach { (type, bytes) -> InfoRow("  ${Formats.dataKind(type)}", Formats.bytes(bytes)) }
             Text(
                 "Only mobile data counts; Wi-Fi is free. The agents' own traffic is counted but never blocked, so they keep working.",
                 style = MaterialTheme.typography.bodySmall,
@@ -154,9 +153,6 @@ private fun DataUsageCard(usage: DataUsage, limitMb: Int) {
         }
     }
 }
-
-private fun usageLabel(type: String): String =
-    type.replace('_', ' ').replace('-', ' ').replaceFirstChar { it.titlecase(Locale.ENGLISH) }
 
 @Composable
 private fun StorageSection(graph: AppGraph, settings: Settings, update: ((Settings) -> Settings) -> Unit) {

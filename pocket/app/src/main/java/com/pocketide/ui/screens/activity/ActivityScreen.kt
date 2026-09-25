@@ -69,6 +69,7 @@ import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.project.rememberTicker
+import com.pocketide.ui.shell.Formats
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -176,7 +177,7 @@ fun ActivityScreen(nav: PocketNav) {
                     if (limitMb > 0) UsageMeter(usage.todayMeteredBytes.toDouble() / (limitMb * 1_000_000.0))
                     InfoRow("This month", ManageFormat.bytes(usage.monthMeteredBytes))
                     usage.byType.entries.sortedByDescending { it.value }.filter { it.value > 0 }.take(5).forEach { (type, bytes) ->
-                        InfoRow(type.replaceFirstChar { it.uppercase() }, ManageFormat.bytes(bytes))
+                        InfoRow(Formats.dataKind(type), ManageFormat.bytes(bytes))
                     }
                     Hint(
                         if (limitMb > 0) "Only mobile data counts; Wi-Fi is free. Big downloads wait for Wi-Fi."

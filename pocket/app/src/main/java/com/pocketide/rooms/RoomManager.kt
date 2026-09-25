@@ -363,30 +363,34 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     /** Null when the room's engine and agent are installed; otherwise what the owner should know. */
     private suspend fun engineProblem(profile: RoomProfile): String? = withContext(Dispatchers.IO) {
         when (profile.engine) {
-            Engine.AGY_HUB -> {
-                val home = RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true)
-                if (home.isFile(RoomEngines.AGY.removePrefix("${AppDirs.GUEST_HOME}/"))) null
-                else "Antigravity is being installed. Try again in a minute."
-            }
+            Engine.AGY_HUB -> if (agyInstalled(profile)) null else install(profile) { agyInstalled(it) }
             Engine.CODE_SERVER -> {
                 if (!File(dirs.rootfs, RoomEngines.CODE_SERVER.removePrefix("/")).exists()) {
                     "The computer's code-server is missing. Repair the computer from the Computer screen."
                 } else if (extensionInstalled(profile)) {
                     null
                 } else {
-                    publish(profile.agentId, RoomState.Starting("Installing ${profile.name}"))
-                    try {
-                        env.ensureInstalled(profile.agentId)
-                        if (extensionInstalled(profile)) null else "${profile.name} is not installed yet. Try again in a minute."
-                    } catch (failed: IllegalStateException) {
-                        "${profile.name} is not installed yet: ${reason(failed)}"
-                    } catch (failed: IOException) {
-                        "${profile.name} could not be installed: ${reason(failed)}"
-                    }
+                    install(profile) { extensionInstalled(it) }
                 }
             }
         }
     }
+
+    /** Installs the agent now, the room waiting; null once [installed] says it is there. */
+    private suspend fun install(profile: RoomProfile, installed: (RoomProfile) -> Boolean): String? {
+        publish(profile.agentId, RoomState.Starting("Installing ${profile.name}"))
+        return try {
+            env.ensureInstalled(profile.agentId)
+            if (installed(profile)) null else "${profile.name} is not installed yet. Try again in a minute."
+        } catch (failed: IllegalStateException) {
+            "${profile.name} is not installed yet: ${reason(failed)}"
+        } catch (failed: IOException) {
+            "${profile.name} could not be installed: ${reason(failed)}"
+        }
+    }
+
+    private fun agyInstalled(profile: RoomProfile): Boolean =
+        RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true).isFile(RoomEngines.AGY.removePrefix("${AppDirs.GUEST_HOME}/"))
 
     private fun extensionInstalled(profile: RoomProfile): Boolean {
         val prefix = profile.extensionId?.lowercase()?.plus("-") ?: return false

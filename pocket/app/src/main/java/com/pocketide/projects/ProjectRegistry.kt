@@ -22,6 +22,10 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * The projects on this phone, kept in `vault/projects.json`. GitHub holds the code: the phone
  * keeps a bare clone per project, made the first time the project is opened.
+ *
+ * The owner's answer to "Is this your code?" is kept on the project itself ([Project.trust]), so
+ * it syncs to a new phone; `vault/project-trust.json` also holds it, with the automatic answer
+ * for projects never asked about.
  */
 internal class ProjectRegistry(
     private val env: ProjectEnv,
@@ -44,8 +48,9 @@ internal class ProjectRegistry(
     init {
         scope.launch {
             quietly {
-                state.current()
+                val projects = state.current()
                 trustState.current()
+                trustState.update { map -> (map + answers(projects)) to Unit }
             }
         }
     }
@@ -69,14 +74,19 @@ internal class ProjectRegistry(
         val info = network { env.gitHub.repo(address.owner, address.repo) }
             ?: throw RepoNotReachableException(env.gitHubAuth.installUrl(), address)
         val project = add(info)
+        // A fork started as someone else's code, even under the owner's own account (A13).
+        if (info.fork && project.trust == null) setTrust(project.id, ProjectTrust.SOMEONE_ELSES)
         trustState.update { map -> (if (project.id in map) map else map + (project.id to automaticTrust(project))) to Unit }
-        return project
+        return all.value.find { it.id == project.id } ?: project
     }
 
-    override fun trustOf(projectId: String): ProjectTrust =
-        trust.value[projectId] ?: all.value.find { it.id == projectId }?.let(::automaticTrust) ?: ProjectTrust.SOMEONE_ELSES
+    override fun trustOf(projectId: String): ProjectTrust {
+        val project = all.value.find { it.id == projectId }
+        return project?.let(::answer) ?: trust.value[projectId] ?: project?.let(::automaticTrust) ?: ProjectTrust.SOMEONE_ELSES
+    }
 
     override suspend fun setTrust(projectId: String, trust: ProjectTrust) {
+        state.update { list -> list.map { if (it.id == projectId) it.copy(trust = trust.name) else it } to Unit }
         trustState.update { it + (projectId to trust) to Unit }
     }
 
@@ -140,19 +150,29 @@ internal class ProjectRegistry(
                 byId[incoming.id] = incoming.copy(
                     lastActivityAt = maxOf(incoming.lastActivityAt, local?.lastActivityAt ?: 0),
                     cloned = cloned[incoming.id] == true,
+                    // An index written before the answer travelled with the project leaves it out.
+                    trust = incoming.trust ?: local?.trust,
                 )
             }
             byId.values.toList() to Unit
         }
+        val adopted = all.value.filter { project -> projects.any { it.id == project.id } }
         trustState.update { map ->
-            val unknown = projects.filter { it.id !in map }
-            (map + unknown.associate { it.id to automaticTrust(it) }) to Unit
+            val unknown = adopted.filter { it.id !in map }
+            (map + unknown.associate { it.id to automaticTrust(it) } + answers(adopted)) to Unit
         }
     }
 
+    /** The owner's answer stored on the project, or null when there is none (or it is unreadable). */
+    private fun answer(project: Project): ProjectTrust? =
+        project.trust?.let { name -> ProjectTrust.entries.firstOrNull { it.name == name } }
+
+    private fun answers(projects: List<Project>): Map<String, ProjectTrust> =
+        projects.mapNotNull { project -> answer(project)?.let { project.id to it } }.toMap()
+
     /**
      * Without the owner's own answer: a repository under the signed-in account is theirs. A fork
-     * under their account is not told apart here; the owner can say so on the project.
+     * is marked someone else's when it is added, as that answer.
      */
     private fun automaticTrust(project: Project): ProjectTrust {
         val login = env.gitHubAuth.account.value?.login

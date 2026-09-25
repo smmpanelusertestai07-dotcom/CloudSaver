@@ -80,6 +80,7 @@ import com.pocketide.ui.manage.MemoryFiles
 import com.pocketide.ui.manage.NavRow
 import com.pocketide.ui.manage.SectionLabel
 import com.pocketide.ui.manage.ToneLine
+import com.pocketide.ui.manage.attempt
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.rememberLoad
@@ -218,11 +219,18 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         )
     }
     if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
-        runner.run(DELETE_EVERYTHING, done = "Everything was deleted.", outlivesScreen = true) {
+        runner.run(
+            DELETE_EVERYTHING,
+            outlivesScreen = true,
+            onSuccess = { signOuts: List<String> -> runner.say((listOf("Everything was deleted.") + signOuts).joinToString(" ")) },
+        ) {
             // Read before the delete: afterwards the sessions are gone, and so are their ids.
             val shortcuts = (graph.sessions.all.value + graph.sync.driveSessions.value).map { SessionShortcut.shortcutId(it.id) }
+            // Each agent's own sign-out ends its sign-in at the vendor too; its room is deleted next.
+            val signOuts = attempt { graph.rooms.signOutAll() }.getOrDefault(emptyList())
             graph.sync.deleteEverything()
             clearAppTraces(graph.context, shortcuts)
+            signOuts
         }
     }
 }

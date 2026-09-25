@@ -4,6 +4,22 @@ import java.util.Locale
 
 /** Plain, short numbers for people: decimal units, as Android's own storage screens use. */
 object Formats {
+    /** The owner's words for each kind of data the data rules count; an unknown kind shows as it is. */
+    fun dataKind(kind: String): String = when (kind) {
+        "sync" -> "Sync with Drive"
+        "restore" -> "Restoring from Drive"
+        "move" -> "Moving to another Google account"
+        "reencrypt" -> "Re-encrypting after a key change"
+        "clone" -> "Project downloads"
+        "setup" -> "Computer set-up"
+        "update" -> "Computer updates"
+        "agents" -> "Agents (Open VSX and agy)"
+        "app update" -> "App updates"
+        "builds" -> "Build downloads"
+        "browser" -> "Browser for agents"
+        else -> kind.replace('_', ' ').replace('-', ' ').replaceFirstChar { it.titlecase(Locale.ENGLISH) }
+    }
+
     private const val KB = 1000.0
     private val units = listOf("KB", "MB", "GB", "TB")
 

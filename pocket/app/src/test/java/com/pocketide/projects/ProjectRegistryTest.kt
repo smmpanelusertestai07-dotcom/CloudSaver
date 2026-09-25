@@ -103,6 +103,28 @@ class ProjectRegistryTest {
         val again = registry()
         again.adopt(emptyList())
         assertEquals("the owner's answer is kept", ProjectTrust.SOMEONE_ELSES, again.trustOf(site.id))
+        assertEquals("it travels with the project", ProjectTrust.SOMEONE_ELSES.name, again.all.value.single().trust)
+    }
+
+    @Test
+    fun `a fork under the owner's own account is someone else's code`() = runBlocking<Unit> {
+        val projects = registry()
+        env.gitHub.reachable["alice/forked"] = repoInfo("alice", "forked").copy(fork = true)
+        val fork = projects.import("alice/forked", "")
+        assertEquals(ProjectTrust.SOMEONE_ELSES, projects.trustOf(fork.id))
+        assertEquals(ProjectTrust.SOMEONE_ELSES.name, fork.trust)
+    }
+
+    @Test
+    fun `the answer from another phone wins over the automatic one and survives an older index`() = runBlocking<Unit> {
+        val projects = registry()
+        val incoming = Project("alice/app", "alice", "app", addedAt = 5, lastActivityAt = 50, trust = ProjectTrust.SOMEONE_ELSES.name)
+        projects.adopt(listOf(incoming))
+        assertEquals(ProjectTrust.SOMEONE_ELSES, projects.trustOf("alice/app"))
+        assertEquals(ProjectTrust.SOMEONE_ELSES, projects.trust.value["alice/app"])
+
+        projects.adopt(listOf(incoming.copy(trust = null)))
+        assertEquals(ProjectTrust.SOMEONE_ELSES, projects.trustOf("alice/app"))
     }
 
     @Test

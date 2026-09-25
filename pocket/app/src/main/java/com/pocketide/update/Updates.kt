@@ -34,6 +34,6 @@ interface AppUpdater {
     suspend fun check()
     suspend fun download()
     fun install(activity: Activity)
-    /** Schedules the daily check (Wi-Fi) and component updates. */
+    /** Schedules the daily check, on Wi-Fi. */
     fun schedule()
 }

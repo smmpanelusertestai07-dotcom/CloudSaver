@@ -4,14 +4,15 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.util.Log
+import com.pocketide.agents.AgentWorkers
 import com.pocketide.core.Channels
 import com.pocketide.linux.ComputerUpdateWorker
 import kotlinx.coroutines.launch
 
 /**
  * What runs once per process start: notification channels, the periodic jobs (sync, daily
- * maintenance, update checks, computer updates, access checks), the phone monitor and the
- * rooms' phone-bridge handlers. Kept apart from [PocketApp] so the wiring lives in one place.
+ * maintenance, update checks, computer updates, agent discovery and updates, access checks),
+ * the phone monitor and the rooms' phone-bridge handlers. Kept apart from [PocketApp] so the wiring lives in one place.
  *
  * Only the channels are made on the main thread; everything else touches disk or builds modules,
  * so it runs on the graph's background scope.
@@ -34,6 +35,7 @@ object AppStartup {
         Step("sync") { graph.sync.schedule() },
         Step("computer updates") { ComputerUpdateWorker.schedule(graph.context) },
         Step("app updates") { graph.updater.schedule() },
+        Step("agent discovery and updates") { AgentWorkers.schedule(graph.context) },
         // Rooms register their "mcp" and "notify" phone-bridge handlers when created, which must
         // happen before a scheduled headless run opens a room.
         Step("rooms") { graph.rooms.states },

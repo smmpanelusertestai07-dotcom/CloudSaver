@@ -151,7 +151,9 @@ class RoomManagerTest {
         assertEquals(RoomState.Failed("Not enough memory for another agent right now."), rooms.open("claude", "s1"))
         env.decision = Decision.YES
         dirs.worktree("antigravity", "octo/app", "a1").mkdirs()
-        assertEquals(RoomState.Failed("Antigravity is being installed. Try again in a minute."), rooms.open("antigravity", "a1"))
+        // A missing agy is installed while the room waits; here the download fails.
+        assertEquals(RoomState.Failed("Antigravity is not installed yet: Open VSX could not be reached."), rooms.open("antigravity", "a1"))
+        assertEquals(listOf("antigravity"), env.installs)
         File(dirs.worktree("claude", "octo/app", "s2").path).deleteRecursively()
         assertEquals(RoomState.Failed(RoomTerminals.MISSING_WORKTREE), rooms.open("claude", "s2"))
         assertTrue(env.computer.commands.isEmpty())
@@ -443,7 +445,11 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override fun canStartHeavyWork(what: String) = Decision.YES
         override fun allowDownload(bytes: Long, kind: String) = Decision.YES
         override fun recordDownload(bytes: Long, kind: String) = Unit
-        override suspend fun ensureInstalled(agentId: String) = throw IllegalStateException("Open VSX could not be reached.")
+        val installs = mutableListOf<String>()
+        override suspend fun ensureInstalled(agentId: String) {
+            installs += agentId
+            throw IllegalStateException("Open VSX could not be reached.")
+        }
         override fun fontSize() = 14
         override fun heapMegabytes() = 512
         override suspend fun gitIdentity() = mapOf("GIT_AUTHOR_NAME" to "Octo")

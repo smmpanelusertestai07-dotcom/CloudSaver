@@ -6,7 +6,6 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
-import com.pocketide.agents.AgentWorkers
 import com.pocketide.core.Http
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
@@ -52,10 +51,7 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
 
     override suspend fun install(activity: Activity, apk: File, done: (InstallResult) -> Unit) = installer.install(activity, apk, done)
 
-    override fun schedule() {
-        AppUpdateWorker.schedule(context)
-        AgentWorkers.schedule(context)
-    }
+    override fun schedule() = AppUpdateWorker.schedule(context)
 
     @Suppress("DEPRECATION")
     private fun facts(info: PackageInfo): ApkFacts? {

@@ -133,8 +133,8 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
 
     /**
      * "Delete everything": every file in the Drive hidden folder (the vault's too), then the rooms,
-     * worktrees, clones, vault and queue on the phone, and the sealed secrets. Drive goes first, so
-     * a failure leaves the phone's data in place to try again.
+     * worktrees, clones, vault, queue, Media records and scheduled tasks on the phone, and the
+     * sealed secrets. Drive goes first, so a failure leaves the phone's data in place to try again.
      */
     override suspend fun deleteEverything() = withContext(Dispatchers.IO) {
         lock.withLock {
@@ -154,7 +154,10 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
                 throw SyncException(Plain.of(e))
             }
             val dirs = ports.dirs
-            listOf(dirs.rooms, dirs.work, dirs.repos, dirs.vault, dirs.queue, dirs.builds, dirs.downloads, dirs.share, dirs.apk)
+            listOf(
+                dirs.rooms, dirs.work, dirs.repos, dirs.vault, dirs.queue, dirs.builds, dirs.mediaMeta, dirs.schedules,
+                dirs.downloads, dirs.share, dirs.apk,
+            )
                 .forEach { deleteTree(it) }
             ports.wipeSecureStore()
             ports.forgetVaultKey()
