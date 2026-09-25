@@ -157,6 +157,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             listOf(dirs.rooms, dirs.work, dirs.repos, dirs.vault, dirs.queue, dirs.builds, dirs.downloads, dirs.share, dirs.apk)
                 .forEach { deleteTree(it) }
             ports.wipeSecureStore()
+            ports.forgetVaultKey()
             ports.settings.update { it.copy(onboardingDone = false) }
             flows.status.value = SyncStatus.Idle
             flows.waiting.value = emptyList()

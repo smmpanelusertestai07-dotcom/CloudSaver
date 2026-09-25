@@ -230,6 +230,11 @@ internal class TestPhone(
     var onAuthorize: () -> Unit = {}
     var rekeys = 0
     var secureStoreWiped = false
+    var vaultKeyForgotten = false
+    var keyringChecks = 0
+
+    /** What the vault's keyring check throws, if anything (GitHub gone, offline). */
+    var keyringFailure: Exception? = null
 
     val engine = DriveSyncEngine(this)
 
@@ -286,8 +291,15 @@ internal class TestPhone(
         cipher.generation++
         accounts[account].uploadBytes("keyhalf-d", byteArrayOf(1, 2, 3), accounts[account].find("keyhalf-d")?.id)
     }
+    override suspend fun checkKeyring() {
+        keyringChecks++
+        keyringFailure?.let { throw it }
+    }
     override fun wipeSecureStore() {
         secureStoreWiped = true
+    }
+    override suspend fun forgetVaultKey() {
+        vaultKeyForgotten = true
     }
 
     /** A file in a room's home, as an agent would write it. */
@@ -306,6 +318,13 @@ internal class TestPhone(
     companion object {
         const val OWNER = "owner@example.com"
     }
+}
+
+/** PendingIntent has no public constructor, and only its identity matters here. */
+fun mockPendingIntent(): android.app.PendingIntent {
+    val unsafeClass = Class.forName("sun.misc.Unsafe")
+    val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+    return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, android.app.PendingIntent::class.java) as android.app.PendingIntent
 }
 
 fun session(id: String, projectId: String = "owner/app", agent: String = "claude", at: Long, deletedAt: Long? = null, backUp: Boolean = true, ref: String? = null) =

@@ -46,8 +46,14 @@ internal class MeteredDataBudget(
     private val flow = MutableStateFlow(read())
     override val usage: StateFlow<DataUsage> = flow
 
+    /** A confirmed transfer by kind: the UTC day it was allowed on, and the bytes still to come. */
+    private class Grant(val day: String, var left: Long)
+
+    private val grants = HashMap<String, Grant>()
+
     override fun allow(bytes: Long, kind: String, big: Boolean): Decision {
         if (!network.metered()) return Decision.YES
+        if (granted(kind)) return Decision.YES
         val s = settings()
         if (big && s.wifiOnlyBigDownloads) return Decision.no(WAITS_FOR_WIFI)
         if (s.mobileDailyLimitMb <= 0) return Decision.no(MOBILE_OFF)
@@ -57,12 +63,37 @@ internal class MeteredDataBudget(
     }
 
     override fun record(bytes: Long, kind: String) {
-        if (bytes <= 0 || !network.metered()) return
+        if (bytes <= 0) return
+        spend(kind, bytes)
+        if (!network.metered()) return
         val now = clock.now()
         counters.add(dayKey(now, kind), bytes)
         counters.add(monthKey(now, kind), bytes)
         prune(now)
         flow.value = read()
+    }
+
+    override fun allowOnce(kind: String, bytes: Long) {
+        if (bytes <= 0) return
+        synchronized(grants) { grants[kind] = Grant(day(clock.now()), bytes) }
+    }
+
+    private fun granted(kind: String): Boolean {
+        synchronized(grants) {
+            val grant = grants[kind] ?: return false
+            if (grant.day == day(clock.now()) && grant.left > 0) return true
+            grants.remove(kind)
+            return false
+        }
+    }
+
+    /** What the confirmed transfer used, on any network: it is one transfer, wherever it ran. */
+    private fun spend(kind: String, bytes: Long) {
+        synchronized(grants) {
+            val grant = grants[kind] ?: return
+            grant.left -= bytes
+            if (grant.left <= 0) grants.remove(kind)
+        }
     }
 
     /** Re-reads the counters (a new day or month started since the last transfer). */

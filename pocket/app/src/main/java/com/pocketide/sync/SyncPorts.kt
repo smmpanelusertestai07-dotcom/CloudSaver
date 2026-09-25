@@ -112,6 +112,15 @@ internal interface SyncPorts {
     /** New key and a new Half D in the account the app now uses (after a move). */
     suspend fun rekeyForMove()
 
+    /**
+     * The vault's check of its GitHub keyring (private, no collaborators), which re-keys when the
+     * key half there is exposed. Throws when GitHub is not connected or cannot be reached.
+     */
+    suspend fun checkKeyring()
+
     /** Removes every sealed entry of the secure store ("Delete everything"). */
     fun wipeSecureStore()
+
+    /** Drops the vault key from memory too, so the next set-up makes a new vault. */
+    suspend fun forgetVaultKey()
 }

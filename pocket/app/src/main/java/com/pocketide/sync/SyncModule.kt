@@ -161,8 +161,14 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
 
     override suspend fun rekeyForMove() = graph.vault.rekey(RekeyReason.MOVED_ACCOUNT)
 
+    override suspend fun checkKeyring() {
+        graph.vault.checkKeyring()
+    }
+
     /** The secure store's folder (see AppGraph): tokens, the vault key and Secrets. */
     override fun wipeSecureStore() {
         deleteTree(File(graph.context.filesDir, "secure"))
     }
+
+    override suspend fun forgetVaultKey() = graph.vault.forget()
 }

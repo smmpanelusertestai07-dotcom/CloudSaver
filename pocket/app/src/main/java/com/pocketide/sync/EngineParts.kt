@@ -76,7 +76,8 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
         return when {
             known == null -> current.also { if (it != null) state = state.copy(account = it) }
             current == null || current == known -> known
-            move != null && (current == move.from || current == move.to) -> known
+            // While a move waits for its new account, Google's sheet already made that account the one in use.
+            move != null && (current == move.from || current == move.to || move.to.isEmpty()) -> known
             else -> {
                 startOverWith(current)
                 current
