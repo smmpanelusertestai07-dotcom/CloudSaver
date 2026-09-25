@@ -11,11 +11,14 @@ import java.io.IOException
  * and in the room's home the agent's rules, MCP registration and phone-friendly settings.
  * Everything written here is AgentFiles GENERATED (or the managed block of a SYNC instructions
  * file), rewritten at every start from these templates; the owner's own keys and lines stay.
+ * Settings that can run code are rebuilt from PocketIDE's templates and what the owner kept
+ * ([changes]); what an agent added there is taken out and waits for the owner in Your data.
  */
 internal class RoomConfigurator(
     private val dirs: AppDirs,
     private val assets: RoomAssets,
     private val now: () -> Long,
+    private val changes: ConfigChangeBook = ConfigChangeBook(dirs.rooms),
     private val log: (agentId: String, line: String) -> Unit,
 ) {
     /** Copies the scripts, the terminal page and the browser installer into /opt/pocketide. */
@@ -43,23 +46,24 @@ internal class RoomConfigurator(
         home.makePrivateHome()
         writeRules(profile, home)
         val servers = mcpServers(careful)
+        val agentId = profile.agentId
         if (profile.engine == Engine.CODE_SERVER) {
-            writeJson(profile.agentId, home, CODE_SERVER_SETTINGS) { ConfigFiles.codeServerSettings(it, profile, fontSize, careful) }
-            installCompanion(profile.agentId, home)
+            generate(agentId, home, CODE_SERVER_SETTINGS) { text, kept -> ConfigFiles.codeServerSettings(text, profile, fontSize, careful, kept) }
+            installCompanion(agentId, home)
         }
-        when (profile.agentId) {
-            RoomProfiles.CLAUDE -> writeJson(profile.agentId, home, ".claude/settings.json") {
-                ConfigFiles.claudeSettings(it, claudeDenyRules(otherRooms), "python3 ${RoomLayout.NOTIFY} ${profile.agentId}")
+        val notify = listOf("python3", RoomLayout.NOTIFY, agentId)
+        when (agentId) {
+            RoomProfiles.CLAUDE -> generate(agentId, home, ".claude/settings.json") { text, kept ->
+                ConfigFiles.claudeSettings(text, claudeDenyRules(otherRooms), notify.joinToString(" "), kept)
             }
-            RoomProfiles.CODEX -> home.write(
-                ".codex/config.toml",
-                ConfigFiles.codexConfig(
-                    home.read(".codex/config.toml"), servers, listOf("python3", RoomLayout.NOTIFY, profile.agentId), careful,
-                ),
-            )
+            RoomProfiles.CODEX -> {
+                generate(agentId, home, ".codex/config.toml") { text, kept -> ConfigFiles.codexConfig(text, servers, notify, careful, kept) }
+                generate(agentId, home, ".codex/hooks.json") { text, kept -> ConfigFiles.codexHooks(text, kept) }
+            }
             RoomProfiles.ANTIGRAVITY -> {
-                writeJson(profile.agentId, home, ".gemini/config/mcp_config.json") { ConfigFiles.antigravityMcp(it, servers) }
-                writeJson(profile.agentId, home, ".gemini/antigravity-cli/settings.json") { ConfigFiles.antigravitySettings(it) }
+                generate(agentId, home, ".gemini/config/mcp_config.json") { text, kept -> ConfigFiles.antigravityMcp(text, servers, kept) }
+                generate(agentId, home, ".gemini/antigravity-cli/settings.json") { text, kept -> ConfigFiles.antigravitySettings(text, kept) }
+                generate(agentId, home, ".gemini/config/hooks.json") { text, kept -> ConfigFiles.antigravityHooks(text, kept) }
             }
         }
     }
@@ -96,15 +100,22 @@ internal class RoomConfigurator(
         }
     }
 
-    /** Writes a JSON config; one that cannot be read is set aside (kept beside it) and written fresh. */
-    private fun writeJson(agentId: String, home: RoomFiles, file: String, update: (String?) -> String?) {
-        val current = home.read(file)
-        val updated = update(current) ?: run {
+    /**
+     * Rebuilds a generated config file with what the owner kept in it. One that cannot be read is
+     * set aside (kept beside it, where the agent does not look) and written fresh; one left with
+     * nothing in it is removed. What an agent had added is out of the file and waits for the owner.
+     */
+    private fun generate(agentId: String, home: RoomFiles, file: String, rebuild: (String?, List<Entry>) -> Rebuilt?) {
+        val kept = changes.kept(agentId, file)
+        val rebuilt = rebuild(home.read(file), kept) ?: run {
             home.setAside(file)
             log(agentId, "$file could not be read; it was kept as $file.pocketide-broken and written again.")
-            update(null) ?: return
+            rebuild(null, kept) ?: return
         }
-        home.write(file, updated)
+        if (rebuilt.empty) home.delete(file) else home.write(file, rebuilt.text)
+        for (change in changes.found(agentId, file, rebuilt.added)) {
+            log(agentId, "$file: an agent added a setting that can run code (${change.place}${change.key.let { if (it.isEmpty()) "" else " $it" }}); it was taken out and waits in Your data.")
+        }
     }
 
     /**

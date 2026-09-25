@@ -39,7 +39,7 @@ class AgentFilesTest {
 
     @Test
     fun executableConfigIsGenerated() {
-        listOf(".claude/settings.json", ".codex/config.toml", ".codex/hooks.json", ".gemini/config/mcp_config.json")
+        listOf(".claude/settings.json", ".codex/config.toml", ".codex/hooks.json", ".gemini/config/mcp_config.json", ".gemini/config/hooks.json")
             .forEach { assertEquals(it, FileClass.GENERATED, AgentFiles.classify(it)) }
     }
 

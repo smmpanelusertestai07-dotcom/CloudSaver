@@ -46,7 +46,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val random = SecureRandom()
     private val procs = ProcFacts()
     private val rings = ConcurrentHashMap<String, OutputRing>()
-    private val configurator = RoomConfigurator(dirs, env.assets, env::now) { agentId, line -> ring(agentId).add("[PocketIDE] $line") }
+    private val configBook = ConfigChangeBook(dirs.rooms)
+    private val configurator = RoomConfigurator(dirs, env.assets, env::now, configBook) { agentId, line -> ring(agentId).add("[PocketIDE] $line") }
     private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret)
     private val browser = BrowserInstaller(env, configurator, ::afterBrowserInstall)
     private val tools = McpTools(dirs, Ports())
@@ -63,6 +64,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     override val sleepsAt: StateFlow<Map<String, Long>> = mutableSleeps.asStateFlow()
     private val mutableProcesses = MutableStateFlow<Map<String, Int>>(emptyMap())
     override val processes: StateFlow<Map<String, Int>> = mutableProcesses.asStateFlow()
+    override val configChanges: StateFlow<List<ConfigChange>> = configBook.pending
+    override val keptConfig: StateFlow<List<ConfigChange>> = configBook.kept
 
     private class LiveRoom(
         val profile: RoomProfile,
@@ -117,6 +120,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             notice(agentId, args)
             JsonObject(emptyMap())
         }
+        // What agents added to their settings is on the owner's screen before any room starts.
+        env.scope.launch(Dispatchers.IO) { configBook.loadAll() }
     }
 
     override suspend fun open(agentId: String, sessionId: String): RoomState = open(agentId, sessionId, null)
@@ -200,10 +205,33 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         lock(agentId).withLock {
             withContext(Dispatchers.IO) {
                 listOf(File(dirs.rooms, agentId), dirs.roomBridge(agentId), dirs.roomWork(agentId)).forEach(RoomFiles::deleteTree)
+                configBook.forget(agentId)
             }
             mutableStates.update { it - agentId }
             mutableStops.update { it - agentId }
             rings.remove(agentId)
+        }
+    }
+
+    override suspend fun keepConfigChange(change: ConfigChange) {
+        if (withContext(Dispatchers.IO) { configBook.keep(change) }) writeConfigNow(change.agentId)
+    }
+
+    override suspend fun dropConfigChange(change: ConfigChange) = withContext(Dispatchers.IO) { configBook.drop(change) }
+
+    override suspend fun stopKeepingConfigChange(change: ConfigChange) {
+        if (withContext(Dispatchers.IO) { configBook.stopKeeping(change) }) writeConfigNow(change.agentId)
+    }
+
+    /** The room's settings written again now, so the owner's choice holds before its next start too. */
+    private suspend fun writeConfigNow(agentId: String) {
+        if (profile(agentId) == null) return
+        try {
+            configure(agentId)
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written now; its next start writes them: ${failed.message}")
+        } catch (failed: IllegalStateException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written now; its next start writes them: ${failed.message}")
         }
     }
 

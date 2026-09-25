@@ -71,6 +71,7 @@ object AgentFiles {
         ".codex/config.toml",
         ".codex/hooks.json",
         ".gemini/config/mcp_config.json",
+        ".gemini/config/hooks.json",
         ".gemini/antigravity-cli/settings.json",
         ".gemini/config/config.json",
         ".local/share/code-server/User/settings.json",

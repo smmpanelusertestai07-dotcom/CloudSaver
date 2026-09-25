@@ -63,6 +63,56 @@ internal class TomlDocument(text: String) {
         rewrite(statements, statements.filter { it.path == table || startsWith(it.path, table) }, null, null)
     }
 
+    /**
+     * What is defined under [prefix], one setting per name after it (a server, a hook event), in
+     * the order the names first appear; a name of "" is [prefix] written whole as one value
+     * (`mcp_servers = { … }`). Each comes as TOML text that defines it on its own, wherever the
+     * file wrote its parts: keys written outside its own tables first, in full (`a.b.c = …`),
+     * then its tables with their keys as written. Comments and blank lines are left out.
+     */
+    fun settings(prefix: List<String>): List<Pair<String, String>> {
+        val keys = LinkedHashMap<String, MutableList<String>>()
+        val tables = LinkedHashMap<String, MutableList<String>>()
+        for (statement in statements()) {
+            if (statement.path != prefix && !startsWith(statement.path, prefix)) continue
+            // A table that only holds the settings, like [mcp_servers], is not one itself.
+            if (statement.header && statement.path == prefix) continue
+            val name = statement.path.getOrNull(prefix.size).orEmpty()
+            keys.getOrPut(name) { mutableListOf() }
+            val ownTable = statement.header || (statement.table.size > prefix.size && startsWith(statement.table, prefix))
+            if (ownTable) {
+                tables.getOrPut(name) { mutableListOf() } += (statement.first..statement.last).map { lines[it].trimEnd() }
+            } else {
+                keys.getValue(name) += "${written(statement.path)} = ${valueText(statement)}"
+            }
+        }
+        return keys.map { (name, lines) -> name to (lines + tables[name].orEmpty()).joinToString("\n") }
+    }
+
+    /** Adds [fragment], as [settings] gives it: its keys at the top level, its tables at the end. */
+    fun add(fragment: String) {
+        val incoming = TomlDocument(fragment)
+        val split = incoming.statements().firstOrNull { it.header }?.first ?: incoming.lines.size
+        val keys = incoming.lines.subList(0, split).filter { it.isNotBlank() }
+        val tables = incoming.lines.subList(split, incoming.lines.size)
+        if (keys.isNotEmpty()) {
+            val at = statements().firstOrNull { it.header }?.first?.let(::endOfBlankRun) ?: lines.size
+            lines.addAll(at, keys)
+        }
+        if (tables.isNotEmpty()) {
+            while (lines.isNotEmpty() && lines.last().isBlank()) lines.removeAt(lines.size - 1)
+            if (lines.isNotEmpty()) lines.add("")
+            lines.addAll(tables)
+        }
+    }
+
+    /** The value of a key/value [statement] as written, over all its lines, without the key. */
+    private fun valueText(statement: Statement): String {
+        val first = lines[statement.first]
+        val rest = (statement.first + 1..statement.last).map { lines[it] }
+        return (listOf(first.substring(valueStart(first)).trim()) + rest).joinToString("\n").trimEnd()
+    }
+
     /** A key at [path] clashes with a statement that defines it, a part of it, or holds it inline. */
     private fun clashesWith(statement: Statement, path: List<String>): Boolean =
         statement.path == path || startsWith(statement.path, path) || (!statement.header && startsWith(path, statement.path))
@@ -259,6 +309,16 @@ internal class TomlDocument(text: String) {
 
         /** The key before `=` on a key/value line, split at dots outside quotes. */
         private fun keyPath(line: String): List<String>? {
+            val equals = equalsAt(line)
+            if (equals < 0) return null
+            return dotted(line.substring(0, equals))
+        }
+
+        /** Where the value starts on a key/value line: just after its `=`. */
+        private fun valueStart(line: String): Int = equalsAt(line).let { if (it < 0) line.length else it + 1 }
+
+        /** The `=` after a key, outside the key's quotes; -1 when there is none. */
+        private fun equalsAt(line: String): Int {
             var i = 0
             while (i < line.length && line[i] != '=') {
                 when (line[i]) {
@@ -273,8 +333,7 @@ internal class TomlDocument(text: String) {
                 }
                 i++
             }
-            if (i >= line.length) return null
-            return dotted(line.substring(0, i))
+            return if (i >= line.length) -1 else i
         }
 
         private fun dotted(text: String): List<String>? {
