@@ -37,6 +37,8 @@ internal object ConfigFiles {
         managed["terminal.integrated.fontSize"] = JsonPrimitive(fontSize)
         managed.putAll(profile.extensionSettings)
         if (careful) managed.putAll(profile.carefulSettings)
+        // What VS Code itself rewrote at its start is still PocketIDE's value: left as it is, not written back.
+        for ((key, forms) in REWRITTEN_BY_VS_CODE) current[key]?.takeIf { it in forms }?.let { managed[key] = it }
         // A careful value PocketIDE set is PocketIDE's: it goes again on the owner's own code.
         val carefulValues = profile.carefulSettings.map { (key, value) -> Entry(key, "", ExecutableJson.canonical(value)) }
         return rebuild(current, CODE_SERVER_SLOTS, ours = emptyList(), kept) { entry -> carefulValues.any { it.sameAs(entry) } }
@@ -323,13 +325,23 @@ internal object ConfigFiles {
         "DISABLE_ERROR_REPORTING" to JsonPrimitive("1"),
     )
 
+    /**
+     * Settings VS Code 1.138 rewrites at every start to its own newer form: PocketIDE writes that
+     * form and accepts the older one it used to write, so neither side rewrites the file after the other.
+     */
+    private val REWRITTEN_BY_VS_CODE: Map<String, Set<JsonElement>> = mapOf(
+        "extensions.autoUpdate" to setOf(JsonPrimitive("off"), JsonPrimitive(false)),
+        "workbench.preferredDarkColorTheme" to setOf(JsonPrimitive("Dark Modern"), JsonPrimitive("Default Dark Modern")),
+        "workbench.preferredLightColorTheme" to setOf(JsonPrimitive("Light Modern"), JsonPrimitive("Default Light Modern")),
+    )
+
     /** A phone-sized workbench: the agent's view and nothing else, no telemetry, no self-updates. */
     private val CODE_SERVER_SETTINGS: List<Pair<String, JsonElement>> = listOf(
         "workbench.startupEditor" to JsonPrimitive("none"),
         "chat.disableAIFeatures" to JsonPrimitive(true),
         "telemetry.telemetryLevel" to JsonPrimitive("off"),
         "update.mode" to JsonPrimitive("none"),
-        "extensions.autoUpdate" to JsonPrimitive(false),
+        "extensions.autoUpdate" to JsonPrimitive("off"),
         "extensions.autoCheckUpdates" to JsonPrimitive(false),
         "security.workspace.trust.enabled" to JsonPrimitive(false),
         "git.autofetch" to JsonPrimitive(false),
@@ -361,7 +373,7 @@ internal object ConfigFiles {
         "zenMode.silentNotifications" to JsonPrimitive(true),
         "workbench.tips.enabled" to JsonPrimitive(false),
         "window.autoDetectColorScheme" to JsonPrimitive(true),
-        "workbench.preferredDarkColorTheme" to JsonPrimitive("Default Dark Modern"),
-        "workbench.preferredLightColorTheme" to JsonPrimitive("Default Light Modern"),
+        "workbench.preferredDarkColorTheme" to JsonPrimitive("Dark Modern"),
+        "workbench.preferredLightColorTheme" to JsonPrimitive("Light Modern"),
     )
 }

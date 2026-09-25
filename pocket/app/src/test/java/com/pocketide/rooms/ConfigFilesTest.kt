@@ -35,7 +35,7 @@ class ConfigFilesTest {
         assertEquals(JsonObject(mapOf("**/.git" to JsonPrimitive(true))), written["files.exclude"])
         assertEquals("off", written["telemetry.telemetryLevel"]!!.jsonPrimitive.content)
         assertEquals(JsonPrimitive(true), written["chat.disableAIFeatures"])
-        assertEquals(JsonPrimitive(false), written["extensions.autoUpdate"])
+        assertEquals(JsonPrimitive("off"), written["extensions.autoUpdate"])
         assertEquals(JsonPrimitive(false), written["workbench.statusBar.visible"])
         assertEquals("hidden", written["workbench.activityBar.location"]!!.jsonPrimitive.content)
         assertEquals("none", written["workbench.editor.showTabs"]!!.jsonPrimitive.content)
@@ -45,6 +45,38 @@ class ConfigFilesTest {
         assertEquals(16, written["editor.fontSize"]!!.jsonPrimitive.int)
         assertEquals(JsonPrimitive(true), written["claudeCode.useCtrlEnterToSend"])
         assertFalse(written.containsKey("terminal.integrated.enableMultiLinePasteWarning"))
+    }
+
+    @Test fun `what VS Code rewrites at its start is neither written back nor reported`() {
+        // VS Code 1.138 turns false into "off" and drops "Default " from the Modern theme names at every start.
+        val fresh = ConfigFiles.codeServerSettings(null, claude, 14)!!.text
+        val written = obj(fresh)
+        assertEquals(JsonPrimitive("off"), written["extensions.autoUpdate"])
+        assertEquals(JsonPrimitive("Dark Modern"), written["workbench.preferredDarkColorTheme"])
+        assertEquals(JsonPrimitive("Light Modern"), written["workbench.preferredLightColorTheme"])
+        val again = ConfigFiles.codeServerSettings(fresh, claude, 14)!!
+        assertEquals("a start after VS Code's own rewrite changes nothing", fresh, again.text)
+        assertTrue(again.added.isEmpty())
+
+        // The forms an earlier PocketIDE wrote are left for VS Code to rewrite, not flipped back and forth.
+        val older = Jsonc.write(
+            JsonObject(
+                written + mapOf(
+                    "extensions.autoUpdate" to JsonPrimitive(false),
+                    "workbench.preferredDarkColorTheme" to JsonPrimitive("Default Dark Modern"),
+                    "workbench.preferredLightColorTheme" to JsonPrimitive("Default Light Modern"),
+                ),
+            ),
+        )
+        val kept = ConfigFiles.codeServerSettings(older, claude, 14)!!
+        assertEquals(older, kept.text)
+        assertTrue(kept.added.isEmpty())
+
+        // Any other value is not PocketIDE's, and is set back.
+        val changed = """{ "extensions.autoUpdate": true, "workbench.preferredDarkColorTheme": "Monokai" }"""
+        val reset = obj(ConfigFiles.codeServerSettings(changed, claude, 14)?.text)
+        assertEquals(JsonPrimitive("off"), reset["extensions.autoUpdate"])
+        assertEquals(JsonPrimitive("Dark Modern"), reset["workbench.preferredDarkColorTheme"])
     }
 
     @Test fun `the Codex room gets its own enter key setting`() {
