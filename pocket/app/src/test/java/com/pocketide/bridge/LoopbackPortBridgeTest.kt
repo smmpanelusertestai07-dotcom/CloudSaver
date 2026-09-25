@@ -17,6 +17,7 @@ import java.net.ConnectException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketException
 import java.net.URLEncoder
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -616,8 +617,9 @@ class LoopbackPortBridgeTest {
             try {
                 Socket(address, port).use { socket ->
                     socket.soTimeout = 2_000
-                    socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n\r\n".toByteArray())
+                    // A listener that closes between the connect and the write resets the connection.
                     val answer = try {
+                        socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n\r\n".toByteArray())
                         socket.getInputStream().read()
                     } catch (e: IOException) {
                         -1
@@ -627,6 +629,9 @@ class LoopbackPortBridgeTest {
                 Thread.sleep(10)
             } catch (e: ConnectException) {
                 return
+            } catch (e: SocketException) {
+                // Reset while connecting: the listener was closing. Not served; look again.
+                Thread.sleep(10)
             }
         }
         fail("Port $port still accepts connections.")

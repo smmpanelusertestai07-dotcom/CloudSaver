@@ -21,15 +21,21 @@ import kotlinx.serialization.json.put
  */
 internal object ConfigFiles {
 
-    /** code-server's user settings: phone layout, no telemetry, no self-updates, the agent's own keys. */
-    fun codeServerSettings(existing: String?, profile: RoomProfile, fontSize: Int): String? {
+    /**
+     * code-server's user settings: phone layout, no telemetry, no self-updates, the agent's own
+     * keys, and with [careful] (someone else's code) the agent's ask-before-running settings.
+     */
+    fun codeServerSettings(existing: String?, profile: RoomProfile, fontSize: Int, careful: Boolean = false): String? {
         val current = Jsonc.parseObject(existing) ?: return null
         val managed = linkedMapOf<String, JsonElement>()
         CODE_SERVER_SETTINGS.forEach { (key, value) -> managed[key] = value }
         managed["editor.fontSize"] = JsonPrimitive(fontSize)
         managed["terminal.integrated.fontSize"] = JsonPrimitive(fontSize)
         managed.putAll(profile.extensionSettings)
-        return Jsonc.write(JsonObject(current + managed))
+        if (careful) managed.putAll(profile.carefulSettings)
+        // Back on the owner's own code, a careful value PocketIDE set goes; any other value stays.
+        val kept = if (careful) current else current.filterNot { (key, value) -> profile.carefulSettings[key] == value }
+        return Jsonc.write(JsonObject(kept + managed))
     }
 
     /**
@@ -103,9 +109,16 @@ internal object ConfigFiles {
      * sign-in (proot has no keyring), the notify program, and the MCP servers ([servers], a null
      * one removed). The sandbox is set only when the owner has not chosen one: Codex's Linux
      * sandbox needs user namespaces, which proot does not give, so the room is the boundary.
+     * With [careful] (someone else's code) Codex asks before it runs commands (approval on request);
+     * back on the owner's own code that value goes again, and any other the owner chose stays.
      */
-    fun codexConfig(existing: String?, servers: Map<String, McpServer?>, notify: List<String>): String {
+    fun codexConfig(existing: String?, servers: Map<String, McpServer?>, notify: List<String>, careful: Boolean = false): String {
         val toml = TomlDocument(existing.orEmpty())
+        if (careful) {
+            toml.setTopLevel(CODEX_APPROVAL, CODEX_CAREFUL_APPROVAL)
+        } else if (toml.topLevelValue(CODEX_APPROVAL) == CODEX_CAREFUL_APPROVAL) {
+            toml.removeTopLevel(CODEX_APPROVAL)
+        }
         toml.setTopLevel("check_for_update_on_startup", "false")
         toml.setTopLevel("cli_auth_credentials_store", TomlDocument.string("file"))
         toml.setTopLevel("notify", TomlDocument.array(notify))
@@ -187,6 +200,9 @@ internal object ConfigFiles {
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
     const val CLAUDE_KEEP_DAYS = 3650
+
+    private const val CODEX_APPROVAL = "approval_policy"
+    private val CODEX_CAREFUL_APPROVAL = TomlDocument.string("on-request")
 
     /** Off: its self-updater (PocketIDE updates the extension) and error reports. */
     private val CLAUDE_ENV = mapOf(

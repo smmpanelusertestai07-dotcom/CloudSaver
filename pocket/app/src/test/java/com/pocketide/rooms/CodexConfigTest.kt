@@ -105,6 +105,25 @@ class CodexConfigTest {
         assertTrue(text.contains("\"--no-usage-statistics\""))
     }
 
+    @Test fun `someone else's code makes Codex ask first, and only that value is taken back`() {
+        val careful = ConfigFiles.codexConfig(null, servers, notify, careful = true)
+        assertTrue(careful, careful.startsWith("approval_policy = \"on-request\"\n"))
+        assertEquals(write(null), ConfigFiles.codexConfig(careful, servers, notify, careful = false))
+
+        val owner = "approval_policy = \"never\" # mine\n"
+        assertTrue(write(owner).startsWith(owner))
+        assertTrue(ConfigFiles.codexConfig(owner, servers, notify, careful = true).startsWith("approval_policy = \"on-request\"\n"))
+    }
+
+    @Test fun `a top-level value is read as written, without its comment`() {
+        val toml = TomlDocument("a = \"x # y\" # note\nb = 3 # count\n[t]\na = 1\n")
+        assertEquals("\"x # y\"", toml.topLevelValue("a"))
+        assertEquals("3", toml.topLevelValue("b"))
+        assertEquals(null, toml.topLevelValue("c"))
+        toml.removeTopLevel("a")
+        assertEquals("b = 3 # count\n[t]\na = 1\n", toml.text())
+    }
+
     @Test fun `strings are escaped`() {
         assertEquals("\"a\\\"b\\\\c\\nd\"", TomlDocument.string("a\"b\\c\nd"))
         assertEquals("\"has space\"", TomlDocument.key("has space"))

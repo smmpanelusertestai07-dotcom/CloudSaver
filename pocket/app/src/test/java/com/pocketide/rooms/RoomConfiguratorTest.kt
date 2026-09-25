@@ -1,5 +1,6 @@
 package com.pocketide.rooms
 
+import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AppDirs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -48,6 +49,7 @@ class RoomConfiguratorTest {
             assertTrue(name, File(tools, name).isFile)
         }
         assertTrue(File(tools, "bin/xdg-open").canExecute())
+        assertEquals("the bridge's own xdg-open", PhoneGuestTools.xdgOpen, File(tools, "bin/xdg-open").readText())
         assertFalse(configurator.browserInstalled())
         File(dirs.rootfs, "opt/pocketide/browser").mkdirs()
         File(dirs.rootfs, "opt/pocketide/browser/installed.json").writeText("{}")

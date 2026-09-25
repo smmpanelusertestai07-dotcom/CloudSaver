@@ -54,7 +54,10 @@ interface Rooms {
     /** Why each room last stopped, keyed by agent id. Cleared when the room starts again. */
     val stops: StateFlow<Map<String, RoomStop>> get() = NO_STOPS
 
-    /** When each running room goes to sleep if nothing happens in it (UTC epoch ms), keyed by agent id. */
+    /**
+     * When each running room goes to sleep if nothing happens in it (UTC epoch ms), keyed by agent
+     * id; the earliest is the most idle room. Rooms that never sleep are left out.
+     */
     val sleepsAt: StateFlow<Map<String, Long>> get() = NO_TIMES
 
     /** Opens (starting if needed) the agent's room on this session's worktree. */
@@ -84,7 +87,29 @@ interface Rooms {
 
     /** The room's last output lines, with secrets removed, for diagnostics. */
     fun recentOutput(agentId: String): List<String> = emptyList()
+
+    /**
+     * Linux processes of each running room (its engine, everything under it, and its terminals),
+     * keyed by agent id, for Android's phantom-process budget. Measured about once a minute.
+     */
+    val processes: StateFlow<Map<String, Int>> get() = NO_COUNTS
+
+    /**
+     * [open], then hands [firstPrompt] to the agent's composer (not sent), when the agent can take
+     * one ([takesPrompts]): a hand-off gives the new agent its note this way.
+     */
+    suspend fun open(agentId: String, sessionId: String, firstPrompt: String?): RoomState = open(agentId, sessionId)
+
+    /** True when [open] can hand this agent a first prompt; otherwise the screen offers to copy it. */
+    fun takesPrompts(agentId: String): Boolean = false
+
+    /**
+     * For "Delete everything": stops every room, then runs each signed-in agent's own sign-out in
+     * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
+     */
+    suspend fun signOutAll(): List<String> = emptyList()
 }
 
 private val NO_STOPS: StateFlow<Map<String, RoomStop>> = MutableStateFlow<Map<String, RoomStop>>(emptyMap()).asStateFlow()
 private val NO_TIMES: StateFlow<Map<String, Long>> = MutableStateFlow<Map<String, Long>>(emptyMap()).asStateFlow()
+private val NO_COUNTS: StateFlow<Map<String, Int>> = MutableStateFlow<Map<String, Int>>(emptyMap()).asStateFlow()

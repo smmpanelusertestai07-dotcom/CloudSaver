@@ -31,6 +31,13 @@ internal data class RoomProfile(
     val viewTypes: List<String> = emptyList(),
     /** The extension's own settings, written into the room's code-server user settings. */
     val extensionSettings: Map<String, JsonElement> = emptyMap(),
+    /**
+     * Settings that make the agent ask before it runs anything, set while the room works on
+     * someone else's code and taken out again (when still these values) on the owner's own.
+     */
+    val carefulSettings: Map<String, JsonElement> = emptyMap(),
+    /** The extension's command that opens the agent with a prompt: (session id, prompt). */
+    val promptCommand: String? = null,
     /** The user-level instruction files the agent reads; PocketIDE's rules go into each. */
     val instructionFiles: List<String> = emptyList(),
 )
@@ -64,6 +71,8 @@ internal object RoomProfiles {
                 "claudeCode.lockEditorGroups" to JsonPrimitive(false),
                 "claudeCode.hideOnboarding" to JsonPrimitive(true),
             ),
+            carefulSettings = mapOf("claudeCode.initialPermissionMode" to JsonPrimitive("default")),
+            promptCommand = "claude-vscode.primaryEditor.open",
             instructionFiles = listOf(".claude/CLAUDE.md"),
         )
         CODEX -> RoomProfile(

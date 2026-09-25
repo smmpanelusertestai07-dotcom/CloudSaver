@@ -14,6 +14,7 @@ import com.pocketide.model.Guard
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
+import com.pocketide.projects.ProjectTrust
 import com.pocketide.sessions.PutOnMainResult
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
@@ -37,9 +38,29 @@ internal interface RoomsEnv {
     fun sessions(): List<SessionRecord>
     fun activeSession(agentId: String): String?
     fun project(projectId: String): Project?
-    suspend fun variables(projectId: String): Map<String, String>
+
+    /** The project's Variables shared by every room, plus those of [agentId]'s room alone. */
+    suspend fun variables(projectId: String, agentId: String): Map<String, String>
+
+    /** Whose code the project is: agents on someone else's code start careful (ask before running). */
+    fun trust(projectId: String): ProjectTrust
 
     fun canStartAgent(agentId: String): Decision
+
+    /** Closes idle rooms that stand in the way of [agentId] (never a busy one), then answers [canStartAgent]. */
+    suspend fun makeRoomFor(agentId: String): Decision
+
+    /** Tells the limiter a room's work ([what]: "turn", "command", "build", "write") started or ended. */
+    fun setBusy(agentId: String, what: String, busy: Boolean)
+
+    /** Tells the limiter the room was used (the owner, or its programs): its idle time starts over. */
+    fun used(agentId: String)
+
+    /** Starts the service that keeps the computer running while rooms run. False when Android refused. */
+    fun keepEngineAlive(): Boolean
+
+    /** Minutes without work after which a room sleeps; 0 or less keeps rooms awake. */
+    fun idleSleepMinutes(): Int
     fun canStartHeavyWork(what: String): Decision
     fun allowDownload(bytes: Long, kind: String): Decision
     fun recordDownload(bytes: Long, kind: String)

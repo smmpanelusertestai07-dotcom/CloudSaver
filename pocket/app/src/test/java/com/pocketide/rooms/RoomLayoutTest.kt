@@ -1,7 +1,9 @@
 package com.pocketide.rooms
 
+import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.LinuxCommand
+import com.pocketide.linux.ProotCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -68,7 +70,8 @@ class RoomLayoutTest {
         ) { dropped += it }
         assertEquals("claude", env["POCKETIDE_ROOM"])
         assertEquals("/work", env["POCKETIDE_MEDIA_ROOT"])
-        assertEquals(RoomLayout.XDG_OPEN, env["BROWSER"])
+        assertEquals(PhoneGuestTools.XDG_OPEN, env["BROWSER"])
+        assertTrue("the phone's xdg-open comes first", ProotCommand.GUEST_PATH.startsWith(PhoneGuestTools.BIN_DIR + ":"))
         assertEquals("https://staging.example", env["API_BASE_URL"])
         assertEquals("--max-old-space-size=512", env["NODE_OPTIONS"])
         assertEquals(

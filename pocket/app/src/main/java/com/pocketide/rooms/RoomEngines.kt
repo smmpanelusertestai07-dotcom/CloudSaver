@@ -2,15 +2,18 @@ package com.pocketide.rooms
 
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.LinuxCommand
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.security.MessageDigest
 
 /**
  * The command lines of a room's programs, with exactly the room's binds and environment.
  *
- * A launch's secret never goes in arguments or in the environment: proot passes the environment
- * to `env` as arguments, and any program of this app can read another's command line. It goes in
- * a file in the room's bridge folder (written owner-only by the app just before the start), which
- * the program reads at start-up and which is deleted right after.
+ * A launch's secret never goes in arguments or in the environment: every program of this app,
+ * those of the other rooms included, can read another's /proc/<pid>/cmdline and environ. It goes
+ * in a file in the room's bridge folder (written owner-only by the app just before the start),
+ * which the program reads at start-up and which is deleted right after.
  */
 internal object RoomEngines {
     const val CODE_SERVER = "/opt/code-server/bin/code-server"
@@ -59,6 +62,8 @@ internal object RoomEngines {
                 "POCKETIDE_OPEN_COMMAND" to profile.openCommand.orEmpty(),
                 "POCKETIDE_OPEN_PLACE" to profile.place.word,
                 "POCKETIDE_VIEW_TYPES" to profile.viewTypes.joinToString(","),
+                "POCKETIDE_PROMPT_COMMAND" to profile.promptCommand.orEmpty(),
+                "POCKETIDE_PROMPT_DIR" to AppDirs.GUEST_BRIDGE,
             ),
             workDir = guestWorktree,
         )
@@ -67,8 +72,19 @@ internal object RoomEngines {
     fun sessionCookie(secret: String): String = "$SESSION_COOKIE=${sha256Hex(secret)}"
 
     /**
+     * A first prompt for the room's agent, relative to the room's bridge folder: the companion
+     * picks it up, deletes it and opens the agent with it (in its composer, not sent).
+     */
+    fun promptFile(id: String) = ".prompt-$id.json"
+
+    fun promptRequest(prompt: String): String =
+        Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("prompt" to JsonPrimitive(prompt))))
+
+    /**
      * Antigravity's hub (agy) on [port] for the session's worktree, as its VS Code extension starts
-     * it, with agy's own self-updater off (PocketIDE installs and checks agy).
+     * it, with agy's own self-updater off (PocketIDE installs and checks agy). The extension also
+     * passes a CSRF token, but agy takes it only as an argument, where every room could read it:
+     * none is given, and the WebView reaches the hub only through the bridge's per-launch cookie.
      */
     fun hub(dirs: AppDirs, profile: RoomProfile, guestWorktree: String, port: Int, environment: Map<String, String>): LinuxCommand =
         LinuxCommand(

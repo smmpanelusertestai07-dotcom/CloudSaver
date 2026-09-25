@@ -12,6 +12,7 @@ import com.pocketide.AppGraph
 import com.pocketide.R
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Channels
+import com.pocketide.limiter.EngineService
 import com.pocketide.model.Project
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -40,8 +41,14 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
     override fun sessions() = graph.sessions.all.value
     override fun activeSession(agentId: String) = graph.sessions.activeSession(agentId)
     override fun project(projectId: String) = graph.projects.all.value.firstOrNull { it.id == projectId }
-    override suspend fun variables(projectId: String) = graph.secrets.variablesFor(projectId)
+    override suspend fun variables(projectId: String, agentId: String) = graph.secrets.variablesFor(projectId, agentId)
+    override fun trust(projectId: String) = graph.projects.trustOf(projectId)
     override fun canStartAgent(agentId: String) = graph.limiter.canStartAgent(agentId)
+    override suspend fun makeRoomFor(agentId: String) = graph.limiter.makeRoomFor(agentId)
+    override fun setBusy(agentId: String, what: String, busy: Boolean) = graph.limiter.setBusy(agentId, what, busy)
+    override fun used(agentId: String) = graph.limiter.touch(agentId)
+    override fun keepEngineAlive() = EngineService.start(graph.context)
+    override fun idleSleepMinutes() = ROOM_IDLE_MINUTES
     override fun canStartHeavyWork(what: String) = graph.limiter.canStartHeavyWork(what)
     override fun allowDownload(bytes: Long, kind: String) = graph.dataBudget.allow(bytes, kind, big = true)
     override fun recordDownload(bytes: Long, kind: String) = graph.dataBudget.record(bytes, kind)
@@ -97,6 +104,9 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
         const val MIN_FONT_SIZE = 12
         const val MAX_FONT_SIZE = 24
         const val IDENTITY_TIMEOUT_MS = 5_000L
+
+        /** Fixed until Settings offers the owner a choice (Off, 15, 30 or 60 minutes). */
+        const val ROOM_IDLE_MINUTES = 15
     }
 }
 

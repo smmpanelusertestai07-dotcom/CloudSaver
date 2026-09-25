@@ -18,6 +18,7 @@ import com.pocketide.model.Guard
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
+import com.pocketide.projects.ProjectTrust
 import com.pocketide.sessions.PutOnMainResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +29,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -204,6 +207,74 @@ class RoomManagerTest {
         assertFalse(rooms.states.value.containsKey("claude"))
     }
 
+    @Test fun `a new room has the limiter make room first, starts the engine service and counts its processes`() = runBlocking {
+        rooms.open("claude", "nope")
+        assertTrue("no room is closed for a session that cannot open", env.madeRoomFor.isEmpty())
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        rooms.open("claude", "s2")
+        assertEquals(listOf("claude"), env.madeRoomFor)
+        assertEquals(1, env.engineKeptAlive)
+        assertEquals(mapOf("claude" to 3), rooms.processes.value)
+        rooms.stop("claude")
+        assertEquals(emptyMap<String, Int>(), rooms.processes.value)
+    }
+
+    @Test fun `someone else's code starts careful, and the owner's own code as before`() = runBlocking {
+        File(dirs.rootfs, BrowserTools.INSTALLED.removePrefix("/")).apply { parentFile?.mkdirs() }.writeText("{}")
+        env.trust["octo/app"] = ProjectTrust.SOMEONE_ELSES
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        val settings = File(dirs.roomHome("claude"), RoomConfigurator.CODE_SERVER_SETTINGS)
+        assertEquals("default", Jsonc.parseObject(settings.readText())!!["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, mcpEntries(env.computer.commands.last())["playwright"])
+        val browser = env.phone.handlers["mcp"]!!("claude", buildJsonObject {
+            put("tool", "install_browser")
+            put("cwd", "/work/octo__app/s1")
+        })
+        assertTrue(browser.jsonObject["text"]!!.jsonPrimitive.content.contains("stays off"))
+
+        rooms.stop("claude")
+        env.trust["octo/app"] = ProjectTrust.YOURS
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        assertFalse(Jsonc.parseObject(settings.readText())!!.containsKey("claudeCode.initialPermissionMode"))
+        assertTrue(mcpEntries(env.computer.commands.last())["playwright"] is JsonObject)
+    }
+
+    @Test fun `a first prompt goes to Claude's companion and nowhere else`() = runBlocking {
+        assertTrue(rooms.takesPrompts("claude"))
+        assertFalse(rooms.takesPrompts("codex"))
+        assertFalse(rooms.takesPrompts("antigravity"))
+        assertTrue(rooms.open("claude", "s1", "Carry on with the login screen.") is RoomState.Running)
+        val drop = dirs.roomBridge("claude").listFiles().orEmpty().single { it.name.startsWith(".prompt-") }
+        assertTrue(drop.name, Regex("""\.prompt-[0-9a-f]{16}\.json""").matches(drop.name))
+        assertEquals("Carry on with the login screen.", Json.parseToJsonElement(drop.readText()).jsonObject["prompt"]!!.jsonPrimitive.content)
+        val command = env.computer.commands.single()
+        assertEquals("claude-vscode.primaryEditor.open", command.env["POCKETIDE_PROMPT_COMMAND"])
+        assertEquals(AppDirs.GUEST_BRIDGE, command.env["POCKETIDE_PROMPT_DIR"])
+    }
+
+    @Test fun `writes the agent asks for keep its room busy while they run`() = runBlocking {
+        env.phone.handlers["mcp"]!!("claude", buildJsonObject {
+            put("tool", "put_on_main")
+            put("cwd", "/work/octo__app/s1")
+        })
+        assertEquals(listOf("claude|write|true", "claude|write|false"), env.busyReports)
+    }
+
+    @Test fun `signing out runs each signed-in agent's own CLI in its room`() = runBlocking {
+        File(dirs.roomHome("claude"), ".claude").mkdirs()
+        File(dirs.roomHome("claude"), ".claude/.credentials.json").writeText("{}")
+        rooms.open("claude", "s1")
+        assertEquals(listOf("Claude Code signed out."), rooms.signOutAll())
+        assertEquals(RoomState.Stopped, rooms.states.value["claude"])
+        val signOut = env.computer.ran.single()
+        assertTrue(signOut.argv.first().endsWith("/anthropic.claude-code-2.1.281-linux-arm64/resources/native-binary/claude"))
+        assertEquals(listOf("auth", "logout"), signOut.argv.drop(1))
+        assertEquals(RoomLayout.binds(dirs, "claude"), signOut.binds)
+    }
+
+    private fun mcpEntries(command: LinuxCommand): JsonObject =
+        Json.parseToJsonElement(command.env.getValue("POCKETIDE_CLAUDE_MCP")).jsonObject
+
     private fun status(port: Int, secret: String?): Int {
         val connection = URL("http://127.0.0.1:$port/").openConnection() as HttpURLConnection
         if (secret != null) connection.setRequestProperty("X-PocketIDE-Secret", secret)
@@ -263,7 +334,14 @@ class RoomManagerTest {
             return File(dirs.roomBridge(agent), guest.removePrefix("${AppDirs.GUEST_BRIDGE}/"))
         }
 
-        override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int = 0
+        val ran = CopyOnWriteArrayList<LinuxCommand>()
+
+        override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int {
+            ran += command
+            return 0
+        }
+
+        override fun liveProcesses(process: Process) = if (process.isAlive) 3 else 0
         override fun stop(process: Process) {
             stopped += process
             process.destroyForcibly()
@@ -335,6 +413,10 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override val assets: RoomAssets = FolderRoomAssets()
         var decision = Decision.YES
         val notices = CopyOnWriteArrayList<String>()
+        val trust = ConcurrentHashMap<String, ProjectTrust>()
+        val madeRoomFor = CopyOnWriteArrayList<String>()
+        val busyReports = CopyOnWriteArrayList<String>()
+        @Volatile var engineKeptAlive = 0
 
         override fun now() = System.currentTimeMillis()
         override fun agentInfo(agentId: String): AgentInfo? = null
@@ -342,8 +424,22 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override fun sessions() = all
         override fun activeSession(agentId: String): String? = null
         override fun project(projectId: String) = Project(id = projectId, owner = "octo", repo = "app", addedAt = 0, lastActivityAt = 0)
-        override suspend fun variables(projectId: String) = mapOf("API_URL" to "https://staging.example")
+        override suspend fun variables(projectId: String, agentId: String) = mapOf("API_URL" to "https://staging.example")
+        override fun trust(projectId: String) = trust[projectId] ?: ProjectTrust.YOURS
         override fun canStartAgent(agentId: String) = decision
+        override suspend fun makeRoomFor(agentId: String): Decision {
+            madeRoomFor += agentId
+            return decision
+        }
+        override fun setBusy(agentId: String, what: String, busy: Boolean) {
+            busyReports += "$agentId|$what|$busy"
+        }
+        override fun used(agentId: String) = Unit
+        override fun keepEngineAlive(): Boolean {
+            engineKeptAlive++
+            return true
+        }
+        override fun idleSleepMinutes() = 15
         override fun canStartHeavyWork(what: String) = Decision.YES
         override fun allowDownload(bytes: Long, kind: String) = Decision.YES
         override fun recordDownload(bytes: Long, kind: String) = Unit

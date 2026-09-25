@@ -1,4 +1,5 @@
-"""room.py, xdg-open, notify.py and the browser installer, run as the room runs them."""
+"""room.py, notify.py and the browser installer, run as the room runs them. The room's
+xdg-open is the bridge module's (PhoneGuestTools), tested with the bridge."""
 
 import importlib.util
 import io
@@ -12,7 +13,7 @@ import tarfile
 import tempfile
 import unittest
 
-from support import FakePhone, script
+from tests.rooms_support import FakePhone, script
 
 
 def run(name, args, home=None, env=None, stdin=None):
@@ -104,18 +105,6 @@ class PhoneClientsTest(unittest.TestCase):
     def tearDown(self):
         self.phone.close()
 
-    def test_xdg_open_hands_web_addresses_to_the_phone(self):
-        result = run("xdg-open", ["https://accounts.google.com/o/oauth2/auth?x=1"], env=self.env)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual({"url": "https://accounts.google.com/o/oauth2/auth?x=1"}, self.phone.requests[-1]["args"])
-        self.assertEqual("open_url", self.phone.requests[-1]["op"])
-
-    def test_xdg_open_refuses_other_schemes(self):
-        for target in ["file:///etc/passwd", "intent://x", "javascript:alert(1)"]:
-            result = run("xdg-open", [target], env=self.env)
-            self.assertEqual(1, result.returncode, target)
-        self.assertEqual([], self.phone.requests)
-
     def test_notify_reads_claude_hooks_and_codex_events(self):
         run("notify.py", ["claude"], env=self.env, stdin=json.dumps({"hook_event_name": "Notification", "message": "Claude needs\nyour permission"}).encode())
         self.assertEqual("needs_you", self.phone.requests[-1]["args"]["kind"])
@@ -137,7 +126,13 @@ class BrowserInstallerTest(unittest.TestCase):
     def setUpClass(cls):
         spec = importlib.util.spec_from_file_location("install", script(os.path.join("browser", "install.py")))
         cls.install = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.install)
+        # No __pycache__ beside the asset: the build would ship it into the computer.
+        writes_bytecode = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            spec.loader.exec_module(cls.install)
+        finally:
+            sys.dont_write_bytecode = writes_bytecode
 
     def write_lock(self, packages):
         folder = tempfile.mkdtemp(prefix="lock-")

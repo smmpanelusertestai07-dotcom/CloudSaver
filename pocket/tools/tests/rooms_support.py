@@ -1,4 +1,5 @@
-"""Helpers for the room script tests: where the scripts are, and a fake phone socket."""
+"""Helpers for the room script tests (assets/rooms, the Python the rooms run inside Linux):
+where the scripts are, and a fake phone socket."""
 
 import json
 import os
@@ -7,7 +8,7 @@ import tempfile
 import threading
 
 ASSETS = os.environ.get("ROOMS_ASSETS") or os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "..", "main", "assets", "rooms")
+    os.path.join(os.path.dirname(__file__), "..", "..", "app", "src", "main", "assets", "rooms")
 )
 
 

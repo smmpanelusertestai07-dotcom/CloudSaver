@@ -2,9 +2,13 @@
 //
 // Messages to the server are JSON text frames: {"t":"i","d":<typed text>} and
 // {"t":"r","c":<columns>,"r":<rows>}. The shell's output comes back as binary frames.
-// window.pocketKey(seq) is how the app's keyboard bar types keys the phone keyboard lacks.
+// The app calls three functions: window.pocketKey(seq) types keys the phone keyboard lacks,
+// window.pocketText() returns the text to copy, and window.pocketFontSize(px) sets the text size.
 (function () {
   'use strict';
+
+  var MIN_FONT = 10;
+  var MAX_FONT = 24;
 
   var LIGHT = {
     background: '#fdfcff', foreground: '#1a1c1e', cursor: '#1a1c1e', cursorAccent: '#fdfcff',
@@ -78,6 +82,26 @@
     if (typeof sequence !== 'string' || !sequence) return;
     send({ t: 'i', d: sequence });
     term.focus();
+  };
+
+  // The text for the app's Copy: the selection when there is one, else the scrollback and screen.
+  window.pocketText = function () {
+    if (term.hasSelection()) return term.getSelection();
+    var buffer = term.buffer.active;
+    var lines = [];
+    for (var i = 0; i < buffer.length; i++) {
+      var line = buffer.getLine(i);
+      lines.push(line ? line.translateToString(true) : '');
+    }
+    while (lines.length && !lines[lines.length - 1]) lines.pop();
+    return lines.join('\n');
+  };
+
+  window.pocketFontSize = function (px) {
+    var size = Math.round(Number(px));
+    if (!isFinite(size)) return;
+    term.options.fontSize = Math.min(MAX_FONT, Math.max(MIN_FONT, size));
+    resize();
   };
 
   notice.addEventListener('click', connect);

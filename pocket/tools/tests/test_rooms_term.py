@@ -12,7 +12,7 @@ import tempfile
 import time
 import unittest
 
-from support import script
+from tests.rooms_support import script
 
 SECRET = "a" * 64
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
