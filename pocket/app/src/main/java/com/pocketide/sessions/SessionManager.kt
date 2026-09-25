@@ -485,7 +485,8 @@ internal class SessionManager(
                 // One unreadable session must not stop the others; it is measured again next time.
             }
         }
-        removeOnceInDrive(leftovers)
+        // The sync engine may be busy with a long upload: the measures do not wait for it.
+        if (leftovers.isNotEmpty()) scope.launch { removeOnceInDrive(leftovers) }
         if (measured.isEmpty()) return
         records.update { list -> list.map { current -> measured[current.id]?.let { withMeasures(current, it) } ?: current } to Unit }
         measured.values.groupBy { it.projectId }.forEach { (projectId, list) ->
@@ -502,15 +503,15 @@ internal class SessionManager(
      * backed up has no copy in Drive to wait for.
      */
     private suspend fun removeOnceInDrive(deleted: List<SessionRecord>) {
-        if (deleted.isEmpty()) return
+        val backedUp = deleted.filter { it.backUp }.map { it.id }
         val waiting = try {
-            env.sync.queueNow(deleted.filter { it.backUp }.map { it.id })
+            if (backedUp.isEmpty()) emptySet() else env.sync.queueNow(backedUp)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (notNow: Exception) {
             return
         }
-        deleted.filter { !it.backUp || it.id !in waiting }.forEach { quietly { removePhoneCopy(it) } }
+        deleted.filter { it.id !in waiting }.forEach { quietly { removePhoneCopy(it) } }
     }
 
     /**

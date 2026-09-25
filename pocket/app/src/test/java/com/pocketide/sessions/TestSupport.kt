@@ -276,9 +276,9 @@ class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     var eraseFails = false
     var queueFails = false
     /** Sessions with bytes Drive has not confirmed; an upload that does not fail takes them there. */
-    val notInDrive = mutableSetOf<String>()
+    val notInDrive: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     /** What each [queueNow] was asked for, in order. */
-    val queueRequests = mutableListOf<List<String>>()
+    val queueRequests: MutableList<List<String>> = java.util.Collections.synchronizedList(mutableListOf())
 
     override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Idle)
     override val waiting: StateFlow<List<PendingUpload>> = MutableStateFlow(emptyList())

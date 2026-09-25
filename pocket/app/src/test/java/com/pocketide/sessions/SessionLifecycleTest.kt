@@ -168,12 +168,12 @@ class SessionLifecycleTest {
         assertTrue(media.exists())
 
         sessions.refresh()
+        waitFor("the leftover check") { rig.sync.queueRequests.size >= 2 }
         assertTrue("still not in Drive", transcript.exists())
 
         rig.sync.notInDrive.clear()
         sessions.refresh()
-        assertFalse(transcript.exists())
-        assertFalse(media.exists())
+        waitFor("the phone copy to go") { !transcript.exists() && !media.exists() }
     }
 
     @Test
@@ -201,7 +201,7 @@ class SessionLifecycleTest {
 
         rig.sync.queueFails = false
         sessions.refresh()
-        assertFalse(transcript.exists())
+        waitFor("the phone copy to go") { !transcript.exists() }
     }
 
     @Test
@@ -230,7 +230,7 @@ class SessionLifecycleTest {
 
         rig.sync.notInDrive.clear()
         sessions.refresh()
-        assertFalse(transcript.exists())
+        waitFor("the phone copy to go") { !transcript.exists() }
     }
 
     @Test
