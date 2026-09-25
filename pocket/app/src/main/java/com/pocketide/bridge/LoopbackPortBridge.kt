@@ -37,19 +37,26 @@ internal data class BridgeLimits(
      */
     val stallNanos: Long get() = idleTimeoutMs * 2 * 1_000_000L
 
-    /** Two blocking directions per connection, plus one accept loop per exposure. */
-    val threads: Int get() = maxConnections * 2 + maxExposures
+    /** Two blocking directions per connection, plus two accept loops (IPv4, IPv6) per exposure. */
+    val threads: Int get() = maxConnections * 2 + maxExposures * 2
 }
 
 /**
  * [PortBridge] on plain sockets: one listener on 127.0.0.1 per exposed port, each with its own
  * token. Blocking IO runs on a bounded view of [Dispatchers.IO] reserved for the bridge, so a
  * WebSocket that stays open for hours never takes a thread from the rest of the app.
+ *
+ * The same port is held on the IPv6 loopback too. Chromium resolves "localhost" and
+ * "<n>.localhost" to [::1] first; were that port free there, another app could listen on it and
+ * receive an entry URL, token included, meant for the bridge.
  */
 internal class LoopbackPortBridge(
     private val limits: BridgeLimits = BridgeLimits(),
     parent: Job? = null,
     private val random: SecureRandom = SecureRandom(),
+    /** The second address each bridge port is held on; tests use another IPv4 loopback. */
+    private val mirrorLoopback: InetAddress = LOOPBACK_V6,
+    private val listenerScan: ListenerScan = ListenerScan(),
 ) : PortBridge, BridgeDirectory {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(
@@ -63,8 +70,11 @@ internal class LoopbackPortBridge(
     private val openConnections = AtomicInteger()
     private var reaper: Job? = null
     private var shutDown = false
+    private val hasMirror: Boolean by lazy {
+        bound(mirrorLoopback, 0)?.also(::closeQuietly) != null
+    }
 
-    private class Exposure(val target: BridgeTarget, purpose: String, val server: ServerSocket) {
+    private class Exposure(val target: BridgeTarget, purpose: String, val servers: List<ServerSocket>) {
         val published = BridgedPort(
             targetPort = target.targetPort,
             bridgePort = target.bridgePort,
@@ -97,7 +107,7 @@ internal class LoopbackPortBridge(
             replaced = current?.also { byBridge.remove(it.target.bridgePort) }
             byTarget[port] = exposure
             byBridge[exposure.target.bridgePort] = exposure
-            scope.launch { acceptLoop(exposure) }
+            exposure.servers.forEach { server -> scope.launch { acceptLoop(exposure, server) } }
             if (reaper == null) reaper = scope.launch { reapStalled() }
         }
         replaced?.let(::close)
@@ -128,6 +138,11 @@ internal class LoopbackPortBridge(
         }
     }
 
+    override suspend fun listeners(candidates: Collection<Int>): List<PortListener> {
+        val own = liveBridgePorts()
+        return listenerScan.scan(candidates.filter { it !in own }).filter { it.port !in own }
+    }
+
     override fun shutdown() {
         val all = synchronized(lock) {
             shutDown = true
@@ -145,21 +160,45 @@ internal class LoopbackPortBridge(
     override fun liveBridgePorts(): Set<Int> = byBridge.keys.toSet()
 
     private fun listen(port: Int, purpose: String, inject: List<Pair<String, String>>): Exposure {
-        val server = ServerSocket()
-        try {
-            server.bind(InetSocketAddress(LOOPBACK, 0), BACKLOG)
-        } catch (e: IOException) {
-            closeQuietly(server)
-            throw IllegalStateException("The bridge could not open a port on this phone.", e)
+        repeat(BIND_ATTEMPTS) {
+            val servers = bindBothLoopbacks()
+            if (servers != null) {
+                val target = BridgeTarget(port, servers.first().localPort, BridgeAccess.newToken(random), inject)
+                return Exposure(target, purpose, servers)
+            }
         }
-        val target = BridgeTarget(port, server.localPort, BridgeAccess.newToken(random), inject)
-        return Exposure(target, purpose, server)
+        throw IllegalStateException("The bridge could not open a port on this phone.")
     }
 
-    private fun acceptLoop(exposure: Exposure) {
+    /**
+     * A free port on 127.0.0.1, held on [::1] as well; null when another app already has that
+     * port on [::1] (try another). A phone without an IPv6 loopback gets the IPv4 one alone:
+     * nobody can listen on an address the phone does not have.
+     */
+    private fun bindBothLoopbacks(): List<ServerSocket>? {
+        val v4 = bound(LOOPBACK_V4, 0) ?: throw IllegalStateException("The bridge could not open a port on this phone.")
+        if (!hasMirror) return listOf(v4)
+        val v6 = bound(mirrorLoopback, v4.localPort)
+        if (v6 != null) return listOf(v4, v6)
+        closeQuietly(v4)
+        return null
+    }
+
+    private fun bound(address: InetAddress, port: Int): ServerSocket? {
+        val server = ServerSocket()
+        return try {
+            server.bind(InetSocketAddress(address, port), BACKLOG)
+            server
+        } catch (e: IOException) {
+            closeQuietly(server)
+            null
+        }
+    }
+
+    private fun acceptLoop(exposure: Exposure, server: ServerSocket) {
         while (!exposure.closed) {
             val socket = try {
-                exposure.server.accept()
+                server.accept()
             } catch (e: IOException) {
                 return
             }
@@ -212,7 +251,7 @@ internal class LoopbackPortBridge(
 
     private fun close(exposure: Exposure) {
         exposure.closed = true
-        closeQuietly(exposure.server)
+        exposure.servers.forEach(::closeQuietly)
         exposure.live.forEach(BridgeConnection::close)
     }
 
@@ -226,7 +265,9 @@ internal class LoopbackPortBridge(
     private companion object {
         const val TAG = "PocketBridge"
         const val BACKLOG = 50
-        val LOOPBACK: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        const val BIND_ATTEMPTS = 8
+        val LOOPBACK_V4: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        val LOOPBACK_V6: InetAddress = InetAddress.getByAddress(ByteArray(16).also { it[15] = 1 })
         val RESERVED_HEADERS = setOf(
             "host", "origin", "connection", "upgrade", "content-length", "transfer-encoding",
             "keep-alive", "proxy-connection", "te", "trailer",

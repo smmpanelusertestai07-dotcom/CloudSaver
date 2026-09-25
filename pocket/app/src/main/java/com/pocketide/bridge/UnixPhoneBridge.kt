@@ -87,6 +87,11 @@ internal class UnixPhoneBridge(
             staged.delete()
             socketFile.parentFile?.mkdirs()
             try {
+                // Rooms connect through proot, which hands the kernel this host path; a longer
+                // one does not fit in a Unix socket address, and every connect would fail.
+                if (socketFile.path.toByteArray(Charsets.UTF_8).size > MAX_SOCKET_PATH) {
+                    throw IOException("The path of the room's phone socket is too long: ${socketFile.path}")
+                }
                 bound.bind(LocalSocketAddress(staged.path, LocalSocketAddress.Namespace.FILESYSTEM))
                 val listening = LocalServerSocket(bound.fileDescriptor)
                 server = listening
@@ -192,6 +197,9 @@ internal class UnixPhoneBridge(
         const val STAGING_DIR = "bridge-staging"
         const val STAGED_NAME = "phone.sock"
         const val OWNER_READ_WRITE = 0x180 // 0600
+
+        /** sun_path holds 108 bytes, the closing NUL included. */
+        const val MAX_SOCKET_PATH = 107
 
         /** Built-in ids and Open VSX ids ("<namespace>.<name>"): one safe path segment. */
         val AGENT_ID = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
