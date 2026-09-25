@@ -148,6 +148,23 @@ class TemplatesGate(TreeTest):
         self.edit(self.NAME, "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", "actions/checkout@v7")
         self.assertFailsWith(templates.check(self.root), "pinned to 'v7'")
 
+    def test_secrets_in_the_job_that_runs_the_repositorys_code_fail(self):
+        # The old release template: gradlew first, then a signing step in the same job.
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n"
+                  "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
+        self.assertFailsWith(templates.check(self.root), "job build reads Secrets and checks out the repository")
+
+    def test_secrets_in_a_job_of_their_own_pass(self):
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n"
+                  "  sign:\n    needs: build\n    runs-on: ubuntu-latest\n    steps:\n"
+                  "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
+        self.assertPasses(templates.check(self.root))
+
+    def test_the_real_templates_pass(self):
+        self.assertPasses(templates.check())
+
     def test_no_templates_fails_with_the_reason(self):
         (self.root / self.NAME).unlink()
         self.assertFailsWith(templates.check(self.root), "builds module ships them")

@@ -153,7 +153,7 @@ internal class GitHubBuilds(
         val logs = keepFailureLog(projectId, sessionId, runId)
         val artifacts = ports.gitHub.artifacts(project.owner, project.repo, runId)
         if (artifacts.isEmpty()) return logs
-        val live = artifacts.filterNot { it.expired }
+        val live = artifacts.filterNot { it.expired }.let(::withoutReplaced)
         if (live.isEmpty()) throw BuildsException("These results are no longer on GitHub. Run the build again.")
         ports.downloadRefusal(live.sumOf { it.sizeBytes })?.let { throw BuildsException(it) }
         val scratch = ports.scratch()
@@ -209,6 +209,15 @@ internal class GitHubBuilds(
         val ending = Ending(log?.runnerImage, failed, failed?.let { log?.tail?.let(::lastLines) })
         synchronized(endings) { endings[run.id] = ending }
         return ending
+    }
+
+    /**
+     * A template that signs in a job of its own uploads the unsigned build as `<name>-unsigned`
+     * and the signed one as `<name>`; when both are there, only the signed one is brought back.
+     */
+    private fun withoutReplaced(artifacts: List<RunArtifact>): List<RunArtifact> {
+        val names = artifacts.mapTo(HashSet()) { it.name }
+        return artifacts.filterNot { it.name.endsWith(UNSIGNED) && it.name.removeSuffix(UNSIGNED) in names }
     }
 
     /** Downloads one artifact, unpacks it safely and adds what Media shows; returns the stored paths. */
@@ -337,6 +346,7 @@ internal class GitHubBuilds(
 
     private companion object {
         const val FROM_ACTIONS = "actions"
+        const val UNSIGNED = "-unsigned"
         const val COMPLETED = "completed"
         const val SUCCESS = "success"
         val FAILED = setOf("failure", "timed_out", "startup_failure", "cancelled", "action_required")

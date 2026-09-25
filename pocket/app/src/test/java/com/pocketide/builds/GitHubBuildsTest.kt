@@ -337,6 +337,33 @@ class GitHubBuildsTest {
     }
 
     @Test
+    fun theSignedApksReplaceTheUnsignedOnes() = runTest {
+        ports.gitHub.artifactList = listOf(
+            RunArtifact(11, "pocketide-android-release-unsigned", 100, false, "u"),
+            RunArtifact(12, "pocketide-android-release-reports", 100, false, "u"),
+            RunArtifact(13, "pocketide-android-release", 100, false, "u"),
+        )
+        ports.gitHub.zips[11] = zipOf("app-release-unsigned.apk" to apk)
+        ports.gitHub.zips[12] = zipOf("app/lint/index.html" to "<!doctype html><p>ok".toByteArray())
+        ports.gitHub.zips[13] = zipOf("app-release.apk" to apk)
+
+        GitHubBuilds(ports).collect("alice/demo", "s1", 99)
+
+        assertEquals(listOf(12L, 13L), ports.gitHub.downloads)
+        assertEquals(listOf("android-release-reports-app-lint-index.html", "android-release-app-release.apk"), ports.media.added.map { it.name })
+    }
+
+    @Test
+    fun withoutTheSigningSecretsTheUnsignedApksComeBack() = runTest {
+        ports.gitHub.artifactList = listOf(RunArtifact(11, "pocketide-android-release-unsigned", 100, false, "u"))
+        ports.gitHub.zips[11] = zipOf("app-release-unsigned.apk" to apk)
+
+        GitHubBuilds(ports).collect("alice/demo", "s1", 99)
+
+        assertEquals(listOf("android-release-unsigned-app-release-unsigned.apk"), ports.media.added.map { it.name })
+    }
+
+    @Test
     fun expiredResultsAreExplained() = runTest {
         ports.gitHub.artifactList = listOf(RunArtifact(9, "pocketide-macos", 100, true, "u"))
         try {
