@@ -91,7 +91,7 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override fun scratchFile(): File = File(graph.dirs.downloads, "task-${UUID.randomUUID()}.txt")
 
     override fun notify(taskId: String, heading: String, text: String) =
-        BuildNotices.notify(graph.context, taskId.hashCode(), heading, text)
+        BuildNotices.taskEnded(graph.context, taskId, heading, text)
 
     override suspend fun recordRun(taskId: String, at: Long, sessionId: String) = schedules().recordRun(taskId, at, sessionId)
 
