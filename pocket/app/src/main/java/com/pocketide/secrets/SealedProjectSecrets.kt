@@ -27,8 +27,14 @@ internal data class StoredValue(
     val updatedAt: Long,
     val pushedToGitHub: Boolean = false,
     val agentId: String? = null,
+    /** When the owner removed it. The name stays without its value, so the removal reaches other phones. */
+    val removedAt: Long? = null,
 ) {
+    val live: Boolean get() = removedAt == null
+
     fun key() = Key(projectId, name)
+
+    fun removed(at: Long) = copy(value = "", updatedAt = at, pushedToGitHub = false, agentId = null, removedAt = at)
 
     fun describe() = ProjectValue(projectId, name, kind, updatedAt, pushedToGitHub, agentId)
 
@@ -67,7 +73,7 @@ internal class SealedProjectSecrets(
         SecretNames.require(name, kind)
         val stored = SecretNames.normalize(name)
         update { list ->
-            val old = list.firstOrNull { it.matches(projectId, stored) }
+            val old = list.firstOrNull { it.live && it.matches(projectId, stored) }
             val entry = StoredValue(
                 projectId = projectId,
                 name = stored,
@@ -83,15 +89,15 @@ internal class SealedProjectSecrets(
     }
 
     override suspend fun reveal(projectId: String?, name: String): CharArray? =
-        lock.withLock { read().firstOrNull { it.matches(projectId, name) }?.value?.toCharArray() }
+        lock.withLock { read().firstOrNull { it.live && it.matches(projectId, name) }?.value?.toCharArray() }
 
     override suspend fun remove(projectId: String?, name: String) {
-        update { list -> list.filterNot { it.matches(projectId, name) } }
+        update { list -> list.map { if (it.live && it.matches(projectId, name)) it.removed(clock.now()) else it } }
     }
 
     override suspend fun limitToRoom(projectId: String?, name: String, agentId: String?) {
         update { list ->
-            val entry = list.firstOrNull { it.matches(projectId, name) } ?: throw SecretsException("${name.trim()} is not saved any more.")
+            val entry = list.firstOrNull { it.live && it.matches(projectId, name) } ?: throw SecretsException("${name.trim()} is not saved any more.")
             if (entry.kind != SecretKind.VARIABLE) throw SecretsException("Only a Variable can be limited to one room. Secrets never reach a room.")
             list.map { if (it === entry) it.copy(agentId = agentId, updatedAt = clock.now()) else it }
         }
@@ -102,11 +108,12 @@ internal class SealedProjectSecrets(
     override suspend fun variablesFor(projectId: String, agentId: String): Map<String, String> = environment(projectId, agentId)
 
     override suspend fun allValues(): List<String> =
-        lock.withLock { read().map { it.value }.filter { it.isNotBlank() }.distinct() }
+        lock.withLock { read().filter { it.live }.map { it.value }.filter { it.isNotBlank() }.distinct() }
 
     override suspend fun pushToGitHub(projectId: String, name: String) {
         val entry = lock.withLock {
-            read().firstOrNull { it.matches(projectId, name) } ?: read().firstOrNull { it.matches(null, name) }
+            val live = read().filter { it.live }
+            live.firstOrNull { it.matches(projectId, name) } ?: live.firstOrNull { it.matches(null, name) }
         } ?: throw SecretsException("${name.trim()} is not saved any more.")
         if (entry.kind != SecretKind.SECRET) throw SecretsException("Only Secrets go to GitHub. A Variable stays in the room.")
         val bytes = entry.value.toByteArray(Charsets.UTF_8)
@@ -130,21 +137,46 @@ internal class SealedProjectSecrets(
     }
 
     override suspend fun importBlob(bytes: ByteArray) {
+        val valid = parse(bytes)
+        lock.withLock { write(valid) }
+    }
+
+    /**
+     * Value by value, the later change wins, a removal included. On the same instant a value wins
+     * over a removal and one already on GitHub over one that is not; then this phone's stays. A
+     * store that cannot be read here takes the vault's copy whole.
+     */
+    override suspend fun mergeBlob(bytes: ByteArray) {
+        val incoming = parse(bytes)
+        lock.withLock {
+            val local = try {
+                read()
+            } catch (_: SecretsException) {
+                emptyList()
+            }
+            write((local + incoming).groupBy { it.key() }.values.map { same -> same.reduce(::later) })
+        }
+    }
+
+    private fun later(mine: StoredValue, theirs: StoredValue): StoredValue =
+        maxOf(mine, theirs, compareBy<StoredValue>({ it.updatedAt }, { it.live }, { it.pushedToGitHub }))
+
+    /** The vault's copy with every name checked, one entry per name. */
+    private fun parse(bytes: ByteArray): List<StoredValue> {
         val incoming = try {
             AppJson.decodeFromString(LIST, bytes.toString(Charsets.UTF_8))
         } catch (e: IllegalArgumentException) {
             throw SecretsException("The saved Variables and Secrets could not be read.")
         }
-        val valid = incoming.filter { SecretNames.problem(it.name, it.kind) == null }
+        return incoming.filter { SecretNames.problem(it.name, it.kind) == null }
             .map { it.copy(name = SecretNames.normalize(it.name)) }
             .associateBy { it.key() }
             .values.toList()
-        lock.withLock { write(valid) }
     }
 
     private suspend fun environment(projectId: String, agentId: String?): Map<String, String> = lock.withLock {
         read()
-            .filter { it.kind == SecretKind.VARIABLE && (it.projectId == null || it.projectId == projectId) }
+            .filter { it.live && it.kind == SecretKind.VARIABLE && (it.projectId == null || it.projectId == projectId) }
             .filter { it.agentId == null || it.agentId == agentId }
             .groupBy { it.name }
             // The project's value replaces the global one; a room-only value replaces a shared one.
@@ -176,7 +208,7 @@ internal class SealedProjectSecrets(
     }
 
     private fun publish(list: List<StoredValue>) {
-        described.value = list.map { it.describe() }
+        described.value = list.filter { it.live }.map { it.describe() }
             .sortedWith(compareBy({ it.projectId ?: "" }, { it.kind }, { it.name }))
     }
 

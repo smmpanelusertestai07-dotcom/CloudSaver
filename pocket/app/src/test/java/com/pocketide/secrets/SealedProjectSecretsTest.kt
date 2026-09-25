@@ -161,6 +161,42 @@ class SealedProjectSecretsTest {
     }
 
     @Test
+    fun aRemovedValueLeavesOnlyItsNameSoTheRemovalReachesOtherPhones() = runTest {
+        val s = secrets()
+        s.set("alice/demo", "DEPLOY_TOKEN", SecretKind.SECRET, "s3cr3t-value-123".toCharArray())
+        now = 2_000L
+        s.remove("alice/demo", "deploy_token")
+
+        assertTrue(s.values.value.isEmpty())
+        assertNull(s.reveal("alice/demo", "DEPLOY_TOKEN"))
+        assertTrue(s.allValues().isEmpty())
+        val blob = s.exportBlob().toString(Charsets.UTF_8)
+        assertTrue(blob.contains("DEPLOY_TOKEN"))
+        assertFalse(blob.contains("s3cr3t"))
+    }
+
+    @Test
+    fun mergingKeepsEachPhonesLaterChangeValueByValue() = runTest {
+        val mine = secrets(temp.newFolder("mine"))
+        mine.set(null, "SHARED", SecretKind.VARIABLE, "old".toCharArray())
+        mine.set(null, "GONE", SecretKind.VARIABLE, "bye".toCharArray())
+        val theirs = secrets(temp.newFolder("theirs"))
+        theirs.importBlob(mine.exportBlob())
+        now = 2_000L
+        mine.set(null, "MINE", SecretKind.VARIABLE, "m".toCharArray())
+        theirs.set(null, "SHARED", SecretKind.VARIABLE, "new".toCharArray())
+        theirs.remove(null, "GONE")
+        theirs.set(null, "THEIRS", SecretKind.SECRET, "t".toCharArray())
+
+        mine.mergeBlob(theirs.exportBlob())
+
+        assertEquals(listOf("MINE", "SHARED", "THEIRS"), mine.values.value.map { it.name }.sorted())
+        assertArrayEquals("new".toCharArray(), mine.reveal(null, "SHARED"))
+        assertNull(mine.reveal(null, "GONE"))
+        assertArrayEquals("m".toCharArray(), mine.reveal(null, "MINE"))
+    }
+
+    @Test
     fun anEmptyPhoneDoesNotExportAndReplaceTheVault() = runTest {
         try {
             secrets().exportBlob()

@@ -2,6 +2,8 @@ package com.pocketide.sync
 
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
+import com.pocketide.core.SecretBox
+import com.pocketide.core.SecureStore
 import com.pocketide.core.Settings
 import com.pocketide.core.SettingsStore
 import com.pocketide.google.DriveAuthResult
@@ -15,7 +17,10 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.model.VaultIndex
 import com.pocketide.model.VaultObject
+import com.pocketide.secrets.ProjectSecrets
+import com.pocketide.secrets.SealedProjectSecrets
 import com.pocketide.vault.VaultCipher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -290,9 +295,32 @@ internal class TestPhone(
         }
     }
     override fun backgroundLimit(): String? = backgroundLimit
-    override suspend fun exportSecrets(): ByteArray? = secrets?.copyOf()
+
+    /** The app's own Variables and Secrets store, for tests where both phones change them. */
+    var secretStore: ProjectSecrets? = null
+
+    fun useSecretStore(): ProjectSecrets = SealedProjectSecrets(
+        store = SecureStore(File(base, "secure"), FlipBox),
+        clock = clock,
+        io = Dispatchers.Unconfined,
+        pushSecret = { _, _, _ -> },
+    ).also { secretStore = it }
+
+    override suspend fun exportSecrets(): ByteArray? {
+        val store = secretStore ?: return secrets?.copyOf()
+        return try {
+            store.exportBlob()
+        } catch (_: IllegalStateException) {
+            null
+        }
+    }
     override suspend fun importSecrets(bytes: ByteArray) {
         imported = bytes.copyOf()
+        secretStore?.importBlob(bytes)
+    }
+    override suspend fun mergeSecrets(bytes: ByteArray) {
+        imported = bytes.copyOf()
+        secretStore?.mergeBlob(bytes)
     }
     override fun phone(): PhoneSnapshot = phone
     override fun computerIdle() = true
@@ -356,6 +384,12 @@ internal class TestPhone(
     companion object {
         const val OWNER = "owner@example.com"
     }
+}
+
+/** Flips every bit, so nothing a test stores in the secure store is kept in the clear. */
+private object FlipBox : SecretBox {
+    override fun seal(plain: ByteArray) = ByteArray(plain.size) { (plain[it].toInt() xor 0xFF).toByte() }
+    override fun open(sealed: ByteArray) = seal(sealed)
 }
 
 /** PendingIntent has no public constructor, and only its identity matters here. */

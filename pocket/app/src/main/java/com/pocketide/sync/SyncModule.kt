@@ -150,6 +150,8 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
 
     override suspend fun importSecrets(bytes: ByteArray) = graph.secrets.importBlob(bytes)
 
+    override suspend fun mergeSecrets(bytes: ByteArray) = graph.secrets.mergeBlob(bytes)
+
     override fun phone(): PhoneSnapshot = graph.phone.snapshot.value
 
     override fun computerIdle(): Boolean = when (graph.computer.state.value) {

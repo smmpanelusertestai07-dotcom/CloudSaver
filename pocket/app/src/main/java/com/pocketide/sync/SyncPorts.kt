@@ -100,7 +100,11 @@ internal interface SyncPorts {
     /** Every Variable and Secret, serialized; null when the secrets store is not available. */
     suspend fun exportSecrets(): ByteArray?
 
+    /** Replaces this phone's Variables and Secrets with Drive's copy. */
     suspend fun importSecrets(bytes: ByteArray)
+
+    /** Merges Drive's copy into this phone's Variables and Secrets (both changed since the last sync). */
+    suspend fun mergeSecrets(bytes: ByteArray)
 
     fun phone(): PhoneSnapshot
 

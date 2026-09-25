@@ -5,6 +5,7 @@ import com.pocketide.google.DriveStore
 import com.pocketide.model.Lease
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.VaultIndex
+import com.pocketide.model.VaultObject
 import com.pocketide.sessions.Sessions
 import kotlinx.coroutines.CancellationException
 
@@ -198,7 +199,7 @@ internal class SyncPass(
     }
 
     private suspend fun queueSecrets(run: Run, index: VaultIndex?) {
-        val bytes = runCatching { ports.exportSecrets() }.getOrNull() ?: return
+        val bytes = localSecrets() ?: return
         try {
             val queued = run.entries().filter { it.kind == ObjectKind.SECRETS }
             val known = queued.maxByOrNull { it.createdAt }?.sha256
@@ -220,16 +221,74 @@ internal class SyncPass(
         if (index != null && (index.revision != run.state.alignedRevision || run.state.tracks.values.any { it.behindDrive })) {
             reconciler.reconcile(run, index, drive, book)
         }
-        adoptRemote(run, snapshot)
+        adoptRemote(run, drive, snapshot)
     }
 
-    /** Takes what another phone (or a restore) brought into the index: settings, sessions, projects. */
-    suspend fun adoptRemote(run: Run, snapshot: RemoteSnapshot) {
+    /**
+     * Takes what another phone (or a restore) brought into the index: settings, sessions,
+     * projects, Variables and Secrets.
+     */
+    suspend fun adoptRemote(run: Run, drive: DriveStore, snapshot: RemoteSnapshot) {
         run.keepIndex(snapshot)
         val index = snapshot.index ?: return
         adoptSettings(run, index)
         adoptSessions(run, index)
         adoptProjects(run, index)
+        adoptSecrets(run, drive, index)
+    }
+
+    /**
+     * Variables and Secrets that changed in Drive since this phone last synced them come in before
+     * this phone's go up; uploading its own whole set instead would drop the other phone's changes.
+     * When this phone changed nothing meanwhile, Drive's copy replaces its own; when both changed,
+     * they are merged value by value. The result goes up with this pass if it differs from Drive's.
+     * When Drive's copy cannot be brought in, this phone's waits too, and the next pass tries again.
+     */
+    private suspend fun adoptSecrets(run: Run, drive: DriveStore, index: VaultIndex) {
+        val remote = index.objects.filter { it.kind == ObjectKind.SECRETS }.maxByOrNull { it.createdAt } ?: return
+        val track = run.state.tracks[SECRETS_KEY]
+        if (track?.prefixSha256 == remote.sha256) return
+        val queued = run.entries().filter { it.kind == ObjectKind.SECRETS }
+        val broughtIn = try {
+            bringInSecrets(run, drive, remote, track)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+        // Queued without Drive's copy: never sent. The merged set is queued again below.
+        run.discard(queued)
+        if (!broughtIn) return
+        val synced = FileTrack(kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name))
+        run.state = run.state.copy(tracks = run.state.tracks + (SECRETS_KEY to synced))
+        queueSecrets(run, index)
+        run.save()
+    }
+
+    private suspend fun bringInSecrets(run: Run, drive: DriveStore, remote: VaultObject, track: FileTrack?) {
+        val local = localSecrets()
+        try {
+            val localSha = local?.let(Codec::sha256)
+            if (localSha == remote.sha256) return
+            val bytes = kit.materializer.bytes(drive, run.cipher, remote, MeteredDataBudget.KIND_SYNC)
+            try {
+                if (local == null || localSha == track?.prefixSha256) ports.importSecrets(bytes) else ports.mergeSecrets(bytes)
+            } finally {
+                bytes.fill(0)
+            }
+        } finally {
+            local?.fill(0)
+        }
+    }
+
+    /** This phone's Variables and Secrets, serialized; null when its store is not available. */
+    private suspend fun localSecrets(): ByteArray? = try {
+        ports.exportSecrets()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     /** Settings another phone changed come here, unless this phone changed them too (then its own win). */
