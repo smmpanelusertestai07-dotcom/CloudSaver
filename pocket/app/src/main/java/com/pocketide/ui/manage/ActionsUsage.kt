@@ -28,9 +28,31 @@ data class ActionsSummary(
     val allowance: PlanAllowance?,
     /** Actions storage this month in GB-hours (GitHub bills storage by the hour). */
     val storageGbHours: Double,
+    /** What the owner pays: the sum of every line's net amount. */
     val chargedUsd: Double,
+    /** What the usage is worth before discounts. */
+    val grossUsd: Double = 0.0,
+    /** What the plan and public repositories covered. */
+    val discountUsd: Double = 0.0,
+    /** The cost per repository (null: the account as a whole), biggest first. */
+    val byRepository: List<RepoCost> = emptyList(),
 ) {
     val countedMinutes: Double get() = byOs.sumOf { it.counted }
+}
+
+/** Usage of one repository this month, and how it is paid. */
+data class RepoCost(val repository: String?, val grossUsd: Double, val discountUsd: Double, val netUsd: Double, val publicRepo: Boolean) {
+    val label: String
+        get() = when {
+            publicRepo -> "free (public repo)"
+            netUsd >= CENT -> ManageFormat.usd(netUsd)
+            // The discount equals the gross amount: the plan's included usage paid for all of it.
+            else -> "included in your plan"
+        }
+
+    private companion object {
+        const val CENT = 0.005
+    }
 }
 
 /**
@@ -41,7 +63,11 @@ object ActionsUsage {
     const val ALLOWANCE_AS_OF = "September 2026"
     private const val GB = 1_000_000_000L
 
-    fun summarize(usage: AccountUsage): ActionsSummary {
+    /**
+     * [publicRepos] are the owner's public repositories, as `owner/name` or `name`: GitHub
+     * discounts their standard-runner minutes in full.
+     */
+    fun summarize(usage: AccountUsage, publicRepos: Set<String> = emptySet()): ActionsSummary {
         val actions = usage.lines.filter { isActions(it) }
         val minutes = actions.filter { it.unit.contains("minute", ignoreCase = true) }
         val byOs = RunnerOs.entries.mapNotNull { os ->
@@ -55,7 +81,24 @@ object ActionsUsage {
             allowance = allowance(usage.plan),
             storageGbHours = storage.sumOf { it.quantity },
             chargedUsd = usage.lines.sumOf { it.netAmountUsd }.coerceAtLeast(0.0),
+            grossUsd = usage.lines.sumOf { it.grossAmountUsd },
+            discountUsd = usage.lines.sumOf { it.discountAmountUsd },
+            byRepository = byRepository(actions, publicRepos),
         )
+    }
+
+    private fun byRepository(lines: List<UsageLine>, publicRepos: Set<String>): List<RepoCost> {
+        val public = publicRepos.map { it.lowercase(Locale.ROOT) }.toSet()
+        return lines.groupBy { it.repository?.takeIf(String::isNotBlank) }.map { (repository, group) ->
+            val name = repository?.lowercase(Locale.ROOT)
+            RepoCost(
+                repository = repository,
+                grossUsd = group.sumOf { it.grossAmountUsd },
+                discountUsd = group.sumOf { it.discountAmountUsd },
+                netUsd = group.sumOf { it.netAmountUsd },
+                publicRepo = name != null && (name in public || name.substringAfter('/') in public),
+            )
+        }.sortedByDescending { it.grossUsd }
     }
 
     fun osOf(sku: String): RunnerOs? {
