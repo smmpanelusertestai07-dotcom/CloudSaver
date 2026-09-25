@@ -1,16 +1,74 @@
 package com.pocketide.update
 
 import android.app.Activity
+import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import com.pocketide.AppGraph
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import com.pocketide.BuildConfig
+import com.pocketide.agents.AgentWorkers
+import com.pocketide.core.Http
+import kotlinx.coroutines.CoroutineScope
+import java.io.File
+import java.security.MessageDigest
 
-fun createAppUpdater(graph: AppGraph): AppUpdater = StubUpdater().also { graph.hashCode() }
+fun createAppUpdater(graph: AppGraph): AppUpdater {
+    val env = GraphUpdaterEnv(graph)
+    return SelfUpdater(
+        env = env,
+        releases = GitHubReleases(Http.client, BuildConfig.RELEASES_REPO, BuildConfig.RELEASE_TAG_PREFIX),
+        fetcher = ApkFetcher(
+            client = Http.downloads,
+            allow = { bytes -> graph.dataBudget.allow(bytes, DATA_KIND, big = true) },
+            record = { bytes -> graph.dataBudget.record(bytes, DATA_KIND) },
+        ),
+    )
+}
 
-private class StubUpdater : AppUpdater {
-    override val state: StateFlow<UpdateState> = MutableStateFlow(UpdateState.UpToDate)
-    override suspend fun check() = Unit
-    override suspend fun download() = Unit
-    override fun install(activity: Activity) = Unit
-    override fun schedule() = Unit
+private const val DATA_KIND = "app update"
+
+private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
+    private val context: Context get() = graph.context
+    private val installer = SessionInstaller(graph.context)
+
+    override val scope: CoroutineScope get() = graph.scope
+    override val apkFolder: File get() = File(graph.dirs.apk, "update")
+    override val currentVersion: String get() = BuildConfig.VERSION_NAME
+    override val pinnedSigner: String get() = BuildConfig.SIGNING_CERT_SHA256
+
+    override fun self(): ApkFacts {
+        val info = context.packageManager.getPackageInfo(context.packageName, SIGNERS)
+        return facts(info) ?: error("Android did not describe this app.")
+    }
+
+    /**
+     * GET_SIGNING_CERTIFICATES alone leaves signingInfo null for an archive on Android 10 and on
+     * the first Android 13 release, so GET_SIGNATURES is asked for too (brief §4, risk R24).
+     */
+    override fun inspect(file: File): ApkFacts? =
+        context.packageManager.getPackageArchiveInfo(file.absolutePath, SIGNERS)?.let(::facts)
+
+    override fun mayInstall(activity: Activity): Boolean = installer.mayInstall(activity)
+
+    override suspend fun install(activity: Activity, apk: File, done: (InstallResult) -> Unit) = installer.install(activity, apk, done)
+
+    override fun schedule() {
+        AppUpdateWorker.schedule(context)
+        AgentWorkers.schedule(context)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun facts(info: PackageInfo): ApkFacts? {
+        // The certificates that signed the contents now, not the ones a rotation proved it may replace.
+        val certificates = info.signingInfo?.apkContentsSigners ?: info.signatures
+        val signers = certificates.orEmpty().map { sha256(it.toByteArray()) }.toSet()
+        return ApkFacts(info.packageName ?: return null, info.longVersionCode, info.versionName, signers)
+    }
+
+    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        @Suppress("DEPRECATION")
+        val SIGNERS = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+    }
 }

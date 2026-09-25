@@ -75,9 +75,6 @@ internal data class ExtensionVersion(
 @Serializable
 internal data class QueryPage(val totalSize: Int = 0, val extensions: List<ExtensionVersion> = emptyList())
 
-@Serializable
-internal data class VersionsPage(val totalSize: Int = 0, val versions: Map<String, String> = emptyMap())
-
 internal fun epochMillis(iso: String): Long? = try {
     Instant.parse(iso).toEpochMilli()
 } catch (unreadable: DateTimeParseException) {
@@ -114,11 +111,48 @@ internal class OpenVsx(
     suspend fun version(namespace: String, name: String, target: String, version: String): ExtensionVersion? =
         if (target == ExtensionVersion.UNIVERSAL) json(api(namespace, name, version)) else json(api(namespace, name, target, version))
 
-    /** Version numbers published for [target], newest first as the registry lists them. */
-    suspend fun versions(namespace: String, name: String, target: String, size: Int = VERSIONS_PAGE): List<String> {
-        val url = (if (target == ExtensionVersion.UNIVERSAL) api(namespace, name, "versions") else api(namespace, name, target, "versions"))
-            .newBuilder().addQueryParameter("size", size.toString()).build()
-        return json<VersionsPage>(url)?.versions?.keys?.toList().orEmpty()
+    /**
+     * Every version published for [target], with its details (pre-release flag, engine range,
+     * files), from the all-versions query. Stops after [pages] pages: the newest come first.
+     */
+    suspend fun allVersions(namespace: String, name: String, target: String, pages: Int = VERSION_PAGES): List<ExtensionVersion> {
+        val found = mutableListOf<ExtensionVersion>()
+        var offset = 0
+        repeat(pages) {
+            val url = api("-", "query").newBuilder()
+                .addQueryParameter("namespaceName", namespace)
+                .addQueryParameter("extensionName", name)
+                .addQueryParameter("targetPlatform", target)
+                .addQueryParameter("includeAllVersions", "true")
+                .addQueryParameter("size", QUERY_PAGE.toString())
+                .addQueryParameter("offset", offset.toString())
+                .build()
+            val page = json<QueryPage>(url) ?: return found
+            found += page.extensions
+            offset += page.extensions.size
+            if (page.extensions.isEmpty() || offset >= page.totalSize) return found
+        }
+        return found
+    }
+
+    /** The published SHA-256 of a file (the `.sha256` link: 64 hex characters, perhaps followed by a name). */
+    suspend fun sha256(link: String?): String {
+        val url = fileUrl(link) ?: throw PackageRejected("Open VSX publishes no checksum for this package")
+        val digest = text(url, MAX_CHECKSUM_BYTES).trim().split(WHITESPACE).first().lowercase()
+        if (!SHA256_HEX.matches(digest)) throw PackageRejected("Open VSX's checksum for this package could not be read")
+        return digest
+    }
+
+    /** Open VSX's key and its signature over the whole package, or null when the version is not signed. */
+    suspend fun signature(files: Map<String, String>): Pair<ByteArray, ByteArray>? {
+        val signatureLink = files["signature"]
+        val keyLink = files["publicKey"]
+        if (signatureLink == null && keyLink == null) return null
+        val signatureUrl = fileUrl(signatureLink) ?: throw PackageRejected("The package's signature is not on Open VSX")
+        val keyUrl = fileUrl(keyLink) ?: throw PackageRejected("Open VSX's signing key is not on Open VSX")
+        val key = OpenVsxSignature.publicKeyFrom(text(keyUrl, MAX_KEY_BYTES))
+        val signature = OpenVsxSignature.signatureFrom(bytes(signatureUrl, MAX_SIGZIP_BYTES))
+        return key to signature
     }
 
     /**
@@ -187,6 +221,12 @@ internal class OpenVsx(
     companion object {
         val DEFAULT_BASE = "https://open-vsx.org/".toHttpUrl()
         const val MAX_JSON_BYTES = 4 * 1024 * 1024
-        private const val VERSIONS_PAGE = 100
+        private const val QUERY_PAGE = 50
+        private const val VERSION_PAGES = 4
+        private const val MAX_CHECKSUM_BYTES = 1024
+        private const val MAX_KEY_BYTES = 16 * 1024
+        private const val MAX_SIGZIP_BYTES = 64 * 1024
+        private val SHA256_HEX = Regex("[0-9a-f]{64}")
+        private val WHITESPACE = Regex("\\s+")
     }
 }

@@ -21,6 +21,9 @@ interface AgentCatalog {
 
     fun find(agentId: String): AgentInfo?
 
+    /** What the add card shows beyond the candidate (identifier, licence, source, rating), or null. */
+    fun facts(extensionId: String): CandidateFacts? = null
+
     suspend fun discover()
 
     suspend fun add(candidate: AgentCandidate): DoctorReport
