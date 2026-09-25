@@ -39,7 +39,7 @@ internal class RoomConfigurator(
      */
     fun configure(profile: RoomProfile, otherRooms: List<String>, fontSize: Int, careful: Boolean = false) {
         val home = RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true)
-        home.directory("", create = true) ?: throw IOException("The room's home is not a folder.")
+        if (!home.makeFolder("")) throw IOException("The room's home is not a folder.")
         home.makePrivateHome()
         writeRules(profile, home)
         val servers = mcpServers(careful)

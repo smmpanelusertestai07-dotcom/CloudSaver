@@ -4,11 +4,11 @@ import com.pocketide.core.Clock
 import com.pocketide.model.ObjectKind
 import com.pocketide.vault.VaultCipher
 import java.io.ByteArrayInputStream
-import java.io.FileInputStream
+import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.io.RandomAccessFile
+import java.nio.ByteBuffer
 import java.security.DigestInputStream
 
 /** The newest state of a file this phone knows: what Drive has, plus anything still queued. */
@@ -93,15 +93,16 @@ internal class PieceMaker(
      */
     private fun uploadEnd(c: Candidate): Long {
         if (!TrackRules.needsSecretScan(c.path)) return c.facts.size
-        RandomAccessFile(c.file, "r").use { f ->
-            val buffer = ByteArray(TAIL_BUFFER)
-            var pos = minOf(c.facts.size, f.length())
+        c.openInRoom().use { f ->
+            val tail = ByteArray(TAIL_BUFFER)
+            var pos = minOf(c.facts.size, f.size())
             while (pos > 0) {
-                val start = maxOf(0L, pos - buffer.size)
+                val start = maxOf(0L, pos - tail.size)
                 val n = (pos - start).toInt()
-                f.seek(start)
-                f.readFully(buffer, 0, n)
-                for (i in n - 1 downTo 0) if (buffer[i] == NEWLINE) return start + i + 1
+                val buffer = ByteBuffer.wrap(tail, 0, n)
+                f.position(start)
+                while (buffer.hasRemaining()) if (f.read(buffer) < 0) throw EOFException("The file shrank while it was read.")
+                for (i in n - 1 downTo 0) if (tail[i] == NEWLINE) return start + i + 1
                 pos = start
             }
             return 0
@@ -110,7 +111,7 @@ internal class PieceMaker(
 
     private fun appendOrRewrite(c: Candidate, known: Known, end: Long): MakeResult {
         val prefix = Codec.newDigest()
-        val raw = FileInputStream(c.file)
+        val raw = c.readInRoom()
         raw.use {
             val bounded = BoundedInputStream(raw, end)
             val prefixed = DigestInputStream(bounded, prefix)
@@ -140,7 +141,7 @@ internal class PieceMaker(
     private fun base(c: Candidate, known: Known, end: Long): MakeResult = try {
         val id = Codec.objectName()
         val entry = queue.addBlob(cipher, id) { out ->
-            FileInputStream(c.file).use { raw ->
+            c.readInRoom().use { raw ->
                 val local = Codec.newDigest()
                 val sent = Codec.newDigest()
                 val bounded = BoundedInputStream(raw, end)
@@ -169,7 +170,7 @@ internal class PieceMaker(
         val id = Codec.objectName()
         val entry = try {
             queue.addBlob(cipher, id) { out ->
-                FileInputStream(c.file).use { raw ->
+                c.readInRoom().use { raw ->
                     val digest = Codec.newDigest()
                     val bounded = BoundedInputStream(raw, facts.size)
                     encrypt(DigestInputStream(bounded, digest), out)
@@ -208,7 +209,7 @@ internal class PieceMaker(
     fun copyOf(c: Candidate, sessionId: String?, path: String, conflictOf: String?): QueueEntry? = try {
         val id = Codec.objectName()
         queue.addBlob(cipher, id) { out ->
-            FileInputStream(c.file).use { raw ->
+            c.readInRoom().use { raw ->
                 val digest = Codec.newDigest()
                 val bounded = BoundedInputStream(raw, c.facts.size)
                 encrypt(DigestInputStream(masked(bounded, c.path), digest), out)
