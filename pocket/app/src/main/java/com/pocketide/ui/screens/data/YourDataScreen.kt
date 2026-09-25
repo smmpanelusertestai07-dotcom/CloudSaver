@@ -351,6 +351,7 @@ private fun ByTypeCard(
             "Memory and instructions",
             sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${DataMath.places(it.memoryBytes, drive[ObjectKind.MEMORY])}" } ?: pending,
             listOf(Place.PHONE, Place.DRIVE),
+            "Each agent's instructions, rules, memory, skills, subagents and slash commands.",
         )
         HorizontalDivider()
         TypeRow(
