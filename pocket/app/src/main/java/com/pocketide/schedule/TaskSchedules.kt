@@ -130,8 +130,8 @@ internal class TaskSchedules(
             task.title.isBlank() -> throw ScheduleException("Give the task a title.")
             task.prompt.isBlank() -> throw ScheduleException("Write what the agent should do.")
             task.everyHours < 1 -> throw ScheduleException("A task runs at most once an hour.")
-            task.agentId !in HeadlessCommand.supported -> throw ScheduleException(ScheduledRun.NO_HEADLESS)
         }
+        runner.refusal(task)?.let { throw ScheduleException(it) }
     }
 
     private suspend fun write(list: List<ScheduledTask>) {

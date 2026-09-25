@@ -38,6 +38,9 @@ internal interface RunPorts {
     /** Why heavy work may not start now (battery, heat), or null. */
     fun heavyWorkRefusal(): String?
 
+    /** True for a project marked "Someone else's". */
+    fun someoneElses(projectId: String): Boolean
+
     /** Saves the output as a TEXT item in the session's Media. */
     suspend fun saveOutput(sessionId: String, file: File)
 
@@ -65,7 +68,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
 
     /** Starts the session a run will use, so "Run now" can open it straight away. */
     suspend fun newSession(task: ScheduledTask): SessionRecord {
-        if (HeadlessCommand.argv(task.agentId, task.prompt, "/") == null) throw ScheduleException(NO_HEADLESS)
+        refusal(task)?.let { throw ScheduleException(it) }
         return ports.startSession(task.projectId, task.agentId, "${task.title} · ${Ist.dateTime(ports.clock.now())}")
     }
 
@@ -75,6 +78,11 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
      * Android cuts it off.
      */
     suspend fun run(task: ScheduledTask, existingSessionId: String? = null, background: Boolean = false): RunOutcome {
+        refusal(task)?.let { why ->
+            // Nobody is watching a scheduled run: the owner hears why nothing ran.
+            ports.notify(task.id, "Scheduled task did not run", "${task.title}: $why")
+            throw ScheduleException(why)
+        }
         ports.heavyWorkRefusal()?.let { throw ScheduleException(it) }
         val session = existingSessionId?.let { ports.session(it) } ?: newSession(task)
         val worktree = AppDirs.guestWorktree(session.projectId, session.id)
@@ -143,6 +151,16 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
         ports.notify(task.id, "Scheduled task needs a look", "${task.title}: $BUSY")
     }
 
+    /**
+     * Why [task] may never run unattended, or null. Someone else's code could steer an agent
+     * that runs with nobody watching, with edits accepted and the room's tools on.
+     */
+    fun refusal(task: ScheduledTask): String? = when {
+        task.agentId !in HeadlessCommand.supported -> NO_HEADLESS
+        ports.someoneElses(task.projectId) -> SOMEONE_ELSES
+        else -> null
+    }
+
     private suspend fun finish(task: ScheduledTask, startedAt: Long, sessionId: String, output: List<String>, ended: String, cut: Boolean, ok: Boolean) {
         save(task, startedAt, sessionId, output, ended, cut)
         ports.recordRun(task.id, startedAt, sessionId)
@@ -183,6 +201,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
             "PocketIDE is in the background. To give tasks up to ${HeadlessCommand.TIME_LIMIT_MINUTES} minutes, let PocketIDE use the battery without restrictions in Android's settings."
         const val CUT_OFF = "Stopped before it finished (Android ended the job, or the phone left the charger or Wi-Fi). It was not started again; the next run is at its usual time."
         const val BUSY = "Not run: this task was already running. That run's session has its result."
+        const val SOMEONE_ELSES = "Scheduled tasks run only on your own projects: someone else's code could steer an agent with nobody watching."
         const val NO_HEADLESS = "This agent has no command-line mode, so it cannot run scheduled tasks. Choose Claude Code, Codex or Antigravity."
     }
 }

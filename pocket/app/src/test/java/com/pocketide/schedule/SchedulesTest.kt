@@ -217,6 +217,23 @@ class ScheduledRunTest {
         }
     }
 
+    @Test
+    fun aTaskOnSomeoneElsesProjectNeverRunsUnattended() = runTest {
+        ports.someoneElses = true
+        for (existing in listOf(null, "s-queued")) {
+            try {
+                ScheduledRun(ports).run(task(), existing)
+                fail("someone else's code must not steer an agent with nobody watching")
+            } catch (expected: ScheduleException) {
+                assertEquals(ScheduledRun.SOMEONE_ELSES, expected.message)
+            }
+        }
+        assertTrue(ports.runs.isEmpty())
+        assertNull("no session is made", ports.started)
+        assertTrue(ports.notices.all { it.second.contains(ScheduledRun.SOMEONE_ELSES) })
+        assertEquals(2, ports.notices.size)
+    }
+
     internal data class RoomRun(val agentId: String, val projectId: String, val argv: List<String>, val workDir: String, val programEnv: Map<String, String>)
 
     internal class FakeRunPorts(private val dirs: AppDirs) : RunPorts {
@@ -224,6 +241,7 @@ class ScheduledRunTest {
         var lines = emptyList<String>()
         var hang = false
         var refusal: String? = null
+        var someoneElses = false
         var started: String? = null
         var onRun: () -> Unit = {}
         val startMarks = mutableListOf<Pair<String, String>>()
@@ -258,6 +276,7 @@ class ScheduledRunTest {
             return 0
         }
         override fun heavyWorkRefusal() = refusal
+        override fun someoneElses(projectId: String) = someoneElses
         override suspend fun saveOutput(sessionId: String, file: File) {
             saved += sessionId to file.readText()
         }
@@ -309,6 +328,24 @@ class TaskSchedulesTest {
         io = Dispatchers.Unconfined,
         runner = ScheduledRun(ports),
     )
+
+    @Test
+    fun aTaskOnSomeoneElsesProjectIsNotSavedOrRun() = runTest {
+        val s = schedules()
+        s.save(task())
+        ports.someoneElses = true
+
+        for (attempt in listOf<suspend () -> Unit>({ s.save(task().copy(title = "Other")) }, { s.runNow("t1") })) {
+            try {
+                attempt()
+                fail("refused")
+            } catch (expected: ScheduleException) {
+                assertEquals(ScheduledRun.SOMEONE_ELSES, expected.message)
+            }
+        }
+        assertNull(ports.started)
+        assertTrue(scheduler.once.isEmpty())
+    }
 
     @Test
     fun runNowWhileARunWaitsLeadsToThatRun() = runTest {
