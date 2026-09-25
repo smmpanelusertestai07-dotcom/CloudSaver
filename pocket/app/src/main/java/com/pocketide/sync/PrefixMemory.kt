@@ -16,6 +16,8 @@ import java.security.MessageDigest
  * unchanged only while the file is the same file, starts with the same bytes and holds the same
  * bytes just before that point; otherwise it is read in full, as it is for every transcript's
  * first piece after a restart, since this is kept in memory only. Compacting reads it in full too.
+ * Only append-only logs are resumed this way: an opaque conversation file (Antigravity's) may be
+ * rewritten anywhere as it grows, which those checks would not see, so its prefix is always read.
  */
 internal class PrefixMemory {
     private class Mark(val end: Long, val sha: String, val digest: MessageDigest, val identity: Identity)
@@ -33,7 +35,7 @@ internal class PrefixMemory {
 
     /** Keeps [digest], the hash state after [c]'s first [end] bytes, whose SHA-256 is [sha]. */
     fun remember(c: Candidate, end: Long, sha: String, digest: MessageDigest) {
-        val identity = identity(c, end)
+        val identity = if (TrackRules.isAppendLog(c.path)) identity(c, end) else null
         if (identity == null) marks.remove(c.key) else marks[c.key] = Mark(end, sha, digest, identity)
     }
 

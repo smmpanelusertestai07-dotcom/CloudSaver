@@ -55,10 +55,13 @@ internal object TrackRules {
             name in memoryNames || "/memory/" in path || "/rules/" in path || path.startsWith(".codex/skills/") -> ObjectKind.MEMORY
             // Antigravity's conversations are opaque files: when one is rewritten instead of
             // appended to, its changed prefix makes the whole file a new base piece.
-            path.endsWith(".jsonl") || "/conversations/" in path -> ObjectKind.CHAT_PIECE
+            isAppendLog(path) || "/conversations/" in path -> ObjectKind.CHAT_PIECE
             else -> ObjectKind.AGENT_STATE
         }
     }
+
+    /** A log agents only ever append to (JSONL), unlike an opaque conversation file, which may change anywhere. */
+    fun isAppendLog(path: String): Boolean = path.endsWith(".jsonl")
 
     /** A folder the walk never enters: a link, or a place where logins live. */
     fun skipFolder(relativePath: String): Boolean = AgentFiles.isSecret("$relativePath/")

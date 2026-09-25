@@ -199,6 +199,25 @@ class PiecesTest {
     }
 
     @Test
+    fun anOpaqueConversationChangedDeepInsideIsSentWholeEvenInTheSameRun() = runBlocking {
+        val phone = TestPhone(accounts, clock)
+        val conversation = ".gemini/antigravity/conversations/9f1c2d3e.pb"
+        val file = phone.homeFile("antigravity", conversation)
+        file.writeText(longChat)
+        phone.engine.syncNow()
+
+        // Antigravity rewrites its conversation in place as it grows: a field deep inside changes too.
+        file.patch(LINES * LINE / 2L, 'y')
+        file.appendText("next\n")
+        clock.advance(60_000)
+        phone.engine.syncNow()
+
+        val pieces = phone.remoteIndex()!!.objects.filter { it.path == conversation }
+        assertEquals(listOf(0L), pieces.map { it.offset })
+        assertEquals(Codec.sha256(file.readBytes()), pieces.single().sha256)
+    }
+
+    @Test
     fun everythingInDriveIsCompressedThenEncryptedUnderOpaqueNames() = runBlocking {
         val phone = phone()
         phone.homeFile("claude", path).writeText("{\"secret project\":true}\n".repeat(50))
