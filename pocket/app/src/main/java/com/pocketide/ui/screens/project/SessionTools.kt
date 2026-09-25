@@ -179,14 +179,22 @@ fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: Coroutine
 
 /**
  * Asks where [uri] goes in session [sessionId] and adds it there. [scope] outlives the dialog,
- * which closes before the file is copied; [say] tells the owner how it went.
+ * which closes ([onClose]) before the file is copied; [say] tells the owner how it went.
+ * [onCancel] runs when the owner leaves without choosing: nothing is added.
  */
 @Composable
-fun AddFileChoice(sessionId: String, uri: Uri, scope: CoroutineScope, say: suspend (String) -> Unit, onClose: () -> Unit) {
+fun AddFileChoice(
+    sessionId: String,
+    uri: Uri,
+    scope: CoroutineScope,
+    say: suspend (String) -> Unit,
+    onClose: () -> Unit,
+    onCancel: () -> Unit = onClose,
+) {
     val graph = rememberGraph()
     val context = LocalContext.current
     AlertDialog(
-        onDismissRequest = onClose,
+        onDismissRequest = onCancel,
         title = { Text("Add the file where?") },
         text = { Text(ADD_FILE_TEXT) },
         confirmButton = {
