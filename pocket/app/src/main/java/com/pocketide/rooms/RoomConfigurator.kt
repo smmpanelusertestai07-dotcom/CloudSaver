@@ -104,7 +104,7 @@ internal class RoomConfigurator(
      */
     fun claudeDenyRules(otherRooms: List<String>): List<String> {
         val paths = otherRooms.flatMap { other ->
-            listOf(dirs.roomHome(other), dirs.roomTmp(other), RoomLayout.shm(dirs, other), dirs.roomWork(other), dirs.roomBridge(other)).map { it.absolutePath }
+            RoomLayout.hostFolders(dirs, other).filter { it != dirs.repos }.map { it.absolutePath }
         } + listOf("/proc/*/root", "/proc/*/cwd")
         return paths.flatMap { path -> listOf("Read(/$path/**)", "Edit(/$path/**)") } +
             listOf("Read(//proc/*/environ)", "Read(~/.claude/.credentials.json)", "Edit(~/.claude/.credentials.json)")

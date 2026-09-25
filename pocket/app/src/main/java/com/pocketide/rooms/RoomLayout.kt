@@ -7,9 +7,9 @@ import com.pocketide.linux.ProotCommand
 import java.io.File
 
 /**
- * What a room sees and what its programs are told, in one place. A room binds its own home,
- * temporary folder, shared-memory folder, bridge folder and worktrees, plus the shared bare
- * repositories; nothing of any other room is ever bound, so from inside a room the others do not exist.
+ * What a room sees and what its programs are told, in one place. A room binds its own home, its
+ * own /home, temporary folder, shared-memory folder, bridge folder and worktrees, plus the shared
+ * bare repositories; nothing of any other room is ever bound, so from inside a room the others do not exist.
  */
 internal object RoomLayout {
     const val GUEST_TMP = "/tmp"
@@ -28,6 +28,7 @@ internal object RoomLayout {
     /** The room's folders, host side, created when missing. */
     fun hostFolders(dirs: AppDirs, agentId: String): List<File> = listOf(
         dirs.roomHome(agentId),
+        dirs.roomUserHomes(agentId),
         dirs.roomTmp(agentId),
         shm(dirs, agentId),
         dirs.roomBridge(agentId),
@@ -37,6 +38,7 @@ internal object RoomLayout {
 
     fun binds(dirs: AppDirs, agentId: String): List<Bind> = listOf(
         Bind(dirs.roomHome(agentId).absolutePath, AppDirs.GUEST_HOME),
+        Bind(dirs.roomUserHomes(agentId).absolutePath, AppDirs.GUEST_USER_HOMES),
         Bind(dirs.roomTmp(agentId).absolutePath, GUEST_TMP),
         Bind(shm(dirs, agentId).absolutePath, GUEST_SHM),
         Bind(dirs.roomBridge(agentId).absolutePath, AppDirs.GUEST_BRIDGE),

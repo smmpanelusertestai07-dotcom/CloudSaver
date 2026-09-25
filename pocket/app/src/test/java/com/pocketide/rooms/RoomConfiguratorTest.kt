@@ -75,8 +75,10 @@ class RoomConfiguratorTest {
         for (other in listOf("codex", "antigravity")) {
             assertTrue(deny.contains("Read(/${dirs.roomHome(other).absolutePath}/**)"))
             assertTrue(deny.contains("Edit(/${dirs.roomWork(other).absolutePath}/**)"))
+            assertTrue(deny.contains("Read(/${dirs.roomUserHomes(other).absolutePath}/**)"))
         }
-        assertTrue(deny.none { it.contains(dirs.roomHome("claude").absolutePath) })
+        assertTrue(deny.none { it.contains(dirs.roomHome("claude").absolutePath) || it.contains(dirs.roomUserHomes("claude").absolutePath) })
+        assertTrue(deny.none { it.contains(dirs.repos.absolutePath) })
         assertTrue(deny.contains("Read(//proc/*/root/**)"))
         assertEquals(3650, settings["cleanupPeriodDays"]!!.jsonPrimitive.content.toInt())
         assertEquals("true", settings[ConfigFiles.CLAUDE_REMOTE_CONTROL]!!.jsonPrimitive.content)

@@ -21,6 +21,7 @@ class RoomLayoutTest {
         assertEquals(
             listOf(
                 "${dirs.base}/rooms/claude/home" to "/root",
+                "${dirs.base}/rooms/claude/users" to "/home",
                 "${dirs.base}/rooms/claude/tmp" to "/tmp",
                 "${dirs.base}/rooms/claude/shm" to "/dev/shm",
                 "${dirs.base}/bridge/claude" to "/run/pocketide",
@@ -35,9 +36,27 @@ class RoomLayoutTest {
         assertTrue(binds.none { it.readOnly })
         // Nothing of the app's own storage beyond these: no vault, no queue, no secure store.
         val allowed = setOf(
-            dirs.roomHome("claude"), dirs.roomTmp("claude"), RoomLayout.shm(dirs, "claude"), dirs.roomBridge("claude"), dirs.repos, dirs.roomWork("claude"),
+            dirs.roomHome("claude"), dirs.roomUserHomes("claude"), dirs.roomTmp("claude"), RoomLayout.shm(dirs, "claude"),
+            dirs.roomBridge("claude"), dirs.repos, dirs.roomWork("claude"),
         )
         assertEquals(allowed.map { it.absolutePath }.toSet(), binds.map { it.hostPath }.toSet())
+    }
+
+    @Test fun `each room has its own users' home folder, created with the room, so no room can plant a sign-in another reads`() {
+        // Claude's CLI reads /home/claude/.claude/remote/ whatever HOME is: the computer's shared /home must never show.
+        val agents = listOf("claude", "codex", "antigravity", "acme.agent")
+        val homes = agents.map { agent ->
+            val home = RoomLayout.binds(dirs, agent).single { it.guestPath == "/home" }
+            assertEquals(dirs.roomUserHomes(agent).absolutePath, home.hostPath)
+            assertFalse(home.readOnly)
+            assertTrue(File(home.hostPath) in RoomLayout.hostFolders(dirs, agent))
+            assertTrue(home.hostPath.startsWith("${dirs.rooms.absolutePath}/$agent/"))
+            home.hostPath
+        }
+        assertEquals("no two agents share a /home", agents.size, homes.toSet().size)
+        assertTrue(homes.none { it.startsWith(dirs.rootfs.absolutePath) })
+        // Not inside the room's own home either, which Your data and sync read as the agent's files.
+        assertTrue(agents.none { dirs.roomUserHomes(it).absolutePath.startsWith(dirs.roomHome(it).absolutePath + "/") })
     }
 
     @Test fun `each room has a writable shared-memory folder of its own, created with the room`() {
