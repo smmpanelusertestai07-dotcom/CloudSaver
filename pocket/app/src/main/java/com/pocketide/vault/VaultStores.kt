@@ -4,6 +4,7 @@ import com.pocketide.core.AppJson
 import com.pocketide.core.SecureStore
 import com.pocketide.github.GitHubApi
 import com.pocketide.github.RepoInfo
+import com.pocketide.google.DriveException
 import com.pocketide.google.DriveStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +93,21 @@ internal class RemoteKeys(private val drive: DriveStore, private val gitHub: Git
     }
 
     suspend fun writeDrive(name: String, bytes: ByteArray) {
-        drive.uploadBytes(name, bytes, drive.find(name)?.id)
+        val written = drive.uploadBytes(name, bytes, drive.find(name)?.id)
+        if (name == VaultKeyFiles.HALF_D) dropOldRevisions(written.id)
+    }
+
+    /**
+     * A replaced Half D would otherwise stay in Drive's revision history for about 30 days, where
+     * it still pairs with an older Half G (the plain one an extra password replaced). A refusal
+     * leaves the change standing; a lost connection fails the step, which the key change repeats.
+     */
+    private suspend fun dropOldRevisions(id: String) {
+        try {
+            drive.deleteOldRevisions(id)
+        } catch (refused: DriveException.Other) {
+            // Drive drops the old content after its usual 30 days anyway.
+        }
     }
 
     suspend fun readHalfD(): HalfDFile? {

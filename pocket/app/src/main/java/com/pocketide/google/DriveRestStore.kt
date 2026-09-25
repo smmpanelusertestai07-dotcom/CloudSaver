@@ -110,6 +110,27 @@ internal class DriveRestStore(
         }
     }
 
+    /**
+     * Lists the revisions first and asks for the head after: a revision written in between is
+     * newer than every listed one, so the head is never among those deleted.
+     */
+    override suspend fun deleteOldRevisions(id: String): Unit = withContext(Dispatchers.IO) {
+        val listed = revisionIds(id)
+        val head = calls.json(files().addPathSegment(id).addQueryParameter("fields", "headRevisionId").build(), HeadRevisionJson.serializer())
+            .headRevisionId ?: listed.lastOrNull()
+        for (revision in listed) {
+            if (revision == head) continue
+            try {
+                calls.exchange {
+                    url(revisions(id).addPathSegment(revision).build())
+                    delete()
+                }.close()
+            } catch (_: DriveException.NotFound) {
+                // Gone already.
+            }
+        }
+    }
+
     override suspend fun quota(): DriveQuota = withContext(Dispatchers.IO) {
         val about = calls.json(
             api.newBuilder().addPathSegment("about").addQueryParameter("fields", "storageQuota,user").build(),
@@ -140,6 +161,22 @@ internal class DriveRestStore(
             page = result.nextPageToken?.takeIf { it.isNotEmpty() && it != page }
         } while (page != null)
         all
+    }
+
+    private suspend fun revisionIds(id: String): List<String> {
+        val all = ArrayList<String>()
+        var page: String? = null
+        do {
+            val url = revisions(id)
+                .addQueryParameter("pageSize", REVISION_PAGE.toString())
+                .addQueryParameter("fields", "nextPageToken,revisions(id)")
+                .apply { page?.let { addQueryParameter("pageToken", it) } }
+                .build()
+            val result = calls.json(url, RevisionListJson.serializer())
+            all += result.revisions.map { it.id }.filter { it.isNotEmpty() }
+            page = result.nextPageToken?.takeIf { it.isNotEmpty() && it != page }
+        } while (page != null)
+        return all
     }
 
     private suspend fun store(name: String, payload: Payload, existingId: String?): DriveFile = withContext(Dispatchers.IO) {
@@ -204,6 +241,8 @@ internal class DriveRestStore(
 
     private fun files(): HttpUrl.Builder = api.newBuilder().addPathSegment("files")
 
+    private fun revisions(id: String): HttpUrl.Builder = files().addPathSegment(id).addPathSegment("revisions")
+
     private fun media(id: String): HttpUrl = files().addPathSegment(id).addQueryParameter("alt", "media").build()
 
     private fun uploadUrl(existingId: String?, type: String): HttpUrl = http.endpoints.upload.newBuilder()
@@ -248,6 +287,7 @@ internal class DriveRestStore(
         const val MULTIPART_LIMIT = 5L * 1024 * 1024
         private const val LIST_PAGE = 1000
         private const val FIND_PAGE = 10
+        private const val REVISION_PAGE = 200
         private const val HTTP_PARTIAL = 206
         private const val COPY_BUFFER = 64 * 1024
         private const val USAGE_CACHE_MS = 60_000L

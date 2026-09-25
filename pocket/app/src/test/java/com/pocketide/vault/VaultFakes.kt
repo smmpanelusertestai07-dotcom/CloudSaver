@@ -30,7 +30,7 @@ import java.security.SecureRandom
 
 /** The Drive hidden folder in memory. */
 class FakeDrive : DriveStore {
-    private class Stored(val name: String, val bytes: ByteArray)
+    private class Stored(val name: String, val bytes: ByteArray, val revisions: Int = 1)
 
     private val files = LinkedHashMap<String, Stored>()
     private var nextId = 1
@@ -60,6 +60,9 @@ class FakeDrive : DriveStore {
 
     fun names(): List<String> = files.values.map { it.name }
 
+    /** How many versions of the file Drive keeps: every replacement adds one until old ones are deleted. */
+    fun revisions(name: String): Int = files.values.firstOrNull { it.name == name }?.revisions ?: 0
+
     override suspend fun list(): List<DriveFile> = files.map { (id, file) -> DriveFile(id, file.name, file.bytes.size.toLong(), null, null) }
 
     override suspend fun find(name: String): DriveFile? = list().firstOrNull { it.name == name }
@@ -76,8 +79,12 @@ class FakeDrive : DriveStore {
             throw IOException("connection reset")
         }
         val id = existingId ?: "d${nextId++}"
-        files[id] = Stored(name, bytes.copyOf())
+        files[id] = Stored(name, bytes.copyOf(), (files[id]?.revisions ?: 0) + 1)
         return DriveFile(id, name, bytes.size.toLong(), null, null)
+    }
+
+    override suspend fun deleteOldRevisions(id: String) {
+        files[id]?.let { files[id] = Stored(it.name, it.bytes, revisions = 1) }
     }
 
     override suspend fun download(id: String, sink: OutputStream) = sink.write(files.getValue(id).bytes + ByteArray(padDownloads))

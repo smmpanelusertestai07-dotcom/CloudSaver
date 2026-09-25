@@ -194,6 +194,16 @@ class VaultKeysImplTest {
     }
 
     @Test
+    fun `a replaced Half D leaves no older version in Drive's revision history`() = runTest {
+        val vault = newPhone().vault()
+        vault.setUp()
+        vault.setExtraPassword("pw".toCharArray())
+        vault.rekey(RekeyReason.OWNER_ASKED)
+        assertEquals(1, accounts.drive.revisions(VaultKeyFiles.HALF_D))
+        assertTrue("other key files keep Drive's usual history", accounts.drive.revisions(VaultKeyFiles.KEY_CHECK) > 1)
+    }
+
+    @Test
     fun `clearing the password saves a plain half again`() = runTest {
         val phone = newPhone()
         val vault = phone.vault()
