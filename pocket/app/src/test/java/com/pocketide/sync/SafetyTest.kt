@@ -91,17 +91,17 @@ class SafetyTest {
         val outside = phone.base.resolve("outside").apply { mkdirs() }
 
         // While the app downloads, a program in the room swaps the chat's folder for a link.
+        val folder = checkNotNull(transcript.parentFile).toPath()
         phone.drive.beforeDownload = { name ->
             if (name.startsWith("o-")) {
-                val folder = transcript.parentFile
-                Files.move(folder.toPath(), folder.toPath().resolveSibling("moved-away"))
-                Files.createSymbolicLink(folder.toPath(), outside.toPath())
+                Files.move(folder, folder.resolveSibling("moved-away"))
+                Files.createSymbolicLink(folder, outside.toPath())
             }
         }
         phone.engine.fetchSession("s")
 
         assertTrue("nothing reaches the folder the link points to", outside.list().isNullOrEmpty())
-        assertTrue(Files.isSymbolicLink(transcript.parentFile.toPath()))
+        assertTrue(Files.isSymbolicLink(folder))
     }
 
     @Test
