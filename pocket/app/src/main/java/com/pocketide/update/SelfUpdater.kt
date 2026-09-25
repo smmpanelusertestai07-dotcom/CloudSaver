@@ -99,26 +99,33 @@ internal class SelfUpdater(
         val ready = mutable.value as? UpdateState.Ready ?: return
         env.scope.launch {
             lock.withLock {
-                val file = apkFile(ready.release.version)
-                // Checked again right before Android sees it: the file must still be the one that passed.
-                val problem = withContext(Dispatchers.IO) { if (file.isFile) UpdateRules.problem(env.inspect(file), env.self(), env.pinnedSigner) else MISSING }
-                if (problem != null) {
-                    withContext(Dispatchers.IO) { file.delete() }
-                    mutable.value = UpdateState.Failed(problem)
-                    return@withLock
-                }
-                if (!withContext(Dispatchers.Main) { env.mayInstall(activity) }) return@withLock
                 try {
-                    env.install(activity, file) { result -> finished(ready, result) }
+                    handOver(activity, ready)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failed: IOException) {
                     mutable.value = UpdateState.Failed("Android's installer could not take the update: ${failed.message}")
                 } catch (refused: SecurityException) {
                     mutable.value = UpdateState.Failed("Android did not let PocketIDE install the update.")
+                } catch (failed: RuntimeException) {
+                    // Nothing here may end the app: the owner can try again from Settings.
+                    mutable.value = UpdateState.Failed("Android's installer could not take the update. Try again.")
                 }
             }
         }
+    }
+
+    private suspend fun handOver(activity: Activity, ready: UpdateState.Ready) {
+        val file = apkFile(ready.release.version)
+        // Checked again right before Android sees it: the file must still be the one that passed.
+        val problem = withContext(Dispatchers.IO) { if (file.isFile) UpdateRules.problem(env.inspect(file), env.self(), env.pinnedSigner) else MISSING }
+        if (problem != null) {
+            withContext(Dispatchers.IO) { file.delete() }
+            mutable.value = UpdateState.Failed(problem)
+            return
+        }
+        if (!withContext(Dispatchers.Main) { env.mayInstall(activity) }) return
+        env.install(activity, file) { result -> finished(ready, result) }
     }
 
     override fun schedule() = env.schedule()
