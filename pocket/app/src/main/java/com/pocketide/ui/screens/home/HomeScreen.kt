@@ -90,6 +90,7 @@ import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.shell.External
 import com.pocketide.ui.screens.project.AgentMark
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -185,7 +186,7 @@ fun HomeScreen(nav: PocketNav) {
                     val opened = runCatching { graph.limiter.openFix(context, condition.id) }.getOrDefault(false)
                     val action = condition.fixIntentAction
                     if (!opened && action != null) {
-                        runCatching { graph.appLock.leavingOnErrand() }
+                        External.leaving(context)
                         openSettings(context, action)?.let { msg -> scope.launch { snackbar.showSnackbar(msg) } }
                     } else if (!opened) {
                         scope.launch { snackbar.showSnackbar("This phone has no settings page for that.") }

@@ -142,6 +142,7 @@ fun ComputerScreen(nav: PocketNav) {
                     }
                 },
                 onReset = { confirmReset = true },
+                onGuide = { nav.help(IF_SOMETHING_BREAKS) },
             )
         }
     }
@@ -170,6 +171,9 @@ private const val RESET = RESET_KEY
 private const val REPAIR = "repair"
 private const val RESTART = "restart"
 
+/** The guide section on fixing problems (docs/GuidePhone.kt). */
+private const val IF_SOMETHING_BREAKS = "if-something-breaks"
+
 private enum class Fix { RESTART, REPAIR, RESET }
 
 /** One level of the fix-it ladder: what it fixes, what it costs, and the button this screen has for it. */
@@ -185,9 +189,17 @@ private val ladder = listOf(
 
 /** Try each level only if the one above did not help. */
 @Composable
-private fun FixLadder(working: Boolean, repair: List<RepairItem>?, onRestart: () -> Unit, onRepair: () -> Unit, onReset: () -> Unit) {
+private fun FixLadder(
+    working: Boolean,
+    repair: List<RepairItem>?,
+    onRestart: () -> Unit,
+    onRepair: () -> Unit,
+    onReset: () -> Unit,
+    onGuide: () -> Unit,
+) {
     SectionCard("If something is wrong") {
         Hint("Start at the top. Go down a level only if the one above did not help.")
+        TextButton(onClick = onGuide) { Text("What to try when something breaks") }
         ladder.forEach { rung ->
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

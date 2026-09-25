@@ -36,6 +36,7 @@ import com.pocketide.model.AgentInfo
 import com.pocketide.model.SessionRecord
 import com.pocketide.sessions.HandOff
 import com.pocketide.ui.components.SelectableText
+import com.pocketide.ui.shell.External
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -151,6 +152,7 @@ fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, onClose: () -> U
     LaunchedEffect(Unit) {
         if (!launched) {
             launched = true
+            External.leaving(context)
             if (runCatching { pick.launch(arrayOf("*/*")) }.isFailure) {
                 snackbar.showSnackbar("This phone has no file picker.")
                 onClose()

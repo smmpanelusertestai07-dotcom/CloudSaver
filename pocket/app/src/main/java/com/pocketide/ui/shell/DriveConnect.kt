@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pocketide.core.Redact
@@ -48,6 +49,7 @@ fun DriveConnectPanel(
     enabled: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var link by remember { mutableStateOf<DriveLink>(DriveLink.Idle) }
     // Assigned below; the consent result and the request that opens it refer to each other.
     lateinit var consent: ManagedActivityResultLauncher<IntentSenderRequest, ActivityResult>
@@ -60,6 +62,7 @@ fun DriveConnectPanel(
             }
             is DriveAuthResult.NeedsConsent -> {
                 try {
+                    External.leaving(context)
                     consent.launch(IntentSenderRequest.Builder(result.intent.intentSender).build())
                 } catch (_: ActivityNotFoundException) {
                     link = DriveLink.Failed("Google's sign-in could not open. Update Google Play services and try again.")

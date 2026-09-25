@@ -56,6 +56,7 @@ import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.computer.ResetComputerDialogs
 import com.pocketide.ui.shell.Diagnostics
+import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.ExtraPasswordRules
 import com.pocketide.ui.shell.FinePrint
 import com.pocketide.ui.shell.Gap
@@ -324,6 +325,7 @@ private fun shareReport(context: Context, report: String) {
     val chooser = Intent.createChooser(send, Diagnostics.SHARE_TITLE)
     if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
+        External.leaving(context)
         context.startActivity(chooser)
     } catch (_: ActivityNotFoundException) {
         // Nothing can receive text: the report stays on screen, selectable.

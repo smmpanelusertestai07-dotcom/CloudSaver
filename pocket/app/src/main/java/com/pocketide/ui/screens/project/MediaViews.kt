@@ -104,6 +104,7 @@ import com.pocketide.media.MediaKind
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.shell.External
 import com.pocketide.ui.web.SafeHtmlView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -158,7 +159,10 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostStat
             if (adding) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             } else {
-                TextButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text("Add file") }
+                TextButton(onClick = {
+                    External.leaving(context)
+                    pick.launch(arrayOf("*/*"))
+                }) { Text("Add file") }
             }
         }
         when {
@@ -650,6 +654,7 @@ private fun install(context: Context, uri: Uri): String? {
     if (!context.packageManager.canRequestPackageInstalls()) {
         val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
         return try {
+            External.leaving(context)
             context.startActivity(settings)
             "Allow PocketIDE to install apps, then come back and tap Install again."
         } catch (_: ActivityNotFoundException) {
@@ -660,6 +665,7 @@ private fun install(context: Context, uri: Uri): String? {
         .setDataAndType(uri, APK_MIME)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     return try {
+        External.leaving(context)
         context.startActivity(view)
         null
     } catch (_: ActivityNotFoundException) {
@@ -674,5 +680,6 @@ private fun shareItem(context: Context, uri: Uri, item: MediaItem) {
         .putExtra(Intent.EXTRA_STREAM, uri)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     send.clipData = ClipData.newRawUri(item.name, uri)
+    External.leaving(context)
     context.startActivity(Intent.createChooser(send, "Share ${item.name}"))
 }

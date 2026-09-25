@@ -57,7 +57,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import com.pocketide.ui.shell.External
 
 /** What the page's callbacks reach; refreshed on every composition so nothing goes stale. */
 internal class WebCallbacks {
@@ -191,6 +193,7 @@ fun AgentWebView(
     /** The owner is using the page (a tap, a key): at most about once a minute. */
     onInteraction: () -> Unit = {},
 ) {
+    val context = LocalContext.current
     val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         holder.deliverFiles(uri?.let { arrayOf(it) })
     }
@@ -205,6 +208,7 @@ fun AgentWebView(
         holder.callbacks.interaction = onInteraction
         holder.callbacks.chooseFiles = { kind, multiple ->
             val request = PickVisualMediaRequest(mediaType = kind.toMediaType())
+            External.leaving(context)
             runCatching { if (multiple) pickMany.launch(request) else pickOne.launch(request) }.isSuccess
         }
     }
