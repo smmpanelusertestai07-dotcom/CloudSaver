@@ -205,4 +205,19 @@ class SafetyTest {
         assertEquals(listOf(".gemini/antigravity/conversation_summaries.db"), objects.map { it.path })
         assertEquals(ObjectKind.AGENT_STATE, objects.single().kind)
     }
+
+    @Test
+    fun theOwnersClaudeSkillsSubagentsAndCommandsReachDriveAsMemory() = runBlocking {
+        val phone = TestPhone(accounts, clock)
+        val kept = listOf(
+            ".claude/skills/release-notes/SKILL.md", ".claude/skills/release-notes/scripts/collect.py",
+            ".claude/agents/reviewer.md", ".claude/commands/git/tidy.md", ".claude/output-styles/terse.md",
+        )
+        for (p in kept) phone.homeFile("claude", p).writeText("mine: $p")
+        phone.homeFile("claude", ".claude/skills/deploy/.env").writeText("SECRET")
+        phone.engine.syncNow()
+        val objects = phone.remoteIndex()!!.objects
+        assertEquals(kept.sorted(), objects.map { it.path }.sorted())
+        assertTrue(objects.all { it.kind == ObjectKind.MEMORY })
+    }
 }

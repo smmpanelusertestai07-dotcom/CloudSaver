@@ -40,6 +40,7 @@ internal object TrackRules {
     /** Folders and files walked in every room's home; [AgentFiles] decides file by file. */
     val roots = listOf(
         ".claude/CLAUDE.md", ".claude/rules", ".claude/projects", ".claude/history.jsonl", ".claude/plans",
+        ".claude/skills", ".claude/agents", ".claude/commands", ".claude/output-styles",
         ".codex/AGENTS.md", ".codex/AGENTS.override.md", ".codex/sessions", ".codex/archived_sessions",
         ".codex/history.jsonl", ".codex/rules", ".codex/skills",
         ".gemini/GEMINI.md", ".gemini/AGENTS.md", ".gemini/config", ".gemini/antigravity", ".gemini/antigravity-cli",
@@ -47,12 +48,15 @@ internal object TrackRules {
 
     private val memoryNames = setOf("CLAUDE.md", "AGENTS.md", "AGENTS.override.md", "GEMINI.md", "memory.txtpb")
 
+    /** The owner's own skills, subagents, slash commands and output styles: restored first, like memory. */
+    private val memoryFolders = listOf(".codex/skills/", ".claude/skills/", ".claude/agents/", ".claude/commands/", ".claude/output-styles/")
+
     /** The kind of a file under a room's home, or null when it must not leave the phone. */
     fun homeKind(path: String): ObjectKind? {
         if (AgentFiles.classify(path) != FileClass.SYNC || transient(path.substringAfterLast('/'))) return null
         val name = path.substringAfterLast('/')
         return when {
-            name in memoryNames || "/memory/" in path || "/rules/" in path || path.startsWith(".codex/skills/") -> ObjectKind.MEMORY
+            name in memoryNames || "/memory/" in path || "/rules/" in path || memoryFolders.any(path::startsWith) -> ObjectKind.MEMORY
             // Antigravity's conversations are opaque files: when one is rewritten instead of
             // appended to, its changed prefix makes the whole file a new base piece.
             path.endsWith(".jsonl") || "/conversations/" in path -> ObjectKind.CHAT_PIECE
