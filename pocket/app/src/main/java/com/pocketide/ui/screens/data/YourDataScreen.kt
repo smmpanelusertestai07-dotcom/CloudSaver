@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.ShortcutManagerCompat
@@ -63,6 +64,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.sync.MoveState
 import com.pocketide.sync.PhoneSpace
 import com.pocketide.ui.components.InfoRow
+import com.pocketide.ui.components.LabelValueRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -311,10 +313,10 @@ private suspend fun readSizes(graph: AppGraph, agents: List<AgentInfo>): PhoneSi
 @Composable
 private fun TypeRow(title: String, value: String, places: List<Place>, note: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text(value, style = MaterialTheme.typography.bodyMedium)
-        }
+        LabelValueRow(
+            label = { Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium) },
+            value = { Text(value, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End) },
+        )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             places.forEach { StatusChip(it.label, Tone.NEUTRAL) }
         }
