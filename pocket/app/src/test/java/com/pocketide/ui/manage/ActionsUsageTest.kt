@@ -59,6 +59,28 @@ class ActionsUsageTest {
     }
 
     @Test
+    fun `each repository says how it is paid`() {
+        val usage = AccountUsage(
+            "free",
+            listOf(
+                UsageLine("actions", "actions_linux", 10.0, "Minutes", 0.0, grossAmountUsd = 0.08, discountAmountUsd = 0.08, repository = "me/app"),
+                UsageLine("actions", "actions_linux", 30.0, "Minutes", 0.0, grossAmountUsd = 0.24, discountAmountUsd = 0.24, repository = "me/site"),
+                UsageLine("actions", "actions_macos", 10.0, "Minutes", 0.62, grossAmountUsd = 0.62, repository = "me/ios"),
+            ),
+            null,
+            null,
+        )
+        val summary = ActionsUsage.summarize(usage, publicRepos = setOf("site"))
+        assertEquals(0.62, summary.chargedUsd, 0.001)
+        assertEquals(0.94, summary.grossUsd, 0.001)
+        assertEquals(0.32, summary.discountUsd, 0.001)
+        assertEquals(
+            listOf("me/ios" to "$0.62", "me/site" to "free (public repo)", "me/app" to "included in your plan"),
+            summary.byRepository.map { it.repository to it.label },
+        )
+    }
+
+    @Test
     fun `plans map to their included minutes and storage`() {
         assertEquals(2_000, ActionsUsage.allowance("Free")?.minutes)
         assertEquals(3_000, ActionsUsage.allowance("pro")?.minutes)

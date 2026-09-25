@@ -39,6 +39,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.core.Ist
 import com.pocketide.github.WorkflowRun
+import com.pocketide.limiter.RoomWork
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
@@ -59,10 +60,15 @@ import com.pocketide.ui.manage.SectionLabel
 import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.UsageMeter
+import com.pocketide.ui.manage.BackgroundLimitNote
+import com.pocketide.ui.manage.StopBanner
+import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.attempt
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
+import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.project.rememberTicker
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -99,9 +105,42 @@ fun ActivityScreen(nav: PocketNav) {
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val builds = rememberLiveBuilds(graph, projects)
+    val lastStop by graph.limiter.lastStop.collectAsStateWithLifecycle()
+    val stops by graph.rooms.stops.collectAsStateWithLifecycle()
+    val work by graph.limiter.work.collectAsStateWithLifecycle()
+    val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
+    val now by rememberTicker(graph.clock::now)
+    // Rooms that are running again need no banner about their last stop.
+    val stopped = WorkText.newsworthy(stops).filterKeys { rooms[it] !is RoomState.Running && rooms[it] !is RoomState.Starting }
 
     Box(Modifier.fillMaxSize()) {
         ManageList {
+            lastStop?.let { stop ->
+                item {
+                    StopBanner(
+                        text = stop.message,
+                        onResume = {
+                            graph.limiter.dismissStop()
+                            if (!resumeRooms(graph, stop.agentIds, nav)) runner.say("No open session to go back to. Open a project to start one.")
+                        },
+                        onDismiss = graph.limiter::dismissStop,
+                    )
+                }
+            }
+            stopped.forEach { (agentId, stop) ->
+                // The limiter's banner already says it for the rooms it stopped.
+                if (lastStop?.agentIds?.contains(agentId) == true) return@forEach
+                val name = agents.firstOrNull { it.id == agentId }?.displayName ?: agentId
+                item {
+                    StopBanner(
+                        text = "$name: ${stop.message}",
+                        onResume = {
+                            if (!resumeRooms(graph, listOf(agentId), nav)) runner.say("No open session to go back to. Open a project to start one.")
+                        },
+                        onDismiss = null,
+                    )
+                }
+            }
             item { SectionLabel("This phone") }
             item {
                 SectionCard(null) {
@@ -111,11 +150,12 @@ fun ActivityScreen(nav: PocketNav) {
                 }
             }
             item { SectionLabel("Agents") }
-            item { AgentsCard(graph, agents, rooms, sessions, runner, nav) }
+            item { AgentsCard(graph, agents, rooms, sessions, work, now, runner, nav) }
             item { SectionLabel("Sync with Google Drive") }
             item {
                 SectionCard(null) {
                     ToneLine(ManageText.sync(sync, Ist::dateTime, ManageFormat::bytes))
+                    backgroundLimit?.let { BackgroundLimitNote(it) }
                     if (waiting.isNotEmpty()) {
                         val bytes = waiting.sumOf { it.bytes }
                         TextButton(onClick = nav::waitingUploads) {
@@ -167,6 +207,8 @@ private fun AgentsCard(
     agents: List<AgentInfo>,
     rooms: Map<String, RoomState>,
     sessions: List<SessionRecord>,
+    work: Map<String, RoomWork>,
+    now: Long,
     runner: ActionRunner,
     nav: PocketNav,
 ) {
@@ -188,6 +230,7 @@ private fun AgentsCard(
                 ) {
                     Text(agent.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Hint(listOfNotNull(session?.title, told.text).joinToString(" · "))
+                    WorkText.chips(agent.displayName, work[agent.id], now).forEach { StatusChip(it.text, it.tone) }
                 }
                 Spacer(Modifier.width(8.dp))
                 val key = "stop:${agent.id}"
@@ -200,7 +243,7 @@ private fun AgentsCard(
         }
         val failed = agents.mapNotNull { agent -> (rooms[agent.id] as? RoomState.Failed)?.let { agent to it } }
         failed.forEach { (agent, state) -> ToneLine(Told("${agent.displayName}: ${state.why}", Tone.ERROR)) }
-        if (active.size > 1) {
+        if (active.isNotEmpty()) {
             HorizontalDivider()
             OutlinedButton(
                 onClick = { runner.run(STOP_ALL, done = "Every agent stopped. Chats and files are kept.") { graph.rooms.stopAll() } },

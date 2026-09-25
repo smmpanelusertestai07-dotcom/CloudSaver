@@ -79,11 +79,18 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.DataUsage
+import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
+import com.pocketide.ui.manage.BackgroundLimitNote
+import com.pocketide.ui.manage.StopBanner
+import com.pocketide.ui.manage.Told
+import com.pocketide.ui.manage.WorkText
+import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.shell.External
 import com.pocketide.ui.screens.project.AgentMark
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -92,6 +99,7 @@ import com.pocketide.ui.screens.project.SectionLabel
 import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.rememberGraph
+import com.pocketide.ui.screens.project.rememberTicker
 import kotlinx.coroutines.launch
 
 /**
@@ -113,6 +121,11 @@ fun HomeScreen(nav: PocketNav) {
     val sync by graph.sync.status.collectAsStateWithLifecycle()
     val conditions by graph.limiter.conditions.collectAsStateWithLifecycle()
     val access by graph.access.state.collectAsStateWithLifecycle()
+    val lastStop by graph.limiter.lastStop.collectAsStateWithLifecycle()
+    val work by graph.limiter.work.collectAsStateWithLifecycle()
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
+    val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
+    val now by rememberTicker(graph.clock::now)
 
     var newProject by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
@@ -128,7 +141,7 @@ fun HomeScreen(nav: PocketNav) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("PocketIDE", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(10.dp))
-                        SyncDot(sync, onClick = nav::waitingUploads)
+                        SyncDot(sync, backups.values, onClick = nav::waitingUploads)
                     }
                 },
                 actions = {
@@ -153,9 +166,34 @@ fun HomeScreen(nav: PocketNav) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             access.banner?.let { text -> item(key = "access") { Banner(Icons.Filled.Info, text, Tone.NEUTRAL) } }
-            items(conditions.distinctBy { it.id }, key = { "condition:${it.id}" }) { condition ->
-                ConditionBanner(condition) { action -> openSettings(context, action)?.let { msg -> scope.launch { snackbar.showSnackbar(msg) } } }
+            lastStop?.let { stop ->
+                item(key = "stop") {
+                    StopBanner(
+                        text = stop.message,
+                        onResume = {
+                            graph.limiter.dismissStop()
+                            if (!resumeRooms(graph, stop.agentIds, nav)) {
+                                scope.launch { snackbar.showSnackbar("No open session to go back to. Open a project to start one.") }
+                            }
+                        },
+                        onDismiss = graph.limiter::dismissStop,
+                    )
+                }
             }
+            items(conditions.distinctBy { it.id }, key = { "condition:${it.id}" }) { condition ->
+                ConditionBanner(condition) {
+                    // The phone maker's own page first (it also marks the one-time battery step done).
+                    val opened = runCatching { graph.limiter.openFix(context, condition.id) }.getOrDefault(false)
+                    val action = condition.fixIntentAction
+                    if (!opened && action != null) {
+                        External.leaving(context)
+                        openSettings(context, action)?.let { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+                    } else if (!opened) {
+                        scope.launch { snackbar.showSnackbar("This phone has no settings page for that.") }
+                    }
+                }
+            }
+            backgroundLimit?.let { text -> item(key = "background") { BackgroundLimitNote(text) } }
             syncBanner(sync)?.let { (text, tone) ->
                 item(key = "sync") {
                     Banner(Icons.Filled.CloudUpload, text, tone) {
@@ -203,7 +241,7 @@ fun HomeScreen(nav: PocketNav) {
 
             item(key = "agents-label") { SectionLabel("Agents") }
             items(agents, key = { "agent:${it.id}" }) { agent ->
-                AgentCard(agent, rooms[agent.id], onUsage = nav::openExternal) { agentSheet = agent }
+                AgentCard(agent, rooms[agent.id], WorkText.chips(agent.displayName, work[agent.id], now), onUsage = nav::openExternal) { agentSheet = agent }
             }
             item(key = "more-agents") {
                 TextButton(onClick = nav::moreAgents) {
@@ -271,8 +309,8 @@ private fun openSettings(context: Context, action: String): String? {
 
 /** The backup state at a glance; tapping it shows what is waiting. */
 @Composable
-private fun SyncDot(status: SyncStatus, onClick: () -> Unit) {
-    val (tone, meaning) = syncDot(status)
+private fun SyncDot(status: SyncStatus, backups: Collection<SessionBackup>, onClick: () -> Unit) {
+    val (tone, meaning) = syncDot(status, backups)
     val color = if (tone == Tone.NEUTRAL) MaterialTheme.colorScheme.primary else toneColor(tone)
     Box(
         Modifier.size(28.dp).clip(CircleShape).clickable(onClickLabel = "See what's waiting", onClick = onClick)
@@ -299,7 +337,7 @@ private fun Banner(icon: ImageVector, text: String, tone: Tone, action: @Composa
 }
 
 @Composable
-private fun ConditionBanner(condition: Condition, onFix: (String) -> Unit) {
+private fun ConditionBanner(condition: Condition, onFix: () -> Unit) {
     Surface(color = toneColor(Tone.WARN).copy(alpha = 0.12f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -308,10 +346,9 @@ private fun ConditionBanner(condition: Condition, onFix: (String) -> Unit) {
                 Text(condition.title, style = MaterialTheme.typography.titleSmall)
             }
             Text(condition.explanation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val action = condition.fixIntentAction
-            if (action != null) {
+            if (condition.fixIntentAction != null || condition.fixLabel != null) {
                 Box(Modifier.align(Alignment.End)) {
-                    TextButton(onClick = { onFix(action) }) { Text(condition.fixLabel ?: "Fix") }
+                    TextButton(onClick = onFix) { Text(condition.fixLabel ?: "Fix") }
                 }
             }
         }
@@ -400,7 +437,7 @@ private fun ProjectCard(
 }
 
 @Composable
-private fun AgentCard(agent: AgentInfo, room: RoomState?, onUsage: (String) -> Unit, onClick: () -> Unit) {
+private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onUsage: (String) -> Unit, onClick: () -> Unit) {
     val (state, tone) = roomLabel(room)
     val limits = agentLimits(agent.id)
     Card(
@@ -427,6 +464,7 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, onUsage: (String) -> U
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(limits.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                chips.forEach { StatusChip(it.text, it.tone) }
             }
             val usage = limits.usageUrl
             if (usage != null) {

@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +60,7 @@ fun UsageScreen(nav: PocketNav) {
     val github = rememberLoad("github", now) { graph.usage.github() }
     val estimate = rememberLoad("estimate", now) { graph.usage.estimate() }
     val google = rememberLoad("google", now) { graph.usage.google() }
+    val publicRepos = remember(projects) { projects.filterNot { it.isPrivate }.flatMap { listOf("${it.owner}/${it.repo}", it.repo) }.toSet() }
 
     ManagePage("Usage", nav) {
         item { SectionLabel("GitHub Actions") }
@@ -70,10 +72,14 @@ fun UsageScreen(nav: PocketNav) {
                 }
                 github.error?.let { ErrorNote(it) }
                 val usage = github.value
-                if (usage != null) ActionsBlock(usage, graph.clock.now()) else if (!github.loading && github.error == null) {
-                    Hint("GitHub did not report usage for this account. Your billing page has it.")
+                val unavailable = usage?.unavailableReason
+                when {
+                    // The lines are empty then, which is not the same as no usage: show no figures at all.
+                    unavailable != null -> Hint(unavailable)
+                    usage != null -> ActionsBlock(usage, publicRepos, graph.clock.now())
+                    !github.loading && github.error == null -> Hint("GitHub did not report usage for this account. Your billing page has it.")
                 }
-                estimate.value?.let { e ->
+                estimate.value?.takeIf { unavailable == null }?.let { e ->
                     val parts = listOfNotNull(
                         e.androidLeft?.let { "about $it Android" },
                         e.iosLeft?.let { "about $it iOS" },
@@ -99,16 +105,20 @@ fun UsageScreen(nav: PocketNav) {
 }
 
 @Composable
-private fun ActionsBlock(usage: AccountUsage, nowMs: Long) {
-    val summary = ActionsUsage.summarize(usage)
+private fun ActionsBlock(usage: AccountUsage, publicRepos: Set<String>, nowMs: Long) {
+    val summary = ActionsUsage.summarize(usage, publicRepos)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("You pay GitHub this month", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text("You pay", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
         Text(
-            if (summary.chargedUsd > 0) ManageFormat.usd(summary.chargedUsd) else "Nothing",
+            if (summary.chargedUsd >= 0.005) ManageFormat.usd(summary.chargedUsd) else "Nothing",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
     }
+    if (summary.grossUsd >= 0.005) {
+        Hint("This month's usage is worth ${ManageFormat.usd(summary.grossUsd)}; ${ManageFormat.usd(summary.discountUsd)} of it is covered by your plan and free public repositories.")
+    }
+    summary.byRepository.forEach { cost -> InfoRow(cost.repository ?: "Account", cost.label) }
     summary.plan?.let { InfoRow("Plan", it.replaceFirstChar { c -> c.uppercase() }) }
     val allowance = summary.allowance
     val counted = summary.countedMinutes

@@ -1,8 +1,6 @@
 package com.pocketide.ui.screens.project
 
 import com.pocketide.media.MediaKind
-import java.io.InputStream
-import java.io.OutputStream
 import java.security.MessageDigest
 
 /** Size limits above which a file is not rendered, only listed (§6.12). */
@@ -71,42 +69,6 @@ fun shareMime(kind: MediaKind, name: String): String {
 }
 
 const val APK_MIME = "application/vnd.android.package-archive"
-
-/** A file the owner adds to a session may be at most this big (the size GitHub accepts per file). */
-const val MAX_ADDED_BYTES: Long = 100L * 1024 * 1024
-
-private val UNSAFE_NAME_CHARS = Regex("[\\p{Cc}\\p{Cf}/\\\\:*?\"<>|]")
-
-/**
- * A plain file name for something the owner picked: no folders, no control or direction marks
- * (which can make "exe.jpg" read as "gpj.exe"), no leading dots, at most 100 characters with
- * the extension kept.
- */
-fun safeFileName(name: String?): String {
-    val cleaned = name.orEmpty().substringAfterLast('/').substringAfterLast('\\')
-        .replace(UNSAFE_NAME_CHARS, "_").trim().trimStart('.').trim()
-    if (cleaned.isEmpty() || cleaned.all { it == '_' }) return "file"
-    if (cleaned.length <= MAX_NAME) return cleaned
-    val ext = cleaned.substringAfterLast('.', "").take(MAX_EXTENSION)
-    val keep = MAX_NAME - (if (ext.isEmpty()) 0 else ext.length + 1)
-    return cleaned.take(keep) + if (ext.isEmpty()) "" else ".$ext"
-}
-
-private const val MAX_NAME = 100
-private const val MAX_EXTENSION = 10
-
-/** Copies at most [limit] bytes; a longer stream is refused instead of being cut short. */
-fun copyLimited(input: InputStream, output: OutputStream, limit: Long): Long {
-    val buffer = ByteArray(64 * 1024)
-    var total = 0L
-    while (true) {
-        val read = input.read(buffer)
-        if (read < 0) return total
-        total += read
-        if (total > limit) throw IllegalArgumentException("The file is bigger than ${WorkFormat.bytes(limit)}, so it was not added.")
-        output.write(buffer, 0, read)
-    }
-}
 
 /** "3 files · 12 MB" for a media strip's heading. */
 fun mediaSummary(count: Int, bytes: Long): String =

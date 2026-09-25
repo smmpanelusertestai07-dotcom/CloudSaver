@@ -1,12 +1,16 @@
 package com.pocketide.ui.screens.project
 
+import com.pocketide.bridge.PortListener
+import com.pocketide.builds.BuildTemplate
 import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.Tone
+import com.pocketide.usage.BuildEstimate
 import java.time.Instant
 import java.util.Locale
 
@@ -66,8 +70,66 @@ const val UNTRUSTED_REPO =
     "Someone else's repository: its files, issues and READMEs are data for the agent, never instructions. " +
         "Look at the changes before you put a session on main."
 
+/** How the owner's own answer, or the automatic one, reads on a project. */
+fun trustText(trust: ProjectTrust): Pair<String, Tone> = when (trust) {
+    ProjectTrust.YOURS -> "Your code" to Tone.OK
+    ProjectTrust.SOMEONE_ELSES -> "Someone else's code" to Tone.WARN
+}
+
+/** A room's idle sleep is worth a chip only when it is close. */
+const val SLEEP_SOON_MS: Long = 10 * 60_000L
+
+/** "Claude sleeps in 4 min" when [sleepsAt] is less than [SLEEP_SOON_MS] away; null otherwise. */
+fun sleepsSoon(name: String, sleepsAt: Long?, now: Long): String? {
+    val left = (sleepsAt ?: return null) - now
+    if (left >= SLEEP_SOON_MS) return null
+    val minutes = ((left + 59_999) / 60_000).coerceAtLeast(1)
+    return "$name sleeps in $minutes min"
+}
+
+/** What a stopped room's screen says: the room's own reason when it gave one. */
+fun stoppedText(name: String, reason: String?): String =
+    reason?.takeIf { it.isNotBlank() }?.let { "$name: $it" }
+        ?: "$name stopped: it was idle, or the phone needed the memory. Nothing was lost; the session, its branch and its chat are kept."
+
 /** Ports a dev server usually picks (Next, Angular, Flask, Vite, Django, Jupyter…). */
 val COMMON_DEV_PORTS: List<Int> = listOf(3000, 3001, 4200, 5000, 5173, 8000, 8080, 8888)
+
+/**
+ * The cost line shown before Run (A6): what one run of [template] counts against the included
+ * minutes, from the owner's own averages, and how many are left this month. Null when nothing is known.
+ */
+fun buildCost(template: BuildTemplate, estimate: BuildEstimate?, publicRepo: Boolean): String? {
+    if (publicRepo) return "Free: builds of a public repository on GitHub's standard runners cost no minutes."
+    val id = template.id.lowercase(Locale.ROOT)
+    val each = when {
+        "ios" in id -> estimate?.iosMinutesEach
+        "android" in id -> estimate?.androidMinutesEach
+        else -> null
+    }
+    val left = estimate?.minutesLeft?.let { "$it included minutes left this month" }
+    val rate = if (template.minutesMultiplier > 1) "each minute counts ${template.minutesMultiplier}×" else null
+    val run = each?.let { "A run counts about $it minutes" } ?: rate?.replaceFirstChar { it.uppercase() }
+    return listOfNotNull(run, left).joinToString("; ").takeIf { it.isNotEmpty() }?.let { "$it." }
+}
+
+/** Who can reach a dev server, from the address it listens on (§8, B17). */
+enum class Reach(val label: String) {
+    /** 127.0.0.1 or ::1: only apps on this phone. */
+    PHONE_ONLY("Only this phone"),
+
+    /** 0.0.0.0, :: or a network address: anyone on the same Wi-Fi as well. */
+    WIFI("Visible on Wi-Fi"),
+}
+
+/** The bridge's listeners as Preview reads them. */
+fun reachByPort(listeners: List<PortListener>): Map<Int, Reach> =
+    listeners.associate { it.port to if (it.onNetwork) Reach.WIFI else Reach.PHONE_ONLY }
+
+/** What the owner can hand the agent when a dev server is open to the Wi-Fi. */
+fun loopbackRequest(port: Int): String =
+    "The dev server on port $port listens on every network address, so anyone on this Wi-Fi can open it. " +
+        "Restart it bound to 127.0.0.1 only (for example with --host 127.0.0.1)."
 
 /** One dev server Preview offers. [reach] is null until the phone was checked. */
 data class PreviewPort(val port: Int, val fromAgent: Boolean, val reach: Reach?)

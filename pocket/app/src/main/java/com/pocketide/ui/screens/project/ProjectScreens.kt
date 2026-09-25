@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,12 +84,17 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import com.pocketide.AppGraph
 import com.pocketide.core.Ist
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -99,6 +105,7 @@ import com.pocketide.ui.web.nextZoom
 import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberTerminalState
 import com.pocketide.ui.web.rememberWebViewHolder
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class ProjectTab(val label: String) {
@@ -114,12 +121,13 @@ private enum class ProjectTab(val label: String) {
 @Composable
 fun ProjectScreen(projectId: String, nav: PocketNav) {
     val graph = rememberGraph()
+    val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val allSessions by graph.sessions.all.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
-    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
+    val trusts by graph.projects.trust.collectAsStateWithLifecycle()
     val project = projects.firstOrNull { it.id == projectId }
     val sessions = remember(allSessions, projectId) {
         allSessions.filter { it.projectId == projectId && it.status != SessionStatus.DELETED }
@@ -188,7 +196,14 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                 )
                 return@Column
             }
-            ProjectHeader(project, sessions.size, trustOf(project.owner, account?.login), cloneProblem) { cloneTries++ }
+            ProjectHeader(
+                project = project,
+                sessionCount = sessions.size,
+                trust = trusts[projectId] ?: graph.projects.trustOf(projectId),
+                cloneProblem = cloneProblem,
+                onRetryClone = { cloneTries++ },
+                onTrust = { answer -> scope.act(snackbar, "Could not save your answer") { graph.projects.setTrust(projectId, answer) } },
+            )
             PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 8.dp) {
                 ProjectTab.entries.forEach { t ->
                     Tab(
@@ -204,7 +219,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     ProjectTab.SESSIONS -> SessionsTab(projectId, sessions, agents, rooms, nav, snackbar)
-                    ProjectTab.BUILDS -> BuildsPanel(projectId, sessions, selected, nav, snackbar)
+                    ProjectTab.BUILDS -> BuildsPanel(projectId, sessions, selected, nav, snackbar, publicRepo = !project.isPrivate)
                     else -> if (selected == null) {
                         EmptyState(
                             Icons.Filled.Forum,
@@ -240,11 +255,20 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
 }
 
 @Composable
-private fun ProjectHeader(project: Project, sessionCount: Int, trust: Trust, cloneProblem: String?, onRetryClone: () -> Unit) {
+private fun ProjectHeader(
+    project: Project,
+    sessionCount: Int,
+    trust: ProjectTrust,
+    cloneProblem: String?,
+    onRetryClone: () -> Unit,
+    onTrust: (ProjectTrust) -> Unit,
+) {
+    var asking by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusChip(if (project.isPrivate) "Private" else "Public", if (project.isPrivate) Tone.OK else Tone.WARN)
-            if (trust == Trust.SOMEONE_ELSES) StatusChip(trust.label, Tone.WARN)
+            val (whose, tone) = trustText(trust)
+            Box(Modifier.clickable(onClickLabel = "Change whose code this is") { asking = true }) { StatusChip(whose, tone) }
             Text(
                 "Last activity ${Ist.dateTime(project.lastActivityAt)} · ${WorkFormat.count(sessionCount, "session", "sessions")}",
                 style = MaterialTheme.typography.bodySmall,
@@ -253,7 +277,7 @@ private fun ProjectHeader(project: Project, sessionCount: Int, trust: Trust, clo
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (trust == Trust.SOMEONE_ELSES) {
+        if (trust == ProjectTrust.SOMEONE_ELSES) {
             Text(
                 UNTRUSTED_REPO,
                 style = MaterialTheme.typography.bodySmall,
@@ -272,7 +296,25 @@ private fun ProjectHeader(project: Project, sessionCount: Int, trust: Trust, clo
             }
         }
     }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text("Is this your code?") },
+            text = { Text(TRUST_QUESTION) },
+            confirmButton = {
+                TextButton(onClick = { asking = false; onTrust(ProjectTrust.YOURS) }) { Text("Yes, it's mine") }
+            },
+            dismissButton = {
+                TextButton(onClick = { asking = false; onTrust(ProjectTrust.SOMEONE_ELSES) }) { Text("No, someone else's") }
+            },
+        )
+    }
 }
+
+private const val TRUST_QUESTION =
+    "For someone else's code, agents ask before running commands and their browser tools stay off until you allow them: " +
+        "its files, issues and READMEs may carry instructions written to mislead an agent. Say yes only for code you or " +
+        "people you trust wrote."
 
 @Composable
 private fun SessionPicker(sessions: List<SessionRecord>, selected: SessionRecord, agents: List<AgentInfo>, onSelect: (String) -> Unit) {
@@ -536,6 +578,11 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val snackbar = remember { SnackbarHostState() }
     val sessions by graph.sessions.all.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
+    val stops by graph.rooms.stops.collectAsStateWithLifecycle()
+    val sleeps by graph.rooms.sleepsAt.collectAsStateWithLifecycle()
+    val installed by graph.agents.installed.collectAsStateWithLifecycle()
+    val projects by graph.projects.all.collectAsStateWithLifecycle()
+    val now by rememberTicker(graph.clock::now)
     val found = sessions.firstOrNull { it.id == sessionId }
     // A list refresh that briefly lacks the session must not tear down the agent's page.
     val lastSeen = remember(sessionId) { mutableStateOf(found) }
@@ -563,6 +610,12 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var startingFresh by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
     var immersive by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var handOffTo by remember(sessionId) { mutableStateOf<AgentInfo?>(null) }
+    var renamingBranch by remember(sessionId) { mutableStateOf(false) }
+    var addingFile by remember(sessionId) { mutableStateOf(false) }
+    val name = agentName(agent, agentId)
+    val sleepText = sleepsSoon(name, sleeps[agentId], now)
+    val publicRepo = projects.firstOrNull { it.id == session.projectId }?.isPrivate == false
     val prefs = rememberWebPrefs()
     var zoom by remember(agentId) { mutableIntStateOf(WebPrefs.DEFAULT_ZOOM) }
     LaunchedEffect(prefs, agentId) { zoom = prefs.agentZoom(agentId) }
@@ -571,6 +624,16 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     LaunchedEffect(sessionId, tries) {
         opened = null
         opened = attempt { graph.rooms.open(agentId, sessionId) }.getOrElse { RoomState.Failed(plainReason(it)) }
+    }
+    // While the owner looks at the agent, idle sleep never closes its room.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(agentId, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                keepAwake(graph, agentId)
+                delay(KEEP_AWAKE_EVERY_MS)
+            }
+        }
     }
     val view = roomView(opened, rooms[agentId], sessionId)
     val agentWeb = rememberWebViewHolder("agent:$sessionId")
@@ -601,7 +664,21 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         },
                         onImmersive = { immersive = true },
                         onStop = { stopping = true },
+                        sleepText = sleepText,
+                        others = installed.filter { it.id != agentId },
+                        onHandOff = { handOffTo = it },
+                        onRenameBranch = { renamingBranch = true },
+                        onAddFile = { addingFile = true },
+                        onRestart = {
+                            scope.act(snackbar, "Could not restart $name", done = "$name started again. The chat is kept.") {
+                                graph.rooms.restart(agentId)
+                                agentWeb.reload()
+                            }
+                        },
                     )
+                }
+                if (publicRepo && session.status == SessionStatus.OPEN && panel == null && !barHidden) {
+                    NeutralBranchNote(prefs)
                 }
                 if (isLargeTranscript(session, graph.sessions.largeTranscript(sessionId)) && !bigDismissed && panel == null && !barHidden) {
                     BigChatBanner(
@@ -621,7 +698,8 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     RoomContent(
                         view = view,
-                        agentName = agentName(agent, agentId),
+                        agentName = name,
+                        stopReason = stops[agentId]?.message,
                         onRetry = { tries++ },
                         onBack = nav::back,
                     ) { url ->
@@ -633,6 +711,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                             onNotice = { message -> scope.launch { snackbar.showSnackbar(message) } },
                             modifier = Modifier.fillMaxSize(),
                             textZoom = zoom,
+                            onInteraction = { keepAwake(graph, agentId) },
                         )
                     }
                     if (barHidden) {
@@ -659,6 +738,9 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
 
     if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false })
     if (putting) PutOnMainFlow(session, onClose = { putting = false })
+    handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
+    if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
+    if (addingFile) AddFileFlow(sessionId, snackbar, scope, onClose = { addingFile = false })
     if (stopping) {
         ConfirmDialog(
             title = "Stop ${agentName(agent, agentId)}?",
@@ -690,8 +772,15 @@ private fun AgentBar(
     onZoom: (Int) -> Unit,
     onImmersive: () -> Unit,
     onStop: () -> Unit,
+    sleepText: String?,
+    others: List<AgentInfo>,
+    onHandOff: (AgentInfo) -> Unit,
+    onRenameBranch: () -> Unit,
+    onAddFile: () -> Unit,
+    onRestart: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val open = session.status == SessionStatus.OPEN
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -703,6 +792,7 @@ private fun AgentBar(
                 Text(panelTitle ?: agentName(agent, session.agentId), style = MaterialTheme.typography.titleSmall)
                 Text(session.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (sleepText != null && panelTitle == null) StatusChip(sleepText, Tone.WARN)
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session menu") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -713,6 +803,15 @@ private fun AgentBar(
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                     }
+                    if (open) {
+                        DropdownMenuItem(text = { Text("Add file to this session") }, onClick = { menu = false; onAddFile() })
+                        DropdownMenuItem(text = { Text("Rename branch") }, onClick = { menu = false; onRenameBranch() })
+                    }
+                    if (open || session.status == SessionStatus.ON_MAIN) {
+                        others.forEach { other ->
+                            DropdownMenuItem(text = { Text("Continue in ${other.displayName}") }, onClick = { menu = false; onHandOff(other) })
+                        }
+                    }
                     if (panelTitle == null) {
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -722,6 +821,7 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text("Full screen") }, onClick = { menu = false; onImmersive() })
                     }
                     HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Restart agent") }, onClick = { menu = false; onRestart() })
                     DropdownMenuItem(text = { Text("Stop agent") }, onClick = { menu = false; onStop() })
                 }
             }
@@ -746,6 +846,7 @@ private fun BigChatBanner(starting: Boolean, onFresh: () -> Unit, onDismiss: () 
 private fun RoomContent(
     view: RoomView,
     agentName: String,
+    stopReason: String?,
     onRetry: () -> Unit,
     onBack: () -> Unit,
     ready: @Composable (String) -> Unit,
@@ -760,10 +861,41 @@ private fun RoomContent(
         RoomView.Elsewhere -> CenterMessage("$agentName's room is open on another session now.") {
             Button(onClick = onRetry) { Text("Open this session") }
         }
-        RoomView.Stopped -> CenterMessage(
-            "$agentName stopped: it was idle, or the phone needed the memory. Nothing was lost; the session, its branch and its chat are kept.",
-        ) {
+        RoomView.Stopped -> CenterMessage(stoppedText(agentName, stopReason)) {
             Button(onClick = onRetry) { Text("Resume") }
+        }
+    }
+}
+
+private const val KEEP_AWAKE_EVERY_MS = 60_000L
+
+/** The owner is using the agent's room: neither the room's own idle timer nor the limiter closes it. */
+private fun keepAwake(graph: AppGraph, agentId: String) {
+    runCatching { graph.rooms.touch(agentId) }
+    runCatching { graph.limiter.touch(agentId) }
+}
+
+private const val NEUTRAL_BRANCH_NOTE = "neutral-branch-names"
+
+/** Once: on a public repository new branches get neutral names, and how to choose a telling one. */
+@Composable
+private fun NeutralBranchNote(prefs: WebPrefs) {
+    val scope = rememberCoroutineScope()
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(prefs) { show = !prefs.noteShown(NEUTRAL_BRANCH_NOTE) }
+    if (!show) return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "This repository is public, so new branches get neutral names that do not tell what you work on. " +
+                    "To choose one, use Rename branch in the menu before the branch is on GitHub.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = {
+                show = false
+                scope.launch { prefs.markNoteShown(NEUTRAL_BRANCH_NOTE) }
+            }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
         }
     }
 }

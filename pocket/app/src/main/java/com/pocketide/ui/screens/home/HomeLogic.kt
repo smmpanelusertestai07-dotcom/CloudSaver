@@ -5,6 +5,8 @@ import com.pocketide.github.RepoInfo
 import com.pocketide.model.Thermal
 import com.pocketide.projects.RepoAddress
 import com.pocketide.rooms.RoomState
+import com.pocketide.sync.BackupState
+import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.WorkFormat
@@ -95,10 +97,17 @@ fun agentLimits(agentId: String): AgentLimits = when (agentId) {
     else -> AgentLimits("Limits come from the service this agent uses.", null)
 }
 
-/** The small backup dot on Home: its colour, and what it means for the screen reader. */
-fun syncDot(status: SyncStatus): Pair<Tone, String> = when (status) {
+/**
+ * The small backup dot on Home: its colour, and what it means for the screen reader. Between
+ * syncs, each session's own backup state ([backups]) says whether something still waits.
+ */
+fun syncDot(status: SyncStatus, backups: Collection<SessionBackup> = emptyList()): Pair<Tone, String> = when (status) {
     is SyncStatus.Error -> Tone.ERROR to "Backup is not working"
     is SyncStatus.Waiting -> Tone.WARN to "Chats are waiting to back up"
     is SyncStatus.Running -> Tone.NEUTRAL to "Backing up now"
-    is SyncStatus.UpToDate, SyncStatus.Idle -> Tone.OK to "Backed up"
+    is SyncStatus.UpToDate, SyncStatus.Idle -> when {
+        backups.any { it.state == BackupState.WAITING } -> Tone.WARN to "Chats are waiting to back up"
+        backups.any { it.state == BackupState.WAITING_FOR_WIFI } -> Tone.NEUTRAL to "Videos are waiting for Wi-Fi"
+        else -> Tone.OK to "Backed up"
+    }
 }

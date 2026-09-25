@@ -51,10 +51,14 @@ import com.pocketide.core.Redact
 import com.pocketide.core.Settings
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
+import com.pocketide.rooms.RoomState
+import com.pocketide.rooms.StopReason
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.screens.computer.ResetComputerDialogs
 import com.pocketide.ui.shell.Diagnostics
+import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.ExtraPasswordRules
 import com.pocketide.ui.shell.FinePrint
 import com.pocketide.ui.shell.Gap
@@ -148,27 +152,7 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
     }
 
     when (dialog) {
-        AdvancedDialog.RESET -> ConfirmDialog(
-            title = "Reset the computer?",
-            text = "Ubuntu and the engine are downloaded again (on Wi-Fi by default), and each agent the next time you open it. " +
-                "Your projects are on GitHub and your chats in Drive, so nothing of yours is lost. Agents' sign-ins must be done again.",
-            confirm = "Reset",
-            onConfirm = {
-                dialog = null
-                // The rebuild outlives this screen, so it runs in the app's scope.
-                graph.scope.launch {
-                    try {
-                        graph.computer.reset()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        notice = Redact.text(e.message ?: "The reset could not start.").take(200) to Tone.ERROR
-                    }
-                }
-                notice = "Resetting. You can follow it on the Computer screen." to Tone.OK
-            },
-            onDismiss = { dialog = null },
-        )
+        AdvancedDialog.RESET -> ResetComputerDialogs(graph, onClose = { dialog = null }, onNotice = { text, tone -> notice = text to tone })
         AdvancedDialog.SET_PASSWORD -> ExtraPasswordDialog(
             onSave = { password ->
                 dialog = null
@@ -343,6 +327,7 @@ private fun shareReport(context: Context, report: String) {
     val chooser = Intent.createChooser(send, Diagnostics.SHARE_TITLE)
     if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
+        External.leaving(context)
         context.startActivity(chooser)
     } catch (_: ActivityNotFoundException) {
         // Nothing can receive text: the report stays on screen, selectable.
@@ -379,10 +364,28 @@ private suspend fun buildReport(context: Context, graph: AppGraph): String {
         (graph.sync.status.value as? SyncStatus.Error)?.let { add("Sync: ${it.why}") }
         (graph.computer.state.value as? ComputerState.Broken)?.let { add("Computer: ${it.why}") }
         (graph.updater.state.value as? UpdateState.Failed)?.let { add("Update: ${it.why}") }
+        addAll(roomProblems(graph))
         addAll(recentExits(context))
     }
     return Diagnostics.report(facts, errors)
 }
+
+/** Rooms that failed, with their last engine lines (the rooms module removes secrets), and stops the owner did not ask for. */
+private fun roomProblems(graph: AppGraph): List<String> {
+    val stops = graph.rooms.stops.value
+    return graph.rooms.states.value.flatMap { (agentId, state) ->
+        buildList {
+            if (state is RoomState.Failed) {
+                add("Room $agentId: ${state.why}")
+                runCatching { graph.rooms.recentOutput(agentId) }.getOrDefault(emptyList())
+                    .takeLast(ROOM_OUTPUT_LINES).forEach { add("Room $agentId output: $it") }
+            }
+            stops[agentId]?.takeIf { it.reason != StopReason.OWNER }?.let { add("Room $agentId stopped: ${it.message}") }
+        }
+    }
+}
+
+private const val ROOM_OUTPUT_LINES = 5
 
 private fun computerLabel(state: ComputerState): String = when (state) {
     ComputerState.NotInstalled -> "not installed"

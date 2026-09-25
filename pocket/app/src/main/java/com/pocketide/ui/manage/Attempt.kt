@@ -25,7 +25,7 @@ object PlainError {
     const val OUT_OF_SPACE = "The phone is out of space. Free some space, then try again."
 
     fun of(error: Throwable): String = when (error) {
-        is NotConnectedException -> "GitHub is not connected. Reconnect it in Settings."
+        is NotConnectedException -> readable(error.message) ?: "GitHub is not connected. Reconnect it in Settings."
         is DriveException.StorageFull -> "Google storage is full. Free some space at one.google.com/storage."
         is DriveException.Offline -> "No connection. Try again when you are online."
         is DriveException.Revoked -> "Google Drive access was removed. Reconnect it in Settings."

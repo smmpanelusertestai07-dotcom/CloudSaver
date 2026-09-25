@@ -29,8 +29,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,6 +46,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.usage.BuildEstimate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -61,10 +62,17 @@ fun BuildsPanel(
     nav: PocketNav,
     snackbar: SnackbarHostState,
     modifier: Modifier = Modifier,
+    publicRepo: Boolean = false,
 ) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
-    val templates = remember { runCatching { graph.builds.templates() }.getOrDefault(emptyList()) }
+    // The templates that fit this session's files come first (C6).
+    val templates by produceState(emptyList<BuildTemplate>(), projectId, session?.id) {
+        value = attempt {
+            if (session == null) graph.builds.templates() else graph.builds.suggestedTemplates(projectId, session.id)
+        }.getOrElse { runCatching { graph.builds.templates() }.getOrDefault(emptyList()) }
+    }
+    val estimate by produceState<BuildEstimate?>(null, projectId) { value = attempt { graph.usage.estimate() }.getOrNull() }
     var runs by remember(projectId) { mutableStateOf<Result<List<WorkflowRun>>?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     // The run this phone started: followed by its id, never "the latest run" (which may be another one).
@@ -80,19 +88,11 @@ fun BuildsPanel(
         }
     }
     LaunchedEffect(projectId) { loadRuns() }
-    // A run GitHub gave no id for is looked for once, after GitHub had a moment to list it.
-    var lookAgain by remember { mutableIntStateOf(0) }
-    LaunchedEffect(lookAgain) {
-        if (lookAgain == 0) return@LaunchedEffect
-        delay(RUN_SETTLE_MS)
-        loadRuns()
-    }
-    // While a run is queued or running, the list follows it on its own.
+    // While a run is queued or running, the list follows it on its own; a notification follows it too.
     LaunchedEffect(projectId, runs, followed) {
         val current = runs?.getOrNull() ?: return@LaunchedEffect
         if (!needsPolling(current, followed)) return@LaunchedEffect
-        // GitHub lists a dispatched run a moment after the request.
-        delay(if (current.none { it.id == followed }) RUN_SETTLE_MS else RUN_POLL_MS)
+        delay(RUN_POLL_MS)
         loadRuns()
     }
 
@@ -139,6 +139,7 @@ fun BuildsPanel(
             TemplateCard(
                 template = template,
                 session = session,
+                cost = buildCost(template, estimate, publicRepo),
                 busy = busy != null,
                 onAdd = { target ->
                     work("add", "Could not add the template") {
@@ -150,11 +151,11 @@ fun BuildsPanel(
                     work("run", "Could not start the build") {
                         val runId = graph.builds.run(projectId, template.id, target.branch)
                         followed = runId
+                        loadRuns()
                         if (runId == null) {
-                            lookAgain++
                             "${template.title} was sent to GitHub for \"${target.title}\". It shows here once GitHub lists it."
                         } else {
-                            "${template.title} started on GitHub for \"${target.title}\"."
+                            "${template.title} started on GitHub for \"${target.title}\". A notification follows it."
                         }
                     }
                 },
@@ -200,12 +201,12 @@ fun BuildsPanel(
 
 /** How often a queued or running build is checked while this tab is open. */
 private const val RUN_POLL_MS = 15_000L
-private const val RUN_SETTLE_MS = 3_000L
 
 @Composable
 private fun TemplateCard(
     template: BuildTemplate,
     session: SessionRecord?,
+    cost: String?,
     busy: Boolean,
     onAdd: (SessionRecord) -> Unit,
     onRun: (SessionRecord) -> Unit,
@@ -214,6 +215,7 @@ private fun TemplateCard(
         Text(template.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Runs on ${template.runner} · ${template.fileName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (session != null) {
+            cost?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = !busy, onClick = { onRun(session) }) { Text("Run") }
                 OutlinedButton(enabled = !busy, onClick = { onAdd(session) }) { Text("Add to session") }

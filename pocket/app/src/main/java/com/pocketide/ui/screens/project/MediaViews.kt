@@ -17,7 +17,6 @@ import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Size
 import android.widget.ImageView
@@ -102,10 +101,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
-import com.pocketide.media.MediaLibrary
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.shell.External
 import com.pocketide.ui.web.SafeHtmlView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -131,7 +130,7 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostStat
         if (uri != null) {
             adding = true
             scope.launch {
-                finish { addDocument(context, graph.media, sessionId, uri) }
+                finish { graph.media.addFromPhone(sessionId, uri) }
                     .onSuccess { snackbar.showSnackbar("Added ${it.name} to this session's Media.") }
                     .onFailure { snackbar.showSnackbar("Could not add the file: ${plainReason(it)}") }
                 adding = false
@@ -160,7 +159,10 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostStat
             if (adding) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             } else {
-                TextButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text("Add file") }
+                TextButton(onClick = {
+                    External.leaving(context)
+                    pick.launch(arrayOf("*/*"))
+                }) { Text("Add file") }
             }
         }
         when {
@@ -373,29 +375,6 @@ fun MediaViewer(item: MediaItem, onDismiss: () -> Unit) {
         )
     }
 }
-
-/** Copies a picked document into the session's Media, refusing anything over [MAX_ADDED_BYTES]. */
-private suspend fun addDocument(context: Context, media: MediaLibrary, sessionId: String, uri: Uri): MediaItem =
-    withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        var name: String? = null
-        var size: Long? = null
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                name = cursor.getString(0)
-                size = if (cursor.isNull(1)) null else cursor.getLong(1)
-            }
-        }
-        require((size ?: 0) <= MAX_ADDED_BYTES) { "The file is bigger than ${WorkFormat.bytes(MAX_ADDED_BYTES)}, so it was not added." }
-        val temp = File.createTempFile("added-", ".part", context.cacheDir)
-        try {
-            val input = checkNotNull(resolver.openInputStream(uri)) { "The file could not be opened." }
-            input.use { source -> temp.outputStream().use { copyLimited(source, it, MAX_ADDED_BYTES) } }
-            media.add(sessionId, temp, safeFileName(name), "you")
-        } finally {
-            temp.delete()
-        }
-    }
 
 private fun sourceLabel(source: String): String = when (source) {
     "agent" -> "From the agent"
@@ -675,6 +654,7 @@ private fun install(context: Context, uri: Uri): String? {
     if (!context.packageManager.canRequestPackageInstalls()) {
         val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
         return try {
+            External.leaving(context)
             context.startActivity(settings)
             "Allow PocketIDE to install apps, then come back and tap Install again."
         } catch (_: ActivityNotFoundException) {
@@ -685,6 +665,7 @@ private fun install(context: Context, uri: Uri): String? {
         .setDataAndType(uri, APK_MIME)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     return try {
+        External.leaving(context)
         context.startActivity(view)
         null
     } catch (_: ActivityNotFoundException) {
@@ -699,5 +680,6 @@ private fun shareItem(context: Context, uri: Uri, item: MediaItem) {
         .putExtra(Intent.EXTRA_STREAM, uri)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     send.clipData = ClipData.newRawUri(item.name, uri)
+    External.leaving(context)
     context.startActivity(Intent.createChooser(send, "Share ${item.name}"))
 }

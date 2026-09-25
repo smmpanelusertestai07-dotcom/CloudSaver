@@ -38,8 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.github.RepoInfo
+import com.pocketide.projects.RepoAddress
 import com.pocketide.projects.RepoNotReachableException
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -132,6 +135,9 @@ internal fun ImportSheet(
     var problem by remember { mutableStateOf<String?>(null) }
     // Where to add a repository PocketIDE cannot reach yet; the one from the refusal wins.
     var addUrl by remember { mutableStateOf<String?>(null) }
+    // The repository to import again once the owner is back from adding it on GitHub.
+    var refused by remember { mutableStateOf<RepoAddress?>(null) }
+    var awaitingReturn by remember { mutableStateOf<RepoAddress?>(null) }
     val installUrl = remember { runCatching { graph.gitHubAuth.installUrl() }.getOrNull() }
     val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
 
@@ -141,15 +147,26 @@ internal fun ImportSheet(
         importing = id
         problem = null
         addUrl = null
+        refused = null
         scope.launch {
             finish { graph.projects.import(owner, repo) }
                 .onSuccess { onImported(it.id) }
                 .onFailure { e ->
                     problem = "Could not import $label: ${plainReason(e)}"
-                    if (e is RepoNotReachableException) addUrl = e.installUrl
+                    if (e is RepoNotReachableException) {
+                        addUrl = e.installUrl
+                        refused = e.address
+                    }
                 }
             importing = null
         }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val address = awaitingReturn ?: return@LifecycleEventEffect
+        awaitingReturn = null
+        val label = "${address.owner}/${address.repo}"
+        import(label, address.owner, address.repo, label)
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -164,7 +181,12 @@ internal fun ImportSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-            addUrl?.let { url -> TextButton(onClick = { onAddRepositories(url) }) { Text("Add it to PocketIDE on GitHub") } }
+            addUrl?.let { url ->
+                TextButton(onClick = {
+                    awaitingReturn = refused
+                    onAddRepositories(url)
+                }) { Text(if (refused != null) "Add it to PocketIDE on GitHub, then come back" else "Add it to PocketIDE on GitHub") }
+            }
             pastedRepo(query, repos?.getOrNull().orEmpty())?.let { address ->
                 val label = "${address.owner}/${address.repo}"
                 ListItem(

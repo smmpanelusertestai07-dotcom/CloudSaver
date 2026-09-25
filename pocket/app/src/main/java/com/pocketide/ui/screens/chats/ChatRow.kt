@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.pocketide.core.Ist
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.project.ConfirmDialog
@@ -52,6 +53,7 @@ internal fun ChatRow(
     session: SessionRecord,
     agentLabel: String,
     running: Boolean,
+    backup: SessionBackup?,
     nav: PocketNav,
     snackbar: SnackbarHostState,
     scope: CoroutineScope,
@@ -60,7 +62,7 @@ internal fun ChatRow(
     val graph = rememberGraph()
     var menu by remember { mutableStateOf(false) }
     val (status, tone) = sessionStatusLabel(session.status, running)
-    val (backup, backupTone) = backupState(session)
+    val (backupLabel, backupTone) = backupState(session, backup)
 
     Card(
         onClick = { nav.transcript(session.id) },
@@ -91,7 +93,7 @@ internal fun ChatRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                StatusChip(backup, backupTone)
+                StatusChip(backupLabel, backupTone)
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Chat actions") }

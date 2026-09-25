@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -49,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,6 +84,8 @@ import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.rememberLoad
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.project.SessionShortcut
+import com.pocketide.ui.shell.External
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -217,8 +219,10 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     }
     if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
         runner.run(DELETE_EVERYTHING, done = "Everything was deleted.", outlivesScreen = true) {
+            // Read before the delete: afterwards the sessions are gone, and so are their ids.
+            val shortcuts = (graph.sessions.all.value + graph.sync.driveSessions.value).map { SessionShortcut.shortcutId(it.id) }
             graph.sync.deleteEverything()
-            clearAppTraces(graph.context)
+            clearAppTraces(graph.context, shortcuts)
         }
     }
 }
@@ -362,6 +366,7 @@ private fun MemoryCard(agents: List<AgentInfo>, memory: Map<String, List<MemoryF
 @Composable
 private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
     val move by graph.sync.move.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var confirmStart by rememberSaveable { mutableStateOf(false) }
     var confirmErase by rememberSaveable { mutableStateOf(false) }
     var launchedFor by remember { mutableStateOf<PendingIntent?>(null) }
@@ -375,6 +380,7 @@ private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
     fun openConsent(intent: PendingIntent) {
         launchedFor = intent
         try {
+            External.leaving(context)
             consent.launch(IntentSenderRequest.Builder(intent.intentSender).build())
         } catch (_: ActivityNotFoundException) {
             runner.say("Google's window could not open. Update Google Play services and try again.")
@@ -425,7 +431,7 @@ private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
     if (confirmErase && ready != null) {
         ConfirmDialog(
             title = "Erase the copy in ${ready.from}?",
-            text = "Everything is already in ${ready.to} and was checked. PocketIDE's hidden folder in ${ready.from} is " +
+            text = "Everything is in ${ready.to} and checked. PocketIDE's hidden folder in ${ready.from} is " +
                 "erased for good. Nothing else in that account is touched.",
             confirmLabel = "Erase",
             destructive = true,
@@ -452,7 +458,7 @@ private suspend fun continueMove(graph: AppGraph, data: Intent?) {
  * WebView, and home-screen shortcuts would point at projects that are gone. Each step is
  * independent; a phone without a working WebView still gets the others.
  */
-private suspend fun clearAppTraces(context: Context) = withContext(Dispatchers.Main) {
+private suspend fun clearAppTraces(context: Context, sessionShortcuts: List<String>) = withContext(Dispatchers.Main) {
     runCatching {
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
@@ -461,7 +467,8 @@ private suspend fun clearAppTraces(context: Context) = withContext(Dispatchers.M
     runCatching {
         ShortcutManagerCompat.removeAllDynamicShortcuts(context)
         val pinned = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).map { it.id }
-        if (pinned.isNotEmpty()) ShortcutManagerCompat.disableShortcuts(context, pinned, "Removed with the rest of your data.")
+        val ids = (pinned + sessionShortcuts).distinct()
+        if (ids.isNotEmpty()) ShortcutManagerCompat.disableShortcuts(context, ids, "This session was deleted.")
     }
 }
 

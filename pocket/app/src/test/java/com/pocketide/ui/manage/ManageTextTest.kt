@@ -57,6 +57,10 @@ class ManageTextTest {
     @Test
     fun `errors become one plain sentence`() {
         assertEquals("GitHub is not connected. Reconnect it in Settings.", PlainError.of(NotConnectedException("x")))
+        assertEquals(
+            "The app's owner must add the GitHub App client ID to the build.",
+            PlainError.of(NotConnectedException("The app's owner must add the GitHub App client ID to the build.")),
+        )
         assertTrue(PlainError.of(IOException("reset by peer")).startsWith("No connection"))
         assertEquals(PlainError.OUT_OF_SPACE, PlainError.of(IOException("write failed: ENOSPC (No space left on device)")))
         assertEquals(PlainError.OUT_OF_SPACE, PlainError.of(IOException("copy failed", IOException("No space left on device"))))

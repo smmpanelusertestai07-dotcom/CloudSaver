@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import com.pocketide.graph
 
 /** Leaving the app: web pages go to Chrome (or the default browser), settings to Android's own. */
 object External {
@@ -22,6 +23,7 @@ object External {
             return
         }
         val view = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim())).addCategory(Intent.CATEGORY_BROWSABLE)
+        leaving(context)
         if (context !is Activity) view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val started = start(context, Intent(view).setPackage(CHROME)) || start(context, view)
         if (!started) toast(context, "No browser found. Install Chrome to open this page.")
@@ -29,10 +31,20 @@ object External {
 
     /** Android's screen-lock settings, to set a PIN, pattern or password. */
     fun openSecuritySettings(context: Context) {
+        leaving(context)
         val flags = if (context is Activity) 0 else Intent.FLAG_ACTIVITY_NEW_TASK
         val opened = start(context, Intent(Settings.ACTION_SECURITY_SETTINGS).addFlags(flags)) ||
             start(context, Intent(Settings.ACTION_SETTINGS).addFlags(flags))
         if (!opened) toast(context, "Open Settings → Security to set a screen lock.")
+    }
+
+    /**
+     * The owner is about to go out on an errand (a sign-in in Chrome, a settings page, the share
+     * sheet): the app lock then waits for the trip instead of locking at once. Call it just
+     * before starting the outside activity.
+     */
+    fun leaving(context: Context) {
+        runCatching { context.graph.appLock.leavingOnErrand() }
     }
 
     private fun start(context: Context, intent: Intent): Boolean = try {
