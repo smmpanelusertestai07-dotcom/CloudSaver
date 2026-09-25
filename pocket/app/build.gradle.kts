@@ -37,6 +37,7 @@ android {
         versionName = "3.0.0"
 
         ndk { abiFilters += "arm64-v8a" }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GITHUB_APP_CLIENT_ID", quoted(config("POCKETIDE_GITHUB_APP_CLIENT_ID")))
         buildConfigField("String", "GITHUB_APP_SLUG", quoted(config("POCKETIDE_GITHUB_APP_SLUG")))
@@ -136,6 +137,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
 }
 
 tasks.register("printVersionName") {
