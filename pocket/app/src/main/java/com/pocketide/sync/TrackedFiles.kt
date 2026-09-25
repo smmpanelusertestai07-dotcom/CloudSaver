@@ -224,6 +224,17 @@ internal class Scanner(private val dirs: AppDirs) {
     /** The file on this phone for a logical file, or null when the path is unsafe or not a file path. */
     fun locate(kind: ObjectKind, agentId: String?, path: String): File? = roomFile(kind, agentId, path)?.file
 
+    /**
+     * Whether the folder that held a file is still a real folder: the room's home for the room's
+     * own files, the project's media folder in the room's work folder for session media. When it
+     * is gone, the room was removed rather than the file.
+     */
+    fun roomExists(kind: ObjectKind, agentId: String?, path: String): Boolean {
+        if (agentId == null || !isSafeName(agentId)) return false
+        val folder = if (kind.root == Root.WORK) safeChild(dirs.roomWork(agentId), "${path.substringBefore('/')}/$MEDIA") else dirs.roomHome(agentId)
+        return folder != null && isRealDirectory(folder)
+    }
+
     /** [locate], with the room folder the file sits in. */
     fun roomFile(kind: ObjectKind, agentId: String?, path: String): RoomFile? {
         if (kind == ObjectKind.SECRETS || agentId == null || !isSafeName(agentId)) return null

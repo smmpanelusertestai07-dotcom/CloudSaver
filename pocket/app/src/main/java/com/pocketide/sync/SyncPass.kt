@@ -158,7 +158,7 @@ internal class SyncPass(
             if (key in seen || key == SECRETS_KEY || !t.onPhone) continue
             val file = kit.scanner.locate(t.kind, t.agentId, t.path)
             if (file != null && factsOf(file) != null) continue
-            tracks[key] = if (removable(t, book)) {
+            tracks[key] = if (removedOnPurpose(t, book)) {
                 t.copy(missingSince = if (t.missingSince < 0) run.now else t.missingSince)
             } else {
                 t.copy(onPhone = false, missingSince = -1)
@@ -166,8 +166,13 @@ internal class SyncPass(
         }
     }
 
-    private fun removable(t: FileTrack, book: SessionBook): Boolean = when {
+    /**
+     * Only a file that could be removed on purpose, from a room that is still there: when the
+     * whole room went (its agent was removed), its chats and memory stay in Drive.
+     */
+    private fun removedOnPurpose(t: FileTrack, book: SessionBook): Boolean = when {
         t.kind.appendOnly -> false
+        !kit.scanner.roomExists(t.kind, t.agentId, t.path) -> false
         t.sessionId == null -> true
         t.kind == ObjectKind.MEDIA || t.kind == ObjectKind.MEMORY -> book.alive(t.sessionId)
         else -> false
@@ -175,7 +180,7 @@ internal class SyncPass(
 
     /** Files removed on purpose, past their grace period: they leave the index in this commit. */
     private fun removals(run: Run, book: SessionBook): Set<String> {
-        val due = run.state.tracks.filter { (_, t) -> t.missingSince >= 0 && run.now - t.missingSince >= REMOVAL_GRACE_MS && removable(t, book) }.keys
+        val due = run.state.tracks.filter { (_, t) -> t.missingSince >= 0 && run.now - t.missingSince >= REMOVAL_GRACE_MS && removedOnPurpose(t, book) }.keys
         if (due.isEmpty()) return due
         run.discard(run.entries().filter { it.trackKey in due })
         return due

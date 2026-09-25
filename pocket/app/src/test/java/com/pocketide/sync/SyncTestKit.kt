@@ -294,6 +294,13 @@ internal class TestPhone(
     }
     override fun phone(): PhoneSnapshot = phone
     override fun computerIdle() = true
+
+    /** Times the computer module was asked to remove the computer; like it, this deletes the rootfs. */
+    var computerRemovals = 0
+    override suspend fun removeComputer() {
+        computerRemovals++
+        dirs.rootfs.deleteRecursively()
+    }
     override suspend fun authorizeNewAccount(): DriveAuthResult = newAccount.also { onAuthorize() }
     override suspend fun rekeyForMove() {
         rekeys++

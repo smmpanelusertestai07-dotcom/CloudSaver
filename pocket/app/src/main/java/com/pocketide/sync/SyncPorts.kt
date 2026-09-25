@@ -107,6 +107,12 @@ internal interface SyncPorts {
     /** True while the computer is neither installing nor updating. */
     fun computerIdle(): Boolean
 
+    /**
+     * Removes the unused computer through its own module, which stops its programs, clears its
+     * set-up record and shows it as not set up, so it is set up again on the next use.
+     */
+    suspend fun removeComputer()
+
     suspend fun authorizeNewAccount(): DriveAuthResult
 
     /** New key and a new Half D in the account the app now uses (after a move). */

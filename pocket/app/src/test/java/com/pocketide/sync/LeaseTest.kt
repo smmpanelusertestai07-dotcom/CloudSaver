@@ -100,6 +100,35 @@ class LeaseTest {
     }
 
     @Test
+    fun theDailyJobBringsInTheOtherPhonesWorkBeforeItTakesAnExpiredLease() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("start\n")
+        a.engine.syncNow()
+
+        val b = phoneB()
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+        b.homeFile("claude", path).appendText("continued on B\n")
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+
+        // Phone B goes quiet; its lease runs out and phone A's daily job runs first.
+        clock.advance(LeasePolicy.TTL_MS + 1)
+        a.engine.runMaintenance()
+        a.engine.syncNow()
+        assertEquals("start\ncontinued on B\n", file.readText())
+
+        file.appendText("continued on A\n")
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.fetchSession("s1")
+        assertEquals("start\ncontinued on B\ncontinued on A\n", reader.homeFile("claude", path).readText())
+        assertTrue(a.remoteIndex()!!.sessions.none { it.status == SessionStatus.CONFLICT_COPY })
+    }
+
+    @Test
     fun aPhoneThatTakesTheLeaseBackContinuesFromDrive() = runBlocking {
         val a = phoneA()
         val file = a.homeFile("claude", path)

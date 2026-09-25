@@ -75,8 +75,9 @@ internal class Committer(private val kit: SyncKit) {
             change = { base -> IndexMerge.apply(base, delta, now, keyGeneration) },
             emptyIndex = { VaultIndex(updatedAt = now) },
         )
-        settle(run, start.index, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras, mode)
-        if (extras.eraseSessions.isNotEmpty()) ports.sessionsErased(extras.eraseSessions.sorted())
+        val erased = delta.erased
+        settle(run, start.index, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras.removeFiles, erased, mode)
+        if (erased.isNotEmpty()) ports.sessionsErased(erased.sorted())
         deleteUnused(run, drive)
         return result
     }
@@ -148,22 +149,31 @@ internal class Committer(private val kit: SyncKit) {
         val conflicts: List<SessionRecord>,
     )
 
-    private fun settle(run: Run, before: VaultIndex?, result: RemoteSnapshot, ready: List<QueueEntry>, pushed: Pushed, extras: CommitExtras, mode: CommitMode) {
+    private fun settle(
+        run: Run,
+        before: VaultIndex?,
+        result: RemoteSnapshot,
+        ready: List<QueueEntry>,
+        pushed: Pushed,
+        removeFiles: Set<String>,
+        erased: Set<String>,
+        mode: CommitMode,
+    ) {
         val after = result.index ?: return
         val now = run.now
         val tracks = run.state.tracks.toMutableMap()
-        val (erasedNow, recorded) = ready.partition { it.sessionId in extras.eraseSessions }
+        val (erasedNow, recorded) = ready.partition { it.sessionId in erased }
         for (e in recorded) {
             kit.queue.remove(e.id)
             if (!e.conflict) tracks[e.trackKey] = Tracks.after(tracks[e.trackKey], e)
         }
-        extras.removeFiles.forEach(tracks::remove)
+        removeFiles.forEach(tracks::remove)
         // Erased is erased everywhere: a copy still on this phone goes too, so it is never sent again.
-        tracks.values.filter { it.sessionId in extras.eraseSessions }
+        tracks.values.filter { it.sessionId in erased }
             .forEach { t -> kit.scanner.locate(t.kind, t.agentId, t.path)?.let(::deleteTree) }
-        tracks.entries.removeAll { it.value.sessionId in extras.eraseSessions }
+        tracks.entries.removeAll { it.value.sessionId in erased }
         // Uploaded for a session that is erased in this same write: its files go from Drive too.
-        run.discard(erasedNow + run.entries().filter { it.sessionId in extras.eraseSessions })
+        run.discard(erasedNow + run.entries().filter { it.sessionId in erased })
         val remaining = run.entries()
         val keep = after.objects.map { it.name }.toSet() + remaining.map { it.name }
         val gone = before?.objects.orEmpty()
@@ -172,16 +182,16 @@ internal class Committer(private val kit: SyncKit) {
         val state = run.state
         run.state = state.copy(
             tracks = tracks,
-            sessionMarks = state.sessionMarks + pushed.sessions.associate { it.id to Diffs.mark(it) } - extras.eraseSessions,
+            sessionMarks = state.sessionMarks + pushed.sessions.associate { it.id to Diffs.mark(it) } - erased,
             projectMarks = state.projectMarks + pushed.projects.associate { it.id to Diffs.projectHash(it) },
             settingsPushed = pushed.settingsJson ?: state.settingsPushed,
             heldLease = if (mode == CommitMode.ADDITIVE) state.heldLease else true,
             alignedRevision = if (mode == CommitMode.ADDITIVE) state.alignedRevision else after.revision,
             pendingConflicts = state.pendingConflicts - pushed.conflicts.toSet(),
-            eraseQueue = state.eraseQueue - extras.eraseSessions,
-            erased = state.erased + extras.eraseSessions.associateWith { now },
+            eraseQueue = state.eraseQueue - erased,
+            erased = state.erased + erased.associateWith { now },
             driveDeletes = state.driveDeletes + gone,
-            backedUpAt = state.backedUpAt + recorded.mapNotNull { it.sessionId }.associateWith { now } - extras.eraseSessions,
+            backedUpAt = state.backedUpAt + recorded.mapNotNull { it.sessionId }.associateWith { now } - erased,
         )
         run.keepIndex(result)
         run.save()

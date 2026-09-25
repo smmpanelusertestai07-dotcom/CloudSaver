@@ -157,6 +157,8 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
         else -> true
     }
 
+    override suspend fun removeComputer() = graph.computer.remove()
+
     override suspend fun authorizeNewAccount(): DriveAuthResult = graph.driveAuth.authorizeNewAccount()
 
     override suspend fun rekeyForMove() = graph.vault.rekey(RekeyReason.MOVED_ACCOUNT)
