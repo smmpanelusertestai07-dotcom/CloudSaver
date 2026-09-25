@@ -166,6 +166,8 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { LargestCard(largest, nav) { removeMediaOf = it } }
         item { SectionLabel("Memory and instructions") }
         item { MemoryCard(agents, sizes.value?.memory, sizes.loading, onEdit) }
+        item { SectionLabel("Settings that can run code") }
+        item { ConfigChangesCard(graph, agents, runner) }
         item {
             SectionCard(null) {
                 NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }

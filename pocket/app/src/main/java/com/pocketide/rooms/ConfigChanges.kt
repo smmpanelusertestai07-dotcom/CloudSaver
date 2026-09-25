@@ -48,7 +48,9 @@ fun ConfigChange.sentence(agentName: String): String {
     val what = when {
         place == "hooks" || file.endsWith("hooks.json") -> "added a hook" + (named?.let { " for $it" } ?: "") + " that runs a command by itself"
         place == "mcp_servers" || place == "mcpServers" -> "added the tool server ${named ?: "list"}, a program it starts"
-        place.endsWith(".allow") -> "allowed itself to do this without asking"
+        place == "enabledMcpjsonServers" -> "let a tool server${named?.let { " ($it)" }.orEmpty()} that a project lists in its .mcp.json start without asking"
+        place == "enableAllProjectMcpServers" -> "let every tool server a project lists in its .mcp.json start without asking"
+        place.endsWith(".allow") || place == "allowedTools" -> "allowed itself to do this without asking"
         place.endsWith("defaultMode") || place.endsWith("initialPermissionMode") || place.endsWith("allowDangerouslySkipPermissions") ->
             "changed how much it may do without asking"
         place == "env" || place.contains("environment", ignoreCase = true) || place.startsWith("terminal.integrated.env") ->
@@ -59,19 +61,29 @@ fun ConfigChange.sentence(agentName: String): String {
         place.startsWith("terminal.integrated") -> "changed the shell its terminal starts"
         else -> "set $place${named?.let { " ($it)" }.orEmpty()}, which starts a program"
     }
+    val project = projectOf().let { if (it == null) "" else " (in the project at $it)" }
     val runs = commandsIn(value).takeIf { it.isNotEmpty() }?.let { " It runs: ${it.joinToString("; ")}." }.orEmpty()
-    return "$agentName $what.$runs"
+    return "$agentName $what$project.$runs"
+}
+
+/** The project folder a ~/.claude.json setting belongs to; null for Claude's own and for other files. */
+private fun ConfigChange.projectOf(): String? {
+    if (file != ClaudeState.FILE) return null
+    val parts = parsed(value) as? JsonArray ?: return null
+    return (parts.firstOrNull() as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
+}
+
+private fun parsed(value: String): JsonElement? = try {
+    Json.parseToJsonElement(value)
+} catch (unreadable: SerializationException) {
+    null
+} catch (unreadable: IllegalArgumentException) {
+    null
 }
 
 /** The commands a JSON setting names ("command" fields, with their "args"); empty for anything else. */
 private fun commandsIn(value: String): List<String> {
-    val element = try {
-        Json.parseToJsonElement(value)
-    } catch (unreadable: SerializationException) {
-        return emptyList()
-    } catch (unreadable: IllegalArgumentException) {
-        return emptyList()
-    }
+    val element = parsed(value) ?: return emptyList()
     val found = mutableListOf<String>()
     fun walk(node: JsonElement) {
         when (node) {

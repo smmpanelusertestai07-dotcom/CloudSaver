@@ -10,6 +10,7 @@ class AgentFilesTest {
     fun loginsAreSecretEverywhere() {
         listOf(
             ".claude/.credentials.json", ".claude.json", ".claude/backups/.claude.json.backup.1",
+            ".claude.json.pocketide-unreadable", ".claude/.pocketide-held-servers.json",
             ".codex/auth.json", ".gemini/jetski-standalone-oauth-token",
             ".gemini/antigravity/antigravity-oauth-token", ".gemini/antigravity/mcp_oauth_tokens.json",
             ".config/gcloud/application_default_credentials.json", ".git-credentials", ".config/gh/hosts.yml",

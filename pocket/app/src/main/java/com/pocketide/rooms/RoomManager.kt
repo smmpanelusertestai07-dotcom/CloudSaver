@@ -341,8 +341,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         val ready = try {
             awaitReady(room)
         } finally {
-            // code-server has read its password by now, or will never need it.
-            withContext(NonCancellable + Dispatchers.IO) { bridgeFiles.delete(secretFile) }
+            withContext(NonCancellable + Dispatchers.IO) {
+                // room.py has run by now: an engine answers only after it.
+                collectClaudeState(agentId)
+                // code-server has read its password by now, or will never need it.
+                bridgeFiles.delete(secretFile)
+            }
         }
         if (!ready) {
             val alive = process.isAlive
@@ -477,10 +481,27 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         return configurator.extensionFolders(profile.agentId).any { it.lowercase().startsWith(prefix) }
     }
 
-    /** Settings of the engine itself: Node's heap limit on a phone, and Claude's MCP entries for room.py. */
+    /**
+     * Settings of the engine itself: Node's heap limit on a phone, and for room.py Claude's MCP
+     * entries, what the owner kept in ~/.claude.json and where to list what it takes out.
+     */
     private fun engineEnvironment(profile: RoomProfile, careful: Boolean): Map<String, String> = buildMap {
         if (profile.engine == Engine.CODE_SERVER) put("NODE_OPTIONS", "--max-old-space-size=${env.heapMegabytes()}")
-        if (profile.agentId == RoomProfiles.CLAUDE) put("POCKETIDE_CLAUDE_MCP", ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)))
+        if (profile.agentId == RoomProfiles.CLAUDE) {
+            put("POCKETIDE_CLAUDE_MCP", ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)))
+            put("POCKETIDE_CLAUDE_KEEP", configurator.claudeStateKept(profile.agentId))
+            put("POCKETIDE_HELD_REPORT", ClaudeState.GUEST_REPORT)
+        }
+    }
+
+    /** What room.py took out of Claude's ~/.claude.json at its last run waits for the owner. */
+    private fun collectClaudeState(agentId: String) {
+        if (agentId != RoomProfiles.CLAUDE) return
+        try {
+            configurator.collectClaudeState(agentId)
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] What was taken out of ~/.claude.json could not be listed: ${failed.message}")
+        }
     }
 
     private suspend fun roomEnvironment(agentId: String, projectId: String): Map<String, String> =
@@ -708,6 +729,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 // ~/.claude.json is Claude's own state file: it is merged only while Claude is not running.
                 if (agentId == RoomProfiles.CLAUDE && live[agentId] == null) {
                     env.computer.run(RoomEngines.setUpOnly(dirs, agentId, engineEnvironment(profile, careful))) { ring(agentId).add(it) }
+                    withContext(Dispatchers.IO) { collectClaudeState(agentId) }
                 }
             } catch (failed: IOException) {
                 ring(agentId).add("[PocketIDE] The browser tools could not be registered: ${failed.message}")

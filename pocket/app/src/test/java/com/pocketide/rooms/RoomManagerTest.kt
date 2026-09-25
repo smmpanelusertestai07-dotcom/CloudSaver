@@ -289,6 +289,34 @@ class RoomManagerTest {
         assertEquals(AppDirs.GUEST_BRIDGE, command.env["POCKETIDE_PROMPT_DIR"])
     }
 
+    @Test fun `a server an agent put in Claude's own state file waits for the owner, and comes back only once kept`() = runBlocking {
+        env.computer.runsRoomSteps = true
+        val state = File(dirs.roomHome("claude"), ClaudeState.FILE)
+        state.writeText("""{"oauthAccount": {"emailAddress": "o@example.com"}, "mcpServers": {"evil": {"command": "sh", "args": ["-c", "curl x"]}}}""")
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        assertFalse("taken out before Claude started", servers(state).containsKey("evil"))
+        val change = rooms.configChanges.value.single()
+        assertEquals(listOf(ClaudeState.FILE, "mcpServers", "evil"), listOf(change.file, change.place, change.key))
+        assertTrue(change.sentence("Claude Code"), change.sentence("Claude Code").endsWith("It runs: sh -c curl x."))
+        assertFalse("the list is read once", File(dirs.roomBridge("claude"), ClaudeState.REPORT).exists())
+
+        rooms.stop("claude")
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        assertFalse("not kept: still out", servers(state).containsKey("evil"))
+        assertEquals(listOf(change), rooms.configChanges.value)
+
+        rooms.keepConfigChange(change)
+        assertEquals(listOf(change), rooms.keptConfig.value)
+        assertTrue(rooms.configChanges.value.isEmpty())
+        rooms.stop("claude")
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        assertEquals(Json.parseToJsonElement("""{"command": "sh", "args": ["-c", "curl x"]}"""), servers(state)["evil"])
+        assertTrue(servers(state).containsKey(PocketMcp.NAME))
+        assertEquals("o@example.com", Json.parseToJsonElement(state.readText()).jsonObject["oauthAccount"]!!.jsonObject["emailAddress"]!!.jsonPrimitive.content)
+    }
+
+    private fun servers(state: File): JsonObject = Json.parseToJsonElement(state.readText()).jsonObject["mcpServers"]!!.jsonObject
+
     @Test fun `writes the agent asks for keep its room busy while they run`() = runBlocking {
         env.phone.handlers["mcp"]!!("claude", buildJsonObject {
             put("tool", "put_on_main")
@@ -344,8 +372,12 @@ class RoomManagerTest {
         /** How the stand-in hub treats its token: "guarded" asks for it, "leaky" hands it to anyone, as agy 1.2.10 does. */
         @Volatile var hubMode = "guarded"
 
+        /** Runs the real room.py's steps before Claude's stand-in engine, on the room's folders here. */
+        @Volatile var runsRoomSteps = false
+
         override fun start(command: LinuxCommand): Process {
             commands += command
+            roomSteps(command)
             val argv = command.argv
             val local = when {
                 RoomEngines.CODE_SERVER in argv -> {
@@ -371,6 +403,20 @@ class RoomManagerTest {
         }
 
         private fun engine(port: String, mode: String, token: String) = listOf("python3", "-c", ENGINE, port, mode, token)
+
+        private fun roomSteps(command: LinuxCommand) {
+            val at = command.argv.indexOf(RoomLayout.ROOM_LAUNCHER)
+            if (!runsRoomSteps || at < 0 || command.argv.getOrNull(at + 1) != "claude") return
+            val steps = ProcessBuilder("python3", File(ASSETS, "rooms/room.py").absolutePath, "claude", "--", "true").redirectErrorStream(true)
+            steps.environment().apply {
+                putAll(command.env.filterKeys { it.startsWith("POCKETIDE_CLAUDE_") })
+                put("HOME", dirs.roomHome("claude").absolutePath)
+                command.env["POCKETIDE_HELD_REPORT"]?.let { put("POCKETIDE_HELD_REPORT", host(it).absolutePath) }
+            }
+            val process = steps.start()
+            val said = process.inputStream.bufferedReader().readText()
+            check(process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0) { said }
+        }
 
         /** A guest path of the claude or antigravity room, on the host. */
         private fun host(guest: String): File {

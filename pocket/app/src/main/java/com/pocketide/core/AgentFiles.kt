@@ -33,6 +33,9 @@ object AgentFiles {
     private val secretExact = setOf(
         ".claude/.credentials.json",
         ".claude.json",
+        // What room.py moves out of .claude.json, which holds the account (rooms/room.py).
+        ".claude.json.pocketide-unreadable",
+        ".claude/.pocketide-held-servers.json",
         ".codex/auth.json",
         ".gemini/jetski-standalone-oauth-token",
         ".gemini/antigravity/antigravity-oauth-token",

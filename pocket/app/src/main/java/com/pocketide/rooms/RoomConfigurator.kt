@@ -68,6 +68,24 @@ internal class RoomConfigurator(
         }
     }
 
+    /** POCKETIDE_CLAUDE_KEEP for room.py: what the owner kept in Claude's ~/.claude.json, by SHA-256. */
+    fun claudeStateKept(agentId: String): String = ClaudeState.keepList(changes.kept(agentId, ClaudeState.FILE))
+
+    /**
+     * What room.py took out of Claude's ~/.claude.json (the app never reads that file) and listed
+     * in the room's bridge folder: each waits for the owner in Your data, as a setting taken out
+     * of the other files does. The list is removed once read; room.py lists each setting once.
+     */
+    fun collectClaudeState(agentId: String) {
+        val bridge = RoomFiles(dirs.roomBridge(agentId), guardSecrets = false)
+        val report = try {
+            bridge.read(ClaudeState.REPORT, ClaudeState.REPORT_BYTES)
+        } finally {
+            bridge.delete(ClaudeState.REPORT)
+        }
+        for (change in changes.found(agentId, ClaudeState.FILE, ClaudeState.parse(report ?: return))) log(agentId, takenOut(change))
+    }
+
     /**
      * PocketIDE's MCP server, and the browser servers once the browser is installed (removed
      * otherwise, and while [careful]: a page of someone else's project could steer the agent).
@@ -113,10 +131,12 @@ internal class RoomConfigurator(
             rebuild(null, kept) ?: return
         }
         if (rebuilt.empty) home.delete(file) else home.write(file, rebuilt.text)
-        for (change in changes.found(agentId, file, rebuilt.added)) {
-            log(agentId, "$file: an agent added a setting that can run code (${change.place}${change.key.let { if (it.isEmpty()) "" else " $it" }}); it was taken out and waits in Your data.")
-        }
+        for (change in changes.found(agentId, file, rebuilt.added)) log(agentId, takenOut(change))
     }
+
+    private fun takenOut(change: ConfigChange) =
+        "~/${change.file}: an agent added a setting that can run code (${change.place}${change.key.let { if (it.isEmpty()) "" else " $it" }}); " +
+            "it was taken out and waits in Your data."
 
     /**
      * The companion opens the agent full screen. It is copied in as an unpacked extension; when
