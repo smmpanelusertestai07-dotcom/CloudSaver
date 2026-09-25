@@ -81,6 +81,14 @@ class RoomLayoutTest {
         assertTrue(env.keys.none { tokenLike.containsMatchIn(it) })
     }
 
+    @Test fun `every program in the Antigravity room has agy's self-updater off, and no Variable turns it on`() {
+        val env = RoomLayout.environment("antigravity", mapOf("AGY_CLI_DISABLE_AUTO_UPDATE" to "false"), emptyMap())
+        assertEquals("true", env["AGY_CLI_DISABLE_AUTO_UPDATE"])
+        val terminal = RoomEngines.terminal(dirs, "antigravity", "/work/octo__app/a1", 40003, env)
+        assertEquals("true", terminal.env["AGY_CLI_DISABLE_AUTO_UPDATE"])
+        assertNull(RoomLayout.environment("claude", emptyMap(), emptyMap())["AGY_CLI_DISABLE_AUTO_UPDATE"])
+    }
+
     @Test fun `no engine command carries a secret in its arguments or environment`() {
         val secret = "f".repeat(64)
         val profile = RoomProfiles.of("claude", null)!!

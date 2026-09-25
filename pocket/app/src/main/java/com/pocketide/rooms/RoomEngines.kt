@@ -120,6 +120,18 @@ internal object RoomEngines {
             workDir = guestWorktree,
         )
 
+    /**
+     * A program run to its end in the room of [agentId] (a scheduled task), through room.py like
+     * the engines, so what it writes is private to the room as well.
+     */
+    fun headless(dirs: AppDirs, agentId: String, argv: List<String>, workDir: String, environment: Map<String, String>): LinuxCommand =
+        LinuxCommand(
+            argv = launcher(agentId) + argv,
+            binds = RoomLayout.binds(dirs, agentId),
+            env = environment,
+            workDir = workDir,
+        )
+
     /** Runs room.py's set-up steps in the room and nothing else (a registration without a start). */
     fun setUpOnly(dirs: AppDirs, agentId: String, environment: Map<String, String>): LinuxCommand = LinuxCommand(
         argv = launcher(agentId) + "/bin/true",

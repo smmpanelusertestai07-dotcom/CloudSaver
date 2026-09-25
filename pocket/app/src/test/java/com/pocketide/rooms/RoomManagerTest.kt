@@ -23,6 +23,7 @@ import com.pocketide.sessions.PutOnMainResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -274,6 +275,59 @@ class RoomManagerTest {
         assertEquals(RoomLayout.binds(dirs, "claude"), signOut.binds)
     }
 
+    @Test fun `a scheduled run goes through the room with its launcher, binds, Variables rules and tools`() = runBlocking {
+        env.variables = mapOf("API_URL" to "https://staging.example", "GH_TOKEN" to "x", "AGY_CLI_DISABLE_AUTO_UPDATE" to "false")
+        var toolsUpDuringRun = false
+        env.computer.running = {
+            toolsUpDuringRun = env.phone.started.contains("antigravity") && !env.phone.stopped.contains("antigravity")
+            7
+        }
+        val argv = listOf("/bin/sh", "-c", "exit 7")
+        val code = rooms.runHeadless("antigravity", "octo/app", argv, "/work/octo__app/a1", mapOf("NO_COLOR" to "1")) {}
+
+        assertEquals(7, code)
+        val command = env.computer.ran.single()
+        assertEquals(listOf(RoomLayout.PYTHON, RoomLayout.ROOM_LAUNCHER, "antigravity", "--") + argv, command.argv)
+        assertEquals(RoomLayout.binds(dirs, "antigravity"), command.binds)
+        assertEquals("/work/octo__app/a1", command.workDir)
+        assertEquals("https://staging.example", command.env["API_URL"])
+        assertFalse("a room never gets a GitHub credential", command.env.containsKey("GH_TOKEN"))
+        assertEquals("true", command.env["AGY_CLI_DISABLE_AUTO_UPDATE"])
+        assertEquals("antigravity", command.env["POCKETIDE_ROOM"])
+        assertEquals("Octo", command.env["GIT_AUTHOR_NAME"])
+        assertEquals("1", command.env["NO_COLOR"])
+        assertTrue("PocketIDE's tools answer during the run", toolsUpDuringRun)
+        assertTrue("and close with it, when nothing else of the room is left", env.phone.stopped.contains("antigravity"))
+        assertEquals(listOf("antigravity|task|true", "antigravity|task|false"), env.busyReports)
+    }
+
+    @Test fun `stopping the room during a scheduled run leaves the run its tools`() = runBlocking {
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        val release = kotlinx.coroutines.CompletableDeferred<Int>()
+        val inRun = kotlinx.coroutines.CompletableDeferred<Unit>()
+        env.computer.running = {
+            inRun.complete(Unit)
+            release.await()
+        }
+        val run = scope.async { rooms.runHeadless("claude", "octo/app", listOf("true"), "/work/octo__app/s1", emptyMap()) {} }
+        withTimeout(10_000) { inRun.await() }
+        val command = env.computer.ran.single()
+        assertFalse("~/.claude.json is not merged while Claude runs", command.env.containsKey("POCKETIDE_CLAUDE_MCP"))
+
+        rooms.stop("claude")
+        assertFalse(env.phone.stopped.contains("claude"))
+        release.complete(0)
+        assertEquals(0, withTimeout(10_000) { run.await() })
+        assertTrue(env.phone.stopped.contains("claude"))
+    }
+
+    @Test fun `a scheduled run with the room closed registers Claude's tools first`() = runBlocking {
+        rooms.runHeadless("claude", "octo/app", listOf("true"), "/work/octo__app/s1", emptyMap()) {}
+        val command = env.computer.ran.single()
+        assertTrue(mcpEntries(command)[PocketMcp.NAME] is JsonObject)
+        assertTrue(File(dirs.roomHome("claude"), ".claude/CLAUDE.md").readText().contains(ManagedBlock.BEGIN))
+    }
+
     private fun mcpEntries(command: LinuxCommand): JsonObject =
         Json.parseToJsonElement(command.env.getValue("POCKETIDE_CLAUDE_MCP")).jsonObject
 
@@ -337,10 +391,11 @@ class RoomManagerTest {
         }
 
         val ran = CopyOnWriteArrayList<LinuxCommand>()
+        @Volatile var running: suspend (LinuxCommand) -> Int = { 0 }
 
         override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int {
             ran += command
-            return 0
+            return running(command)
         }
 
         override fun liveProcesses(process: Process) = if (process.isAlive) 3 else 0
@@ -426,7 +481,8 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override fun sessions() = all
         override fun activeSession(agentId: String): String? = null
         override fun project(projectId: String) = Project(id = projectId, owner = "octo", repo = "app", addedAt = 0, lastActivityAt = 0)
-        override suspend fun variables(projectId: String, agentId: String) = mapOf("API_URL" to "https://staging.example")
+        @Volatile var variables = mapOf("API_URL" to "https://staging.example")
+        override suspend fun variables(projectId: String, agentId: String) = variables
         override fun trust(projectId: String) = trust[projectId] ?: ProjectTrust.YOURS
         override fun canStartAgent(agentId: String) = decision
         override suspend fun makeRoomFor(agentId: String): Decision {

@@ -44,6 +44,8 @@ internal class RoomTerminals(
 
     fun isEmpty() = live.isEmpty()
 
+    fun hasAny(agentId: String) = live.values.any { it.agentId == agentId }
+
     fun ports(): Set<Int> = live.values.map { it.port }.toSet()
 
     /** Linux processes of [agentId]'s terminals: each term.py's proot and everything under it. */

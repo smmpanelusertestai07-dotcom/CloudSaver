@@ -53,6 +53,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val holds = WorkHolds(env::setBusy)
     private val waitedBuilds: MutableSet<Pair<String, Long>> = ConcurrentHashMap.newKeySet()
 
+    /** Headless runs (scheduled tasks) going on in each room, keyed by agent id. */
+    private val headless = HashMap<String, Int>()
+
     private val mutableStates = MutableStateFlow<Map<String, RoomState>>(emptyMap())
     override val states: StateFlow<Map<String, RoomState>> = mutableStates.asStateFlow()
     private val mutablePreviewPorts = MutableStateFlow<Map<String, List<Int>>>(emptyMap())
@@ -164,7 +167,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     }
 
     private fun opening(agentId: String, sessionId: String): Opening {
-        val profile = profile(agentId) ?: return Opening.Refused("PocketIDE does not know this agent. Add it from More agents first.")
+        val profile = profile(agentId) ?: return Opening.Refused(UNKNOWN_AGENT)
         val session = env.sessions().firstOrNull { it.id == sessionId } ?: return Opening.Refused("This session is not on this phone yet.")
         if (session.agentId != agentId) return Opening.Refused("This session belongs to another agent.")
         return Opening.Ready(profile, session)
@@ -222,6 +225,65 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             start(current.profile, session)
         }
     }.await()
+
+    /**
+     * The room is prepared as for a start, except while its engine runs, whose files are not
+     * rewritten under it. The bridge stays up and the room awake until the run ends; the bridge
+     * goes afterwards only if nothing else of the room is left.
+     */
+    override suspend fun runHeadless(
+        agentId: String,
+        projectId: String,
+        argv: List<String>,
+        workDir: String,
+        programEnv: Map<String, String>,
+        onLine: (String) -> Unit,
+    ): Int {
+        val profile = profile(agentId) ?: throw IllegalStateException(UNKNOWN_AGENT)
+        computerProblem()?.let { throw IllegalStateException(it) }
+        val careful = env.trust(projectId) == ProjectTrust.SOMEONE_ELSES
+        val variables = env.variables(projectId, agentId)
+        val command = lock(agentId).withLock {
+            val engineRunning = live[agentId]?.process?.isAlive == true
+            if (!engineRunning) withContext(Dispatchers.IO) { prepare(profile, careful) }
+            // ~/.claude.json is Claude's own state file: it is merged only while Claude is not running.
+            val registration = if (engineRunning) emptyMap() else mcpRegistration(profile, careful)
+            val environment = roomEnvironment(agentId, variables) + registration + programEnv
+            headlessStarted(agentId)
+            RoomEngines.headless(dirs, agentId, argv, workDir, environment)
+        }
+        try {
+            return env.computer.run(command, onLine)
+        } finally {
+            withContext(NonCancellable) { lock(agentId).withLock { headlessEnded(agentId) } }
+        }
+    }
+
+    private fun headlessStarted(agentId: String) {
+        val first = synchronized(headless) {
+            val count = headless[agentId] ?: 0
+            headless[agentId] = count + 1
+            count == 0
+        }
+        if (first) env.setBusy(agentId, WorkHolds.TASK, true)
+        env.phoneBridge.start(agentId)
+        touch(agentId)
+    }
+
+    /** Called under the room's lock, so an engine cannot start between the check and the stop. */
+    private fun headlessEnded(agentId: String) {
+        val last = synchronized(headless) {
+            val count = (headless[agentId] ?: 1) - 1
+            if (count > 0) headless[agentId] = count else headless.remove(agentId)
+            count <= 0
+        }
+        if (!last) return
+        env.setBusy(agentId, WorkHolds.TASK, false)
+        touch(agentId)
+        if (live[agentId] == null && !terminals.hasAny(agentId)) env.phoneBridge.stop(agentId)
+    }
+
+    private fun runningHeadless(agentId: String): Boolean = synchronized(headless) { agentId in headless }
 
     override fun recentOutput(agentId: String): List<String> = rings[agentId]?.last(DIAGNOSTIC_LINES).orEmpty()
 
@@ -407,8 +469,13 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     /** Settings of the engine itself: Node's heap limit on a phone, and Claude's MCP entries for room.py. */
     private fun engineEnvironment(profile: RoomProfile, careful: Boolean): Map<String, String> = buildMap {
         if (profile.engine == Engine.CODE_SERVER) put("NODE_OPTIONS", "--max-old-space-size=${env.heapMegabytes()}")
-        if (profile.agentId == RoomProfiles.CLAUDE) put("POCKETIDE_CLAUDE_MCP", ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)))
+        putAll(mcpRegistration(profile, careful))
     }
+
+    /** Claude's MCP entries, which room.py merges into ~/.claude.json before the program starts. */
+    private fun mcpRegistration(profile: RoomProfile, careful: Boolean): Map<String, String> =
+        if (profile.agentId == RoomProfiles.CLAUDE) mapOf("POCKETIDE_CLAUDE_MCP" to ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)))
+        else emptyMap()
 
     private suspend fun roomEnvironment(agentId: String, projectId: String): Map<String, String> =
         roomEnvironment(agentId, env.variables(projectId, agentId))
@@ -490,7 +557,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             recordStop(agentId, reason, message)
         }
         terminals.stopAgent(agentId)
-        env.phoneBridge.stop(agentId)
+        // A scheduled task still running in the room keeps using PocketIDE's tools.
+        if (!runningHeadless(agentId)) env.phoneBridge.stop(agentId)
         publish(agentId, RoomState.Stopped)
     }
 
@@ -560,9 +628,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             val now = env.now()
             val commands = terminals.sample(now, procs)
             for (agentId in commands + holds.holding(WorkHolds.COMMAND)) holds.set(agentId, WorkHolds.COMMAND, agentId in commands)
+            val tasks = synchronized(headless) { headless.keys.toSet() }
+            // Said again each time: the limiter forgets the work of rooms that were not running yet.
+            for (agentId in tasks) env.setBusy(agentId, WorkHolds.TASK, true)
             for ((agentId, room) in live) {
                 try {
-                    sample(agentId, room, now, terminalBusy = agentId in commands)
+                    sample(agentId, room, now, otherWork = agentId in commands || agentId in tasks)
                 } catch (failed: IOException) {
                     // One unreadable sample must not end the watch over every room.
                     ring(agentId).add("[PocketIDE] Activity could not be read: ${failed.message}")
@@ -574,12 +645,13 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         }
     }
 
-    private suspend fun sample(agentId: String, room: LiveRoom, now: Long, terminalBusy: Boolean) {
+    /** [otherWork]: a terminal command or a scheduled task ran in the room since the last sample. */
+    private suspend fun sample(agentId: String, room: LiveRoom, now: Long, otherWork: Boolean) {
         val pid = room.pid ?: return
         val tree = procs.tree(pid)
         val working = room.activity.sample(now, procs.cpuTicks(tree))
         holds.set(agentId, WorkHolds.TURN, working)
-        if (working || terminalBusy) {
+        if (working || otherWork) {
             room.activity.touch(now)
             env.used(agentId)
         }
@@ -747,6 +819,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         const val BUILD_WAIT_MAX_MS = 60 * 60_000L
         const val HUB_SIGN_IN = ".gemini/jetski-standalone-oauth-token"
         const val CANNOT_START = "The phone cannot take another agent right now."
+        const val UNKNOWN_AGENT = "PocketIDE does not know this agent. Add it from More agents first."
         const val BROWSER_OFF = "The test browser stays off in this project: it is someone else's code, and a web page could " +
             "steer you. The owner can turn it on by marking the project as theirs in PocketIDE."
     }

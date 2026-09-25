@@ -9,15 +9,14 @@ import android.os.BatteryManager
 import android.os.Build
 import com.pocketide.AppGraph
 import com.pocketide.builds.BuildNotices
-import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
 import com.pocketide.linux.ComputerState
-import com.pocketide.linux.LinuxCommand
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 fun createSchedules(graph: AppGraph): Schedules {
@@ -44,21 +43,31 @@ fun createSchedules(graph: AppGraph): Schedules {
 
 private class GraphRunPorts(private val graph: AppGraph, private val schedules: () -> TaskSchedules) : RunPorts {
     override val clock: Clock get() = graph.clock
-    override val dirs: AppDirs get() = graph.dirs
 
     override suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord =
         graph.sessions.start(projectId, agentId, title)
 
     override fun session(sessionId: String): SessionRecord? = graph.sessions.all.value.firstOrNull { it.id == sessionId }
 
-    override suspend fun variables(projectId: String, agentId: String): Map<String, String> =
-        graph.secrets.variablesFor(projectId, agentId)
-
-    override suspend fun runInLinux(command: LinuxCommand, onLine: (String) -> Unit): Int {
-        val computer = graph.computer
-        val state = computer.state.value
+    override suspend fun runInRoom(
+        agentId: String,
+        projectId: String,
+        argv: List<String>,
+        workDir: String,
+        programEnv: Map<String, String>,
+        onLine: (String) -> Unit,
+    ): Int {
+        val state = graph.computer.state.value
         if (state !is ComputerState.Ready && state !is ComputerState.Updating) throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")
-        return computer.run(command, onLine)
+        return try {
+            graph.rooms.runHeadless(agentId, projectId, argv, workDir, programEnv, onLine)
+        } catch (failed: IllegalStateException) {
+            throw ScheduleException(failed.message ?: CANNOT_RUN)
+        } catch (failed: IllegalArgumentException) {
+            throw ScheduleException(failed.message ?: CANNOT_RUN)
+        } catch (failed: IOException) {
+            throw ScheduleException("The agent's room could not be prepared: ${failed.message ?: CANNOT_RUN}")
+        }
     }
 
     override fun heavyWorkRefusal(): String? = graph.limiter.canStartHeavyWork("A scheduled task").let { if (it.allowed) null else it.reason }
@@ -85,6 +94,10 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
         BuildNotices.notify(graph.context, taskId.hashCode(), heading, text)
 
     override suspend fun recordRun(taskId: String, at: Long, sessionId: String) = schedules().recordRun(taskId, at, sessionId)
+
+    private companion object {
+        const val CANNOT_RUN = "The agent's room could not run the task."
+    }
 }
 
 /** Android's own view of the charger and the network, read at the moment of asking. */
