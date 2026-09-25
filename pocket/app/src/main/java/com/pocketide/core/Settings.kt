@@ -47,6 +47,12 @@ data class Settings(
     /** The owner did the one-time OEM battery step (Realme and others). */
     val oemStepDone: Boolean = false,
     val onboardingDone: Boolean = false,
+    /**
+     * The owner's own GitHub App, entered in the app when the build carries none (or a different
+     * one). Both values are public; this phone only, never synced. Empty = use the build's.
+     */
+    val gitHubAppClientId: String = "",
+    val gitHubAppSlug: String = "",
     val privacyChecklistDone: Boolean = false,
 )
 

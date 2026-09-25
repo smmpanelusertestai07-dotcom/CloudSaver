@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.RestartAlt
@@ -49,6 +50,7 @@ import com.pocketide.core.Device
 import com.pocketide.core.Ist
 import com.pocketide.core.Redact
 import com.pocketide.core.Settings
+import com.pocketide.github.gitHubAppChoice
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
 import com.pocketide.rooms.RoomState
@@ -71,14 +73,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class AdvancedDialog { RESET, SET_PASSWORD, REMOVE_PASSWORD, KEY_WARNING, DIAGNOSTICS }
+private enum class AdvancedDialog { RESET, GITHUB_APP, SET_PASSWORD, REMOVE_PASSWORD, KEY_WARNING, DIAGNOSTICS }
 
-/** Rare tools: rebuild the computer, the extra password, a key copy, and diagnostics. */
+/** Rare tools: rebuild the computer, the GitHub App, the extra password, a key copy, and diagnostics. */
 @Composable
 internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
     val activity = LocalActivity.current as? FragmentActivity
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val computer by graph.computer.state.collectAsStateWithLifecycle()
+    val gitHubAccount by graph.gitHubAuth.account.collectAsStateWithLifecycle()
+    val appChoice = remember(graph) { gitHubAppChoice(graph) }
+    val appSummary = remember(settings.gitHubAppClientId, settings.gitHubAppSlug) { gitHubAppSummary(appChoice) }
     var dialog by remember { mutableStateOf<AdvancedDialog?>(null) }
     var busy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<Pair<String, Tone>?>(null) }
@@ -117,6 +123,9 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
                 )
             },
             {
+                ActionRow("GitHub App", appSummary, onClick = { dialog = AdvancedDialog.GITHUB_APP }, icon = Icons.Outlined.Code)
+            },
+            {
                 if (settings.extraPassword) {
                     ActionRow("Remove the extra password", "Your key's GitHub half is wrapped with it now", onClick = {
                         dialog = AdvancedDialog.REMOVE_PASSWORD
@@ -153,6 +162,21 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
 
     when (dialog) {
         AdvancedDialog.RESET -> ResetComputerDialogs(graph, onClose = { dialog = null }, onNotice = { text, tone -> notice = text to tone })
+        AdvancedDialog.GITHUB_APP -> GitHubAppDialog(
+            choice = appChoice,
+            signedIn = gitHubAccount != null,
+            openUrl = { External.openUrl(context, it) },
+            onSaved = { appChanged ->
+                dialog = null
+                when {
+                    !appChanged -> notice = "Saved." to Tone.OK
+                    // Tokens belong to the App that issued them; the new App needs its own sign-in.
+                    gitHubAccount != null -> run("Saved. Connect GitHub again to sign in through this App.") { graph.gitHubAuth.signOut() }
+                    else -> notice = "Saved. GitHub sign-in now goes through this App." to Tone.OK
+                }
+            },
+            onDismiss = { dialog = null },
+        )
         AdvancedDialog.SET_PASSWORD -> ExtraPasswordDialog(
             onSave = { password ->
                 dialog = null
