@@ -79,6 +79,7 @@ class RoomConfiguratorTest {
         assertTrue(deny.none { it.contains(dirs.roomHome("claude").absolutePath) })
         assertTrue(deny.contains("Read(//proc/*/root/**)"))
         assertEquals(3650, settings["cleanupPeriodDays"]!!.jsonPrimitive.content.toInt())
+        assertEquals("true", settings[ConfigFiles.CLAUDE_REMOTE_CONTROL]!!.jsonPrimitive.content)
 
         val codeServer = Json.parseToJsonElement(home("claude", RoomConfigurator.CODE_SERVER_SETTINGS).readText()).jsonObject
         assertEquals("15", codeServer["editor.fontSize"]!!.jsonPrimitive.content)
@@ -88,6 +89,20 @@ class RoomConfiguratorTest {
         assertEquals("{\"token\":\"x\"}", home("claude", ".claude/.credentials.json").readText())
         assertEquals(2, Files.getPosixFilePermissions(home("claude", ".claude/.credentials.json").toPath()).size)
         assertEquals(3, Files.getPosixFilePermissions(dirs.roomHome("claude").toPath()).size)
+    }
+
+    @Test fun `the owner's choice about Claude chats in their account is written at the next start`() {
+        var accountChats = false
+        val choosing = RoomConfigurator(dirs, FolderRoomAssets(), { 1_000L }, book, { accountChats }) { agent, line -> log += "$agent: $line" }
+        val profile = RoomProfiles.of("claude", null)!!
+        fun written() = Json.parseToJsonElement(home("claude", ".claude/settings.json").readText())
+            .jsonObject[ConfigFiles.CLAUDE_REMOTE_CONTROL]!!.jsonPrimitive.content
+        choosing.configure(profile, emptyList(), 14)
+        assertEquals("false", written())
+        accountChats = true
+        choosing.configure(profile, emptyList(), 14)
+        assertEquals("true", written())
+        assertTrue(log.isEmpty())
     }
 
     @Test fun `configuring twice changes nothing`() {

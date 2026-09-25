@@ -54,6 +54,11 @@ data class Settings(
     val gitHubAppClientId: String = "",
     val gitHubAppSlug: String = "",
     val privacyChecklistDone: Boolean = false,
+    /**
+     * Claude Code connects each session to Remote Control, so Anthropic also keeps its chat in the
+     * owner's Claude account (the Claude app, claude.ai/code). This phone only; applied at the room's next start.
+     */
+    val claudeChatsInAccount: Boolean = true,
 )
 
 /** Settings on this phone, observed by every screen and module. */

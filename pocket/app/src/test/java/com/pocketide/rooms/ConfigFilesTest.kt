@@ -202,6 +202,24 @@ class ConfigFilesTest {
         assertEquals(again.text, ConfigFiles.claudeSettings(again.text, emptyList(), notify, kept)!!.text)
     }
 
+    @Test fun `Claude's sessions connect to Remote Control as the owner chose, and the rebuild keeps it as PocketIDE's own`() {
+        val on = ConfigFiles.claudeSettings("""{"model": "opus"}""", emptyList(), notify)!!
+        assertEquals("on by default", JsonPrimitive(true), obj(on.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
+        assertTrue("PocketIDE's own key is no agent's change", on.added.isEmpty())
+        val again = ConfigFiles.claudeSettings(on.text, emptyList(), notify)!!
+        assertEquals(on.text, again.text)
+        assertTrue(again.added.isEmpty())
+
+        val off = ConfigFiles.claudeSettings(on.text, emptyList(), notify, accountChats = false)!!
+        assertEquals("turned off, an earlier true does not linger", JsonPrimitive(false), obj(off.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
+        assertEquals("opus", obj(off.text)["model"]!!.jsonPrimitive.content)
+        assertTrue(off.added.isEmpty())
+
+        val agentTurnedOn = JsonObject(obj(off.text) + (ConfigFiles.CLAUDE_REMOTE_CONTROL to JsonPrimitive(true))).toString()
+        val rewritten = ConfigFiles.claudeSettings(agentTurnedOn, emptyList(), notify, accountChats = false)!!
+        assertEquals("the owner's choice wins over a room's", JsonPrimitive(false), obj(rewritten.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
+    }
+
     @Test fun `a longer retention the owner chose stays`() {
         val written = obj(ConfigFiles.claudeSettings("""{"cleanupPeriodDays": 99999}""", emptyList(), notify)?.text)
         assertEquals(99999, written["cleanupPeriodDays"]!!.jsonPrimitive.int)

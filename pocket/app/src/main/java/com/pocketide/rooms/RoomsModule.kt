@@ -50,6 +50,7 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
     override fun used(agentId: String) = graph.limiter.touch(agentId)
     override fun keepEngineAlive() = EngineService.start(graph.context)
     override fun idleSleepMinutes() = graph.settings.settings.value.idleSleepMinutes
+    override fun claudeChatsInAccount() = graph.settings.settings.value.claudeChatsInAccount
     override fun canStartHeavyWork(what: String) = graph.limiter.canStartHeavyWork(what)
     override fun allowDownload(bytes: Long, kind: String) = graph.dataBudget.allow(bytes, kind, big = true)
     override fun recordDownload(bytes: Long, kind: String) = graph.dataBudget.record(bytes, kind)

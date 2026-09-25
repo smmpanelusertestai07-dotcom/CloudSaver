@@ -46,9 +46,18 @@ internal object ConfigFiles {
     /**
      * Claude Code's `~/.claude/settings.json`: [deny] rules added to the owner's, the updater and
      * error reporting off, transcripts kept for ten years (Claude deletes them after 30 days by
-     * default, which could lose chats not yet backed up), and the notification hook.
+     * default, which could lose chats not yet backed up), the notification hook, and Remote Control
+     * at every session's start as the owner chose ([accountChats]): while it is connected, Anthropic
+     * keeps the session in the owner's Claude account, where the Claude app and claude.ai/code show it.
+     * PocketIDE writes that key each time, so a value an agent set there does not last.
      */
-    fun claudeSettings(existing: String?, deny: List<String>, notifyCommand: String, kept: List<Entry> = emptyList()): Rebuilt? {
+    fun claudeSettings(
+        existing: String?,
+        deny: List<String>,
+        notifyCommand: String,
+        kept: List<Entry> = emptyList(),
+        accountChats: Boolean = true,
+    ): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
         val ours = listOf(Entry(HOOKS, "Notification", ExecutableJson.canonical(notifyHook(notifyCommand)))) +
             CLAUDE_ENV.map { (name, value) -> Entry(ENV, name, ExecutableJson.canonical(value)) }
@@ -61,6 +70,7 @@ internal object ConfigFiles {
         val updated = rebuilt + mapOf(
             "permissions" to JsonObject(permissions + ("deny" to JsonArray(mergedDeny))),
             "cleanupPeriodDays" to JsonPrimitive(maxOf(keepDays ?: 0, CLAUDE_KEEP_DAYS)),
+            CLAUDE_REMOTE_CONTROL to JsonPrimitive(accountChats),
         )
         return Rebuilt(Jsonc.write(JsonObject(updated)), added)
     }
@@ -239,6 +249,9 @@ internal object ConfigFiles {
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
     const val CLAUDE_KEEP_DAYS = 3650
+
+    /** Claude Code's switch that connects each interactive session to Remote Control as it starts. */
+    const val CLAUDE_REMOTE_CONTROL = "remoteControlAtStartup"
 
     private const val HOOKS = "hooks"
     private const val ENV = "env"
