@@ -18,6 +18,9 @@ internal data class ProotCall(val argv: List<String>, val environment: Map<Strin
  *  - `-0`: packages expect root; proot fakes it.
  *  - /dev, /proc and /sys come from the phone, then stand-ins for the /proc files Android hides
  *    (they must come after /proc to win), then the command's own folders.
+ *  - /dev/shm: Android has none, and glibc keeps POSIX semaphores and shared memory there, so a
+ *    writable folder is always bound over it: the command's own when it binds one (a room's),
+ *    else [sharedMemory].
  *
  * The program runs under `env -i` with a fixed set of basics, so nothing of Android's
  * environment (and nothing secret the app holds) reaches Linux. The command's own variables
@@ -31,10 +34,14 @@ internal object ProotCommand {
     /** Where a command's variables file appears inside Linux, and the script that reads it. */
     const val GUEST_VARIABLES = "/run/pocketide-variables"
     const val LAUNCHER = "/opt/pocketide/launch.pl"
+    const val GUEST_SHM = "/dev/shm"
 
     private val VARIABLE_NAME = Regex("[A-Z_][A-Z0-9_]*")
 
-    /** [variablesFile] holds [variables] of [command]; it is given exactly when the command has variables. */
+    /**
+     * [variablesFile] holds [variables] of [command]; it is given exactly when the command has variables.
+     * [sharedMemory] is the /dev/shm of a command that binds none of its own.
+     */
     fun build(
         host: ProotHost,
         root: File,
@@ -42,10 +49,13 @@ internal object ProotCommand {
         timeZone: String,
         command: LinuxCommand,
         variablesFile: File? = null,
+        sharedMemory: File? = null,
     ): ProotCall {
         validate(command)
         require((variablesFile != null) == command.env.isNotEmpty()) { "A variables file goes with variables, and only with them." }
         require(variablesFile == null || !variablesFile.absolutePath.contains(':')) { "Not a usable file: $variablesFile" }
+        require(sharedMemory == null || !sharedMemory.absolutePath.contains(':')) { "Not a usable folder: $sharedMemory" }
+        val defaultShm = sharedMemory?.takeIf { command.binds.none { it.guestPath == GUEST_SHM } }
         val argv = buildList {
             add(host.proot.absolutePath)
             add("--link2symlink")
@@ -56,6 +66,10 @@ internal object ProotCommand {
             for (system in listOf("/dev", "/proc", "/sys")) {
                 add("-b")
                 add(system)
+            }
+            if (defaultShm != null) {
+                add("-b")
+                add("${defaultShm.absolutePath}:$GUEST_SHM")
             }
             for ((guest, file) in procStandIns) {
                 add("-b")
