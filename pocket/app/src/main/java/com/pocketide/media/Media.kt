@@ -42,6 +42,20 @@ interface MediaLibrary {
 
     suspend fun delete(item: MediaItem)
 
-    /** A content:// URI for the share sheet or the installer. */
+    /** A content:// URI for the share sheet, to a copy made now of a plain file in the session's media. */
     fun shareUri(item: MediaItem): android.net.Uri
+
+    /**
+     * Copies an APK once into the app's private storage, out of reach of Linux. The package and
+     * signer shown to the owner are read from [PrivateCopy.file], and Install hands over that same
+     * copy, so the file cannot be swapped between the owner's check and the tap.
+     */
+    suspend fun stageApk(item: MediaItem): PrivateCopy =
+        throw UnsupportedOperationException("Installing apps is not available here.")
+}
+
+/** A copy in the app's private storage, out of reach of Linux. */
+class PrivateCopy(val file: File, private val handOut: (File) -> android.net.Uri) {
+    /** The content:// URI that hands exactly this copy to another app. */
+    val uri: android.net.Uri get() = handOut(file)
 }
