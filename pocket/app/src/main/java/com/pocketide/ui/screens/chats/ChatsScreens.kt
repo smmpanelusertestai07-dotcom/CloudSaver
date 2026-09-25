@@ -63,13 +63,13 @@ import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.TranscriptEntry
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
-import com.pocketide.ui.manage.BackgroundLimitNote
 import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.BackgroundLimitNote
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
