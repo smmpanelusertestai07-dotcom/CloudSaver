@@ -55,7 +55,7 @@ class DocsContentTest {
         val reopen = DocsContent.faq.single { it.id == "reopen-media" }.answer.flatMap(::blockLines).joinToString(" ")
         val guide = sectionText(requireSection("your-data"))
         for (text in listOf(reopen, guide)) {
-            assertTrue(text, text.contains("Codex and Antigravity should too on a new phone ($BEING_TESTED)"))
+            assertTrue(text, text.contains("(Codex and Antigravity on a new phone: $BEING_TESTED)"))
             assertTrue(text, text.contains("can always be read in Chats"))
         }
     }
@@ -74,7 +74,7 @@ class DocsContentTest {
         // Codex's sandbox is always off here (ConfigFiles.codexConfig), so it is said plainly, not as a test.
         assertTrue(text.contains("Codex runs without its own sandbox here"))
         assertFalse(text.contains("Codex may run"))
-        assertTrue(text.contains("test browser") && text.contains("runs Chromium without its own sandbox"))
+        assertTrue(text.contains("Agents' test browser") && text.contains("No Chromium sandbox under PRoot"))
     }
 
     @Test

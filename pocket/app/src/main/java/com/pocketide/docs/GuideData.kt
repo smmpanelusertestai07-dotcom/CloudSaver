@@ -31,9 +31,8 @@ internal object GuideData {
                 "Move to another Google account.",
         ),
         p(
-            "A reopened chat can always be read in Chats, on any phone. Claude Code shows it again in its own " +
-                "screen, and Codex and Antigravity should too on a new phone ($BEING_TESTED). Sync sends only " +
-                "new parts, compressed; videos and big downloads wait for Wi-Fi unless you allow mobile data.",
+            "A reopened chat can always be read in Chats and in its agent's screen (Codex and Antigravity on a " +
+                "new phone: $BEING_TESTED). Videos and big downloads wait for Wi-Fi unless you allow mobile data.",
         ),
         link("Your Google storage", DocLinks.GOOGLE_STORAGE),
     )

@@ -238,9 +238,8 @@ internal object Faq {
             "reopen-media", "your-data",
             "When I reopen a chat, will I see the screenshots and videos again?",
             "Yes: the chat can always be read in Chats, on any phone, and the agent's screenshots and videos " +
-                "come back in the session's Media. Claude Code also shows it again in its own screen, and Codex " +
-                "and Antigravity should too on a new phone ($BEING_TESTED). A video still waiting for Wi-Fi " +
-                "shows a chip.",
+                "come back in the session's Media. The agent's own screen shows it too (Codex and Antigravity on a " +
+                "new phone: $BEING_TESTED). A video still waiting for Wi-Fi shows a chip.",
         ),
         faq(
             "virus", "security",
