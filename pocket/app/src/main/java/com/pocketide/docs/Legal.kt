@@ -86,9 +86,9 @@ internal object Legal {
         "Open-source notices",
         "The software PocketIDE carries or downloads, and each licence.",
         p(
-            "PocketIDE's own code is under the Apache License 2.0. It carries PRoot and its libraries, and " +
-                "downloads Ubuntu, code-server, the agents and their extensions at run time. Each part keeps its " +
-                "own licence.",
+            "PocketIDE's own code is under the Apache License 2.0. It carries PRoot and its libraries and a " +
+                "terminal page, and downloads Ubuntu, code-server, the agents and their extensions at run time. " +
+                "Each part keeps its own licence.",
         ),
         table(
             listOf("Part", "Licence"),
@@ -101,6 +101,7 @@ internal object Legal {
             row("OkHttp and Okio", "Apache License 2.0"),
             row("Bouncy Castle", "MIT License"),
             row("Eclipse JGit", "EDL-1.0 (BSD-3-Clause)"),
+            row("@xterm/xterm and @xterm/addon-fit (the terminal page)", "MIT License"),
             row("Google Play services", "Google APIs Terms of Service"),
             row("Ubuntu (downloaded)", "Each package keeps its own licence"),
             row("code-server, Code - OSS and xterm.js (downloaded)", "MIT licence"),

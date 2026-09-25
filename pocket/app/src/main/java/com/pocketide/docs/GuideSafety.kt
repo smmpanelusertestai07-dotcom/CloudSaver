@@ -14,7 +14,12 @@ internal object GuideSafety {
         ),
         p(
             "The check-post runs before every push. If it finds secrets, AI data or very large files, nothing " +
-                "is pushed and you see what it found.",
+                "is pushed and you see what it found. APK, AAB and other build outputs are held too; builds live " +
+                "in Media.",
+        ),
+        p(
+            "Changes to .github/workflows or .github/actions wait for you to read the diff and tap Approve: " +
+                "workflow code runs with your Secrets.",
         ),
         p(
             "The app never takes a token, key or setting from the computer; only Variables enter a room. " +

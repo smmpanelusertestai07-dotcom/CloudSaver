@@ -52,6 +52,10 @@ internal object GuidePhone {
             row("Data Saver", "Big downloads wait for Wi-Fi ($BEING_TESTED)."),
             row("Battery set to Restricted", "A banner explains the fix; work pauses safely."),
             row("Offline", "Agents wait; sync resumes by itself."),
+            row(
+                "Online, but downloads fail",
+                "Check network names the usual cause: strict Private DNS, a VPN, a sign-in page, a filter or Data Saver.",
+            ),
             row("Restart, or the app is closed", "Sync finishes later from an encrypted queue."),
         ),
         p(

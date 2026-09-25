@@ -39,7 +39,9 @@ internal object GuideStart {
         ),
         p("Phones below the minimum are refused with a clear message, rather than left to crash."),
         info(
-            "$BEING_TESTED: the memory each agent needs and the size of the set-up. The " +
+            "$BEING_TESTED: the memory each agent needs and the size of the set-up. As of " +
+                "${DocLinks.CHECKED_ON}, before any agent, set-up downloads Ubuntu (29.9 MB), package lists " +
+                "(27.9 MB), packages (37.4 MB, 146 MB installed) and code-server 4.138.0 (225 MB). The " +
                 "Computer screen shows your phone's real numbers.",
         ),
     )

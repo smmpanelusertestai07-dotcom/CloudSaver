@@ -73,6 +73,7 @@ class NoticesTest {
             "Ubuntu" to "Canonical",
             "code-server" to "MIT licence",
             "xterm.js" to "MIT licence",
+            "@xterm/xterm 6.0.0 and @xterm/addon-fit 0.11.0" to "MIT License",
             "Bouncy Castle" to "MIT License",
             "JGit" to "EDL-1.0",
             "OkHttp" to "Apache License 2.0",
@@ -92,8 +93,10 @@ class NoticesTest {
             "Copyright (c) 2013, Sergii Pylypenko",
             "Eclipse Distribution License - v 1.0",
             "Copyright (c) 2004-2017 QOS.ch",
+            "Copyright (c) 2017-2019, The xterm.js authors",
         )
 
-        val DOWNLOADED = listOf("xterm.js", "code-server", "Chromium", "Playwright")
+        // xterm.js is in both lists: the terminal page carries its own copy, and code-server another.
+        val DOWNLOADED = listOf("code-server", "Chromium", "Playwright")
     }
 }
