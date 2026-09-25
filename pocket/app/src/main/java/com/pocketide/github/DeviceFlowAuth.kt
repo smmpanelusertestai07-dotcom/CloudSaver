@@ -29,8 +29,8 @@ import java.io.IOException
  * would leave the loser with a dead refresh token.
  */
 internal class DeviceFlowAuth(
-    private val clientId: String,
-    private val appSlug: String,
+    /** Asked at every use: the owner may enter or change the App while the app runs. */
+    private val app: () -> GitHubApp,
     private val tokenStore: TokenStore,
     private val http: OkHttpClient,
     private val oauthBase: HttpUrl,
@@ -52,11 +52,10 @@ internal class DeviceFlowAuth(
 
     override val account: StateFlow<GitHubAccount?> = signedIn.asStateFlow()
 
-    override val configured: Boolean = clientId.isNotBlank()
+    override val configured: Boolean get() = app().configured
 
     override suspend fun startDeviceFlow(): DeviceCode {
-        requireConfigured()
-        val reply = postForm(DEVICE_CODE_PATH, mapOf("client_id" to clientId))
+        val reply = postForm(DEVICE_CODE_PATH, mapOf("client_id" to clientId()))
         when (reply.error) {
             null -> Unit
             "device_flow_disabled" -> throw GitHubException(GitHubText.DEVICE_FLOW_OFF, 200)
@@ -77,10 +76,9 @@ internal class DeviceFlowAuth(
     }
 
     override suspend fun poll(code: DeviceCode): DevicePoll {
-        requireConfigured()
         val reply = postForm(
             ACCESS_TOKEN_PATH,
-            mapOf("client_id" to clientId, "device_code" to code.deviceCode, "grant_type" to DEVICE_GRANT),
+            mapOf("client_id" to clientId(), "device_code" to code.deviceCode, "grant_type" to DEVICE_GRANT),
         )
         return when (reply.error) {
             null -> reply.accessToken?.let { connect(reply, it) } ?: DevicePoll.Failed(GitHubText.UNEXPECTED)
@@ -142,8 +140,10 @@ internal class DeviceFlowAuth(
         }
     }
 
-    override fun installUrl(): String =
-        if (SLUG.matches(appSlug)) "https://github.com/apps/$appSlug/installations/new" else INSTALLATIONS_PAGE
+    override fun installUrl(): String {
+        val slug = app().slug
+        return if (GitHubAppChoice.slug(slug) == slug) "https://github.com/apps/$slug/installations/new" else INSTALLATIONS_PAGE
+    }
 
     /**
      * Forgets the tokens. GitHub's endpoint for revoking a user token needs the client secret,
@@ -207,7 +207,7 @@ internal class DeviceFlowAuth(
             withContext(NonCancellable) {
                 postForm(
                     ACCESS_TOKEN_PATH,
-                    mapOf("client_id" to clientId, "grant_type" to "refresh_token", "refresh_token" to refreshToken),
+                    mapOf("client_id" to clientId(), "grant_type" to "refresh_token", "refresh_token" to refreshToken),
                 )
             }
         } catch (e: IOException) {
@@ -283,8 +283,10 @@ internal class DeviceFlowAuth(
         }
     }
 
+    private fun clientId(): String = app().clientId.ifBlank { throw NotConnectedException(GitHubText.NOT_CONFIGURED) }
+
     private fun requireConfigured() {
-        if (!configured) throw NotConnectedException(GitHubText.NOT_CONFIGURED)
+        clientId()
     }
 
     /** A token that is not stored yet: used once, to learn whose it is. */
@@ -307,6 +309,5 @@ internal class DeviceFlowAuth(
         private const val SLOW_DOWN_STEP_S = 5
         private const val PROFILE_ATTEMPTS = 3
         private const val PROFILE_RETRY_MS = 1_000L
-        private val SLUG = Regex("[a-z0-9][a-z0-9-]{0,98}")
     }
 }

@@ -12,16 +12,16 @@ import kotlin.math.ceil
 /** Every sentence this module shows the owner, in one place. */
 internal object GitHubText {
     const val NOT_CONFIGURED =
-        "This copy of PocketIDE has no GitHub App client ID, so GitHub cannot be connected. " +
-            "The app's owner must add the GitHub App client ID to the build."
+        "PocketIDE doesn't know your GitHub App yet, so GitHub cannot be connected. " +
+            "Enter the App's client ID in Settings > Advanced > GitHub App."
     const val NOT_CONNECTED = "GitHub is not connected. Connect it in Settings."
     const val ACCESS_REMOVED = "GitHub access was removed or has expired. Connect GitHub again."
     const val RENEW_FAILED = "GitHub sign-in could not be renewed. Try again in a minute."
     const val UNEXPECTED = "GitHub sent an answer PocketIDE did not expect. Try again in a minute."
 
     const val DEVICE_FLOW_OFF =
-        "Device sign-in is switched off for PocketIDE's GitHub App. The app's owner must turn on \"Enable Device Flow\" in the App's settings."
-    const val BAD_CLIENT_ID = "The GitHub App client ID in this build is wrong. The app's owner must fix it."
+        "Device sign-in is switched off for your GitHub App. Tick \"Enable Device Flow\" in the App's settings on GitHub, then try again."
+    const val BAD_CLIENT_ID = "GitHub does not know this App client ID. Copy it again from the App's page on GitHub."
     const val VERIFY_EMAIL = "GitHub needs your primary email verified first. Verify it on GitHub, then try again."
     const val SIGN_IN_FAILED = "GitHub sign-in did not finish. Try again."
     const val PROFILE_FAILED = "You approved PocketIDE, but GitHub did not answer afterwards. Try again."

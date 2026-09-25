@@ -33,7 +33,10 @@ sealed interface DevicePoll {
 interface GitHubAuth {
     val account: StateFlow<GitHubAccount?>
 
-    /** True when the build carries a GitHub App client ID (owner configuration). */
+    /**
+     * True when there is a GitHub App to sign in through: the one the owner entered in the app, or
+     * else the build's. It can change while the app runs.
+     */
     val configured: Boolean
 
     suspend fun startDeviceFlow(): DeviceCode
