@@ -56,7 +56,7 @@ object SetupChecklist {
 }
 
 /** The fixes the safety check can offer; the Settings screen turns each into an action. */
-enum class SafetyFix { SCREEN_LOCK, APP_LOCK, PRIVACY_CHECKLIST, VARIABLES, ONLY_OFFICIAL }
+enum class SafetyFix { SCREEN_LOCK, APP_LOCK, PRIVACY_CHECKLIST, VARIABLES, ONLY_OFFICIAL, RECONNECT_GITHUB, SAVE_KEY_NOW }
 
 /** What the standing safety check reads. All of it is already on the phone: nothing is fetched. */
 data class SafetyFacts(
@@ -69,6 +69,8 @@ data class SafetyFacts(
     val onlyOfficialAgents: Boolean,
     /** Variables (the agents can read them) as (project id or null for all projects, name). */
     val variables: List<Pair<String?, String>>,
+    /** GitHub is signed in: a key only on this phone then just waits for the next sync. */
+    val gitHubConnected: Boolean = true,
 )
 
 /** A standing "Safety check" (screen lock, app lock, 2-step sign-in, keyring, agents, Variables). */
@@ -99,7 +101,7 @@ object SafetyCheck {
                 CheckStatus.PROBLEM, SafetyFix.PRIVACY_CHECKLIST, "Open the checklist",
             )
         },
-        keyringLine(f.key, f.keyNotice),
+        keyringLine(f.key, f.keyNotice, f.gitHubConnected),
         if (f.onlyOfficialAgents) {
             CheckLine("agents", "Agents", "Only the official three: Claude Code, Codex and Antigravity.", CheckStatus.DONE)
         } else {
@@ -112,17 +114,25 @@ object SafetyCheck {
         variablesLine(f.variables),
     )
 
-    private fun keyringLine(key: KeyState, notice: String?): CheckLine = when (key) {
+    private fun keyringLine(key: KeyState, notice: String?, gitHubConnected: Boolean): CheckLine = when (key) {
         KeyState.Ready -> CheckLine(
             "keyring", "Keyring on GitHub",
             notice ?: "Private and yours alone. Checked on every sync; a public or shared one gets a new key.",
             if (notice == null) CheckStatus.DONE else CheckStatus.PROBLEM,
         )
-        KeyState.OnlyOnPhone -> CheckLine(
-            "keyring", "Keyring on GitHub",
-            notice ?: "Your chats' key is only on this phone until GitHub is connected again.",
-            CheckStatus.PROBLEM,
-        )
+        KeyState.OnlyOnPhone -> if (gitHubConnected) {
+            CheckLine(
+                "keyring", "Keyring on GitHub",
+                notice ?: "Your chats' key is not saved to GitHub yet. It is tried again at the next sync.",
+                CheckStatus.PROBLEM, SafetyFix.SAVE_KEY_NOW, "Try now",
+            )
+        } else {
+            CheckLine(
+                "keyring", "Keyring on GitHub",
+                notice ?: "Your chats' key is only on this phone until GitHub is connected again.",
+                CheckStatus.PROBLEM, SafetyFix.RECONNECT_GITHUB, "Reconnect GitHub",
+            )
+        }
         KeyState.NeedsPassword -> CheckLine("keyring", "Keyring on GitHub", "Waiting for your extra password.", CheckStatus.PROBLEM)
         KeyState.None -> CheckLine("keyring", "Keyring on GitHub", "No key yet: finish set-up first.", CheckStatus.PROBLEM)
         is KeyState.Lost -> CheckLine("keyring", "Keyring on GitHub", key.why, CheckStatus.PROBLEM)

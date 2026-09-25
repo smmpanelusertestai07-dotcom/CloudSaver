@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.Links
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OutlinedCard
+import com.pocketide.ui.shell.ReconnectGitHubDialog
 import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.SettingChoices
 import com.pocketide.ui.shell.rememberGraph
@@ -366,6 +368,7 @@ private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Sett
 private fun AccountsSection(graph: AppGraph, nav: PocketNav) {
     val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     val email by graph.driveAuth.email.collectAsStateWithLifecycle()
+    var reconnecting by rememberSaveable { mutableStateOf(false) }
     SectionLabel("Accounts")
     OutlinedCard {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -373,6 +376,21 @@ private fun AccountsSection(graph: AppGraph, nav: PocketNav) {
             InfoRow("Google Drive", email ?: "Not connected")
         }
     }
+    if (account == null) {
+        Gap(12.dp)
+        SettingsGroup(
+            listOf(
+                {
+                    ActionRow(
+                        "Reconnect GitHub",
+                        "Your chats' key keeps its second half there, and your projects live there",
+                        onClick = { reconnecting = true },
+                    )
+                },
+            ),
+        )
+    }
+    if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
     if (account != null) {
         Gap(12.dp)
         SettingsGroup(

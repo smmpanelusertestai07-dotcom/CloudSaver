@@ -103,8 +103,12 @@ class ChecksTest {
         val lines = SafetyCheck.lines(safe.copy(keyNotice = notice)).associateBy { it.id }
         assertEquals(CheckStatus.PROBLEM, lines.getValue("keyring").status)
         assertEquals(notice, lines.getValue("keyring").detail)
-        assertEquals(CheckStatus.PROBLEM, SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone)).single { it.id == "keyring" }.status)
-        assertNull(SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone)).single { it.id == "keyring" }.fix)
+        val pending = SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone)).single { it.id == "keyring" }
+        assertEquals(CheckStatus.PROBLEM, pending.status)
+        assertEquals(SafetyFix.SAVE_KEY_NOW, pending.fix)
+        val alone = SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone, gitHubConnected = false)).single { it.id == "keyring" }
+        assertEquals(SafetyFix.RECONNECT_GITHUB, alone.fix)
+        assertEquals("Reconnect GitHub", alone.fixLabel)
     }
 
     @Test

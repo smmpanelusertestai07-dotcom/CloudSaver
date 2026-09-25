@@ -55,10 +55,12 @@ import com.pocketide.ui.shell.OutlinedCard
 import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.PrivacyChecklist
 import com.pocketide.ui.shell.PrivacyChecklistCard
+import com.pocketide.ui.shell.ReconnectGitHubDialog
 import com.pocketide.ui.shell.SafetyCheck
 import com.pocketide.ui.shell.SafetyFacts
 import com.pocketide.ui.shell.SafetyFix
 import com.pocketide.ui.shell.SectionLabel
+import com.pocketide.ui.shell.saveKeyNow
 
 /**
  * The standing safety check: what protects the owner's data right now, each problem with its
@@ -76,6 +78,9 @@ internal fun SafetySection(
     val key by graph.vault.state.collectAsStateWithLifecycle()
     val keyNotice by graph.vault.notice.collectAsStateWithLifecycle()
     val values by graph.secrets.values.collectAsStateWithLifecycle()
+    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
+    var reconnecting by rememberSaveable { mutableStateOf(false) }
+    if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
     // The owner may add a screen lock in Android's settings and come back.
     var screenLock by remember { mutableStateOf(graph.appLock.deviceSecure()) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { screenLock = graph.appLock.deviceSecure() }
@@ -89,6 +94,7 @@ internal fun SafetySection(
         keyNotice = keyNotice,
         onlyOfficialAgents = settings.onlyOfficialAgents,
         variables = values.filter { it.kind == SecretKind.VARIABLE }.map { it.projectId to it.name },
+        gitHubConnected = account != null,
     )
     val lines = SafetyCheck.lines(facts)
     val problems = lines.count { it.status == CheckStatus.PROBLEM }
@@ -111,6 +117,8 @@ internal fun SafetySection(
                     SafetyFix.PRIVACY_CHECKLIST -> onOpenPrivacyChecklist()
                     SafetyFix.VARIABLES -> nav.secrets(facts.variables.firstOrNull { SafetyCheck.looksSecret(it.second) }?.first)
                     SafetyFix.ONLY_OFFICIAL -> update { it.copy(onlyOfficialAgents = true) }
+                    SafetyFix.RECONNECT_GITHUB -> reconnecting = true
+                    SafetyFix.SAVE_KEY_NOW -> saveKeyNow(graph)
                     null -> Unit
                 }
             }
