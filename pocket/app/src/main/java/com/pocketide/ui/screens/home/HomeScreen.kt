@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -192,17 +193,24 @@ fun HomeScreen(nav: PocketNav) {
             item(key = "phone") { PhoneStrip(phone, usage, onOpen = nav::computer) }
 
             item(key = "projects-label") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SectionLabel("Projects", Modifier.weight(1f))
-                    TextButton(onClick = { importing = true }) {
-                        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Import")
-                    }
-                    FilledTonalButton(onClick = { newProject = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("New")
+                // At the largest font sizes Import and New move under the heading instead of squeezing it.
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SectionLabel("Projects")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { importing = true }) {
+                            Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Import")
+                        }
+                        FilledTonalButton(onClick = { newProject = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("New")
+                        }
                     }
                 }
             }

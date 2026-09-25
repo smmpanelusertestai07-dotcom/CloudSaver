@@ -64,6 +64,7 @@ import com.pocketide.sessions.TranscriptEntry
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.manage.BackgroundLimitNote
+import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
@@ -145,7 +146,7 @@ fun ChatsScreen(nav: PocketNav) {
             }
             backgroundLimit?.let { limit -> item(key = "background") { BackgroundLimitNote(limit) } }
             item(key = "places") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionRow {
                     OutlinedButton(onClick = nav::recentlyDeleted) {
                         Icon(Icons.Filled.RestoreFromTrash, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
@@ -416,7 +417,7 @@ fun RecentlyDeletedScreen(nav: PocketNav) {
                         }
                         StatusChip(daysLeftText(days), if (days <= 3) Tone.WARN else Tone.NEUTRAL)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionRow {
                         Button(onClick = { scope.act(snackbar, "Could not restore", done = "Restored to Chats.") { graph.sessions.restore(session.id) } }) {
                             Text("Restore")
                         }
