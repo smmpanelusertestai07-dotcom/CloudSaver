@@ -1,5 +1,6 @@
 package com.pocketide.rooms
 
+import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.Bind
 import java.io.File
@@ -12,8 +13,9 @@ import java.io.File
 internal object RoomLayout {
     const val GUEST_TMP = "/tmp"
     const val TOOLS = AppDirs.GUEST_TOOLS
-    const val TOOLS_BIN = "$TOOLS/bin"
-    const val XDG_OPEN = "$TOOLS_BIN/xdg-open"
+    /** First on every room's PATH (ProotCommand), so the phone's xdg-open wins over any other. */
+    const val TOOLS_BIN = PhoneGuestTools.BIN_DIR
+    const val XDG_OPEN = PhoneGuestTools.XDG_OPEN
     const val MCP_SERVER = "$TOOLS/mcp.py"
     const val ROOM_LAUNCHER = "$TOOLS/room.py"
     const val TERMINAL_SERVER = "$TOOLS/term.py"

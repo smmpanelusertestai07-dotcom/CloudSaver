@@ -153,8 +153,9 @@ internal class LimiterImpl(
         val first = canStartAgent(agentId)
         if (first.allowed) return first
         val running = runningKinds()
-        val idle = synchronized(tracker) { tracker.idleLongest(running.keys, minIdleMs = 0) }
-        val closing = GuardPolicy.roomsToClose(agentId, agents.kind(agentId), running, idle, phone.snapshot.value, maxAgents())
+        val idle = mostIdleFirst(synchronized(tracker) { tracker.idleLongest(running.keys, minIdleMs = 0) })
+        val measured = runCatching { rooms().processes.value }.getOrDefault(emptyMap())
+        val closing = GuardPolicy.roomsToClose(agentId, agents.kind(agentId), running, idle, phone.snapshot.value, maxAgents(), measured)
         if (closing.isNullOrEmpty()) return first
         stopRooms(closing)
         record(RoomStop(closing, StopCause.MEMORY, StopWords.madeRoom(names(closing), agents.name(agentId)), clock.now()))
@@ -225,7 +226,7 @@ internal class LimiterImpl(
 
     private suspend fun closeForMemory(running: Set<String>) {
         if (clock.now() - lastMemoryStop < MEMORY_STOP_EVERY_MS) return
-        val id = synchronized(tracker) { tracker.idleLongest(running, MEMORY_IDLE_MS) }.firstOrNull() ?: return
+        val id = mostIdleFirst(synchronized(tracker) { tracker.idleLongest(running, MEMORY_IDLE_MS) }).firstOrNull() ?: return
         lastMemoryStop = clock.now()
         stopRooms(listOf(id))
         record(RoomStop(listOf(id), StopCause.MEMORY, StopWords.memory(agents.name(id)), clock.now()))
@@ -246,6 +247,15 @@ internal class LimiterImpl(
     }
 
     private fun names(agentIds: Collection<String>) = agentIds.map(agents::name)
+
+    /**
+     * [idle] (not busy, longest idle first by the limiter's clock) ordered by when each room would
+     * go to sleep by its own clock, which also sees its CPU use: the earliest is the most idle.
+     */
+    private fun mostIdleFirst(idle: List<String>): List<String> {
+        val sleeps = runCatching { rooms().sleepsAt.value }.getOrDefault(emptyMap())
+        return idle.sortedBy { sleeps[it] ?: Long.MAX_VALUE }
+    }
 
     private suspend fun stopRoom(agentId: String) {
         try {

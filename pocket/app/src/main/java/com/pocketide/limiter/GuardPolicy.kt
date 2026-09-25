@@ -120,7 +120,8 @@ object GuardPolicy {
     /**
      * The idle rooms to close so [agentId] may start, taken from [idleFirst] (longest idle first),
      * or null when closing idle rooms would not be enough (low battery, heat, busy rooms). Their
-     * memory and processes are counted as freed.
+     * memory and processes are counted as freed: the processes each room was [measured] to run
+     * (Rooms.processes), or its kind's budget when it was not measured yet.
      */
     fun roomsToClose(
         agentId: String,
@@ -129,6 +130,7 @@ object GuardPolicy {
         idleFirst: List<String>,
         snapshot: PhoneSnapshot,
         maxAgents: Int,
+        measured: Map<String, Int> = emptyMap(),
     ): List<String>? {
         val remaining = running.toMutableMap()
         var after = snapshot
@@ -143,7 +145,7 @@ object GuardPolicy {
             closing += id
             after = after.copy(
                 availRamBytes = after.availRamBytes + freed.memoryBytes,
-                processCount = (after.processCount - freed.processes).coerceAtLeast(0),
+                processCount = (after.processCount - (measured[id] ?: freed.processes)).coerceAtLeast(0),
             )
             if (allowed()) return closing
         }

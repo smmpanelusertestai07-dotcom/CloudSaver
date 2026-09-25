@@ -1,5 +1,6 @@
 package com.pocketide.rooms
 
+import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AgentFiles
 import com.pocketide.core.AppDirs
 import com.pocketide.core.FileClass
@@ -24,7 +25,7 @@ internal class RoomConfigurator(
         for (name in listOf("mcp.py", "term.py", "room.py", "notify.py")) {
             rootfs.write("$tools/$name", assets.read("$ROOM_ASSETS/$name"))
         }
-        rootfs.write(RoomLayout.XDG_OPEN.removePrefix("/"), assets.read("$ROOM_ASSETS/xdg-open"), executable = true)
+        rootfs.write(PhoneGuestTools.XDG_OPEN.removePrefix("/"), PhoneGuestTools.xdgOpen, executable = true)
         copyFolder(rootfs, "$ROOM_ASSETS/browser", BrowserTools.SETUP.removePrefix("/"))
         copyFolder(rootfs, TERMINAL_ASSETS, RoomLayout.TERMINAL_WEB.removePrefix("/"))
     }
@@ -33,16 +34,17 @@ internal class RoomConfigurator(
 
     /**
      * Writes [profile]'s room configuration. [otherRooms] are the other agents' ids (for Claude's
-     * deny rules); [fontSize] follows the phone's font scale.
+     * deny rules); [fontSize] follows the phone's font scale. [careful] is for someone else's
+     * code: the agent asks before running anything and the browser tools stay off.
      */
-    fun configure(profile: RoomProfile, otherRooms: List<String>, fontSize: Int) {
+    fun configure(profile: RoomProfile, otherRooms: List<String>, fontSize: Int, careful: Boolean = false) {
         val home = RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true)
         home.directory("", create = true) ?: throw IOException("The room's home is not a folder.")
         home.makePrivateHome()
         writeRules(profile, home)
-        val servers = mcpServers()
+        val servers = mcpServers(careful)
         if (profile.engine == Engine.CODE_SERVER) {
-            writeJson(profile.agentId, home, CODE_SERVER_SETTINGS) { ConfigFiles.codeServerSettings(it, profile, fontSize) }
+            writeJson(profile.agentId, home, CODE_SERVER_SETTINGS) { ConfigFiles.codeServerSettings(it, profile, fontSize, careful) }
             installCompanion(profile.agentId, home)
         }
         when (profile.agentId) {
@@ -51,7 +53,9 @@ internal class RoomConfigurator(
             }
             RoomProfiles.CODEX -> home.write(
                 ".codex/config.toml",
-                ConfigFiles.codexConfig(home.read(".codex/config.toml"), servers, listOf("python3", RoomLayout.NOTIFY, profile.agentId)),
+                ConfigFiles.codexConfig(
+                    home.read(".codex/config.toml"), servers, listOf("python3", RoomLayout.NOTIFY, profile.agentId), careful,
+                ),
             )
             RoomProfiles.ANTIGRAVITY -> {
                 writeJson(profile.agentId, home, ".gemini/config/mcp_config.json") { ConfigFiles.antigravityMcp(it, servers) }
@@ -60,11 +64,14 @@ internal class RoomConfigurator(
         }
     }
 
-    /** PocketIDE's MCP server, and the browser servers once the browser is installed (removed otherwise). */
-    fun mcpServers(): Map<String, McpServer?> {
+    /**
+     * PocketIDE's MCP server, and the browser servers once the browser is installed (removed
+     * otherwise, and while [careful]: a page of someone else's project could steer the agent).
+     */
+    fun mcpServers(careful: Boolean = false): Map<String, McpServer?> {
         val browser = BrowserTools.servers()
-        val installed = browserInstalled()
-        return mapOf(PocketMcp.NAME to PocketMcp.SERVER) + browser.mapValues { (_, server) -> server.takeIf { installed } }
+        val enabled = !careful && browserInstalled()
+        return mapOf(PocketMcp.NAME to PocketMcp.SERVER) + browser.mapValues { (_, server) -> server.takeIf { enabled } }
     }
 
     /**

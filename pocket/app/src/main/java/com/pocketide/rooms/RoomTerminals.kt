@@ -46,8 +46,8 @@ internal class RoomTerminals(
 
     fun ports(): Set<Int> = live.values.map { it.port }.toSet()
 
-    fun pids(agentId: String, procs: ProcFacts): List<Int> =
-        live.values.filter { it.agentId == agentId }.mapNotNull { it.pid }.flatMap(procs::tree)
+    /** Linux processes of [agentId]'s terminals: each term.py's proot and everything under it. */
+    fun processes(agentId: String): Int = live.values.filter { it.agentId == agentId }.sumOf { env.computer.liveProcesses(it.process) }
 
     suspend fun open(session: SessionRecord): TerminalHandle = lock.withLock {
         live[session.id]?.takeIf { it.process.isAlive }?.let { existing ->
@@ -63,16 +63,21 @@ internal class RoomTerminals(
 
     fun stopAll() = live.values.toList().forEach(::close)
 
-    /** Records CPU use and closes terminals nobody used for the idle time. */
-    fun sample(now: Long, procs: ProcFacts) {
+    /**
+     * Records CPU use and closes terminals nobody used for the idle time. Returns the agents whose
+     * terminals ran something since the last sample (a command is running there).
+     */
+    fun sample(now: Long, procs: ProcFacts): Set<String> {
+        val working = HashSet<String>()
         for (terminal in live.values.toList()) {
             val ticks = terminal.pid?.let { procs.cpuTicks(procs.tree(it)) } ?: 0L
-            terminal.activity.sample(now, ticks)
+            if (terminal.activity.sample(now, ticks)) working += terminal.agentId
             if (terminal.activity.isIdle(now)) {
                 output(terminal.agentId).add("[PocketIDE] A terminal nobody used for a while was closed.")
                 close(terminal)
             }
         }
+        return working
     }
 
     private suspend fun start(session: SessionRecord): TerminalHandle {

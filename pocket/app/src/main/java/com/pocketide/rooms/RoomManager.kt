@@ -3,7 +3,9 @@ package com.pocketide.rooms
 import com.pocketide.bridge.BridgedPort
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.ComputerState
+import com.pocketide.linux.LinuxCommand
 import com.pocketide.model.SessionRecord
+import com.pocketide.projects.ProjectTrust
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -18,6 +20,7 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -34,8 +37,9 @@ import java.util.concurrent.ConcurrentHashMap
  * for one session at a time.
  *
  * Engines are started detached from any screen and stopped exactly (their proot and everything it
- * traces). A room sleeps after [IDLE_MS] without work: no CPU used by its programs or terminals,
- * and no use of its screen ([touch]).
+ * traces). A room sleeps after the idle time without work: no CPU used by its programs or
+ * terminals, and no use of its screen ([touch]). What a room is busy with is passed on to the
+ * limiter, which never closes a busy room and holds the phone awake only while one works.
  */
 internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val dirs = env.dirs
@@ -46,6 +50,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret)
     private val browser = BrowserInstaller(env, configurator, ::afterBrowserInstall)
     private val tools = McpTools(dirs, Ports())
+    private val holds = WorkHolds(env::setBusy)
+    private val waitedBuilds: MutableSet<Pair<String, Long>> = ConcurrentHashMap.newKeySet()
 
     private val mutableStates = MutableStateFlow<Map<String, RoomState>>(emptyMap())
     override val states: StateFlow<Map<String, RoomState>> = mutableStates.asStateFlow()
@@ -55,12 +61,16 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     override val stops: StateFlow<Map<String, RoomStop>> = mutableStops.asStateFlow()
     private val mutableSleeps = MutableStateFlow<Map<String, Long>>(emptyMap())
     override val sleepsAt: StateFlow<Map<String, Long>> = mutableSleeps.asStateFlow()
+    private val mutableProcesses = MutableStateFlow<Map<String, Int>>(emptyMap())
+    override val processes: StateFlow<Map<String, Int>> = mutableProcesses.asStateFlow()
 
     private class LiveRoom(
         val profile: RoomProfile,
         val process: Process,
         val port: Int,
         val variables: Map<String, String>,
+        /** Someone else's code: the agent asks before running anything and has no browser tools. */
+        val careful: Boolean,
         val activity: ActivityClock,
         @Volatile var sessionId: String,
     ) {
@@ -72,39 +82,70 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         var watcher: Job? = null
     }
 
+    /** The room and session an open asks for, or why they cannot be opened. */
+    private sealed interface Opening {
+        class Ready(val profile: RoomProfile, val session: SessionRecord) : Opening
+        class Refused(val why: String) : Opening
+    }
+
     private val live = ConcurrentHashMap<String, LiveRoom>()
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val monitorLock = Any()
     private var monitor: Job? = null
 
     init {
-        env.phoneBridge.handle(MCP_OP) { agentId, args -> tools.call(agentId, args) }
+        env.phoneBridge.handle(MCP_OP) { agentId, args ->
+            val writes = McpTools.writes(args)
+            if (writes) holds.hold(agentId, WorkHolds.WRITE)
+            try {
+                tools.call(agentId, args)
+            } finally {
+                if (writes) holds.release(agentId, WorkHolds.WRITE)
+            }
+        }
         env.phoneBridge.handle(NOTIFY_OP) { agentId, args ->
             notice(agentId, args)
             JsonObject(emptyMap())
         }
     }
 
+    override suspend fun open(agentId: String, sessionId: String): RoomState = open(agentId, sessionId, null)
+
     /**
      * Engines start detached from the screen that asked: leaving the screen while a room starts
-     * stops the waiting, not the start.
+     * stops the waiting, not the start. Room for a new room is made before its lock is taken,
+     * because making room stops other rooms, each under its own lock.
      */
-    override suspend fun open(agentId: String, sessionId: String): RoomState =
-        env.scope.async { lock(agentId).withLock { openLocked(agentId, sessionId) } }.await()
+    override suspend fun open(agentId: String, sessionId: String, firstPrompt: String?): RoomState = env.scope.async {
+        val opening = opening(agentId, sessionId)
+        if (opening is Opening.Refused) return@async fail(agentId, opening.why)
+        val admitted = live[agentId]?.process?.isAlive != true
+        if (admitted) {
+            computerProblem()?.let { return@async fail(agentId, it) }
+            val room = env.makeRoomFor(agentId)
+            if (!room.allowed) return@async fail(agentId, room.reason ?: CANNOT_START)
+        }
+        val state = lock(agentId).withLock { openLocked(agentId, sessionId, admitted) }
+        if (firstPrompt != null && state is RoomState.Running) offerPrompt(agentId, firstPrompt)
+        state
+    }.await()
 
-    private suspend fun openLocked(agentId: String, sessionId: String): RoomState {
-        val profile = profile(agentId) ?: return fail(agentId, "PocketIDE does not know this agent. Add it from More agents first.")
-        val session = env.sessions().firstOrNull { it.id == sessionId }
-            ?: return fail(agentId, "This session is not on this phone yet.")
-        if (session.agentId != agentId) return fail(agentId, "This session belongs to another agent.")
+    override fun takesPrompts(agentId: String): Boolean = profile(agentId)?.promptCommand != null
+
+    /** [admitted]: the limiter has just made room for this room, so its phone readings may lag behind. */
+    private suspend fun openLocked(agentId: String, sessionId: String, admitted: Boolean): RoomState {
+        val (profile, session) = when (val opening = opening(agentId, sessionId)) {
+            is Opening.Refused -> return fail(agentId, opening.why)
+            is Opening.Ready -> opening.profile to opening.session
+        }
         // An engine that ended but was not cleaned up yet gives its port back first.
         live[agentId]?.takeIf { !it.process.isAlive }?.let { shutDown(agentId, it) }
         val current = live[agentId]
         if (current != null) {
-            current.activity.touch(env.now())
+            touch(agentId)
             if (current.sessionId == sessionId) return running(current)
-            val sameVariables = current.variables == env.variables(session.projectId)
-            if (profile.engine == Engine.CODE_SERVER && sameVariables) return showSession(current, session)
+            val sameRoom = current.variables == env.variables(session.projectId, agentId) && current.careful == careful(session)
+            if (profile.engine == Engine.CODE_SERVER && sameRoom) return showSession(current, session)
             // Switching needs a new engine; a turn in progress is never cut off for it.
             if (current.activity.busyWithin(env.now(), BUSY_WINDOW_MS)) {
                 return RoomState.Failed("${profile.name} is still working in another session. Wait until it finishes, or stop it first.")
@@ -112,7 +153,14 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             shutDown(agentId, current)
             recordStop(agentId, StopReason.SWITCHED, "${profile.name} restarted to open another session.")
         }
-        return start(profile, session)
+        return start(profile, session, admitted = admitted && current == null)
+    }
+
+    private fun opening(agentId: String, sessionId: String): Opening {
+        val profile = profile(agentId) ?: return Opening.Refused("PocketIDE does not know this agent. Add it from More agents first.")
+        val session = env.sessions().firstOrNull { it.id == sessionId } ?: return Opening.Refused("This session is not on this phone yet.")
+        if (session.agentId != agentId) return Opening.Refused("This session belongs to another agent.")
+        return Opening.Ready(profile, session)
     }
 
     override suspend fun stop(agentId: String) = stopWith(agentId, StopReason.OWNER, "Stopped. Nothing was lost; open it again to continue.")
@@ -133,7 +181,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     override suspend fun configure(agentId: String) {
         val profile = profile(agentId) ?: throw IllegalArgumentException("PocketIDE does not know the agent \"$agentId\".")
-        lock(agentId).withLock { withContext(Dispatchers.IO) { prepare(profile) } }
+        lock(agentId).withLock { withContext(Dispatchers.IO) { prepare(profile, carefulNow(agentId)) } }
     }
 
     override suspend fun delete(agentId: String) {
@@ -150,7 +198,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     }
 
     override fun touch(agentId: String) {
-        live[agentId]?.activity?.touch(env.now())
+        val room = live[agentId] ?: return
+        room.activity.touch(env.now())
+        env.used(agentId)
     }
 
     override suspend fun restart(agentId: String): RoomState = env.scope.async {
@@ -168,21 +218,41 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     override fun recentOutput(agentId: String): List<String> = rings[agentId]?.last(DIAGNOSTIC_LINES).orEmpty()
 
+    override suspend fun signOutAll(): List<String> {
+        stopAll()
+        val agents = (env.agents() + RoomProfiles.OFFICIAL).distinct().filter(RoomProfiles::isAgentId)
+        val signedIn = withContext(Dispatchers.IO) {
+            agents.filter { agentId ->
+                val file = SignOuts.signInFile(agentId) ?: return@filter false
+                // Only whether the file is there: it is never read.
+                RoomFiles(dirs.roomHome(agentId), guardSecrets = true).isFile(file)
+            }
+        }
+        return signedIn.map { agentId -> lock(agentId).withLock { signOut(agentId) } }
+    }
+
     // --- starting
 
-    private suspend fun start(profile: RoomProfile, session: SessionRecord, port: Int? = null): RoomState {
+    /**
+     * Starts [profile]'s engine on [session]. Unless the limiter has just [admitted] it (after
+     * closing rooms, whose memory its readings do not show yet), the limiter is asked first.
+     */
+    private suspend fun start(profile: RoomProfile, session: SessionRecord, port: Int? = null, admitted: Boolean = false): RoomState {
         val agentId = profile.agentId
         mutableStops.update { it - agentId }
         publish(agentId, RoomState.Starting("Checking the computer"))
         computerProblem()?.let { return fail(agentId, it) }
-        val decision = env.canStartAgent(agentId)
-        if (!decision.allowed) return fail(agentId, decision.reason ?: "The phone cannot take another agent right now.")
+        if (!admitted) {
+            val decision = env.canStartAgent(agentId)
+            if (!decision.allowed) return fail(agentId, decision.reason ?: CANNOT_START)
+        }
         val worktree = "${AppDirs.projectDirName(session.projectId)}/${session.id}"
         val hasWorktree = withContext(Dispatchers.IO) { RoomFiles(dirs.roomWork(agentId), guardSecrets = false).isDirectory(worktree) }
         if (!hasWorktree) return fail(agentId, RoomTerminals.MISSING_WORKTREE)
+        val careful = careful(session)
         publish(agentId, RoomState.Starting("Preparing the room"))
         try {
-            withContext(Dispatchers.IO) { prepare(profile) }
+            withContext(Dispatchers.IO) { prepare(profile, careful) }
         } catch (failed: IOException) {
             return fail(agentId, "The room could not be prepared: ${reason(failed)}")
         } catch (failed: IllegalArgumentException) {
@@ -192,10 +262,10 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         }
         engineProblem(profile)?.let { return fail(agentId, it) }
 
-        val variables = env.variables(session.projectId)
+        val variables = env.variables(session.projectId, agentId)
         val chosenPort = port ?: withContext(Dispatchers.IO) { Loopback.freePort() }
         val guestWorktree = AppDirs.guestWorktree(session.projectId, session.id)
-        val environment = roomEnvironment(agentId, variables) + engineEnvironment(profile)
+        val environment = roomEnvironment(agentId, variables) + engineEnvironment(profile, careful)
         val secret = newSecret()
         val bridgeFiles = RoomFiles(dirs.roomBridge(agentId), guardSecrets = false)
         val secretFile = RoomEngines.secretFile(RoomEngines.CODE_SERVER_KIND, chosenPort)
@@ -208,6 +278,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         }
 
         publish(agentId, RoomState.Starting("Starting ${profile.name}"))
+        // While the owner is most likely on the screen: Android 12+ refuses this from the background.
+        if (!env.keepEngineAlive()) ring(agentId).add("[PocketIDE] Android did not let the engine's service start now.")
         env.phoneBridge.start(agentId)
         val process = try {
             withContext(Dispatchers.IO) { env.computer.start(command) }
@@ -218,7 +290,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         } catch (failed: IllegalArgumentException) {
             return couldNotStart(profile, bridgeFiles, secretFile, failed)
         }
-        val room = LiveRoom(profile, process, chosenPort, variables, ActivityClock(env.now(), IDLE_MS), session.id)
+        val room = LiveRoom(profile, process, chosenPort, variables, careful, ActivityClock(env.now(), ::idleLimitMs), session.id)
         live[agentId] = room
         env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
 
@@ -237,6 +309,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             val why = if (alive) "did not answer within ${READY_MS / 1000} seconds." else "stopped while starting."
             return fail(agentId, "${profile.name} $why$lastWords")
         }
+        // A new secret each launch, so each launch gets a new bridge and token too.
         val inject = if (profile.engine == Engine.CODE_SERVER) mapOf("Cookie" to RoomEngines.sessionCookie(secret)) else emptyMap()
         val bridge = try {
             env.portBridge.expose(chosenPort, "agent:$agentId", inject)
@@ -250,6 +323,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             room.signInStamp = hubSignInStamp(agentId)
             room.memoryBytes = room.pid?.let { procs.residentBytes(procs.tree(it)) } ?: 0
         }
+        countProcesses(agentId, room)
         room.watcher = env.scope.launch { watch(agentId, room) }
         ensureMonitor()
         return running(room).also { publish(agentId, it) }
@@ -261,13 +335,22 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     }
 
     /** Folders, PocketIDE's tools inside the computer, and the room's configuration. */
-    private fun prepare(profile: RoomProfile) {
+    private fun prepare(profile: RoomProfile, careful: Boolean) {
         RoomLayout.hostFolders(dirs, profile.agentId).forEach { folder ->
             if (!folder.isDirectory && !folder.mkdirs()) throw IOException("Could not create ${folder.name}.")
         }
         configurator.installTools()
         val others = (env.agents() + RoomProfiles.OFFICIAL).distinct().filter { it != profile.agentId && RoomProfiles.isAgentId(it) }
-        configurator.configure(profile, others, env.fontSize())
+        configurator.configure(profile, others, env.fontSize(), careful)
+    }
+
+    private fun careful(session: SessionRecord) = env.trust(session.projectId) == ProjectTrust.SOMEONE_ELSES
+
+    /** How careful the room is now: as its running engine, else as the session it would open. */
+    private fun carefulNow(agentId: String): Boolean {
+        live[agentId]?.let { return it.careful }
+        val sessionId = env.activeSession(agentId) ?: return false
+        return env.sessions().firstOrNull { it.id == sessionId }?.let(::careful) ?: false
     }
 
     private fun computerProblem(): String? = when (val state = env.computer.state.value) {
@@ -311,13 +394,13 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     }
 
     /** Settings of the engine itself: Node's heap limit on a phone, and Claude's MCP entries for room.py. */
-    private fun engineEnvironment(profile: RoomProfile): Map<String, String> = buildMap {
+    private fun engineEnvironment(profile: RoomProfile, careful: Boolean): Map<String, String> = buildMap {
         if (profile.engine == Engine.CODE_SERVER) put("NODE_OPTIONS", "--max-old-space-size=${env.heapMegabytes()}")
-        if (profile.agentId == RoomProfiles.CLAUDE) put("POCKETIDE_CLAUDE_MCP", ConfigFiles.claudeMcpEntries(configurator.mcpServers()))
+        if (profile.agentId == RoomProfiles.CLAUDE) put("POCKETIDE_CLAUDE_MCP", ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)))
     }
 
     private suspend fun roomEnvironment(agentId: String, projectId: String): Map<String, String> =
-        roomEnvironment(agentId, env.variables(projectId))
+        roomEnvironment(agentId, env.variables(projectId, agentId))
 
     private suspend fun roomEnvironment(agentId: String, variables: Map<String, String>): Map<String, String> =
         RoomLayout.environment(agentId, variables, env.gitIdentity()) { name ->
@@ -361,6 +444,23 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     private fun running(room: LiveRoom) = RoomState.Running(room.url, room.sessionId, room.memoryBytes)
 
+    /**
+     * Hands [prompt] to the agent's companion through a file in the room's bridge folder; the
+     * companion opens the agent with it. A prompt that cannot be written is only logged.
+     */
+    private suspend fun offerPrompt(agentId: String, prompt: String) {
+        if (!takesPrompts(agentId)) return
+        val text = prompt.take(MAX_PROMPT_CHARS)
+        try {
+            withContext(Dispatchers.IO) {
+                RoomFiles(dirs.roomBridge(agentId), guardSecrets = false)
+                    .write(RoomEngines.promptFile(newSecret().take(PROMPT_ID_CHARS)), RoomEngines.promptRequest(text))
+            }
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] The first prompt could not be handed over: ${failed.message}")
+        }
+    }
+
     /** Waits for the engine to end; if nobody stopped it, says so. */
     private suspend fun watch(agentId: String, room: LiveRoom) {
         runInterruptible(Dispatchers.IO) { room.process.waitFor() }
@@ -389,10 +489,45 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         room.watcher?.cancel()
         env.portBridge.revoke(room.port)
         env.computer.stop(room.process)
+        holds.clear(agentId)
+        waitedBuilds.removeAll { it.first == agentId }
         mutableSleeps.update { it - agentId }
+        mutableProcesses.update { it - agentId }
+    }
+
+    /** Runs the agent's own sign-out in its room; one sentence for the owner. */
+    private suspend fun signOut(agentId: String): String {
+        val name = profile(agentId)?.name ?: agentId
+        val anyway = "Its sign-in on this phone is deleted anyway."
+        val argv = withContext(Dispatchers.IO) { SignOuts.command(agentId, configurator.extensionFolders(agentId)) }
+            ?: return "$name has no sign-out PocketIDE can run. $anyway"
+        computerProblem()?.let { return "$name was not signed out: $it $anyway" }
+        val command = LinuxCommand(
+            argv = argv,
+            binds = RoomLayout.binds(dirs, agentId),
+            env = RoomLayout.environment(agentId, emptyMap(), emptyMap()),
+            workDir = AppDirs.GUEST_HOME,
+        )
+        val code = try {
+            withContext(Dispatchers.IO) { RoomLayout.hostFolders(dirs, agentId).forEach { it.mkdirs() } }
+            withTimeoutOrNull(SIGN_OUT_MS) { env.computer.run(command) { ring(agentId).add("[sign-out] $it") } }
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] The sign-out could not start: ${failed.message}")
+            -1
+        } catch (failed: IllegalStateException) {
+            ring(agentId).add("[PocketIDE] The sign-out could not start: ${failed.message}")
+            -1
+        }
+        return when (code) {
+            0 -> "$name signed out."
+            null -> "$name did not finish signing out within ${SIGN_OUT_MS / 1000} seconds. $anyway"
+            else -> "$name could not sign out. $anyway"
+        }
     }
 
     // --- activity
+
+    private fun idleLimitMs(): Long = env.idleSleepMinutes() * 60_000L
 
     private fun ensureMonitor() = synchronized(monitorLock) {
         if (monitor == null) monitor = env.scope.launch(Dispatchers.IO) { watchActivity() }
@@ -408,9 +543,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 }
             }
             val now = env.now()
+            val commands = terminals.sample(now, procs)
+            for (agentId in commands + holds.holding(WorkHolds.COMMAND)) holds.set(agentId, WorkHolds.COMMAND, agentId in commands)
             for ((agentId, room) in live) {
                 try {
-                    sample(agentId, room, now)
+                    sample(agentId, room, now, terminalBusy = agentId in commands)
                 } catch (failed: IOException) {
                     // One unreadable sample must not end the watch over every room.
                     ring(agentId).add("[PocketIDE] Activity could not be read: ${failed.message}")
@@ -418,25 +555,37 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                     ring(agentId).add("[PocketIDE] Activity could not be read: ${failed.message}")
                 }
             }
-            terminals.sample(now, procs)
-            mutableSleeps.value = live.mapValues { (_, room) -> room.activity.sleepsAt() }
+            mutableSleeps.value = live.mapNotNull { (agentId, room) -> room.activity.sleepsAt()?.let { agentId to it } }.toMap()
         }
     }
 
-    private suspend fun sample(agentId: String, room: LiveRoom, now: Long) {
+    private suspend fun sample(agentId: String, room: LiveRoom, now: Long, terminalBusy: Boolean) {
         val pid = room.pid ?: return
         val tree = procs.tree(pid)
-        room.activity.sample(now, procs.cpuTicks(tree + terminals.pids(agentId, procs)))
+        val working = room.activity.sample(now, procs.cpuTicks(tree))
+        holds.set(agentId, WorkHolds.TURN, working)
+        if (working || terminalBusy) {
+            room.activity.touch(now)
+            env.used(agentId)
+        }
+        countProcesses(agentId, room)
         val memory = procs.residentBytes(tree)
         if (kotlin.math.abs(memory - room.memoryBytes) > MEMORY_STEP_BYTES) {
             room.memoryBytes = memory
             if (live[agentId] === room) publish(agentId, running(room))
         }
         if (room.activity.isIdle(now)) {
-            stopWith(agentId, StopReason.IDLE, "Stopped after ${IDLE_MS / 60_000} minutes without activity. Nothing was lost; open it again to continue.")
+            val minutes = env.idleSleepMinutes()
+            stopWith(agentId, StopReason.IDLE, "Stopped after $minutes minutes without activity. Nothing was lost; open it again to continue.")
             return
         }
         if (room.profile.engine == Engine.AGY_HUB) restartAfterSignIn(agentId, room)
+    }
+
+    /** The room's Linux processes (engine and terminals), for the phantom-process budget. */
+    private fun countProcesses(agentId: String, room: LiveRoom) {
+        val count = env.computer.liveProcesses(room.process) + terminals.processes(agentId)
+        if (live[agentId] === room) mutableProcesses.update { it + (agentId to count) }
     }
 
     /**
@@ -466,10 +615,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         for (agentId in (env.agents() + RoomProfiles.OFFICIAL).distinct()) {
             val profile = profile(agentId) ?: continue
             try {
-                withContext(Dispatchers.IO) { prepare(profile) }
+                val careful = carefulNow(agentId)
+                withContext(Dispatchers.IO) { prepare(profile, careful) }
                 // ~/.claude.json is Claude's own state file: it is merged only while Claude is not running.
                 if (agentId == RoomProfiles.CLAUDE && live[agentId] == null) {
-                    env.computer.run(RoomEngines.setUpOnly(dirs, agentId, engineEnvironment(profile))) { ring(agentId).add(it) }
+                    env.computer.run(RoomEngines.setUpOnly(dirs, agentId, engineEnvironment(profile, careful))) { ring(agentId).add(it) }
                 }
             } catch (failed: IOException) {
                 ring(agentId).add("[PocketIDE] The browser tools could not be registered: ${failed.message}")
@@ -486,7 +636,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         val session = runCatching { tools.session(agentId, cwd) }.getOrNull()
         val name = profile(agentId)?.name ?: agentId
         val title = if (kind == "needs_you") "$name needs you" else "$name finished"
-        live[agentId]?.activity?.touch(env.now())
+        touch(agentId)
         env.notify(agentId, session?.id, title, text)
     }
 
@@ -513,13 +663,32 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         }
         override fun ownPorts(): Set<Int> =
             env.portBridge.exposed.flatMap { listOf(it.bridgePort, it.targetPort) }.toSet() + live.values.map { it.port } + terminals.ports()
-        override suspend fun browser(agentId: String) = browser.request(agentId)
+
+        override suspend fun browser(agentId: String): String {
+            if (carefulNow(agentId)) return BROWSER_OFF
+            return browser.request(agentId)
+        }
+
         override fun listeners(): List<String> = listOf("/proc/net/tcp", "/proc/net/tcp6").flatMap { path ->
             try {
                 File(path).readLines().drop(1)
             } catch (unreadable: IOException) {
                 emptyList()
             }
+        }
+
+        /** A build the agent waits on keeps its room busy until the agent sees it end, or for at most an hour. */
+        override fun buildStarted(agentId: String, runId: Long) {
+            if (!waitedBuilds.add(agentId to runId)) return
+            holds.hold(agentId, WorkHolds.BUILD)
+            env.scope.launch {
+                delay(BUILD_WAIT_MAX_MS)
+                buildEnded(agentId, runId)
+            }
+        }
+
+        override fun buildEnded(agentId: String, runId: Long) {
+            if (waitedBuilds.remove(agentId to runId)) holds.release(agentId, WorkHolds.BUILD)
         }
     }
 
@@ -548,7 +717,6 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private companion object {
         const val MCP_OP = "mcp"
         const val NOTIFY_OP = "notify"
-        const val IDLE_MS = 15 * 60_000L
         const val SAMPLE_MS = 60_000L
         const val BUSY_WINDOW_MS = 2 * 60_000L
         const val READY_MS = 90_000L
@@ -558,6 +726,13 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         const val LAST_WORDS = 3
         const val MAX_PREVIEW_PORTS = 10
         const val SECRET_BYTES = 32
+        const val PROMPT_ID_CHARS = 16
+        const val MAX_PROMPT_CHARS = 20_000
+        const val SIGN_OUT_MS = 30_000L
+        const val BUILD_WAIT_MAX_MS = 60 * 60_000L
         const val HUB_SIGN_IN = ".gemini/jetski-standalone-oauth-token"
+        const val CANNOT_START = "The phone cannot take another agent right now."
+        const val BROWSER_OFF = "The test browser stays off in this project: it is someone else's code, and a web page could " +
+            "steer you. The owner can turn it on by marking the project as theirs in PocketIDE."
     }
 }

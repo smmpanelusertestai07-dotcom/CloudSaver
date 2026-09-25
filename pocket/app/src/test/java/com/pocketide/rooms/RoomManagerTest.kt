@@ -18,6 +18,7 @@ import com.pocketide.model.Guard
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
+import com.pocketide.projects.ProjectTrust
 import com.pocketide.sessions.PutOnMainResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -263,7 +264,14 @@ class RoomManagerTest {
             return File(dirs.roomBridge(agent), guest.removePrefix("${AppDirs.GUEST_BRIDGE}/"))
         }
 
-        override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int = 0
+        val ran = CopyOnWriteArrayList<LinuxCommand>()
+
+        override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int {
+            ran += command
+            return 0
+        }
+
+        override fun liveProcesses(process: Process) = if (process.isAlive) 3 else 0
         override fun stop(process: Process) {
             stopped += process
             process.destroyForcibly()
@@ -335,6 +343,10 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override val assets: RoomAssets = FolderRoomAssets()
         var decision = Decision.YES
         val notices = CopyOnWriteArrayList<String>()
+        val trust = ConcurrentHashMap<String, ProjectTrust>()
+        val madeRoomFor = CopyOnWriteArrayList<String>()
+        val busyReports = CopyOnWriteArrayList<String>()
+        @Volatile var engineKeptAlive = 0
 
         override fun now() = System.currentTimeMillis()
         override fun agentInfo(agentId: String): AgentInfo? = null
@@ -342,8 +354,22 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override fun sessions() = all
         override fun activeSession(agentId: String): String? = null
         override fun project(projectId: String) = Project(id = projectId, owner = "octo", repo = "app", addedAt = 0, lastActivityAt = 0)
-        override suspend fun variables(projectId: String) = mapOf("API_URL" to "https://staging.example")
+        override suspend fun variables(projectId: String, agentId: String) = mapOf("API_URL" to "https://staging.example")
+        override fun trust(projectId: String) = trust[projectId] ?: ProjectTrust.YOURS
         override fun canStartAgent(agentId: String) = decision
+        override suspend fun makeRoomFor(agentId: String): Decision {
+            madeRoomFor += agentId
+            return decision
+        }
+        override fun setBusy(agentId: String, what: String, busy: Boolean) {
+            busyReports += "$agentId|$what|$busy"
+        }
+        override fun used(agentId: String) = Unit
+        override fun keepEngineAlive(): Boolean {
+            engineKeptAlive++
+            return true
+        }
+        override fun idleSleepMinutes() = 15
         override fun canStartHeavyWork(what: String) = Decision.YES
         override fun allowDownload(bytes: Long, kind: String) = Decision.YES
         override fun recordDownload(bytes: Long, kind: String) = Unit

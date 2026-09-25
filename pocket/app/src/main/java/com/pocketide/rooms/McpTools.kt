@@ -55,6 +55,12 @@ internal interface McpPorts {
 
     /** Lines of /proc/net/tcp and tcp6, or empty when Android does not let the app read them. */
     fun listeners(): List<String>
+
+    /** The agent started build [runId] and waits for it: its room is busy until the run ends. */
+    fun buildStarted(agentId: String, runId: Long) = Unit
+
+    /** The agent saw build [runId] end. */
+    fun buildEnded(agentId: String, runId: Long) = Unit
 }
 
 /**
@@ -71,8 +77,8 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         val text = when (tool) {
             "phone_status" -> phoneStatus()
             "install_browser" -> ports.browser(agentId)
-            "run_build" -> runBuild(session(agentId, cwd), input)
-            "build_result" -> buildResult(session(agentId, cwd), input)
+            "run_build" -> runBuild(agentId, session(agentId, cwd), input)
+            "build_result" -> buildResult(agentId, session(agentId, cwd), input)
             "open_pr" -> openPr(session(agentId, cwd), input)
             "put_on_main" -> putOnMain(session(agentId, cwd))
             "save_media" -> saveMedia(agentId, session(agentId, cwd), input)
@@ -125,7 +131,7 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         ).joinToString(" ")
     }
 
-    private suspend fun runBuild(session: SessionRecord, input: JsonObject): String {
+    private suspend fun runBuild(agentId: String, session: SessionRecord, input: JsonObject): String {
         val templateId = input.string("template")?.trim().orEmpty()
         val templates = ports.templates()
         check(templates.isNotEmpty()) { "This project has no build templates yet. Tell the owner to add one from the project's Builds panel." }
@@ -134,15 +140,17 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         pushFirst(session)
         val runId = ports.runBuild(session.projectId, template.id, session.branch)
             ?: throw IllegalStateException("GitHub did not start the build. The workflow file may not be on this branch yet: commit it, then try again.")
+        ports.buildStarted(agentId, runId)
         return "Build started on GitHub Actions: ${template.title}, run $runId on ${session.branch}. " +
             "Call build_result with run_id $runId in a few minutes."
     }
 
-    private suspend fun buildResult(session: SessionRecord, input: JsonObject): String {
+    private suspend fun buildResult(agentId: String, session: SessionRecord, input: JsonObject): String {
         val runId = (input["run_id"] as? JsonPrimitive)?.longOrNull ?: throw IllegalArgumentException("run_id must be a number.")
         val run = ports.recentRuns(session.projectId).firstOrNull { it.id == runId }
             ?: throw IllegalArgumentException("Run $runId is not among this project's recent runs.")
         if (run.status != "completed") return "Run $runId is still ${run.status.replace('_', ' ')}. Check again in a few minutes. ${run.htmlUrl}"
+        ports.buildEnded(agentId, runId)
         val saved = ports.collect(session.projectId, session.id, runId)
         val outcome = when (run.conclusion) {
             "success" -> "succeeded"
@@ -229,6 +237,11 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         private const val MAX_LISTED = 20
         const val MAX_MEDIA_BYTES = 200_000_000L
         private val UNSAFE_NAME = Regex("[^A-Za-z0-9 ._()-]")
+
+        /** Tools that push or write for the owner while they run: the room must not close under them. */
+        private val WRITING_TOOLS = setOf("run_build", "open_pr", "put_on_main", "save_media")
+
+        fun writes(request: JsonObject): Boolean = (request["tool"] as? JsonPrimitive)?.contentOrNull in WRITING_TOOLS
 
         /** A plain file name for Media: the title when given (keeping the file's extension), else the file's name. */
         fun mediaName(title: String?, fileName: String): String {

@@ -164,6 +164,28 @@ internal class TomlDocument(text: String) {
         }
     }
 
+    /**
+     * The value of the top-level [key] as written (a string keeps its quotes), without a trailing
+     * comment; null when it is not set on one line of its own.
+     */
+    fun topLevelValue(key: String): String? {
+        val statement = statements().firstOrNull { !it.header && it.table.isEmpty() && it.path == listOf(key) } ?: return null
+        if (statement.last != statement.first) return null
+        val value = lines[statement.first].substringAfter('=').trim()
+        val end = when {
+            value.startsWith("\"") -> skipBasicString(value, 0)
+            value.startsWith("'") -> value.indexOf('\'', 1).let { if (it < 0) value.length else it + 1 }
+            else -> value.indexOf('#').let { if (it < 0) value.length else it }
+        }
+        return value.substring(0, end).trim()
+    }
+
+    /** Removes the top-level [key] (not a table of that name). */
+    fun removeTopLevel(key: String) {
+        val statements = statements()
+        rewrite(statements, statements.filter { !it.header && it.table.isEmpty() && it.path == listOf(key) }, null, null)
+    }
+
     private fun skipBasicString(text: String, start: Int): Int {
         var i = start + 1
         while (i < text.length) {
