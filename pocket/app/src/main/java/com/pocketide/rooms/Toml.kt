@@ -6,7 +6,7 @@ package com.pocketide.rooms
  * table is (multi-line strings and arrays, quoted and dotted keys); values are not interpreted.
  */
 internal class TomlDocument(text: String) {
-    private val lines: MutableList<String> = text.removePrefix("﻿").replace("\r\n", "\n").removeSuffix("\n").let {
+    private val lines: MutableList<String> = text.removePrefix("\uFEFF").replace("\r\n", "\n").removeSuffix("\n").let {
         if (it.isEmpty()) mutableListOf() else it.split('\n').toMutableList()
     }
 
