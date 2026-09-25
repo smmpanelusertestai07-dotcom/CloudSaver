@@ -109,11 +109,11 @@ internal class WorkScheduler(private val context: Context) : SyncScheduling {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
-        work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, sync)
+        work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, sync)
         val daily = PeriodicWorkRequestBuilder<MaintenanceWorker>(1, TimeUnit.DAYS)
             .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
             .build()
-        work.enqueueUniquePeriodicWork(DAILY, ExistingPeriodicWorkPolicy.KEEP, daily)
+        work.enqueueUniquePeriodicWork(DAILY, ExistingPeriodicWorkPolicy.UPDATE, daily)
     }
 
     override fun cancelAll() {
