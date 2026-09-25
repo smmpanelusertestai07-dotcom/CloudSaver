@@ -42,8 +42,9 @@ object PhoneSpaceText {
         return when (storage.phone) {
             PhoneSpace.OK -> null
             PhoneSpace.NEARLY_FULL -> "PocketIDE is using most of its space on this phone: $used of its $limit limit, $free free on the phone."
-            PhoneSpace.FULL -> "PocketIDE's space on this phone is full: $used of its $limit limit, $free free on the phone. " +
-                "Clean now removes caches that are rebuilt when needed."
+            PhoneSpace.FULL ->
+                "PocketIDE's space on this phone is full: $used of its $limit limit, $free free on the phone. " +
+                    "Clean now removes caches that are rebuilt when needed."
         }
     }
 

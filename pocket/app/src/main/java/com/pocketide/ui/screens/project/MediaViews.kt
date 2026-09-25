@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.BitmapDrawable
@@ -115,6 +114,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
+import android.graphics.Color as AndroidColor
 
 /**
  * A session's Media: screenshots, videos, PDFs, HTML reports and APKs the agents and GitHub
@@ -635,6 +635,7 @@ private fun FactLine(label: String, value: String) {
 
 private fun readApk(context: Context, file: File): ApkFacts {
     val pm = context.packageManager
+
     // Both flags: with the first alone, signingInfo is null on API 29 and on the first Android 13 release.
     @Suppress("DEPRECATION")
     val flags = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES

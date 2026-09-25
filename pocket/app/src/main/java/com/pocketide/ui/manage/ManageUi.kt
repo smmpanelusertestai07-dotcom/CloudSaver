@@ -197,7 +197,16 @@ fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null) {
 @Composable
 fun AsOfLine(at: Long?, loading: Boolean, onRefresh: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Hint(if (at != null) "As of ${Ist.dateTime(at)}" else if (loading) "Checking…" else "Not checked yet", Modifier.weight(1f))
+        Hint(
+            if (at != null) {
+                "As of ${Ist.dateTime(at)}"
+            } else if (loading) {
+                "Checking…"
+            } else {
+                "Not checked yet"
+            },
+            Modifier.weight(1f),
+        )
         if (loading) {
             CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
         } else {
@@ -277,7 +286,11 @@ fun ConfirmDialog(
                     onConfirm()
                 },
                 enabled = confirmEnabled,
-                colors = if (destructive) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors(),
+                colors = if (destructive) {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                } else {
+                    ButtonDefaults.textButtonColors()
+                },
             ) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

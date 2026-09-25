@@ -448,7 +448,15 @@ fun RecentlyDeletedScreen(nav: PocketNav) {
                 val ids = deleted.map { it.id }
                 scope.launch {
                     val failures = finish { ids.count { id -> attempt { graph.sessions.deleteForever(id) }.isFailure } }.getOrDefault(ids.size)
-                    snackbar.showSnackbar(if (failures == 0) "Deleted forever." else "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again.")
+                    snackbar.showSnackbar(
+                        if (failures ==
+                            0
+                        ) {
+                            "Deleted forever."
+                        } else {
+                            "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again."
+                        },
+                    )
                 }
             },
             onDismiss = { erasingAll = false },
@@ -558,7 +566,9 @@ fun WaitingUploadsScreen(nav: PocketNav) {
                             StatusChip("Not backed up", Tone.WARN)
                         }
                         TextButton(onClick = {
-                            scope.act(snackbar, "Could not change it", done = "It will be backed up to your Drive.") { graph.sessions.setBackUp(session.id, true) }
+                            scope.act(snackbar, "Could not change it", done = "It will be backed up to your Drive.") {
+                                graph.sessions.setBackUp(session.id, true)
+                            }
                         }) { Text("Back up again") }
                     }
                 }
@@ -577,7 +587,15 @@ fun WaitingUploadsScreen(nav: PocketNav) {
                 val ids = selected.toList()
                 scope.launch {
                     val failures = finish { ids.count { id -> attempt { graph.sessions.setBackUp(id, false) }.isFailure } }.getOrDefault(ids.size)
-                    snackbar.showSnackbar(if (failures == 0) "Kept on this phone only. Marked \"Not backed up\"." else "Some chats could not be changed. Try again.")
+                    snackbar.showSnackbar(
+                        if (failures ==
+                            0
+                        ) {
+                            "Kept on this phone only. Marked \"Not backed up\"."
+                        } else {
+                            "Some chats could not be changed. Try again."
+                        },
+                    )
                 }
                 chosen = emptySet()
             },

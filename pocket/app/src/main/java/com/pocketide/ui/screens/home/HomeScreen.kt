@@ -92,7 +92,6 @@ import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
-import com.pocketide.ui.shell.External
 import com.pocketide.ui.screens.onboarding.SetUpComputerCard
 import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.screens.project.AgentMark
@@ -104,6 +103,7 @@ import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.rememberGraph
 import com.pocketide.ui.screens.project.rememberTicker
+import com.pocketide.ui.shell.External
 import kotlinx.coroutines.launch
 
 /**
@@ -429,7 +429,14 @@ private fun ProjectCard(
         Row(Modifier.padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(project.repo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(
+                        project.repo,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     StatusChip(if (project.isPrivate) "Private" else "Public", if (project.isPrivate) Tone.OK else Tone.WARN)
                 }
                 Text(
@@ -443,7 +450,16 @@ private fun ProjectCard(
                     add(WorkFormat.count(mine.size, "open session", "open sessions"))
                     if (running > 0) add("$running running")
                 }.joinToString(" · ")
-                Text(summary, style = MaterialTheme.typography.bodySmall, color = if (running > 0) toneColor(Tone.OK) else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    summary, style = MaterialTheme.typography.bodySmall,
+                    color = if (running >
+                        0
+                    ) {
+                        toneColor(Tone.OK)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Project actions") }
@@ -470,7 +486,14 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onU
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(agent.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(
+                        agent.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     when {
                         agent.official -> StatusChip("Official", Tone.OK)
                         agent.verifiedPublisher -> StatusChip("Verified publisher", Tone.NEUTRAL)

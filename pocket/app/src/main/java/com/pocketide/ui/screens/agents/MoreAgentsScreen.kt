@@ -60,8 +60,8 @@ import com.pocketide.ui.manage.ManageFormat
 import com.pocketide.ui.manage.ManagePage
 import com.pocketide.ui.manage.NavRow
 import com.pocketide.ui.manage.SectionLabel
-import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.Told
+import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.nav.PocketNav
@@ -263,8 +263,11 @@ private fun CandidateFactLines(facts: CandidateFacts) {
     Hint(facts.repository?.let { "Source: $it" } ?: "Source: closed source (no repository given)")
     val rating = facts.averageRating
     Hint(
-        if (rating == null || facts.reviewCount == 0L) "No reviews yet"
-        else "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating),
+        if (rating == null || facts.reviewCount == 0L) {
+            "No reviews yet"
+        } else {
+            "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating)
+        },
     )
     Hint(CandidateFacts.VERIFIED_MEANS)
 }

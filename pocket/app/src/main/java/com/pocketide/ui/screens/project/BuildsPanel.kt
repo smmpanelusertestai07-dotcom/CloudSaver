@@ -156,8 +156,12 @@ fun BuildsPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 ActionRow {
-                    AssistChip(onClick = { nav.secrets(projectId) }, label = { Text("Variables & Secrets") }, leadingIcon = { Icon(Icons.Filled.Key, null, Modifier.size(18.dp)) })
-                    AssistChip(onClick = { nav.schedules(projectId) }, label = { Text("Scheduled tasks") }, leadingIcon = { Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)) })
+                    AssistChip(onClick = {
+                        nav.secrets(projectId)
+                    }, label = { Text("Variables & Secrets") }, leadingIcon = { Icon(Icons.Filled.Key, null, Modifier.size(18.dp)) })
+                    AssistChip(onClick = {
+                        nav.schedules(projectId)
+                    }, label = { Text("Scheduled tasks") }, leadingIcon = { Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)) })
                 }
             }
         }
@@ -218,7 +222,13 @@ fun BuildsPanel(
                     onCollect = { target ->
                         work("collect", "Could not bring the results") {
                             val count = graph.builds.collect(projectId, target.id, run.id)
-                            if (count == 0) "This run has no files to bring." else "${WorkFormat.count(count, "file", "files")} added to Media of \"${target.title}\"."
+                            if (count ==
+                                0
+                            ) {
+                                "This run has no files to bring."
+                            } else {
+                                "${WorkFormat.count(count, "file", "files")} added to Media of \"${target.title}\"."
+                            }
                         }
                     },
                     onOpen = { nav.openExternal(run.htmlUrl) },
@@ -260,7 +270,11 @@ private fun TemplateCard(
 ) {
     SectionCard(title = template.title) {
         Text(template.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Runs on ${template.runner} · ${template.fileName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Runs on ${template.runner} · ${template.fileName}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (session != null) {
             cost?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             ActionRow {
@@ -296,7 +310,13 @@ private fun RunCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(run.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(run.branch, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    run.branch,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             StatusChip(label, tone)
         }

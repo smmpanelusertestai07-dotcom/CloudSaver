@@ -165,8 +165,12 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
             item {
                 SectionCard(null) {
                     Hint(
-                        if (globals.isEmpty()) "No global values. They apply to all projects; a project's own value with the same name wins."
-                        else "${globals.size} global ${if (globals.size == 1) "value applies" else "values apply"} here too; a project's own value with the same name wins.",
+                        if (globals.isEmpty()) {
+                            "No global values. They apply to all projects; a project's own value with the same name wins."
+                        } else {
+                            "${globals.size} global ${if (globals.size == 1) "value applies" else "values apply"} here too; " +
+                                "a project's own value with the same name wins."
+                        },
                     )
                     NavRow(Icons.Outlined.Public, "Global Variables and Secrets", null) { nav.secrets(null) }
                 }

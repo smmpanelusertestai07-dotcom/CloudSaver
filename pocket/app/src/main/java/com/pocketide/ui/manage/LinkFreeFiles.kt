@@ -48,26 +48,37 @@ object LinkFreeFiles {
      * swapped for a link just then, and a check afterwards cannot tell once it is swapped back.
      */
     @Throws(IOException::class)
-    fun readText(root: File, file: File, limit: Long, tooLarge: String): String =
-        readText(root, file, limit, tooLarge, beforeOpen = {}, afterOpen = {})
+    fun readText(root: File, file: File, limit: Long, tooLarge: String): String = readText(root, file, limit, tooLarge, OpenHooks())
 
-    /** [readText], running [beforeOpen] after the checks and [afterOpen] once the file is open: tests swap folders there. */
+    /** [readText] with [hooks] run around the open: tests swap folders there. */
     @Throws(IOException::class)
-    internal fun readText(root: File, file: File, limit: Long, tooLarge: String, beforeOpen: () -> Unit, afterOpen: () -> Unit): String {
+    internal fun readText(root: File, file: File, limit: Long, tooLarge: String, hooks: OpenHooks): String {
+        val path = plainFile(root, file) ?: return ""
+        val relative = root.toPath().toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize()).toString()
+        hooks.before()
+        val channel = RoomFiles(root, guardSecrets = false).open(relative)
+        hooks.after()
+        val bytes = channel?.use { readAtMost(it, limit, tooLarge) } ?: goneOrSwapped(path)
+        return text(bytes)
+    }
+
+    /** Runs around the moment [readText] opens its file. */
+    internal class OpenHooks(val before: () -> Unit = {}, val after: () -> Unit = {})
+
+    /** [file] as a path when it is a plain file with no link on the way, null when it is missing. */
+    private fun plainFile(root: File, file: File): Path? {
         if (!isSafe(root, file)) throw IOException(NOT_PLAIN)
         val path = file.toPath()
-        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return ""
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return null
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw IOException(NOT_TEXT)
-        val relative = root.toPath().toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize()).toString()
-        beforeOpen()
-        val channel = RoomFiles(root, guardSecrets = false).open(relative)
-        afterOpen()
-        if (channel == null) {
-            // Gone since the check reads as empty; anything else there now was a link or not a file.
-            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) throw IOException(NOT_PLAIN)
-            return ""
-        }
-        val bytes = channel.use { readAtMost(it, limit, tooLarge) }
+        return path
+    }
+
+    /** Nothing could be opened: gone since the check reads as empty, anything there now was a link or not a file. */
+    private fun goneOrSwapped(path: Path): ByteArray =
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) throw IOException(NOT_PLAIN) else ByteArray(0)
+
+    private fun text(bytes: ByteArray): String {
         if (bytes.any { it == 0.toByte() }) throw IOException(NOT_TEXT)
         return String(bytes, Charsets.UTF_8)
     }

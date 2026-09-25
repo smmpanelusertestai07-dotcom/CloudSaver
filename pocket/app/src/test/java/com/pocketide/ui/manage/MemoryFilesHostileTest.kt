@@ -157,14 +157,16 @@ class MemoryFilesHostileTest {
                 target,
                 MemoryFiles.MAX_EDIT_BYTES,
                 "too large",
-                beforeOpen = {
-                    Files.move(real, parked)
-                    Files.createSymbolicLink(real, outside.toPath())
-                },
-                afterOpen = {
-                    Files.delete(real)
-                    Files.move(parked, real)
-                },
+                LinkFreeFiles.OpenHooks(
+                    before = {
+                        Files.move(real, parked)
+                        Files.createSymbolicLink(real, outside.toPath())
+                    },
+                    after = {
+                        Files.delete(real)
+                        Files.move(parked, real)
+                    },
+                ),
             )
         }
         assertEquals("mine", MemoryFiles.read(home, target))
