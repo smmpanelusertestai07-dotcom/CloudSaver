@@ -9,24 +9,26 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * The Linux-side scripts (mcp.py, term.py, room.py, xdg-open, notify.py, the browser installer)
- * are tested by Python's own unittest, run here so they are part of every build.
+ * The Linux-side scripts (mcp.py, term.py, room.py, notify.py, the browser installer, the
+ * companion) are tested by Python's own unittest in pocket/tools/tests, which CI also runs on
+ * its own; they run here too, so they are part of every build.
  */
 class RoomScriptsTest {
     @get:Rule val timeout: Timeout = Timeout.seconds(300)
 
-    @Test fun `the MCP server speaks both protocol eras over stdio`() = runPython("test_mcp")
+    @Test fun `the MCP server speaks both protocol eras over stdio`() = runPython("tests.test_rooms_mcp")
 
-    @Test fun `the terminal refuses strangers and runs a shell over its WebSocket`() = runPython("test_term")
+    @Test fun `the terminal refuses strangers and runs a shell over its WebSocket`() = runPython("tests.test_rooms_term")
 
-    @Test fun `the room launcher and the phone clients behave`() = runPython("test_room_scripts")
+    @Test fun `the room launcher and the phone clients behave`() = runPython("tests.test_rooms_scripts")
+
+    @Test fun `the companion takes a first prompt once`() = runPython("tests.test_rooms_companion")
 
     private fun runPython(module: String) {
         val python = listOf("python3", "/usr/bin/python3").firstOrNull(::works)
         assumeTrue("python3 is needed for the room script tests", python != null)
-        val tests = File(TESTS)
         val process = ProcessBuilder(python, "-m", "unittest", "-v", module)
-            .directory(tests)
+            .directory(File(TOOLS))
             .redirectErrorStream(true)
             .apply {
                 environment()["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -47,7 +49,7 @@ class RoomScriptsTest {
     }
 
     private companion object {
-        const val TESTS = "src/test/java/com/pocketide/rooms/python"
+        const val TOOLS = "../tools"
         const val ASSETS = "src/main/assets/rooms"
     }
 }

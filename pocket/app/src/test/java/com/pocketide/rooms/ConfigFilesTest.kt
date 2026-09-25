@@ -53,6 +53,19 @@ class ConfigFilesTest {
         assertEquals("maximized", written["workbench.secondarySideBar.defaultVisibility"]!!.jsonPrimitive.content)
     }
 
+    @Test fun `someone else's code makes Claude ask first, and the owner's own code takes that back`() {
+        val careful = obj(ConfigFiles.codeServerSettings(null, claude, 14, careful = true))
+        assertEquals("default", careful["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
+        val back = obj(ConfigFiles.codeServerSettings(Jsonc.write(careful), claude, 14, careful = false))
+        assertFalse(back.containsKey("claudeCode.initialPermissionMode"))
+
+        val chosen = """{ "claudeCode.initialPermissionMode": "acceptEdits" }"""
+        val kept = obj(ConfigFiles.codeServerSettings(chosen, claude, 14, careful = false))
+        assertEquals("acceptEdits", kept["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
+        val overruled = obj(ConfigFiles.codeServerSettings(chosen, claude, 14, careful = true))
+        assertEquals("default", overruled["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
+    }
+
     @Test fun `unreadable settings give null so the caller can set them aside`() {
         assertNull(ConfigFiles.codeServerSettings("{ not json", claude, 14))
         assertNull(ConfigFiles.codeServerSettings("[1, 2]", claude, 14))

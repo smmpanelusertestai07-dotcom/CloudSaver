@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from support import FakePhone, script
+from tests.rooms_support import FakePhone, script
 
 MODERN = "2026-07-28"
 

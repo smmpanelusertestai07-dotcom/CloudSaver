@@ -38,7 +38,11 @@ class LimiterImplTest {
     private class FakeRooms(vararg running: String) : Rooms {
         val flow = MutableStateFlow<Map<String, RoomState>>(running.associateWith { RoomState.Running("http://127.0.0.1/", null, 0) })
         val stopped = mutableListOf<String>()
+        val sleeps = MutableStateFlow<Map<String, Long>>(emptyMap())
+        val counts = MutableStateFlow<Map<String, Int>>(emptyMap())
         override val states: StateFlow<Map<String, RoomState>> = flow
+        override val sleepsAt: StateFlow<Map<String, Long>> = sleeps
+        override val processes: StateFlow<Map<String, Int>> = counts
         override val previewPorts: StateFlow<Map<String, List<Int>>> = MutableStateFlow(emptyMap())
         override suspend fun open(agentId: String, sessionId: String): RoomState = RoomState.Running("http://127.0.0.1/", sessionId, 0)
         override suspend fun stop(agentId: String) {
@@ -194,6 +198,21 @@ class LimiterImplTest {
         runCurrent()
         assertEquals(listOf("codex"), rig.rooms.stopped)
         assertEquals(StopCause.MEMORY, rig.limiter.lastStop.value?.cause)
+    }
+
+    @Test
+    fun `low memory closes the room that would sleep soonest by its own clock`() = runTest {
+        val rig = Rig(this, phone(total = EIGHT_GB_TOTAL, free = 3 * GB_BYTES), "claude", "codex")
+        rig.limiter.start()
+        runCurrent()
+        advanceTimeBy(30_000L)
+        rig.limiter.touch("codex")
+        advanceTimeBy(3 * 60_000L)
+        // The limiter saw Claude idle longer, but Codex's room has been quiet for longer by its CPU.
+        rig.rooms.sleeps.value = mapOf("claude" to 20 * 60_000L, "codex" to 10 * 60_000L)
+        rig.monitor.flow.value = phone(total = EIGHT_GB_TOTAL, free = 3 * GB_BYTES, lowMemory = true)
+        runCurrent()
+        assertEquals(listOf("codex"), rig.rooms.stopped)
     }
 
     @Test

@@ -29,7 +29,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -204,6 +206,74 @@ class RoomManagerTest {
         assertFalse(dirs.roomWork("claude").exists())
         assertFalse(rooms.states.value.containsKey("claude"))
     }
+
+    @Test fun `a new room has the limiter make room first, starts the engine service and counts its processes`() = runBlocking {
+        rooms.open("claude", "nope")
+        assertTrue("no room is closed for a session that cannot open", env.madeRoomFor.isEmpty())
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        rooms.open("claude", "s2")
+        assertEquals(listOf("claude"), env.madeRoomFor)
+        assertEquals(1, env.engineKeptAlive)
+        assertEquals(mapOf("claude" to 3), rooms.processes.value)
+        rooms.stop("claude")
+        assertEquals(emptyMap<String, Int>(), rooms.processes.value)
+    }
+
+    @Test fun `someone else's code starts careful, and the owner's own code as before`() = runBlocking {
+        File(dirs.rootfs, BrowserTools.INSTALLED.removePrefix("/")).apply { parentFile?.mkdirs() }.writeText("{}")
+        env.trust["octo/app"] = ProjectTrust.SOMEONE_ELSES
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        val settings = File(dirs.roomHome("claude"), RoomConfigurator.CODE_SERVER_SETTINGS)
+        assertEquals("default", Jsonc.parseObject(settings.readText())!!["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, mcpEntries(env.computer.commands.last())["playwright"])
+        val browser = env.phone.handlers["mcp"]!!("claude", buildJsonObject {
+            put("tool", "install_browser")
+            put("cwd", "/work/octo__app/s1")
+        })
+        assertTrue(browser.jsonObject["text"]!!.jsonPrimitive.content.contains("stays off"))
+
+        rooms.stop("claude")
+        env.trust["octo/app"] = ProjectTrust.YOURS
+        assertTrue(rooms.open("claude", "s1") is RoomState.Running)
+        assertFalse(Jsonc.parseObject(settings.readText())!!.containsKey("claudeCode.initialPermissionMode"))
+        assertTrue(mcpEntries(env.computer.commands.last())["playwright"] is JsonObject)
+    }
+
+    @Test fun `a first prompt goes to Claude's companion and nowhere else`() = runBlocking {
+        assertTrue(rooms.takesPrompts("claude"))
+        assertFalse(rooms.takesPrompts("codex"))
+        assertFalse(rooms.takesPrompts("antigravity"))
+        assertTrue(rooms.open("claude", "s1", "Carry on with the login screen.") is RoomState.Running)
+        val drop = dirs.roomBridge("claude").listFiles().orEmpty().single { it.name.startsWith(".prompt-") }
+        assertTrue(drop.name, Regex("""\.prompt-[0-9a-f]{16}\.json""").matches(drop.name))
+        assertEquals("Carry on with the login screen.", Json.parseToJsonElement(drop.readText()).jsonObject["prompt"]!!.jsonPrimitive.content)
+        val command = env.computer.commands.single()
+        assertEquals("claude-vscode.primaryEditor.open", command.env["POCKETIDE_PROMPT_COMMAND"])
+        assertEquals(AppDirs.GUEST_BRIDGE, command.env["POCKETIDE_PROMPT_DIR"])
+    }
+
+    @Test fun `writes the agent asks for keep its room busy while they run`() = runBlocking {
+        env.phone.handlers["mcp"]!!("claude", buildJsonObject {
+            put("tool", "put_on_main")
+            put("cwd", "/work/octo__app/s1")
+        })
+        assertEquals(listOf("claude|write|true", "claude|write|false"), env.busyReports)
+    }
+
+    @Test fun `signing out runs each signed-in agent's own CLI in its room`() = runBlocking {
+        File(dirs.roomHome("claude"), ".claude").mkdirs()
+        File(dirs.roomHome("claude"), ".claude/.credentials.json").writeText("{}")
+        rooms.open("claude", "s1")
+        assertEquals(listOf("Claude Code signed out."), rooms.signOutAll())
+        assertEquals(RoomState.Stopped, rooms.states.value["claude"])
+        val signOut = env.computer.ran.single()
+        assertTrue(signOut.argv.first().endsWith("/anthropic.claude-code-2.1.281-linux-arm64/resources/native-binary/claude"))
+        assertEquals(listOf("auth", "logout"), signOut.argv.drop(1))
+        assertEquals(RoomLayout.binds(dirs, "claude"), signOut.binds)
+    }
+
+    private fun mcpEntries(command: LinuxCommand): JsonObject =
+        Json.parseToJsonElement(command.env.getValue("POCKETIDE_CLAUDE_MCP")).jsonObject
 
     private fun status(port: Int, secret: String?): Int {
         val connection = URL("http://127.0.0.1:$port/").openConnection() as HttpURLConnection

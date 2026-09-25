@@ -67,6 +67,45 @@ class RoomProcessesTest {
         assertEquals("time never runs backwards", 500_000, clock.lastActivityAt)
     }
 
+    @Test fun `with idle sleep off a room never sleeps, and a new idle time applies at once`() {
+        var minutes = 0L
+        val clock = ActivityClock(startedAt = 0, idleLimitMs = { minutes * 60_000L })
+        assertNull(clock.sleepsAt())
+        assertFalse(clock.isIdle(Long.MAX_VALUE / 2))
+        minutes = 30
+        assertEquals(30 * 60_000L, clock.sleepsAt())
+        assertTrue(clock.isIdle(30 * 60_000L))
+    }
+
+    @Test fun `work is reported when it starts and ends, not on every sample`() {
+        val reports = mutableListOf<String>()
+        val holds = WorkHolds { agent, what, busy -> reports += "$agent $what $busy" }
+        holds.hold("claude", WorkHolds.BUILD)
+        holds.hold("claude", WorkHolds.BUILD)
+        holds.release("claude", WorkHolds.BUILD)
+        assertEquals(listOf("claude build true"), reports)
+        holds.release("claude", WorkHolds.BUILD)
+        holds.release("claude", WorkHolds.BUILD)
+        assertEquals(listOf("claude build true", "claude build false"), reports)
+
+        reports.clear()
+        holds.set("codex", WorkHolds.TURN, true)
+        holds.set("codex", WorkHolds.TURN, true)
+        holds.set("codex", WorkHolds.TURN, false)
+        holds.set("codex", WorkHolds.TURN, false)
+        assertEquals(listOf("codex turn true", "codex turn false"), reports)
+
+        reports.clear()
+        holds.set("codex", WorkHolds.COMMAND, true)
+        holds.hold("codex", WorkHolds.WRITE)
+        holds.hold("claude", WorkHolds.WRITE)
+        assertEquals(setOf("codex", "claude"), holds.holding(WorkHolds.WRITE))
+        holds.clear("codex")
+        assertEquals(setOf("claude"), holds.holding(WorkHolds.WRITE))
+        assertTrue(reports.containsAll(listOf("codex command false", "codex write false")))
+        assertFalse(reports.contains("claude write false"))
+    }
+
     @Test fun `the output ring keeps the last lines without secrets`() {
         val ring = OutputRing(capacity = 3)
         ring.add("one")

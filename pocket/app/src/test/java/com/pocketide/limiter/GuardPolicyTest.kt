@@ -195,6 +195,16 @@ class GuardPolicyTest {
     }
 
     @Test
+    fun `closing a room frees the processes it was measured to run`() {
+        val snapshot = phone(total = EIGHT_GB_TOTAL, free = 4 * GB_BYTES, processes = 30)
+        val running = mapOf("claude" to RoomKind.CODE_SERVER, "codex" to RoomKind.CODE_SERVER)
+        val idle = listOf("claude", "codex")
+        assertEquals(listOf("claude"), GuardPolicy.roomsToClose("antigravity", RoomKind.HUB, running, idle, snapshot, 3))
+        val measured = mapOf("claude" to 2, "codex" to 2)
+        assertEquals(idle, GuardPolicy.roomsToClose("antigravity", RoomKind.HUB, running, idle, snapshot, 3, measured))
+    }
+
+    @Test
     fun `sizes read the way the owner reads them`() {
         assertEquals("780 MB", bytes(780 * MB))
         assertEquals("3.5 GB", bytes((3.5 * GB_BYTES).toLong()))
