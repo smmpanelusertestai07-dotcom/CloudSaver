@@ -147,14 +147,17 @@ internal object RoomEngines {
     fun readyPath(engine: Engine) = if (engine == Engine.CODE_SERVER) "/healthz" else "/"
 
     /**
-     * Whether the hub keeps its [token] from a caller that does not have it. agy puts the token
-     * in its page for its own scripts, and some versions serve that page to anyone: then any app
-     * on the phone could read it there and use the agent ([HubGuard.GIVES_TOKEN_AWAY]).
-     * [withoutToken] and [withToken] are the hub's answers to its page without and with the token.
+     * Whether the hub refuses a caller that does not have its [token], as the terminal refuses
+     * one without its secret. agy puts the token in its page for its own scripts, and some
+     * versions serve that page to anyone: then any app on the phone could read it there and use
+     * the agent ([HubGuard.GIVES_TOKEN_AWAY]); one that answers without the token at all does not
+     * enforce it ([HubGuard.ANSWERS_WITHOUT_TOKEN]). [withoutToken] and [withToken] are the hub's
+     * answers to its page without and with the token.
      */
     fun hubGuard(withoutToken: HttpAnswer?, withToken: HttpAnswer?, token: String): HubGuard = when {
         withoutToken == null || withToken == null -> HubGuard.NO_ANSWER
         withoutToken.body.contains(token) || withoutToken.head.contains(token) -> HubGuard.GIVES_TOKEN_AWAY
+        withoutToken.status !in 400..499 -> HubGuard.ANSWERS_WITHOUT_TOKEN
         withToken.status !in 200..399 -> HubGuard.REFUSES_TOKEN
         else -> HubGuard.GUARDED
     }
@@ -181,6 +184,9 @@ internal enum class HubGuard {
 
     /** Its page, and with it the token, goes to any caller: any app on the phone could use the agent. */
     GIVES_TOKEN_AWAY,
+
+    /** It answers a caller without the token: it does not enforce it, so any app on the phone could use the agent. */
+    ANSWERS_WITHOUT_TOKEN,
 
     /** It refuses even the token it was started with (a newer agy may read it from elsewhere). */
     REFUSES_TOKEN,

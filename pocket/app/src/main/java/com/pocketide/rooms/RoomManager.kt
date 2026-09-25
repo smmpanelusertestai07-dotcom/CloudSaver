@@ -94,8 +94,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val live = ConcurrentHashMap<String, LiveRoom>()
     private val locks = ConcurrentHashMap<String, Mutex>()
 
-    /** Hub rooms whose agy gave its token away, with that agy file's stamp ([agyStamp]). */
-    private val leakyHubs = ConcurrentHashMap<String, Long>()
+    /** Hub rooms whose agy let other apps in, with that agy file's stamp ([agyStamp]) and why it stays closed. */
+    private val leakyHubs = ConcurrentHashMap<String, Pair<Long, String>>()
     private val monitorLock = Any()
     private var monitor: Job? = null
 
@@ -333,9 +333,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 RoomEngines.codeServer(dirs, profile, guestWorktree, chosenPort, environment)
             }
             Engine.AGY_HUB -> {
-                // Found giving its token away before: not started again just to be checked.
+                // Found letting other apps in before: the same agy is not started again only to be refused.
                 val stamp = withContext(Dispatchers.IO) { agyStamp(profile) }
-                if (stamp != null && leakyHubs[agentId] == stamp) return fail(agentId, givesTokenAway(profile.name))
+                leakyHubs[agentId]?.takeIf { it.first == stamp }?.let { (_, why) -> return fail(agentId, why) }
                 RoomEngines.hub(dirs, profile, guestWorktree, chosenPort, environment, token = secret)
             }
         }
@@ -485,17 +485,23 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 Loopback.get(room.port, "/", maxBody = HUB_PAGE_BYTES, headers = mapOf(RoomEngines.HUB_TOKEN_HEADER to token))
         }
         val agentId = room.profile.agentId
+        val name = room.profile.name
         return when (RoomEngines.hubGuard(withoutToken, withToken, token)) {
             HubGuard.GUARDED -> null
-            HubGuard.GIVES_TOKEN_AWAY -> {
-                withContext(Dispatchers.IO) { agyStamp(room.profile) }?.let { leakyHubs[agentId] = it }
-                ring(agentId).add("[PocketIDE] The hub served this launch's token to a request that did not have it.")
-                givesTokenAway(room.profile.name)
-            }
-            HubGuard.REFUSES_TOKEN -> "${room.profile.name}'s screen could not open: its hub refused this launch's key. " +
-                "An update of ${room.profile.name} may have changed how its screen signs in."
-            HubGuard.NO_ANSWER -> "${room.profile.name} stopped answering while it started."
+            HubGuard.GIVES_TOKEN_AWAY -> openToOtherApps(room, givesTokenAway(name), "served this launch's token to a request that did not have it")
+            HubGuard.ANSWERS_WITHOUT_TOKEN -> openToOtherApps(room, answersWithoutToken(name), "answered a request without this launch's token")
+            HubGuard.REFUSES_TOKEN -> "$name's screen could not open: its hub refused this launch's key. " +
+                "An update of $name may have changed how its screen signs in."
+            HubGuard.NO_ANSWER -> "$name stopped answering while it started."
         }
+    }
+
+    /** Remembers that this agy lets other apps in, so it is not started again only to be refused; [why] for the owner. */
+    private suspend fun openToOtherApps(room: LiveRoom, why: String, what: String): String {
+        val agentId = room.profile.agentId
+        withContext(Dispatchers.IO) { agyStamp(room.profile) }?.let { leakyHubs[agentId] = it to why }
+        ring(agentId).add("[PocketIDE] The hub $what.")
+        return why
     }
 
     private fun extensionInstalled(profile: RoomProfile): Boolean {
@@ -870,5 +876,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
         fun givesTokenAway(name: String) = "$name stays closed: this version of its hub gives its key to any app on this phone " +
             "that asks, and with that key another app could use $name in your projects. It opens once an update of $name fixes this."
+
+        fun answersWithoutToken(name: String) = "$name stays closed: this version of its hub answers any app on this phone without " +
+            "asking for its key, so another app could use $name in your projects. It opens once an update of $name fixes this."
     }
 }

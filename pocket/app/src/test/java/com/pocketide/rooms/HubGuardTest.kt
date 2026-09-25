@@ -25,7 +25,13 @@ class HubGuardTest {
     @Test fun `a hub that answers only with the token is guarded`() {
         val refused = HttpAnswer(401, """{"code":"unauthenticated","message":"missing CSRF token"}""")
         assertEquals(HubGuard.GUARDED, RoomEngines.hubGuard(refused, HttpAnswer(200, page), token))
-        assertEquals("a page without the token is no leak", HubGuard.GUARDED, RoomEngines.hubGuard(HttpAnswer(200, "<html></html>"), HttpAnswer(200, page), token))
+        assertEquals(HubGuard.GUARDED, RoomEngines.hubGuard(HttpAnswer(403, "forbidden"), HttpAnswer(200, page), token))
+    }
+
+    @Test fun `a hub that answers without the token does not enforce it, even when it keeps the token to itself`() {
+        for (answer in listOf(HttpAnswer(200, "<html></html>"), HttpAnswer(302, "", "HTTP/1.1 302 Found\r\nLocation: /app"), HttpAnswer(500, "oops"))) {
+            assertEquals(answer.toString(), HubGuard.ANSWERS_WITHOUT_TOKEN, RoomEngines.hubGuard(answer, HttpAnswer(200, page), token))
+        }
     }
 
     @Test fun `a hub that refuses its own token, or stops answering, is not opened either`() {

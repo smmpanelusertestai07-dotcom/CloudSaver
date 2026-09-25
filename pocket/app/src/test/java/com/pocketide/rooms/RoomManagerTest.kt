@@ -198,6 +198,16 @@ class RoomManagerTest {
         assertTrue(rooms.open("antigravity", "a1") is RoomState.Running)
     }
 
+    @Test fun `a hub that answers without its token at all stays closed too`() = runBlocking {
+        installAgy()
+        env.computer.hubMode = "open"
+        val state = rooms.open("antigravity", "a1")
+        assertTrue(state.toString(), state is RoomState.Failed && state.why.contains("without asking for its key"))
+        assertTrue("its port is never handed to the bridge", env.ports.exposed.isEmpty())
+        assertEquals(state, rooms.open("antigravity", "a1"))
+        assertEquals("not started again only to be refused", 1, env.computer.commands.size)
+    }
+
     /** The room's agy, as the room sees it. */
     private fun installAgy(): String {
         File(dirs.roomHome("antigravity"), ".gemini/bin").mkdirs()
@@ -379,7 +389,10 @@ class RoomManagerTest {
         val stopped = CopyOnWriteArrayList<Process>()
         val configs = CopyOnWriteArrayList<String>()
 
-        /** How the stand-in hub treats its token: "guarded" asks for it, "leaky" hands it to anyone, as agy 1.2.10 does. */
+        /**
+         * How the stand-in hub treats its token: "guarded" asks for it, "leaky" hands it to anyone
+         * (as agy 1.2.10 does), "open" never asks for it.
+         */
         @Volatile var hubMode = "guarded"
 
         /** Runs the real room.py's steps before Claude's stand-in engine, on the room's folders here. */
@@ -466,6 +479,8 @@ class H(http.server.BaseHTTPRequestHandler):
         elif mode == 'guarded' and self.headers.get('x-codeium-csrf-token') != token:
             status = 401
             body = b'{"code":"unauthenticated","message":"missing CSRF token"}'
+        elif mode == 'open':
+            body = b'<html>hub</html>'
         else:
             body = ('<script>window.__APP_CONFIG__ = {"csrfToken":"%s"};</script>hub' % token).encode()
         self.send_response(status)
