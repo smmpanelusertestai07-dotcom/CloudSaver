@@ -155,7 +155,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     ManagePage("Your data", nav, runner) {
         if (storage.phone != PhoneSpace.OK) {
             item {
-                PhoneSpaceNotice(storage, clean = graph.sync::cleanNow, onRaise = nav::settings, onLargest = null, say = runner::say)
+                PhoneSpaceNotice(storage, clean = graph.sync::cleanNow, onRaise = nav::settings.takeIf { nav.opensEveryScreen }, onLargest = null, say = runner::say)
             }
         }
         item { SectionLabel("Where it lives") }
@@ -184,7 +184,9 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { ConfigChangesCard(graph, agents, runner) }
         item {
             SectionCard(null) {
-                NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
+                if (nav.opensEveryScreen) {
+                    NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
+                }
                 NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Chats you deleted in the last 30 days") { nav.recentlyDeleted() }
             }
         }
@@ -192,7 +194,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item {
             SectionCard(null) {
                 ManageText.retention(settings).forEach { (what, rule) -> InfoRow(what, rule) }
-                NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
+                if (nav.opensEveryScreen) NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
             }
         }
         item { SectionLabel("Move to another Google account") }

@@ -17,6 +17,11 @@ interface PocketNav {
     fun transcript(sessionId: String)
     /** False where [transcript] and [agent] open nothing (while locked), so chats must not look tappable. */
     val opensChats: Boolean get() = true
+    /**
+     * False where only Help, Your data, Recently deleted and Waiting to upload open (while locked):
+     * a link to Settings, Secrets or any other screen would do nothing, so it is not shown.
+     */
+    val opensEveryScreen: Boolean get() = true
     fun yourData()
     fun computer()
     fun usage()

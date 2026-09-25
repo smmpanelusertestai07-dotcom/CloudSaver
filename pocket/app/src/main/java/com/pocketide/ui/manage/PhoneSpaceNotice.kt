@@ -60,7 +60,8 @@ object PhoneSpaceText {
 fun PhoneSpaceNotice(
     storage: StorageSummary,
     clean: suspend () -> Long,
-    onRaise: () -> Unit,
+    /** Opens Settings for PocketIDE's Drive limit; null where Settings cannot open. */
+    onRaise: (() -> Unit)?,
     onLargest: (() -> Unit)?,
     say: (String) -> Unit,
 ) {
@@ -86,7 +87,7 @@ fun PhoneSpaceNotice(
                         }
                     },
                 ) { Text(if (cleaning) "Cleaning…" else "Clean now") }
-                TextButton(onClick = onRaise) { Text("Raise the limit") }
+                onRaise?.let { TextButton(onClick = it) { Text("Raise the limit") } }
                 onLargest?.let { TextButton(onClick = it) { Text("Largest sessions") } }
             }
         }
