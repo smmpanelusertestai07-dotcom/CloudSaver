@@ -351,6 +351,34 @@ class DriveRestStoreTest {
     }
 
     @Test
+    fun `revisions are listed with their checksums, every page of them`() = runBlocking<Unit> {
+        drive.enqueue(200, """{"nextPageToken":"p2","revisions":[{"id":"r1","md5Checksum":"aa"}]}""")
+        drive.enqueue(200, """{"revisions":[{"id":"r2","md5Checksum":"bb"},{"id":"r3"}]}""")
+
+        val revisions = store.revisionsOf("index")
+
+        assertEquals(listOf(DriveRevision("r1", "aa"), DriveRevision("r2", "bb"), DriveRevision("r3", null)), revisions)
+        val first = server.takeRequest()
+        assertEquals("/drive/v3/files/index/revisions", first.url.encodedPath)
+        assertEquals("nextPageToken,revisions(id,md5Checksum)", first.url.queryParameter("fields"))
+        assertEquals("p2", server.takeRequest().url.queryParameter("pageToken"))
+    }
+
+    @Test
+    fun `one revision's content is downloaded`() = runBlocking<Unit> {
+        val bytes = randomBytes(2_000)
+        server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(bytes)).build())
+        val sink = ByteArrayOutputStream()
+
+        store.downloadRevision("index", "r1", sink)
+
+        assertArrayEquals(bytes, sink.toByteArray())
+        val request = server.takeRequest()
+        assertEquals("/drive/v3/files/index/revisions/r1", request.url.encodedPath)
+        assertEquals("media", request.url.queryParameter("alt"))
+    }
+
+    @Test
     fun `a file with one revision needs nothing deleted`() = runBlocking<Unit> {
         drive.enqueue(200, """{"revisions":[{"id":"r1"}]}""")
         drive.enqueue(200, """{}""")

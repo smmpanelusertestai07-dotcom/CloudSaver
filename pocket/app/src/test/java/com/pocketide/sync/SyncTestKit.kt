@@ -10,6 +10,8 @@ import com.pocketide.google.DriveAuthResult
 import com.pocketide.google.DriveException
 import com.pocketide.google.DriveFile
 import com.pocketide.google.DriveQuota
+import com.pocketide.google.DriveRevision
+import com.pocketide.google.DriveRevisions
 import com.pocketide.google.DriveStore
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
@@ -75,8 +77,16 @@ class FakeAccounts(private val clock: FakeClock) {
 }
 
 /** The Drive hidden folder in memory, with the failures the engine must survive. */
-class FakeDrive(private val accounts: FakeAccounts, val email: String, private val clock: FakeClock) : DriveStore {
-    class Stored(val name: String, var bytes: ByteArray, var modified: Long)
+class FakeDrive(private val accounts: FakeAccounts, val email: String, private val clock: FakeClock) : DriveStore, DriveRevisions {
+    /** One file. Each new content is kept as a version, as Drive keeps revisions; [bytes] is the newest. */
+    class Stored(val name: String, bytes: ByteArray, var modified: Long) {
+        val versions = mutableListOf(bytes)
+        var bytes: ByteArray
+            get() = versions.last()
+            set(value) {
+                versions += value
+            }
+    }
 
     val files = LinkedHashMap<String, Stored>()
     private val lock = Any()
@@ -119,8 +129,7 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
             if (usedBytes() + growth > quotaBytes) throw DriveException.StorageFull()
             uploads++
             val id = existingId?.takeIf { it in files } ?: "id-${nextId++}"
-            files[id] = Stored(name, bytes.copyOf(), clock.now)
-            info(id, files.getValue(id))
+            info(id, store(id, name, bytes))
         }
         if (name == RemoteIndex.NAME) afterIndexWrite?.invoke()
         val lose = synchronized(lock) {
@@ -134,20 +143,37 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
 
     override suspend fun download(id: String, sink: OutputStream) {
         synchronized(lock) { files[id]?.name }?.let { beforeDownload?.invoke(it) }
-        online { sink.write((files[id] ?: throw DriveException.Other("File not found")).bytes) }
+        online { sink.write((files[id] ?: throw DriveException.NotFound()).bytes) }
     }
 
-    override suspend fun open(id: String): InputStream = online { ByteArrayInputStream((files[id] ?: throw DriveException.Other("File not found")).bytes) }
+    override suspend fun open(id: String): InputStream = online { ByteArrayInputStream((files[id] ?: throw DriveException.NotFound()).bytes) }
 
     override suspend fun delete(id: String) = online {
-        files.remove(id) ?: throw DriveException.Other("File not found")
+        files.remove(id) ?: throw DriveException.NotFound()
         deletes++
         Unit
+    }
+
+    override suspend fun revisionsOf(id: String): List<DriveRevision> = online {
+        files[id]?.versions?.mapIndexed { i, bytes -> DriveRevision("r${i + 1}", md5(bytes)) }.orEmpty()
+    }
+
+    override suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream) = online {
+        val versions = (files[id] ?: throw DriveException.NotFound()).versions
+        sink.write(versions.getOrNull(revisionId.removePrefix("r").toInt() - 1) ?: throw DriveException.NotFound())
     }
 
     override suspend fun quota(): DriveQuota = online { DriveQuota(quotaBytes, usedBytes(), usedBytes(), usedBytes(), email) }
 
     override fun withAccount(email: String): DriveStore = accounts[email]
+
+    /** A new file, or a new version of an existing one (Drive keeps its name). */
+    private fun store(id: String, name: String, bytes: ByteArray): Stored {
+        val existing = files[id] ?: return Stored(name, bytes.copyOf(), clock.now).also { files[id] = it }
+        existing.bytes = bytes.copyOf()
+        existing.modified = clock.now
+        return existing
+    }
 
     private inline fun <T> online(block: () -> T): T = synchronized(lock) {
         if (offline) throw DriveException.Offline()

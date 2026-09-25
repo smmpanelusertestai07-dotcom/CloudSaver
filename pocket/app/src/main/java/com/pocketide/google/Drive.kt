@@ -47,6 +47,9 @@ interface DriveAuth {
 
 data class DriveFile(val id: String, val name: String, val size: Long, val modifiedTime: String?, val md5: String?)
 
+/** One stored version of a file's content (a Drive revision) and its MD5. */
+data class DriveRevision(val id: String, val md5: String?)
+
 data class DriveQuota(
     /** Total Google storage; null for unlimited. */
     val limitBytes: Long?,
@@ -91,4 +94,16 @@ interface DriveStore {
 
     /** The same store, acting as another authorized account (used only by the move). */
     fun withAccount(email: String): DriveStore
+}
+
+/**
+ * A store that can also read the stored versions (revisions) of a file's content, so a writer can
+ * tell afterwards which version its write replaced. A store without it is compared by content only.
+ */
+interface DriveRevisions {
+    /** The stored versions of [id]'s content, oldest first, as Drive lists them. */
+    suspend fun revisionsOf(id: String): List<DriveRevision>
+
+    /** Downloads one stored version of [id]'s content. */
+    suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream)
 }

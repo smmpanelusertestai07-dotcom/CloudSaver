@@ -94,7 +94,7 @@ internal class UserJson(val emailAddress: String? = null)
 internal class HeadRevisionJson(val headRevisionId: String? = null)
 
 @Serializable
-internal class RevisionJson(val id: String = "")
+internal class RevisionJson(val id: String = "", val md5Checksum: String? = null)
 
 @Serializable
 internal class RevisionListJson(val revisions: List<RevisionJson> = emptyList(), val nextPageToken: String? = null)

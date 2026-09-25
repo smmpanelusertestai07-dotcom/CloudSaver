@@ -193,6 +193,98 @@ class LeaseTest {
     }
 
     @Test
+    fun aTakeoverWhileThisPhoneUploadsIsNeverWrittenOver() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("start\n")
+        a.engine.syncNow()
+        val b = phoneB().apply { sessions += session("s2", at = clock.now, ref = "d00dfeed-2222") }
+        val onB = b.homeFile("claude", claudeTranscript("owner/app", "s2", "d00dfeed-2222"))
+        onB.writeText("a new chat on B\n")
+        b.engine.syncNow()
+        assertEquals("Phone A", b.engine.leaseHolder.value)
+
+        // While phone A sends its next piece, the owner taps "Use here?" on phone B.
+        var raced = false
+        a.drive.beforeUpload = { name ->
+            if (name.startsWith("o-") && !raced) {
+                raced = true
+                runBlocking { b.engine.takeOver() }
+            }
+        }
+        file.appendText("more on A\n")
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+        a.drive.beforeUpload = null
+
+        val index = a.remoteIndex()!!
+        assertEquals("phone-b", index.lease!!.deviceId)
+        assertEquals("Phone B", a.engine.leaseHolder.value)
+        val chat = index.objects.filter { it.sessionId == "s2" }
+        assertEquals("phone B's new chat is in Drive", onB.length(), Chains.length(Chains.chain(index.objects, chat.first().fileKey)))
+        assertTrue(index.sessions.any { it.id == "s2" })
+        val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
+        assertEquals("phone A's work is a conflict copy", file.length(), index.objects.single { it.sessionId == copy.id }.length)
+        assertTrue(a.queued().isEmpty())
+    }
+
+    @Test
+    fun anotherPhonesWriteBetweenTheReadAndTheWriteIsKeptUnderThisPhones() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("start\n")
+        a.engine.syncNow()
+
+        // Just before phone A's next index write reaches Drive, a locked phone records its conflict copy.
+        val theirs = session("s1-conflict-b", at = clock.now).copy(status = SessionStatus.CONFLICT_COPY, conflictOf = "s1")
+        val theirPiece = a.remoteIndex()!!.objects.single()
+            .copy(name = "o-theirstheirstheirstheirs00", sessionId = theirs.id, path = ".pocketide/conflicts/b/$path")
+        a.drive.beforeUpload = { name ->
+            if (name == RemoteIndex.NAME) {
+                a.drive.beforeUpload = null
+                a.rewriteRemoteIndex { it.copy(revision = it.revision + 1, sessions = it.sessions + theirs, objects = it.objects + theirPiece) }
+            }
+        }
+        file.appendText("more on A\n")
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+
+        val index = a.remoteIndex()!!
+        assertTrue("the other phone's write is kept", index.sessions.any { it.id == theirs.id })
+        assertTrue(index.objects.any { it.name == theirPiece.name })
+        assertEquals("and phone A's is made on top of it", listOf(0L, 6L), index.objects.filter { it.path == path }.map { it.offset }.sorted())
+        assertEquals("phone-a", index.lease!!.deviceId)
+        assertTrue(a.queued().isEmpty())
+        assertTrue(a.engine.status.value is SyncStatus.UpToDate)
+    }
+
+    @Test
+    fun aTakeoverBetweenTheReadAndTheWriteIsPutBackAndThisPhonesWorkBecomesAConflictCopy() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("start\n")
+        a.engine.syncNow()
+
+        a.drive.beforeUpload = { name ->
+            if (name == RemoteIndex.NAME) {
+                a.drive.beforeUpload = null
+                a.rewriteRemoteIndex { it.copy(revision = it.revision + 1, lease = LeasePolicy.lease(DeviceIdentity("phone-b", "Phone B"), clock.now)) }
+            }
+        }
+        file.appendText("more on A\n")
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+
+        val index = a.remoteIndex()!!
+        assertEquals("phone-b", index.lease!!.deviceId)
+        assertEquals("Phone B", a.engine.leaseHolder.value)
+        assertEquals("the chat in Drive is as phone B took it", listOf(0L), index.objects.filter { it.path == path }.map { it.offset })
+        val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
+        assertEquals(file.length(), index.objects.single { it.sessionId == copy.id }.length)
+        assertTrue(a.queued().isEmpty())
+    }
+
+    @Test
     fun aPhoneThatTakesTheLeaseBackContinuesFromDrive() = runBlocking {
         val a = phoneA()
         val file = a.homeFile("claude", path)

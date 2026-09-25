@@ -53,10 +53,9 @@ internal class Committer(private val kit: SyncKit) {
         val sessions = if (additive) emptyList() else Diffs.sessions(ports.localSessions(), run.state.sessionMarks)
         val projects = if (additive) emptyList() else Diffs.projects(ports.localProjects(), run.state.projectMarks)
         val settingsJson = if (additive) null else SyncedSettings.of(ports.settings.settings.value).json().takeIf { it != run.state.settingsPushed }
-        val (unattributed, attributed) = reattributions(start.index, run.state.tracks)
         val delta = IndexDelta(
-            addObjects = ready.map { it.toObject(it.driveId) } + attributed + extras.replaceObjects,
-            removeEntries = unattributed,
+            addObjects = ready.map { it.toObject(it.driveId) },
+            replaceEntries = reattributions(start.index, run.state.tracks) + extras.replaceObjects.associateBy { it.entryKey },
             replaceFiles = ready.filter { it.base || !it.kind.appendOnly }.map { fileKey(it.kind, it.agentId, it.path) }.toSet() + extras.removeFiles,
             sessions = sessions + conflicts.map { SessionChange.Upsert(it) } + extras.sessions,
             eraseSessions = extras.eraseSessions,
@@ -67,16 +66,21 @@ internal class Committer(private val kit: SyncKit) {
         val renew = mode == CommitMode.TAKEOVER || (mode == CommitMode.HOLDER && LeasePolicy.needsRenewal(start.index, ports.device, now))
         if (delta.copy(lease = null).isEmpty && !renew) return start
         val keyGeneration = ports.keyGeneration()
+        // The index the change was last applied to: what it removed from there leaves Drive.
+        var appliedTo: VaultIndex? = null
         val result = kit.remote.commit(
             drive = drive,
             cipher = run.cipher,
             start = start,
             requireLease = { index -> if (mode == CommitMode.HOLDER) LeasePolicy.heldByOther(index, ports.device, now) else null },
-            change = { base -> IndexMerge.apply(base, delta, now, keyGeneration) },
+            change = { base ->
+                appliedTo = base
+                IndexMerge.apply(base, delta, now, keyGeneration)
+            },
             emptyIndex = { VaultIndex(updatedAt = now) },
         )
         val erased = delta.erased
-        settle(run, start.index, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras.removeFiles, erased, mode)
+        settle(run, appliedTo, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras.removeFiles, erased, mode)
         if (erased.isNotEmpty()) ports.sessionsErased(erased.sorted())
         deleteUnused(run, drive)
         return result
@@ -127,19 +131,17 @@ internal class Committer(private val kit: SyncKit) {
     }
 
     /** Entries recorded before their file was matched to a session get that session now. */
-    private fun reattributions(index: VaultIndex?, tracks: Map<String, FileTrack>): Pair<Set<String>, List<VaultObject>> {
-        if (index == null) return emptySet<String>() to emptyList()
-        val removes = HashSet<String>()
-        val adds = ArrayList<VaultObject>()
+    private fun reattributions(index: VaultIndex?, tracks: Map<String, FileTrack>): Map<String, VaultObject> {
+        if (index == null) return emptyMap()
+        val out = HashMap<String, VaultObject>()
         for (o in index.objects) {
             if (o.sessionId != null) continue
             val track = tracks[o.fileKey] ?: continue
             val session = track.sessionId ?: continue
             if (o.name !in track.objects) continue
-            removes += o.entryKey
-            adds += o.copy(sessionId = session)
+            out[o.entryKey] = o.copy(sessionId = session)
         }
-        return removes to adds
+        return out
     }
 
     private data class Pushed(
