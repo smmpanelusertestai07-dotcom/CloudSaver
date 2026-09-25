@@ -111,6 +111,14 @@ class GitHubRestApiTest {
     }
 
     @Test
+    fun `a fork is marked as one`() = runBlocking {
+        server.enqueue(json(repoJson("theirs").replace("\"size\":42", "\"size\":42,\"fork\":true")))
+        assertTrue(api.repo("octo", "theirs")!!.fork)
+        server.enqueue(json(repoJson("mine")))
+        assertFalse(api.repo("octo", "mine")!!.fork)
+    }
+
+    @Test
     fun `names that could change the path are refused before any call`() = runBlocking {
         failsWith<IllegalArgumentException> { runBlocking { api.repo("octo", "../admin") } }
         failsWith<IllegalArgumentException> { runBlocking { api.readFile("octo", "demo", "a/../../b") } }

@@ -37,7 +37,7 @@ class BuildWatchWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val graph = applicationContext.graph
         val project = graph.projects.all.value.firstOrNull { it.id == projectId } ?: return Result.success()
         val run = try {
-            graph.gitHub.runs(project.owner, project.repo).firstOrNull { it.id == runId }
+            graph.gitHub.run(project.owner, project.repo, runId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

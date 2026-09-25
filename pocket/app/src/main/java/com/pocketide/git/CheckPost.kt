@@ -35,12 +35,20 @@ internal data class CheckPostLimits(
  * committers are checked as well. One finding blocks the push.
  *
  * Build outputs and changed GitHub Actions code hold the push instead ([Hold]); a workflow
- * change stops holding it once the owner approved the content the branch ends with.
+ * change stops holding it once the owner approved the content the branch ends with, or when
+ * that content is one of PocketIDE's templates, unchanged, where "Add template" puts it.
  *
  * A merge only answers for what differs from every parent, as `git show --cc` does: the rest
  * came from a parent, which is either on GitHub already or checked as a commit of its own.
  */
-internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()) {
+internal class CheckPost(
+    private val limits: CheckPostLimits = CheckPostLimits(),
+    /**
+     * PocketIDE's own workflow templates by repository path, as blob ids. A workflow that is
+     * exactly one of them at its own path was added on the owner's tap and holds nothing.
+     */
+    private val templates: () -> Map<String, ObjectId> = ::emptyMap,
+) {
 
     /**
      * Checks the commits reachable from [tip] and not from [onGitHub]. [approvedWorkflows] holds
@@ -219,7 +227,7 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
                 val now = entryAt(reader, tip, path) ?: continue
                 if (now == touch.before) continue
                 val key = WorkflowChanges.approvalKey(path, now.id)
-                if (key in approved) continue
+                if (key in approved || isTemplate(path, now)) continue
                 val after = shown(reader, now)
                 val (detail, diff) = if (after == null) {
                     "Changes GitHub Actions code in $path. It is too big to show here; " +
@@ -232,6 +240,8 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
                 report.hold(Hold(HoldKind.WORKFLOW_CHANGE, path, touch.commit, detail, key, diff))
             }
         }
+
+        private fun isTemplate(path: String, entry: Entry) = entry.kind == Kind.FILE && templates()[path] == entry.id
 
         /** What the owner reads for an entry: a file's text, a link's target, a submodule's commit, as git shows them. */
         private fun shown(reader: ObjectReader, entry: Entry): ByteArray? = when (entry.kind) {

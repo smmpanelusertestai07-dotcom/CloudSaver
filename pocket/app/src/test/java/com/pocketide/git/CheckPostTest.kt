@@ -1,8 +1,10 @@
 package com.pocketide.git
 
 import kotlinx.coroutines.CancellationException
+import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
+import org.eclipse.jgit.lib.ObjectInserter
 import org.eclipse.jgit.lib.PersonIdent
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -342,6 +344,22 @@ class CheckPostTest {
         val mainOnGitHub = commits.commit(mapOf(WORKFLOW to "on: [push]\n"), base)
         val merge = commits.commit(mapOf(WORKFLOW to "on: [push]\n", "s.txt" to "s\n"), session, mainOnGitHub)
         assertTrue(check(merge, onGitHub = listOf(mainOnGitHub)).ok)
+    }
+
+    @Test
+    fun `a PocketIDE template, unchanged at its own path, holds nothing`() {
+        val path = ".github/workflows/pocketide-android-release.yml"
+        val template = File("src/main/assets/templates/android-release.yml").readText()
+        val templates = mapOf(path to ObjectInserter.Formatter().idFor(Constants.OBJ_BLOB, template.toByteArray()))
+        fun holds(tip: ObjectId, base: ObjectId) =
+            CheckPost(templates = { templates }).check(commits.repo, tip, listOf(base), emptyList()) {}.holds.map(Hold::path)
+        val base = commits.commit(mapOf("README.md" to "hello\n"))
+
+        assertEquals(emptyList<String>(), holds(commits.commit(mapOf("README.md" to "hello\n", path to template), base), base))
+        val edited = template.replace("contents: read", "contents: write")
+        assertEquals(listOf(path), holds(commits.commit(mapOf("README.md" to "hello\n", path to edited), base), base))
+        val elsewhere = ".github/workflows/release.yml"
+        assertEquals(listOf(elsewhere), holds(commits.commit(mapOf("README.md" to "hello\n", elsewhere to template), base), base))
     }
 
     @Test

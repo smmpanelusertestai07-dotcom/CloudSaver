@@ -69,6 +69,8 @@ data class RepoInfo(
     val cloneUrl: String,
     val htmlUrl: String,
     val pushedAt: String?,
+    /** A fork: its code started as someone else's, even under the owner's own account. */
+    val fork: Boolean = false,
 )
 
 data class RepoFile(val path: String, val sha: String, val bytes: ByteArray)

@@ -77,14 +77,21 @@ object BuildMinutes {
         BuildSample(family, minutes)
     }
 
-    /** Included minutes used this month, counted the way the plan counts them. */
-    fun countedMinutesUsed(lines: List<UsageLine>): Double = lines
-        .filter { it.product.equals("actions", ignoreCase = true) && it.unit.contains("minute", ignoreCase = true) }
-        .sumOf { line -> (ActionsPlans.multiplier(line.sku) ?: 1) * line.quantity }
+    /**
+     * Included minutes used this month, counted the way the plan counts them. Minutes in
+     * [publicRepositories] ("owner/name") are free and use none of the plan's.
+     */
+    fun countedMinutesUsed(lines: List<UsageLine>, publicRepositories: Set<String> = emptySet()): Double {
+        val public = publicRepositories.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
+        return lines
+            .filter { it.product.equals("actions", ignoreCase = true) && it.unit.contains("minute", ignoreCase = true) }
+            .filterNot { line -> line.repository?.let { isPublic(it, public) } == true }
+            .sumOf { line -> (ActionsPlans.multiplier(line.sku) ?: 1) * line.quantity }
+    }
 
-    fun estimate(usage: AccountUsage, samples: List<BuildSample>): BuildEstimate? {
+    fun estimate(usage: AccountUsage, samples: List<BuildSample>, publicRepositories: Set<String> = emptySet()): BuildEstimate? {
         val included = ActionsPlans.includedMinutes(usage.plan) ?: return null
-        val left = (included - countedMinutesUsed(usage.lines)).coerceAtLeast(0.0)
+        val left = (included - countedMinutesUsed(usage.lines, publicRepositories)).coerceAtLeast(0.0)
         val android = samples.filter { it.family == BuildSample.Family.ANDROID }
         val ios = samples.filter { it.family == BuildSample.Family.IOS }
         // GitHub bills each job in whole minutes, so an average build is rounded up.
@@ -109,6 +116,12 @@ object BuildMinutes {
         )
         return "Estimate: ${parts.joinToString("; ")}. $left of your plan's $included minutes are left this month. " +
             "Run time includes waiting for a machine. Public repositories are free. Plan minutes as of ${ActionsPlans.AS_OF}: ${ActionsPlans.BILLING_URL}"
+    }
+
+    /** GitHub names the repository "owner/name" in usage lines; a bare name is matched as well. */
+    private fun isPublic(repository: String, public: Set<String>): Boolean {
+        val name = repository.lowercase(Locale.ROOT)
+        return name in public || ('/' !in name && public.any { it.substringAfter('/') == name })
     }
 
     private fun List<BuildSample>.averageOrNull(): Double? =

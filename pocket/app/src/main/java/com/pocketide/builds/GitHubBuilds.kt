@@ -1,8 +1,12 @@
 package com.pocketide.builds
 
 import com.pocketide.core.Clock
+import com.pocketide.core.Redact
+import com.pocketide.git.Hold
 import com.pocketide.github.GitHubApi
+import com.pocketide.github.GitHubException
 import com.pocketide.github.RunArtifact
+import com.pocketide.github.WorkflowJob
 import com.pocketide.github.WorkflowRun
 import com.pocketide.media.MediaException
 import com.pocketide.media.MediaKind
@@ -23,7 +27,16 @@ import java.time.format.DateTimeParseException
 import java.util.UUID
 
 /** Something the owner can act on, in one plain sentence. */
-class BuildsException(message: String) : Exception(message)
+open class BuildsException(message: String) : Exception(message)
+
+/**
+ * The branch changes GitHub Actions code the owner has not approved, so the build does not start.
+ * Each hold carries the diff to show and the key [com.pocketide.git.GitGate.approveWorkflowChange]
+ * takes once the owner approved it; then the build can be started again.
+ */
+class WorkflowApprovalNeeded(val holds: List<Hold>) : BuildsException(
+    "Read and approve the change to GitHub Actions code in ${holds.joinToString(", ") { it.path }} before this build runs.",
+)
 
 /** What builds use from other modules and from Android, so the logic can be tested on its own. */
 internal interface BuildsPorts {
@@ -49,6 +62,9 @@ internal interface BuildsPorts {
 
     /** Pushes the session's branch through the check-post; a plain reason when it could not. */
     suspend fun autosave(sessionId: String): String?
+
+    /** The check-post's holds on [branch] for workflow changes the owner has not approved yet. */
+    suspend fun workflowHolds(projectId: String, branch: String): List<Hold>
 
     /** Whether [bytes] may be downloaded now (mobile data rules); a plain reason when not. */
     fun downloadRefusal(bytes: Long): String?
@@ -94,11 +110,14 @@ internal class GitHubBuilds(
         if (session != null) {
             val added = withContext(ports.io) { File(ports.worktree(session), TemplateCatalog.repoPath(template)).isFile }
             if (!added) throw BuildsException("Add the ${template.title} template to this session first.")
+            // The run uses what GitHub has, and only the check-post puts it there (A4).
+            val holds = ports.workflowHolds(projectId, ref)
+            if (holds.isNotEmpty()) throw WorkflowApprovalNeeded(holds)
             ports.autosave(session.id)?.let { throw BuildsException(it) }
         }
         val since = ports.clock.now()
-        ports.gitHub.dispatchWorkflow(project.owner, project.repo, template.fileName, ref)
-        val runId = findRun(project, ref, template, since)
+        val runId = ports.gitHub.dispatchWorkflowRun(project.owner, project.repo, template.fileName, ref)?.runId
+            ?: findRun(project, ref, template, since)
         if (runId != null) ports.follow(projectId, runId, template.title)
         return runId
     }
@@ -108,11 +127,27 @@ internal class GitHubBuilds(
         return ports.gitHub.runs(project.owner, project.repo).take(RECENT_RUNS)
     }
 
+    override suspend fun progress(projectId: String, runId: Long): BuildProgress? {
+        val project = projectOf(projectId)
+        val run = ports.gitHub.run(project.owner, project.repo, runId) ?: return null
+        val jobs = ports.gitHub.jobs(project.owner, project.repo, runId)
+        if (run.status != COMPLETED) return BuildProgress(run, jobs)
+        val ending = ending(project, run, jobs)
+        return BuildProgress(
+            run = run.copy(runnerImage = ending.runnerImage ?: run.runnerImage),
+            jobs = jobs,
+            failedJob = ending.failedJob?.name,
+            failedStep = ending.failedJob?.steps?.firstOrNull { it.conclusion in FAILED }?.name,
+            failureLog = ending.failureLog,
+        )
+    }
+
     override suspend fun collect(projectId: String, sessionId: String, runId: Long): Int {
         val project = projectOf(projectId)
         sessionOf(projectId, sessionId)
+        val logs = keepFailureLog(projectId, sessionId, runId)
         val artifacts = ports.gitHub.artifacts(project.owner, project.repo, runId)
-        if (artifacts.isEmpty()) return 0
+        if (artifacts.isEmpty()) return logs
         val live = artifacts.filterNot { it.expired }
         if (live.isEmpty()) throw BuildsException("These results are no longer on GitHub. Run the build again.")
         ports.downloadRefusal(live.sumOf { it.sizeBytes })?.let { throw BuildsException(it) }
@@ -123,10 +158,52 @@ internal class GitHubBuilds(
                 if (added.size >= MAX_ITEMS_PER_RUN) break
                 added += bring(artifact, sessionId, File(scratch, artifact.id.toString()), MAX_ITEMS_PER_RUN - added.size)
             }
-            added.size
+            logs + added.size
         } finally {
             withContext(ports.io) { scratch.deleteRecursively() }
         }
+    }
+
+    /** Adds the end of a failed run's log to Media, for the owner and the agent; returns 1 when it did. */
+    private suspend fun keepFailureLog(projectId: String, sessionId: String, runId: Long): Int {
+        val log = try {
+            progress(projectId, runId)?.failureLog
+        } catch (e: GitHubException) {
+            // The run's files still come in without it.
+            null
+        } ?: return 0
+        val folder = ports.scratch()
+        return try {
+            val file = withContext(ports.io) {
+                folder.mkdirs()
+                File(folder, "failure.txt").apply { writeText(log) }
+            }
+            ports.media.add(sessionId, file, "run-$runId-failure-log.txt", FROM_ACTIONS)
+            1
+        } catch (e: MediaException) {
+            0
+        } finally {
+            withContext(ports.io) { folder.deleteRecursively() }
+        }
+    }
+
+    /**
+     * What an ended run leaves to show: the runner image from a job's log, and for a run that did
+     * not succeed its first failed job with the last lines of that job's log. Read once per run.
+     */
+    private suspend fun ending(project: Project, run: WorkflowRun, jobs: List<WorkflowJob>): Ending {
+        synchronized(endings) { endings[run.id] }?.let { return it }
+        val failed = if (run.conclusion == SUCCESS) null else jobs.firstOrNull { it.conclusion in FAILED }
+        val job = failed ?: jobs.firstOrNull() ?: return Ending(null, null, null)
+        val log = try {
+            ports.gitHub.jobLog(project.owner, project.repo, job.id)
+        } catch (e: GitHubException) {
+            // The log is a detail: the run's result stands without it, and the next look tries again.
+            return Ending(null, failed, null)
+        }
+        val ending = Ending(log?.runnerImage, failed, failed?.let { log?.tail?.let(::lastLines) })
+        synchronized(endings) { endings[run.id] = ending }
+        return ending
     }
 
     /** Downloads one artifact, unpacks it safely and adds what Media shows; returns the stored paths. */
@@ -192,6 +269,16 @@ internal class GitHubBuilds(
         return null
     }
 
+    /** The log's last lines without GitHub's timestamps; masked Secrets stay masked, and tokens are taken out. */
+    private fun lastLines(tail: String): String? = tail.lineSequence()
+        .map { it.replace(TIMESTAMP, "").trimEnd() }
+        .filter(String::isNotEmpty)
+        .toList()
+        .takeLast(LOG_LINES)
+        .joinToString("\n")
+        .let(Redact::text)
+        .takeIf(String::isNotBlank)
+
     private fun createdAt(run: WorkflowRun): Long? = try {
         Instant.parse(run.createdAt).toEpochMilli()
     } catch (e: DateTimeParseException) {
@@ -236,8 +323,21 @@ internal class GitHubBuilds(
         ports.sessions().firstOrNull { it.id == sessionId && it.projectId == projectId }
             ?: throw BuildsException("This session is not on this phone any more.")
 
+    private class Ending(val runnerImage: String?, val failedJob: WorkflowJob?, val failureLog: String?)
+
+    /** Endings of recent runs; an ended run does not change. */
+    private val endings = object : LinkedHashMap<Long, Ending>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Ending>?) = size > KEPT_ENDINGS
+    }
+
     private companion object {
         const val FROM_ACTIONS = "actions"
+        const val COMPLETED = "completed"
+        const val SUCCESS = "success"
+        val FAILED = setOf("failure", "timed_out", "startup_failure", "cancelled", "action_required")
+        const val LOG_LINES = 30
+        const val KEPT_ENDINGS = 32
+        val TIMESTAMP = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z """)
         const val RECENT_RUNS = 20
         const val FIND_ATTEMPTS = 6
         const val FIND_DELAY_MS = 2_500L

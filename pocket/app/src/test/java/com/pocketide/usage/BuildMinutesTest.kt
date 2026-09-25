@@ -46,6 +46,18 @@ class BuildMinutesTest {
     }
 
     @Test
+    fun publicRepositoryMinutesAreFree() {
+        val lines = listOf(
+            minutes("actions_linux", 100.0).copy(repository = "alice/private-app"),
+            minutes("actions_macos", 30.0).copy(repository = "alice/Open-Tool"),
+            minutes("actions_linux", 7.0).copy(repository = "open-tool"),
+            minutes("actions_linux", 5.0),
+        )
+        assertEquals(105.0, BuildMinutes.countedMinutesUsed(lines, setOf("alice/open-tool")), 0.001)
+        assertEquals(100.0 + 300.0 + 7.0 + 5.0, BuildMinutes.countedMinutesUsed(lines), 0.001)
+    }
+
+    @Test
     fun onlySuccessfulPocketIdeBuildsAreSamples() {
         val samples = BuildMinutes.samples(
             listOf(

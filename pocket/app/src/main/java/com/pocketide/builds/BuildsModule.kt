@@ -2,10 +2,13 @@ package com.pocketide.builds
 
 import com.pocketide.AppGraph
 import com.pocketide.core.Clock
+import com.pocketide.git.Hold
+import com.pocketide.git.HoldKind
 import com.pocketide.github.GitHubApi
 import com.pocketide.media.MediaLibrary
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import java.io.File
@@ -42,6 +45,18 @@ private class GraphBuildsPorts(private val graph: AppGraph) : BuildsPorts {
     }
 
     override suspend fun autosave(sessionId: String): String? = graph.sessions.autosave(sessionId)
+
+    /**
+     * A branch the check-post cannot read here yields no holds: the push in [autosave] runs the
+     * same check-post and refuses what is held, so nothing unapproved reaches GitHub either way.
+     */
+    override suspend fun workflowHolds(projectId: String, branch: String): List<Hold> = try {
+        graph.git.checkPost(graph.dirs.bareRepo(projectId), branch).holds.filter { it.kind == HoldKind.WORKFLOW_CHANGE }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     override fun downloadRefusal(bytes: Long): String? {
         val decision = graph.dataBudget.allow(bytes, DATA_KIND, big = bytes >= BIG_DOWNLOAD)
