@@ -1,5 +1,7 @@
 package com.pocketide.sync
 
+import com.pocketide.git.SecretPatterns
+import com.pocketide.git.fake
 import com.pocketide.model.ObjectKind
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -186,6 +188,48 @@ class SafetyTest {
         assertTrue(SecretMask.mask(plain).contentEquals(plain))
         val streamed = SecretMaskingInputStream(ByteArrayInputStream(text.toByteArray()), maxChunk = 7).readBytes()
         assertEquals(text.length, streamed.size)
+    }
+
+    @Test
+    fun everyTokenShapeTheCheckPostKnowsIsMaskedInPromptHistory() {
+        val bech32 = "QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L"
+        val samples = listOf(
+            fake("gh" + "p_", 36),
+            fake("github" + "_pat_", 82),
+            fake("AI" + "za", 35),
+            fake("ya" + "29.", 60),
+            fake("1/" + "/0", 40),
+            fake("xo" + "xb-", 40),
+            fake("sk" + "_live_", 30),
+            fake("rk" + "_live_", 30),
+            fake("sk-" + "ant-api03-", 90),
+            fake("sk-" + "proj-", 100),
+            fake("sk" + "-", 48),
+            fake("np" + "m_", 36),
+            fake("py" + "pi-", 80),
+            fake("AGE-SECRET" + "-KEY-1", 58, bech32),
+            fake("h" + "f_", 34),
+            fake("S" + "K", 32, "0123456789abcdef"),
+            fake("AK" + "IA", 16, "ABCDEFGHJKLMNPQRSTUVWXYZ234567"),
+            "aws_secret_access_key=" + fake("", 40),
+            fake("gl" + "pat-", 20),
+            fake("ey" + "J", 20) + "." + fake("", 20) + "." + fake("", 20),
+            // A private key pasted into a prompt: one JSON line, its line breaks escaped.
+            "-----BEGIN OPENSSH PRIVATE KEY-----\\n" + fake("b3BlbnNzaC1rZXktdjEAAAAA", 40) + "\\n-----END OPENSSH PRIVATE KEY-----",
+        )
+        for (shape in SecretPatterns.tokenShapes) {
+            assertTrue("no sample for ${shape.pattern}", samples.any { shape.containsMatchIn(it) })
+        }
+        for (sample in samples) {
+            val line = "{\"display\":\"use $sample here\",\"timestamp\":1}\n".toByteArray()
+            val masked = SecretMask.mask(line)
+            val text = masked.toString(Charsets.UTF_8)
+            val middle = sample.substring(sample.length / 2).take(8)
+            assertEquals(sample, line.size, masked.size)
+            assertFalse(sample, text.contains(middle))
+            assertTrue(sample, text.startsWith("{\"display\":\"use ") && text.endsWith(" here\",\"timestamp\":1}\n"))
+            assertTrue(sample, SecretMaskingInputStream(ByteArrayInputStream(line)).readBytes().contentEquals(masked))
+        }
     }
 
     @Test

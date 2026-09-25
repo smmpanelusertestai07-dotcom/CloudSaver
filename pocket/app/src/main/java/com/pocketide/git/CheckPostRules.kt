@@ -216,6 +216,9 @@ internal object SecretPatterns {
         return found.toList()
     }
 
+    /** Every whole-token shape above: prompt histories are masked with this same list ([com.pocketide.sync.SecretMask]). */
+    val tokenShapes: List<Regex> by lazy { shapes.map { it.regex } + awsKeyId + awsNamedSecret }
+
     private fun hasAwsKey(text: String): Boolean {
         if (awsNamedSecret.containsMatchIn(text)) return true
         return awsKeyId.findAll(text)
