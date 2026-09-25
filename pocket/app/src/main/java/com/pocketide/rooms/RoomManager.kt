@@ -47,7 +47,9 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     private val procs = ProcFacts()
     private val rings = ConcurrentHashMap<String, OutputRing>()
     private val configBook = ConfigChangeBook(dirs.rooms)
-    private val configurator = RoomConfigurator(dirs, env.assets, env::now, configBook) { agentId, line -> ring(agentId).add("[PocketIDE] $line") }
+    private val configurator = RoomConfigurator(dirs, env.assets, env::now, configBook, env::claudeChatsInAccount) { agentId, line ->
+        ring(agentId).add("[PocketIDE] $line")
+    }
     private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret, ::settingsForTerminal)
     private val browser = BrowserInstaller(env, configurator, ::afterBrowserInstall)
     private val tools = McpTools(dirs, Ports())

@@ -172,15 +172,15 @@ fun NavRow(icon: ImageVector, title: String, subtitle: String?, onClick: () -> U
     }
 }
 
-/** A web page that opens in Chrome, outside the app. */
+/** A web page that opens in Chrome, outside the app, unless [open] says otherwise. */
 @Composable
-fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null) {
+fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null, open: () -> Unit = { nav.openExternal(url) }) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = MinTouch)
             .clip(RoundedCornerShape(12.dp))
-            .clickable { nav.openExternal(url) }
+            .clickable(onClick = open)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

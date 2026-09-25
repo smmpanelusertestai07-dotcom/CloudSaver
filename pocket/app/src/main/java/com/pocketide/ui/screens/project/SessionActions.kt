@@ -298,4 +298,5 @@ fun RenameDialog(session: SessionRecord, onDone: (String) -> Unit, onDismiss: ()
 
 /** The words shown before a chat moves to Recently deleted. */
 const val DELETE_CHAT_TEXT =
-    "It moves to Recently deleted. You can restore it there for 30 days; after that it is erased from your Drive for good."
+    "It moves to Recently deleted. You can restore it there for 30 days; after that it is erased from your Drive for good. " +
+        "A copy the agent's company keeps, such as in your Claude account, is deleted only there."

@@ -38,6 +38,7 @@ import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
 import com.pocketide.core.Redact
 import com.pocketide.core.Settings
+import com.pocketide.docs.ChatHomes
 import com.pocketide.sync.DataUsage
 import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.InfoRow
@@ -226,6 +227,16 @@ private fun AgentsSection(settings: Settings, update: ((Settings) -> Settings) -
                     "Show only Claude Code, Codex and Antigravity. Other verified publishers stay hidden.",
                     settings.onlyOfficialAgents,
                 ) { on -> update { it.copy(onlyOfficialAgents = on) } }
+            },
+            {
+                SwitchRow(
+                    ChatHomes.CLAUDE_SWITCH,
+                    "Anthropic keeps each Claude Code session in your Claude account too, under its data-usage policy, " +
+                        "where the Claude app and claude.ai/code show it and you can continue it. Needs a Claude plan " +
+                        "sign-in, Pro or higher. PocketIDE's encrypted Drive backup keeps them either way. Applies from " +
+                        "Claude's next start.",
+                    settings.claudeChatsInAccount,
+                ) { on -> update { it.copy(claudeChatsInAccount = on) } }
             },
         ),
     )

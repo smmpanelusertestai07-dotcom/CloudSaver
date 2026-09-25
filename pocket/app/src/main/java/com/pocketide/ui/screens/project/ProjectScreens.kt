@@ -101,6 +101,9 @@ import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.ChatPlaceDialog
+import com.pocketide.ui.manage.ChatPlaces
+import com.pocketide.ui.manage.openChatPage
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
@@ -398,6 +401,7 @@ private fun SessionsTab(
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
     var browsing by remember { mutableStateOf<SessionRecord?>(null) }
     var deleting by remember { mutableStateOf<SessionRecord?>(null) }
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val groups = remember(sessions, projectId) { sessionsByAgent(sessions, projectId) }
 
     if (groups.isEmpty()) {
@@ -441,6 +445,8 @@ private fun SessionsTab(
                         onFiles = { browsing = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
+                        accountLine = ChatPlaces.sessionLine(session.agentId, settings),
+                        onOpenAccount = { ChatPlaces.of(session.agentId, settings)?.let { openChatPage(context, nav, it) } },
                     )
                 }
             }
@@ -473,6 +479,8 @@ private fun SessionCard(
     onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onDelete: () -> Unit,
+    accountLine: String?,
+    onOpenAccount: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val (label, tone) = sessionStatusLabel(session.status, running)
@@ -505,6 +513,7 @@ private fun SessionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 waitingVideos?.let { StatusChip(it, Tone.WARN) }
+                accountLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session actions") }
@@ -515,6 +524,9 @@ private fun SessionCard(
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                         DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
+                    }
+                    if (accountLine != null) {
+                        DropdownMenuItem(text = { Text("Open in your Claude account") }, onClick = { menu = false; onOpenAccount() })
                     }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
@@ -670,6 +682,9 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var handOffTo by remember(sessionId) { mutableStateOf<AgentInfo?>(null) }
     var renamingBranch by remember(sessionId) { mutableStateOf(false) }
     var addingFile by remember(sessionId) { mutableStateOf(false) }
+    var showChatPlace by remember(sessionId) { mutableStateOf(false) }
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val chatPlace = ChatPlaces.of(agentId, settings).takeIf { agent?.official == true }
     val name = agentName(agent, agentId)
     val sleepText = sleepsSoon(name, sleeps[agentId], now)
     val publicRepo = projects.firstOrNull { it.id == session.projectId }?.isPrivate == false
@@ -727,6 +742,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onHandOff = { handOffTo = it },
                         onRenameBranch = { renamingBranch = true },
                         onAddFile = { addingFile = true },
+                        onChatPlace = { showChatPlace = true }.takeIf { chatPlace != null },
                         onRestart = {
                             scope.act(snackbar, "Could not restart $name", done = "$name started again. The chat is kept.") {
                                 graph.rooms.restart(agentId)
@@ -806,6 +822,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
     if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
     if (addingFile) AddFileFlow(sessionId, snackbar, scope, onClose = { addingFile = false })
+    if (showChatPlace) chatPlace?.let { ChatPlaceDialog(it, nav, onDismiss = { showChatPlace = false }) }
     if (stopping) {
         ConfirmDialog(
             title = "Stop ${agentName(agent, agentId)}?",
@@ -843,6 +860,7 @@ private fun AgentBar(
     onHandOff: (AgentInfo) -> Unit,
     onRenameBranch: () -> Unit,
     onAddFile: () -> Unit,
+    onChatPlace: (() -> Unit)?,
     onRestart: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -906,6 +924,7 @@ private fun AgentBar(
                             DropdownMenuItem(text = { Text("Continue in ${other.displayName}") }, onClick = { menu = false; onHandOff(other) })
                         }
                     }
+                    ChatPlaceItem(onChatPlace) { menu = false }
                     if (panelTitle == null) {
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -921,6 +940,13 @@ private fun AgentBar(
             }
         }
     }
+}
+
+/** "Where this chat is saved", for the official agents that have an answer. */
+@Composable
+private fun ChatPlaceItem(onChatPlace: (() -> Unit)?, close: () -> Unit) {
+    if (onChatPlace == null) return
+    DropdownMenuItem(text = { Text("Where this chat is saved") }, onClick = { close(); onChatPlace() })
 }
 
 @Composable

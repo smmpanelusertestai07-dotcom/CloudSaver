@@ -13,12 +13,14 @@ import java.io.IOException
  * file), rewritten at every start from these templates; the owner's own keys and lines stay.
  * Settings that can run code are rebuilt from PocketIDE's templates and what the owner kept
  * ([changes]); what an agent added there is taken out and waits for the owner in Your data.
+ * [claudeAccountChats] is the owner's choice to keep Claude's sessions in their Claude account too.
  */
 internal class RoomConfigurator(
     private val dirs: AppDirs,
     private val assets: RoomAssets,
     private val now: () -> Long,
     private val changes: ConfigChangeBook = ConfigChangeBook(dirs.rooms),
+    private val claudeAccountChats: () -> Boolean = { true },
     private val log: (agentId: String, line: String) -> Unit,
 ) {
     /** Copies the scripts, the terminal page and the browser installer into /opt/pocketide. */
@@ -54,7 +56,7 @@ internal class RoomConfigurator(
         val notify = listOf("python3", RoomLayout.NOTIFY, agentId)
         when (agentId) {
             RoomProfiles.CLAUDE -> generate(agentId, home, ".claude/settings.json") { text, kept ->
-                ConfigFiles.claudeSettings(text, claudeDenyRules(otherRooms), notify.joinToString(" "), kept)
+                ConfigFiles.claudeSettings(text, claudeDenyRules(otherRooms), notify.joinToString(" "), kept, claudeAccountChats())
             }
             RoomProfiles.CODEX -> {
                 generate(agentId, home, ".codex/config.toml") { text, kept -> ConfigFiles.codexConfig(text, servers, notify, careful, kept) }
