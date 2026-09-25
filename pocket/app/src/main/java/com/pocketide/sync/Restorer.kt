@@ -94,16 +94,16 @@ internal class Restorer(private val kit: SyncKit, private val pass: SyncPass, pr
             run.save()
             return null
         }
-        pass.adoptRemote(run, snapshot)
+        // Settings, sessions, projects, Variables and Secrets come in with the index's records.
+        pass.adoptRemote(run, drive, snapshot)
         run.save()
         val metered = ports.network.metered()
         val selection = RestorePlanner.select(index, run.now, videosNow = !metered || ports.settings.settings.value.videosOnMobileData)
-        for (chain in selection.now) {
-            val first = chain.first()
+        for (chain in selection.now.filter { it.first().kind != ObjectKind.SECRETS }) {
             if (job.choice == RestoreChoice.WIFI_ONLY && ports.network.metered()) return Plain.RESTORE_WAITS
             val decision = ports.budget.allow(Chains.storedBytes(chain), MeteredDataBudget.KIND_RESTORE, big = isBig(chain))
             if (!decision.allowed) return "${decision.reason}. ${Plain.RESTORE_WAITS}"
-            if (first.kind == ObjectKind.SECRETS) importSecrets(run, drive, first) else materialize(run, drive, chain, replaceUntrackedMemory = true)
+            materialize(run, drive, chain, replaceUntrackedMemory = true)
         }
         run.state = run.state.copy(restore = null, alignedRevision = index.revision)
         run.save()
@@ -135,14 +135,16 @@ internal class Restorer(private val kit: SyncKit, private val pass: SyncPass, pr
     }
 
     /**
-     * Writes one file from Drive. A file already on the phone is never overwritten: it is adopted
-     * when it holds Drive's content, and otherwise kept (the agent's own newer file). The one
-     * exception is untracked memory during a restore, which the app wrote before Drive's copy came.
+     * Writes one file from Drive. A file already on the phone is not overwritten here: it is
+     * adopted when it starts with Drive's content; otherwise the next sync keeps it as a conflict
+     * copy and brings Drive's version in, so it never replaces Drive's. The one exception is
+     * untracked memory during a restore, which the app wrote before Drive's copy came.
      */
     suspend fun materialize(run: Run, drive: DriveStore, chain: List<VaultObject>, replaceUntrackedMemory: Boolean) {
         val first = chain.first()
         val key = first.fileKey
-        val target = kit.scanner.locate(first.kind, first.agentId, first.path) ?: return
+        val place = kit.scanner.roomFile(first.kind, first.agentId, first.path) ?: return
+        val target = place.file
         val track = run.state.tracks[key]
         val facts = factsOf(target)
         if (facts != null) {
@@ -156,22 +158,8 @@ internal class Restorer(private val kit: SyncKit, private val pass: SyncPass, pr
                 return
             }
         }
-        val assembled = kit.materializer.assemble(drive, run.cipher, target, chain)
+        val assembled = kit.materializer.assemble(drive, run.cipher, place, chain) ?: return
         run.state = run.state.copy(tracks = run.state.tracks + (key to Tracks.materialized(track, chain, assembled, factsOf(target))))
-        run.save()
-    }
-
-    /** Variables and Secrets go straight into the secrets store; the plaintext stays in memory. */
-    private suspend fun importSecrets(run: Run, drive: DriveStore, o: VaultObject) {
-        if (run.state.tracks[SECRETS_KEY]?.prefixSha256 == o.sha256) return
-        val bytes = kit.materializer.bytes(drive, run.cipher, o, MeteredDataBudget.KIND_RESTORE)
-        try {
-            ports.importSecrets(bytes)
-        } finally {
-            bytes.fill(0)
-        }
-        val track = FileTrack(kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = o.length, prefixSha256 = o.sha256, objects = listOf(o.name))
-        run.state = run.state.copy(tracks = run.state.tracks + (SECRETS_KEY to track))
         run.save()
     }
 

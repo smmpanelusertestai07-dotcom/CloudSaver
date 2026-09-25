@@ -50,6 +50,24 @@ class IndexMergeTest {
     }
 
     @Test
+    fun aWriteNeverErasesASessionItAlsoRestores() {
+        val t = clock.now
+        val base = VaultIndex(
+            updatedAt = t, revision = 3,
+            sessions = listOf(session("s", at = t - 31 * day, deletedAt = t - 30 * day), session("gone", at = t - 31 * day, deletedAt = t - 31 * day)),
+            objects = listOf(obj("o-s", "s"), obj("o-gone", "gone")),
+        )
+        // Restored on its last day while the daily job's erase goes out in the same write.
+        val delta = IndexDelta(sessions = listOf(SessionChange.Restore(session("s", at = t - 31 * day))), eraseSessions = setOf("s", "gone"))
+
+        val next = IndexMerge.apply(base, delta, t, keyGeneration = 1)
+
+        assertEquals(null, next.sessions.single { it.id == "s" }.deletedAt)
+        assertEquals(listOf("o-s"), next.objects.map { it.name })
+        assertTrue(next.sessions.none { it.id == "gone" })
+    }
+
+    @Test
     fun theEarliestDeletionDateIsKeptSoThe30DayCountNeverRestarts() {
         val t = clock.now
         val first = session("s1", at = t, deletedAt = t - 10 * day)

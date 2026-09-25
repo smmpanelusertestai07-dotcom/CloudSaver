@@ -64,6 +64,13 @@ internal data class FileTrack(
     /** Size and time of the local version already kept as a conflict copy, so it is copied once. */
     val preservedSize: Long = -1,
     val preservedModifiedAt: Long = -1,
+    /**
+     * Drive holds a version of this file that is not on the phone yet: the next reconcile writes
+     * it, or, when its agent may hold the file open, the first reconcile after the room stops.
+     * Until then nothing of the file is queued, so no piece is sent against a version Drive has
+     * replaced and no copy found on the phone replaces Drive's.
+     */
+    val behindDrive: Boolean = false,
 )
 
 /** The last version of a session record this phone pushed, to push only real changes. */

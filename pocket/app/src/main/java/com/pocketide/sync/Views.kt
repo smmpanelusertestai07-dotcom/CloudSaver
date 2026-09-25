@@ -123,7 +123,7 @@ internal class Notices(private val kit: SyncKit) {
 
     fun computerNotice(run: Run, days: Int, due: Long) = post(
         run,
-        Notice("computer", "The computer will be removed", "No agent has run for $days days. The computer is removed on ${Ist.date(due)} to free space. You can set it up again from Home."),
+        Notice("computer", "The computer will be removed", "No agent has run for $days days. The computer is removed on ${Ist.date(due)} to free space; Home offers to set it up again when you need it."),
     )
 
     fun computerTomorrow(run: Run, due: Long) = post(
@@ -139,7 +139,7 @@ internal class Notices(private val kit: SyncKit) {
 
     fun computerRemoved(run: Run) = post(
         run,
-        Notice("computer", "The computer was removed", "Set it up again from Home when you're on Wi-Fi. Your projects and chats are safe."),
+        Notice("computer", "The computer was removed", "Home offers to set it up again when you need it. Your projects and chats are safe."),
         force = true,
     )
 

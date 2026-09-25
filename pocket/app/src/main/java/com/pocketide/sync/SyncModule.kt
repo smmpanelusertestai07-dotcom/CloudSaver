@@ -169,12 +169,16 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
 
     override suspend fun importSecrets(bytes: ByteArray) = graph.secrets.importBlob(bytes)
 
+    override suspend fun mergeSecrets(bytes: ByteArray) = graph.secrets.mergeBlob(bytes)
+
     override fun phone(): PhoneSnapshot = graph.phone.snapshot.value
 
     override fun computerIdle(): Boolean = when (graph.computer.state.value) {
         is ComputerState.Installing, is ComputerState.Updating -> false
         else -> true
     }
+
+    override suspend fun removeComputer() = graph.computer.remove()
 
     override suspend fun authorizeNewAccount(): DriveAuthResult = graph.driveAuth.authorizeNewAccount()
 

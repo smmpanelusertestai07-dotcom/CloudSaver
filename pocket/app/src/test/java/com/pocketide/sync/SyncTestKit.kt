@@ -2,6 +2,8 @@ package com.pocketide.sync
 
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
+import com.pocketide.core.SecretBox
+import com.pocketide.core.SecureStore
 import com.pocketide.core.Settings
 import com.pocketide.core.SettingsStore
 import com.pocketide.google.DriveAuthResult
@@ -13,7 +15,12 @@ import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.model.VaultIndex
+import com.pocketide.model.VaultObject
+import com.pocketide.secrets.ProjectSecrets
+import com.pocketide.secrets.SealedProjectSecrets
 import com.pocketide.vault.VaultCipher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -80,8 +87,12 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
     var loseUploadAnswers = 0
     /** The next N index writes fail before reaching Drive (the phone dies between upload and record). */
     var failIndexWrites = 0
+    /** The next N index writes reach Drive but their answer is lost (a timeout on mobile data). */
+    var loseIndexAnswers = 0
     /** Runs before each upload with the file's name; may throw to fail it. */
     var beforeUpload: ((String) -> Unit)? = null
+    /** Runs before each download with the file's name (a program in a room acting meanwhile). */
+    var beforeDownload: ((String) -> Unit)? = null
     /** Runs after each index write, before the engine reads it back (another phone writing at once). */
     var afterIndexWrite: (() -> Unit)? = null
     var uploads = 0
@@ -112,13 +123,18 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
             info(id, files.getValue(id))
         }
         if (name == RemoteIndex.NAME) afterIndexWrite?.invoke()
-        val lose = synchronized(lock) { (loseUploadAnswers > 0).also { if (it) loseUploadAnswers-- } }
+        val lose = synchronized(lock) {
+            val indexAnswer = name == RemoteIndex.NAME && loseIndexAnswers > 0
+            if (indexAnswer) loseIndexAnswers--
+            indexAnswer || (loseUploadAnswers > 0).also { if (it) loseUploadAnswers-- }
+        }
         if (lose) throw DriveException.Offline()
         return stored
     }
 
-    override suspend fun download(id: String, sink: OutputStream) = online {
-        sink.write((files[id] ?: throw DriveException.Other("File not found")).bytes)
+    override suspend fun download(id: String, sink: OutputStream) {
+        synchronized(lock) { files[id]?.name }?.let { beforeDownload?.invoke(it) }
+        online { sink.write((files[id] ?: throw DriveException.Other("File not found")).bytes) }
     }
 
     override suspend fun open(id: String): InputStream = online { ByteArrayInputStream((files[id] ?: throw DriveException.Other("File not found")).bytes) }
@@ -282,12 +298,42 @@ internal class TestPhone(
         }
     }
     override fun backgroundLimit(): String? = backgroundLimit
-    override suspend fun exportSecrets(): ByteArray? = secrets?.copyOf()
+
+    /** The app's own Variables and Secrets store, for tests where both phones change them. */
+    var secretStore: ProjectSecrets? = null
+
+    fun useSecretStore(): ProjectSecrets = SealedProjectSecrets(
+        store = SecureStore(File(base, "secure"), FlipBox),
+        clock = clock,
+        io = Dispatchers.Unconfined,
+        pushSecret = { _, _, _ -> },
+    ).also { secretStore = it }
+
+    override suspend fun exportSecrets(): ByteArray? {
+        val store = secretStore ?: return secrets?.copyOf()
+        return try {
+            store.exportBlob()
+        } catch (_: IllegalStateException) {
+            null
+        }
+    }
     override suspend fun importSecrets(bytes: ByteArray) {
         imported = bytes.copyOf()
+        secretStore?.importBlob(bytes)
+    }
+    override suspend fun mergeSecrets(bytes: ByteArray) {
+        imported = bytes.copyOf()
+        secretStore?.mergeBlob(bytes)
     }
     override fun phone(): PhoneSnapshot = phone
     override fun computerIdle() = true
+
+    /** Times the computer module was asked to remove the computer; like it, this deletes the rootfs. */
+    var computerRemovals = 0
+    override suspend fun removeComputer() {
+        computerRemovals++
+        dirs.rootfs.deleteRecursively()
+    }
     override suspend fun authorizeNewAccount(): DriveAuthResult = newAccount.also { onAuthorize() }
     override suspend fun rekeyForMove() {
         rekeys++
@@ -318,9 +364,35 @@ internal class TestPhone(
     /** The index as it is in Drive now. */
     fun remoteIndex() = drive.named(RemoteIndex.NAME).singleOrNull()?.let { RemoteIndex().decode(cipher, it.bytes) }
 
+    /** Replaces the index in Drive the way another phone's write would. */
+    fun rewriteRemoteIndex(change: (VaultIndex) -> VaultIndex) {
+        val stored = drive.named(RemoteIndex.NAME).single()
+        val remote = RemoteIndex()
+        stored.bytes = remote.encode(cipher, change(remote.decode(cipher, stored.bytes)))
+        stored.modified = clock.now
+    }
+
+    /** Sends [text] to Drive as another phone would, returning [like] turned into its index entry at [offset]. */
+    suspend fun sendAsAnotherPhone(like: VaultObject, text: String, offset: Long): VaultObject {
+        val plain = text.toByteArray()
+        val sealed = cipher.encryptBytes(Codec.gzip(plain))
+        val name = Codec.objectName()
+        val file = drive.uploadBytes(name, sealed)
+        return like.copy(
+            name = name, driveId = file.id, offset = offset, length = plain.size.toLong(),
+            storedBytes = sealed.size.toLong(), sha256 = Codec.sha256(plain), createdAt = clock.now,
+        )
+    }
+
     companion object {
         const val OWNER = "owner@example.com"
     }
+}
+
+/** Flips every bit, so nothing a test stores in the secure store is kept in the clear. */
+private object FlipBox : SecretBox {
+    override fun seal(plain: ByteArray) = ByteArray(plain.size) { (plain[it].toInt() xor 0xFF).toByte() }
+    override fun open(sealed: ByteArray) = seal(sealed)
 }
 
 /** PendingIntent has no public constructor, and only its identity matters here. */

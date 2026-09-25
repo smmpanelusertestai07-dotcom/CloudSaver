@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class RecentlyDeletedTest {
     private val clock = FakeClock()
@@ -141,6 +142,76 @@ class RecentlyDeletedTest {
         phone.engine.syncNow()
         assertTrue(phone.remoteIndex()!!.objects.none { it.sessionId == "a" })
         assertTrue(phone.state().eraseQueue.isEmpty())
+    }
+
+    @Test
+    fun aChatRestoredJustBeforeItsThirtiethDayIsKeptWhenTheDailyJobRunsFirst() = runBlocking {
+        // Phone copies are kept, so only an erase could take the chat off the phone.
+        val phone = phone(settings = Settings(onboardingDone = true, phoneChatDays = -1, phoneMediaDays = -1))
+        phone.sessions += session("s", at = clock.now, ref = "agent-s")
+        phone.chat("s", "keep me\n")
+        phone.engine.syncNow()
+        phone.markDeleted("s", clock.now)
+        phone.engine.syncNow()
+        val files = phone.remoteIndex()!!.objects.filter { it.sessionId == "s" }.map { it.name }
+
+        // Restored on day 30 while offline; the daily job runs before the sync that would push it.
+        clock.advance(30 * day)
+        val i = phone.sessions.indexOfFirst { it.id == "s" }
+        phone.sessions[i] = phone.sessions[i].copy(status = SessionStatus.OPEN, deletedAt = null)
+        phone.engine.runMaintenance()
+
+        val index = phone.remoteIndex()!!
+        assertEquals(null, index.sessions.single { it.id == "s" }.deletedAt)
+        assertTrue("its files stay in Drive", files.all { it in phone.drive.objectNames() })
+        assertTrue(phone.homeFile("claude", claudeTranscript("owner/app", "s", "agent-s")).exists())
+        assertTrue(phone.state().tracks.values.any { it.sessionId == "s" })
+        assertTrue(phone.erasedSessions.isEmpty())
+        assertTrue(phone.sessions.any { it.id == "s" })
+    }
+
+    @Test
+    fun removingAnAgentKeepsItsChatsAndMemoryInDrive() = runBlocking {
+        val phone = phone()
+        phone.sessions += session("s", at = clock.now, ref = "agent-s")
+        phone.chat("s", "hello\n")
+        phone.homeFile("claude", ".claude/CLAUDE.md").writeText("House rules.")
+        phone.engine.syncNow()
+        val kinds = phone.remoteIndex()!!.objects.map { it.kind }.toSet()
+        assertEquals(setOf(ObjectKind.CHAT_PIECE, ObjectKind.MEDIA, ObjectKind.MEMORY), kinds)
+
+        // Removing the agent deletes its room and its work folder, as the rooms module does.
+        File(phone.dirs.rooms, "claude").deleteRecursively()
+        phone.dirs.roomWork("claude").deleteRecursively()
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+        clock.advance(2 * Durations.HOUR)
+        phone.engine.syncNow()
+
+        assertEquals(kinds, phone.remoteIndex()!!.objects.map { it.kind }.toSet())
+        assertTrue("like the phone's own clean-up", phone.state().tracks.values.none { it.onPhone })
+    }
+
+    @Test
+    fun memoryAndMediaRemovedOnPurposeLeaveDriveAfterAnHour() = runBlocking {
+        val phone = phone()
+        phone.sessions += session("s", at = clock.now, ref = "agent-s")
+        phone.chat("s", "hello\n")
+        val rule = phone.homeFile("claude", ".claude/rules/old.md").apply { writeText("An old rule.") }
+        phone.homeFile("claude", ".claude/CLAUDE.md").writeText("House rules.")
+        phone.engine.syncNow()
+
+        rule.delete()
+        phone.mediaFile("claude", "owner/app", "s", "shot-s.png").delete()
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+        assertTrue("an hour's grace first", phone.remoteIndex()!!.objects.any { it.path == ".claude/rules/old.md" })
+        clock.advance(2 * Durations.HOUR)
+        phone.engine.syncNow()
+
+        val paths = phone.remoteIndex()!!.objects.map { it.path }
+        assertTrue(paths.none { it == ".claude/rules/old.md" || it.endsWith("shot-s.png") })
+        assertTrue(".claude/CLAUDE.md" in paths)
     }
 
     @Test

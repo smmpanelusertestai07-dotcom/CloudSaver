@@ -32,9 +32,8 @@ internal class Maintenance(
      */
     suspend fun run(run: Run): List<String> {
         val settings = ports.settings.settings.value
-        val book = pass.book(run)
-        cleanPhone(run, settings, book)
-        computer(run, settings, book)
+        cleanPhone(run, settings, pass.book(run))
+        computer(run, settings, pass.book(run))
         run.save()
         if (!ports.network.online()) return emptyList()
         val drive = run.drive()
@@ -45,6 +44,9 @@ internal class Maintenance(
             run.save()
             return emptyList()
         }
+        // An expired lease is taken below: what the other phone did before it went quiet comes in first.
+        pass.catchUp(run, drive, snapshot, pass.book(run))
+        val book = pass.book(run)
         val extras = retention(run, index, settings, book)
         var latest = committer.commit(run, drive, snapshot, CommitMode.HOLDER, extras)
         phoneCopies(run, latest.index ?: index, settings, book)
@@ -114,10 +116,11 @@ internal class Maintenance(
 
     /**
      * The whole computer after [Settings.computerUnusedDays] without agent activity: a 7-day
-     * notice first, then removed only when everything is synced and nothing runs. Only the
-     * rootfs goes; it is rebuilt on the next use.
+     * notice first, then removed only when everything is synced and nothing runs. The computer
+     * module removes it, so it also stops its programs and shows it as not set up; it is set up
+     * again on the next use.
      */
-    private fun computer(run: Run, settings: Settings, book: SessionBook) {
+    private suspend fun computer(run: Run, settings: Settings, book: SessionBook) {
         val days = settings.computerUnusedDays
         val rootfs = ports.dirs.rootfs
         val lastWork = (book.all.map { it.lastActivityAt } + ports.localProjects().map { it.lastActivityAt }).maxOrNull() ?: 0L
@@ -132,9 +135,10 @@ internal class Maintenance(
                 notices.computerNotice(run, days, at)
             }
             run.now >= due && everythingSynced(run) && !ports.roomsRunning() && ports.computerIdle() -> {
-                deleteTree(rootfs)
+                ports.removeComputer()
                 run.state = run.state.copy(computerNoticeDue = null, computerDayBeforeSent = false)
-                notices.computerRemoved(run)
+                // A removal that failed shows on the computer's own card, with what to do.
+                if (!isRealDirectory(rootfs)) notices.computerRemoved(run)
             }
             run.now >= due - Durations.DAY && !run.state.computerDayBeforeSent -> {
                 notices.computerTomorrow(run, due)
@@ -154,7 +158,9 @@ internal class Maintenance(
      */
     private suspend fun retention(run: Run, index: VaultIndex, settings: Settings, book: SessionBook): CommitExtras {
         val now = run.now
-        val erase = Retention.dueForErase(index, now) + run.state.eraseQueue
+        // Restored on this phone but not yet in Drive: the restore goes out first, nothing is erased.
+        val restoredHere = ports.localSessions().filter { it.deletedAt == null }.map { it.id }.toSet()
+        val erase = Retention.dueForErase(index, now) - restoredHere + run.state.eraseQueue
         val inDrive = index.sessions.map { s -> book[s.id]?.takeIf { it.lastActivityAt > s.lastActivityAt } ?: s }
         val keep = Retention.plan(inDrive, run.state.notices, Retention.RULE_KEEP, settings.keepChatsMonths, now)
         val shareFull = Chains.storedBytes(index.objects) >= Limits.gb(settings.driveLimitGb)

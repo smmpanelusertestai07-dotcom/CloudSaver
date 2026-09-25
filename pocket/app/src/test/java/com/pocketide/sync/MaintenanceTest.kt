@@ -148,7 +148,9 @@ class MaintenanceTest {
 
         phone.network.online = true
         phone.engine.syncNow()
+        assertEquals(0, phone.computerRemovals)
         phone.engine.runMaintenance()
+        assertEquals("the computer module removes it, so it stops its programs and says it is not set up", 1, phone.computerRemovals)
         assertFalse(phone.dirs.rootfs.exists())
         assertNull(phone.engine.computerRemovalAt.value)
         assertTrue(phone.notifier.posted.any { it.title == "The computer was removed" })
