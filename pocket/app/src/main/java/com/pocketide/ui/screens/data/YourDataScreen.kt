@@ -361,11 +361,26 @@ private fun ByTypeCard(
             "Encrypted. GitHub gets a Secret only when you send it for builds.",
         )
         HorizontalDivider()
-        TypeRow("Projects", "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here", listOf(Place.GITHUB, Place.PHONE), "GitHub holds the main copy; the phone holds a working copy.")
+        TypeRow(
+            "Projects",
+            "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here",
+            listOf(Place.GITHUB, Place.PHONE),
+            "GitHub holds the main copy; the phone holds a working copy.",
+        )
         HorizontalDivider()
-        TypeRow("Build outputs", sizes?.let { ManageFormat.bytes(it.builds) } ?: pending, listOf(Place.PHONE, Place.GITHUB), "The last 3 per project here; GitHub keeps artifacts for 7 days.")
+        TypeRow(
+            "Build outputs",
+            sizes?.let { ManageFormat.bytes(it.builds) } ?: pending,
+            listOf(Place.PHONE, Place.GITHUB),
+            "The last 3 per project here; GitHub keeps artifacts for 7 days.",
+        )
         HorizontalDivider()
-        TypeRow("The computer", sizes?.let { ManageFormat.bytes(it.computer) } ?: pending, listOf(Place.PHONE), "Rebuildable any time; nothing in it is the only copy.")
+        TypeRow(
+            "The computer",
+            sizes?.let { ManageFormat.bytes(it.computer) } ?: pending,
+            listOf(Place.PHONE),
+            "Rebuildable any time; nothing in it is the only copy.",
+        )
         HorizontalDivider()
         TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. On a new phone you sign in to each agent again.")
     }
@@ -486,7 +501,10 @@ private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
     SectionCard(null) {
         Text("1. Sign in to the new Google account.", style = MaterialTheme.typography.bodyMedium)
         Text("2. The app copies every file of your vault, one at a time, so the phone never needs double space.", style = MaterialTheme.typography.bodyMedium)
-        Text("3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
         ManageText.move(current)?.let { ToneLine(it) }
         ManageText.moveProgress(current)?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
         if (busy && current !is MoveState.Copying) LinearProgressIndicator(Modifier.fillMaxWidth())

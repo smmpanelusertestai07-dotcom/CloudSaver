@@ -67,6 +67,8 @@ data class RepoAddress(val owner: String, val repo: String) {
  * The owner's projects: one private GitHub repository each. The phone keeps a bare clone
  * (made on first open, not all at once); sessions add worktrees to it.
  */
+// The module's one contract, as Sessions is: splitting it would only scatter the callers.
+@Suppress("TooManyFunctions")
 interface Projects {
     /** What is known so far: empty until `vault/projects.json` is read, so a job in a fresh process uses [loaded]. */
     val all: StateFlow<List<Project>>

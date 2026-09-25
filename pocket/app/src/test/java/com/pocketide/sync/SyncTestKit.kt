@@ -413,7 +413,15 @@ fun mockPendingIntent(): android.app.PendingIntent {
     return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, android.app.PendingIntent::class.java) as android.app.PendingIntent
 }
 
-fun session(id: String, projectId: String = "owner/app", agent: String = "claude", at: Long, deletedAt: Long? = null, backUp: Boolean = true, ref: String? = null) =
+fun session(
+    id: String,
+    projectId: String = "owner/app",
+    agent: String = "claude",
+    at: Long,
+    deletedAt: Long? = null,
+    backUp: Boolean = true,
+    ref: String? = null,
+) =
     SessionRecord(
         id = id, agentId = agent, projectId = projectId, title = "Chat $id", branch = "pocket/$agent/$id",
         startedAt = at, lastActivityAt = at, deletedAt = deletedAt, backUp = backUp, deviceId = "phone-a", agentSessionRef = ref,

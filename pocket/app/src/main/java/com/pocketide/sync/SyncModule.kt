@@ -168,7 +168,13 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
         val context = graph.context
         if (context.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted == true) return Plain.BACKGROUND_OFF
         val bucket = context.getSystemService(UsageStatsManager::class.java)?.appStandbyBucket ?: return null
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED) Plain.BACKGROUND_RESTRICTED else null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED
+        ) {
+            Plain.BACKGROUND_RESTRICTED
+        } else {
+            null
+        }
     }
 
     override suspend fun exportSecrets(): ByteArray? = try {

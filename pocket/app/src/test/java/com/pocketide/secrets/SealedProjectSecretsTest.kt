@@ -232,10 +232,13 @@ class SealedProjectSecretsTest {
         val dir = temp.newFolder("broken")
         secrets(dir).set(null, "A", SecretKind.VARIABLE, "x-value".toCharArray())
         val broken = SealedProjectSecrets(
-            store = SecureStore(dir, object : SecretBox {
-                override fun seal(plain: ByteArray) = plain
-                override fun open(sealed: ByteArray): ByteArray = throw javax.crypto.AEADBadTagException()
-            }),
+            store = SecureStore(
+                dir,
+                object : SecretBox {
+                    override fun seal(plain: ByteArray) = plain
+                    override fun open(sealed: ByteArray): ByteArray = throw javax.crypto.AEADBadTagException()
+                },
+            ),
             clock = { now },
             io = Dispatchers.Unconfined,
             pushSecret = { _, _, _ -> },

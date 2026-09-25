@@ -211,6 +211,7 @@ class ScheduledRunTest {
             started = title
             return record("s-new")
         }
+
         /** Sessions this phone knows; null knows every id. */
         var known: Set<String>? = null
         override suspend fun session(sessionId: String) = record(sessionId).takeIf { known?.contains(sessionId) ?: true }
