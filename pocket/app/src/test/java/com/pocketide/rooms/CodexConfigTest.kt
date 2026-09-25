@@ -41,7 +41,7 @@ class CodexConfigTest {
         for (text in listOf("[mcp_servers.evil\ncommand = \"sh\"\n", "just words\n", "x = \"\"\"never closed\n[mcp_servers.evil]\n", "a..b = 1\n")) {
             assertEquals(text, null, ConfigFiles.codexConfig(text, servers, notify))
         }
-        assertTrue(TomlDocument("﻿a = 1\n").understood())
+        assertTrue(TomlDocument("\uFEFFa = 1\n").understood())
     }
 
     @Test fun `a fresh config has PocketIDE's keys and its MCP server`() {
