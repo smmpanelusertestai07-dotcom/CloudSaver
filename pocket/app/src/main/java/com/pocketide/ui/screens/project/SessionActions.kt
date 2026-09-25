@@ -180,10 +180,13 @@ private fun ChangeSummary(changes: Result<SessionChanges>?) {
 
 private const val SUMMARY_FILES = 6
 
-/** What a session changed compared with main: its commits and files, with lines added and removed. */
+/**
+ * What a session changed compared with main: its pull request and checks on GitHub ([onOpen]
+ * opens them there), then its commits and files, with lines added and removed.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
+fun ChangesSheet(session: SessionRecord, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
     val graph = rememberGraph()
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
         value = attempt { graph.sessions.changes(session.id) }
@@ -198,6 +201,9 @@ fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.size(12.dp))
+            SectionLabel("On GitHub")
+            SessionPullRows(session, onOpen)
             Spacer(Modifier.size(12.dp))
             val result = changes
             when {

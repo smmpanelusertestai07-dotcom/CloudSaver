@@ -73,6 +73,7 @@ import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
 import com.pocketide.ui.screens.project.MediaStrip
 import com.pocketide.ui.screens.project.SectionLabel
+import com.pocketide.ui.screens.project.SessionPullRows
 import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.agentName
@@ -276,7 +277,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (session != null) {
-                item(key = "details") { SessionDetails(session, agentLabel, backups[session.id]) }
+                item(key = "details") { SessionDetails(session, agentLabel, backups[session.id], onOpen = nav::openExternal) }
                 item(key = "media") { MediaStrip(sessionId) }
             }
             item(key = "label") {
@@ -306,7 +307,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
 }
 
 @Composable
-private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: SessionBackup?) {
+private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: SessionBackup?, onOpen: (String) -> Unit) {
     val (status, _) = sessionStatusLabel(session.status, running = false)
     SectionCard(title = "Details") {
         InfoRow("Agent", agentLabel)
@@ -322,6 +323,7 @@ private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: S
         }
         InfoRow("Size", WorkFormat.bytes(sessionBytes(session)))
         InfoRow("Backup", backupState(session, backup).first)
+        SessionPullRows(session, onOpen)
     }
 }
 
