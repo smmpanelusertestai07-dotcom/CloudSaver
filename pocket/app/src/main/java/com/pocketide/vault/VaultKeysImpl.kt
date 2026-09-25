@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.SecureRandom
@@ -26,6 +27,10 @@ import java.security.SecureRandom
  * first and then saved step by step, in an order where D + G in the stores always rebuild a key
  * that opens the key check and, through the history, every older key. Losing the phone at any
  * moment therefore never loses data, and a restart resumes the change where it stopped.
+ *
+ * Drive's key check says whose vault a Google account holds. A phone writes key files only into
+ * a vault its own keys open, so a phone with an older key never overwrites a newer vault; new
+ * vaults and new keys are numbered above every half still around, so older phones take them.
  */
 internal class VaultKeysImpl(
     private val phone: PhoneKeys,
@@ -65,28 +70,38 @@ internal class VaultKeysImpl(
         override fun decryptBytes(encrypted: ByteArray) = Age.decryptBytes(allIdentities(), encrypted)
     }
 
-    /** First phone: makes the key and saves both halves. A Google account that already has a vault is restored instead, never replaced. */
     override suspend fun setUp() {
         mutex.withLock {
-            val pending = phoneState.change
-            when {
-                pending != null -> apply(pending)
-                keys.isNotEmpty() -> Unit
-                remote.driveHasVault() -> restoreLocked(null)
-                else -> start(changeTo(ChangeKind.NEW, generation = 1, AgeIdentity.generate(random)))
+            reloadIfEmpty()
+            resumePending()
+            if (keys.isNotEmpty()) return@withLock
+            when (val found = restoreLocked(null)) {
+                KeyState.None -> newVault()
+                KeyState.NeedsPassword -> throw VaultException(VaultText.PASSWORD_NEEDED)
+                is KeyState.Lost -> throw VaultException(found.why)
+                KeyState.Ready, KeyState.OnlyOnPhone -> Unit
             }
         }
     }
 
-    override suspend fun restore(extraPassword: CharArray?): KeyState = mutex.withLock {
-        val pending = phoneState.change
-        // A vault this phone began making is finished, not looked for elsewhere.
-        if (pending?.kind == ChangeKind.NEW) {
-            apply(pending)
-            settle()
-        } else {
-            restoreLocked(extraPassword)
+    override suspend fun startOver() {
+        mutex.withLock {
+            reloadIfEmpty()
+            if (keys.isNotEmpty()) return@withLock
+            if (login() == null) throw VaultException(VaultText.CONNECT_GITHUB_FIRST)
+            // Replaces any new vault this phone had begun: the owner asked for a fresh start.
+            newVault()
         }
+    }
+
+    override suspend fun restore(extraPassword: CharArray?): KeyState = mutex.withLock {
+        reloadIfEmpty()
+        // A vault this phone began making is finished, not looked for elsewhere.
+        if (phoneState.change?.kind == ChangeKind.NEW) {
+            resumePending()
+            if (keys.isNotEmpty()) return@withLock settle()
+        }
+        restoreLocked(extraPassword)
     }
 
     override suspend fun rekey(reason: RekeyReason) {
@@ -94,6 +109,7 @@ internal class VaultKeysImpl(
     }
 
     override suspend fun checkKeyring(): KeyringCheck = mutex.withLock {
+        reloadIfEmpty()
         val login = login()
         if (login == null) {
             gitHubUnavailable()
@@ -113,14 +129,17 @@ internal class VaultKeysImpl(
         mutex.withLock {
             if (keys.isEmpty()) throw VaultException(VaultText.NO_KEY)
             val login = login() ?: throw VaultException(VaultText.CONNECT_GITHUB_FIRST)
-            phoneState.change?.let { apply(it) }
+            resumePending()
             val repo = remote.keyring(login)
             if (repo != null && !isSafe(repo, remote.otherCollaborators(login))) throw VaultException(VaultText.MAKE_PRIVATE_FIRST)
+            val behind = (readHalfDOrNull()?.generation ?: 0) > generation()
+            if (behind && anotherKeyOwnsDrive()) throw VaultException(VaultText.ANOTHER_PHONE)
             val record = password?.let { withContext(cpu) { HalfPassword.derive(it, passwordCost, random) }.toRecord() }
             savePhone(phoneState.copy(password = record, passwordOn = record != null))
             onPasswordChanged(record != null)
-            // Fresh halves: the unwrapped Half G stays in the keyring's git history, and it must not pair with the new Half D.
-            start(resplit(keys.first()))
+            // Fresh halves: the unwrapped Half G stays in the keyring's git history, and it must not pair with the new
+            // Half D. Over a newer key a lost phone left half saved, fresh halves of this key would be refused.
+            if (behind) rekeyLocked(RekeyReason.OWNER_ASKED) else start(resplit(keys.first()))
         }
     }
 
@@ -136,11 +155,25 @@ internal class VaultKeysImpl(
             val check = remote.readDrive(VaultKeyFiles.KEY_CHECK) ?: throw VaultException(VaultText.NO_VAULT_TO_OPEN)
             val current = copied.firstOrNull { opensKeyCheck(check, it.identity) }
                 ?: throw VaultException(VaultText.COPY_DOES_NOT_OPEN)
-            val generation = current.generation ?: readHalfDOrNull()?.generation ?: 1
+            // The copy's own number, unless Half D in Drive shows the vault got further since.
+            val generation = maxOf(current.generation ?: 1, readHalfDOrNull()?.generation ?: 1)
             val others = copied.filter { it !== current }.map { VaultKey(it.generation ?: 0, it.identity) }
-            saveKeys(mergeKeys(listOf(VaultKey(generation, current.identity)) + readHistory(current.identity) + others + keys))
+            saveKeys(withCurrent(VaultKey(generation, current.identity), readHistory(current.identity) + others + keys))
+            // A new vault this phone had begun instead must never replace the one just opened.
+            if (phoneState.change != null) savePhone(phoneState.copy(change = null))
             settle()
             checkAfterImport()
+        }
+    }
+
+    override suspend fun forget() {
+        mutex.withLock {
+            keys = emptyList()
+            phoneState = PhoneState()
+            mutableNotice.value = null
+            mutableState.value = KeyState.None
+            onPasswordChanged(false)
+            phone.clear()
         }
     }
 
@@ -148,28 +181,51 @@ internal class VaultKeysImpl(
 
     override fun generation(): Int = keys.firstOrNull()?.generation ?: 0
 
+    /** A Keystore that failed for a moment at start leaves the phone looking empty: look again before acting on that. */
+    private suspend fun reloadIfEmpty() {
+        if (keys.isNotEmpty() || phoneState.change != null) return
+        val loaded = phone.reload()
+        if (loaded.keys.isEmpty() && loaded.state.change == null) return
+        keys = loaded.keys
+        phoneState = loaded.state
+        settle()
+    }
+
+    /** Finishes a change a restart or a failure left pending; one another phone's key overtook is dropped. */
+    private suspend fun resumePending() {
+        phoneState.change?.let { apply(it) }
+    }
+
     private suspend fun start(change: KeyChange) {
         savePhone(phoneState.copy(change = change))
-        apply(change)
+        if (!apply(change)) throw VaultException(VaultText.ANOTHER_PHONE)
     }
 
     /**
      * Saves [change]. Each step can run again safely, so an interrupted change resumes from the top.
      * A new key replaces the phone's key even when its Half G has to wait (keyring public, shared,
-     * or GitHub gone): the old key may be exposed, so new data must not depend on it.
+     * or GitHub gone): the old key may be exposed, so new data must not depend on it. Returns false,
+     * with the change dropped, when another phone's key has won in the meantime.
      */
-    private suspend fun apply(change: KeyChange) {
+    private suspend fun apply(change: KeyChange): Boolean {
         val identity = AgeIdentity.parse(change.ageSecretKey)
         val newKey = change.kind != ChangeKind.RESPLIT
         val previousKey = keys.firstOrNull { it.generation < change.generation }
-        // 1. The key check and history open with the new key and the old one before any half points at the new key.
-        if (newKey) writeKeyFiles(change.generation, listOfNotNull(identity.recipient, previousKey?.identity?.recipient))
-        // 2. Half D of the new split, keeping the halves the Half G in GitHub may still pair with.
         val current = readHalfDOrNull()
-        if (current != null && supersedes(current, change)) {
+        val check = readDriveOrNull(VaultKeyFiles.KEY_CHECK)
+        // Another phone's newer key wins, and its key check and history are left as they are.
+        val overtaken = current != null && supersedes(current, change)
+        if (overtaken || (change.kind != ChangeKind.NEW && check != null && opensWithNone(check, identity))) {
             savePhone(phoneState.copy(change = null))
-            throw VaultException(VaultText.ANOTHER_PHONE)
+            return false
         }
+        // 1. The key check and history open with the new key and the old one before any half points at the new key.
+        if (newKey) {
+            writeKeyFiles(change.generation, listOfNotNull(identity.recipient, previousKey?.identity?.recipient))
+        } else {
+            ensureKeyFiles(VaultKey(change.generation, identity), check)
+        }
+        // 2. Half D of the new split, keeping the halves the Half G in GitHub may still pair with.
         val floor = if (newKey) previousKey?.generation else change.generation
         val kept = floor?.let { f -> current?.entries()?.filter { it.generation >= f && it.half != change.halfD }?.distinct() }
         remote.writeHalfD(HalfDFile(generation = change.generation, half = change.halfD, previous = kept?.ifEmpty { null }))
@@ -179,7 +235,7 @@ internal class VaultKeysImpl(
         val saved = publishHalfG(change.generation, KeySplit.halfG(secret, halfD))
         KeySplit.wipe(secret, halfD)
         // 4. The phone switches to the new key.
-        if (newKey) saveKeys(mergeKeys(listOf(VaultKey(change.generation, identity)) + keys))
+        if (newKey) saveKeys(withCurrent(VaultKey(change.generation, identity), keys))
         // 5. Old halves, and the old key's access to the check and history, go once nothing needs them.
         val finished = saved || newKey
         if (finished) {
@@ -193,6 +249,7 @@ internal class VaultKeysImpl(
             ),
         )
         settle()
+        return true
     }
 
     /** Drive already holds a newer key than [change], or a different key of the same generation. */
@@ -205,6 +262,14 @@ internal class VaultKeysImpl(
         val older = keys.filter { it.generation < generation }.map { StoredKey(it.generation, it.identity.encoded()) }
         val history = AppJson.encodeToString(STORED_KEYS, older).toByteArray(Charsets.UTF_8)
         remote.writeDrive(VaultKeyFiles.KEY_HISTORY, Age.encryptBytes(recipients, history, random))
+    }
+
+    /** Writes the key check and history again unless both open with [key] (a Drive folder emptied, or a damaged file). */
+    private suspend fun ensureKeyFiles(key: VaultKey, check: ByteArray?) {
+        val history = readDriveOrNull(VaultKeyFiles.KEY_HISTORY)
+        val fine = check != null && opensKeyCheck(check, key.identity) && history != null && decodeHistory(history, key.identity) != null
+        if (!fine) writeKeyFiles(key.generation, listOf(key.identity.recipient))
+        savePhone(phoneState.copy(checkedAt = clock.now()))
     }
 
     /**
@@ -243,8 +308,22 @@ internal class VaultKeysImpl(
         }
     }
 
+    /**
+     * Makes the private keyring. GitHub's own sentence for a failure here (a name already taken,
+     * a missing permission) would mislead, since the owner chose neither: this one names the fix.
+     */
     private suspend fun createKeyring(login: String): RepoInfo {
-        val repo = remote.createKeyring()
+        val repo = try {
+            remote.createKeyring()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: NotConnectedException) {
+            throw e
+        } catch (e: IOException) {
+            throw e
+        } catch (e: Exception) {
+            throw VaultException(VaultText.KEYRING_NOT_MADE, e)
+        }
         savePhone(phoneState.copy(actionsOff = disableActions(login)))
         return repo
     }
@@ -275,9 +354,12 @@ internal class VaultKeysImpl(
                 return unavailable(VaultText.CONNECT_GITHUB_TO_RESTORE)
             } ?: return unavailable(VaultText.GITHUB_HALF_MISSING)
             if (halfGFile.generation <= generation()) return settle()
+            // Checked before any password is asked for: a half with no partner in Drive opens nothing.
+            val candidates = halfDFile.entries().filter { it.generation == halfGFile.generation }
+            if (candidates.isEmpty()) return unavailable(VaultText.HALVES_APART)
             val opened = openHalfG(halfGFile, password) ?: return askForPassword()
             try {
-                return rebuild(halfDFile, halfGFile, opened)
+                return rebuild(candidates, halfGFile, opened)
             } finally {
                 opened.half.fill(0)
             }
@@ -287,19 +369,17 @@ internal class VaultKeysImpl(
     }
 
     /** Joins Half G with each Half D of its generation; the one that opens the key check is the key. */
-    private suspend fun rebuild(halfDFile: HalfDFile, halfGFile: HalfGFile, halfG: OpenedHalf): KeyState {
-        val candidates = halfDFile.entries().filter { it.generation == halfGFile.generation }
-        if (candidates.isEmpty()) return unavailable(VaultText.HALVES_APART)
+    private suspend fun rebuild(candidates: List<HalfEntry>, halfGFile: HalfGFile, halfG: OpenedHalf): KeyState {
         val check = remote.readDrive(VaultKeyFiles.KEY_CHECK) ?: return unavailable(VaultText.CHECK_MISSING)
         val identity = candidates.firstNotNullOfOrNull { joinChecked(it, halfG.half, check) }
             ?: return unavailable(VaultText.HALVES_WRONG)
-        saveKeys(mergeKeys(listOf(VaultKey(halfGFile.generation, identity)) + readHistory(identity) + keys))
+        saveKeys(withCurrent(VaultKey(halfGFile.generation, identity), readHistory(identity) + keys))
         val passwordOn = halfGFile.wrapped != null
         savePhone(
             phoneState.copy(
                 savedGeneration = halfGFile.generation,
-                // A change this phone left for an older key can never be saved now.
-                change = phoneState.change?.takeIf { it.generation >= halfGFile.generation },
+                // Only this phone's own change to exactly this key can still finish; any other is stale now.
+                change = phoneState.change?.takeIf { it.generation == halfGFile.generation && it.ageSecretKey == identity.encoded() },
                 password = if (passwordOn) halfG.passwordKey?.toRecord() ?: phoneState.password else null,
                 passwordOn = passwordOn,
             ),
@@ -344,9 +424,23 @@ internal class VaultKeysImpl(
         false
     }
 
+    /** True for a well-formed key file that neither this phone's keys nor [extra] open: another key's vault. */
+    private fun opensWithNone(file: ByteArray, extra: AgeIdentity? = null): Boolean = try {
+        Age.decryptBytes(keys.map { it.identity } + listOfNotNull(extra), file)
+        false
+    } catch (e: AgeNoMatchException) {
+        true
+    } catch (e: AgeException) {
+        false
+    }
+
     /** Older keys from Drive. If the history cannot be read the current key still works, and the owner is told. */
     private suspend fun readHistory(identity: AgeIdentity): List<VaultKey> {
-        val sealed = remote.readDrive(VaultKeyFiles.KEY_HISTORY) ?: return emptyList()
+        val sealed = try {
+            remote.readDrive(VaultKeyFiles.KEY_HISTORY)
+        } catch (e: DamagedKeyFile) {
+            null.also { mutableNotice.value = VaultText.HISTORY_UNREADABLE }
+        } ?: return emptyList()
         return decodeHistory(sealed, identity) ?: emptyList<VaultKey>().also { mutableNotice.value = VaultText.HISTORY_UNREADABLE }
     }
 
@@ -361,14 +455,18 @@ internal class VaultKeysImpl(
 
     private suspend fun rekeyLocked(reason: RekeyReason) {
         if (keys.isEmpty()) throw VaultException(VaultText.NO_KEY)
-        phoneState.change?.let { pending ->
-            apply(pending)
-            if (pending.kind == ChangeKind.REKEY) return
-        }
-        val drive = readHalfDOrNull()
-        if (drive != null && drive.generation > generation()) throw VaultException(VaultText.ANOTHER_PHONE)
-        start(changeTo(ChangeKind.REKEY, generation() + 1, AgeIdentity.generate(random), reason))
+        val pending = phoneState.change
+        resumePending()
+        // A new key that was already on its way is the one asked for.
+        if (pending?.kind == ChangeKind.REKEY && generation() == pending.generation) return
+        val drive = readHalfDOrNull()?.generation ?: 0
+        if (drive > generation() && anotherKeyOwnsDrive()) throw VaultException(VaultText.ANOTHER_PHONE)
+        // Numbered above a newer key another phone left half saved, so this one is never taken for an old change.
+        start(changeTo(ChangeKind.REKEY, maxOf(generation(), drive) + 1, AgeIdentity.generate(random), reason))
     }
+
+    /** Drive's key check opens with none of this phone's keys: another phone's newer key, which this phone takes at its next sync. */
+    private suspend fun anotherKeyOwnsDrive(): Boolean = readDriveOrNull(VaultKeyFiles.KEY_CHECK)?.let { opensWithNone(it) } == true
 
     private suspend fun checkLocked(login: String): KeyringCheck {
         mutableNotice.value = null
@@ -380,13 +478,13 @@ internal class VaultKeysImpl(
         val others = remote.otherCollaborators(login)
         val actionsOff = if (found == null) phoneState.actionsOff else keepActionsOff(login)
         val result = KeyringCheck(exists = true, isPrivate = repo.isPrivate, collaborators = others, actionsDisabled = actionsOff)
-        val pending = phoneState.change
-        if (pending != null) apply(pending)
-        val active = keys.firstOrNull() ?: return result
+        resumePending()
+        if (keys.isEmpty()) return result
         when {
             !isSafe(repo, others) -> protect(login, repo, others)
-            found == null && pending == null -> remakeHalves(active)
-            else -> reconcile(login)
+            // Still waiting (for the extra password): the change is tried again at the next check.
+            phoneState.change != null -> settle()
+            else -> reconcile(login, remade = found == null)
         }
         return result
     }
@@ -398,48 +496,68 @@ internal class VaultKeysImpl(
         return off
     }
 
-    /** The keyring is public or shared: a Half G of the key in use there must stop being useful. */
+    /** The keyring is public or shared: a Half G that still pairs with Half D in Drive must stop being useful. */
     private suspend fun protect(login: String, repo: RepoInfo, others: List<String>) {
         val exposed = readHalfGOrNull(login)?.generation ?: 0
         // This phone is behind another phone: take the newer key first, then change it.
         if (exposed > generation()) restoreLocked(null)
+        mutableNotice.value = unsafeNotice(repo, others)
+        // Still behind (the extra password is needed): the phone that holds the newer key changes it.
         if (exposed > generation()) return
-        if (exposed == generation()) {
+        val pairs = exposed == generation() && readHalfDOrNull()?.entries()?.any { it.generation == exposed } == true
+        if (pairs) {
             rekeyLocked(if (!repo.isPrivate) RekeyReason.KEYRING_PUBLIC else RekeyReason.KEYRING_COLLABORATOR)
         } else if (phoneState.savedGeneration >= generation()) {
-            // The key's Half G is not in the keyring, so only this phone can rebuild the key.
-            savePhone(phoneState.copy(savedGeneration = exposed))
+            // The key's two halves are not both saved, so only this phone can rebuild it.
+            savePhone(phoneState.copy(savedGeneration = generation() - 1))
         }
-        mutableNotice.value = unsafeNotice(repo, others)
         settle()
     }
 
-    /** The keyring was missing and has been made again: save fresh halves of the same key. */
-    private suspend fun remakeHalves(active: VaultKey) {
-        start(resplit(active))
-        if (mutableState.value == KeyState.Ready) mutableNotice.value = VaultText.KEYRING_REMADE
-    }
-
-    /** The keyring is safe: make sure Half D + Half G rebuild this phone's key, and tidy leftovers. */
-    private suspend fun reconcile(login: String) {
+    /**
+     * The keyring is safe: make sure Half D + Half G rebuild this phone's key. A newer key from
+     * another phone is taken; missing or stale halves are replaced, but only in a Drive vault that
+     * this phone's keys open.
+     */
+    private suspend fun reconcile(login: String, remade: Boolean) {
         val active = keys.first()
+        val wasSaved = phoneState.savedGeneration >= active.generation
         val halfG = readHalfGOrNull(login)
         val halfD = readHalfDOrNull()
-        if (maxOf(halfG?.generation ?: 0, halfD?.generation ?: 0) > active.generation) {
+        val driveAhead = (halfD?.generation ?: 0) > active.generation
+        if (driveAhead || (halfG?.generation ?: 0) > active.generation) {
             restoreLocked(null)
-            return
+            if (generation() > active.generation || mutableState.value == KeyState.NeedsPassword) return
         }
-        if (halfG == null || halfD == null || halfG.generation < active.generation || !pairHolds(active, halfD, halfG)) {
-            start(resplit(active))
-        } else {
+        // Another phone's newer key still being saved is left alone; Drive is tidied only at this key's generation.
+        if (halfG != null && halfD != null && halfG.generation == active.generation && pairHolds(active, halfD, halfG, tidy = !driveAhead)) {
+            if (clock.now() - phoneState.checkedAt >= DAY_MS) ensureKeyFiles(active, readDriveOrNull(VaultKeyFiles.KEY_CHECK))
             if (phoneState.savedGeneration != active.generation) savePhone(phoneState.copy(savedGeneration = active.generation))
             settle()
+            return
         }
-        verifyDriveDaily(active)
+        val check = readDriveOrNull(VaultKeyFiles.KEY_CHECK)
+        if (check != null && opensWithNone(check)) {
+            // Another key owns this vault: another phone's newer key on its way (this phone takes it once
+            // saved), or a vault made after this one was deleted, which this phone's key is no longer part of.
+            if (!driveAhead) {
+                mutableNotice.value = VaultText.ANOTHER_VAULT
+                if (phoneState.savedGeneration >= active.generation) savePhone(phoneState.copy(savedGeneration = active.generation - 1))
+            }
+            settle()
+            return
+        }
+        if (driveAhead) {
+            // A newer key another phone left half saved blocks fresh halves of this one: a new key is saved instead.
+            rekeyLocked(RekeyReason.KEYRING_DELETED)
+            return
+        }
+        start(resplit(active))
+        if (remade && wasSaved && mutableState.value == KeyState.Ready) mutableNotice.value = VaultText.KEYRING_REMADE
     }
 
-    /** True when Drive's Half D and this Half G rebuild [active]; drops halves Drive no longer needs. */
-    private suspend fun pairHolds(active: VaultKey, halfD: HalfDFile, halfG: HalfGFile): Boolean {
+    /** True when Drive's Half D and this Half G rebuild [active]; with [tidy], drops halves Drive no longer needs. */
+    private suspend fun pairHolds(active: VaultKey, halfD: HalfDFile, halfG: HalfGFile, tidy: Boolean): Boolean {
         val g = when (val wrapped = halfG.wrapped) {
             null -> halfG.half?.let(::decodeHalf) ?: return false
             else -> {
@@ -456,7 +574,8 @@ internal class VaultKeysImpl(
         val secret = active.identity.bytes()
         try {
             val match = halfD.entries().firstOrNull { it.generation == active.generation && rebuilds(it, g, secret) } ?: return false
-            if (halfD.previous != null || halfD.half != match.half) {
+            if (halfG.wrapped == null) passwordRemovedElsewhere()
+            if (tidy && (halfD.previous != null || halfD.half != match.half)) {
                 remote.writeHalfD(HalfDFile(generation = active.generation, half = match.half))
             }
             return true
@@ -479,21 +598,17 @@ internal class VaultKeysImpl(
         return phoneState.savedGeneration >= active.generation
     }
 
+    /** The keyring holds this key's Half G in the clear, so the extra password was removed: this phone must not wrap with it again. */
+    private suspend fun passwordRemovedElsewhere() {
+        if (!phoneState.passwordOn && phoneState.password == null) return
+        savePhone(phoneState.copy(passwordOn = false, password = null))
+        onPasswordChanged(false)
+    }
+
     private fun rebuilds(entry: HalfEntry, halfG: ByteArray, secret: ByteArray): Boolean {
         val halfD = decodeHalf(entry.half) ?: return false
         val joined = KeySplit.join(halfD, halfG)
         return org.bouncycastle.util.Arrays.constantTimeAreEqual(joined, secret).also { KeySplit.wipe(halfD, joined) }
-    }
-
-    /** Once a day: the key check and history in Drive must open with the key in use; rewritten when not. */
-    private suspend fun verifyDriveDaily(active: VaultKey) {
-        if (clock.now() - phoneState.checkedAt < DAY_MS) return
-        val check = remote.readDrive(VaultKeyFiles.KEY_CHECK)
-        val history = remote.readDrive(VaultKeyFiles.KEY_HISTORY)
-        val fine = check != null && opensKeyCheck(check, active.identity) &&
-            history != null && decodeHistory(history, active.identity) != null
-        if (!fine) writeKeyFiles(active.generation, listOf(active.identity.recipient))
-        savePhone(phoneState.copy(checkedAt = clock.now()))
     }
 
     /** After an import the halves are saved again when GitHub is there; otherwise the next keyring check does it. */
@@ -509,6 +624,20 @@ internal class VaultKeysImpl(
             // The key is imported and in use; saving its halves is retried by the next keyring check.
             settle()
         }
+    }
+
+    /**
+     * A new vault for this Google account. The keyring is made first, so a refusal from GitHub
+     * leaves Drive untouched. The key is numbered above every half still around (a vault deleted
+     * from Drive leaves its Half G in GitHub), so a phone holding an older key takes the new one
+     * instead of overwriting it.
+     */
+    private suspend fun newVault() {
+        val login = login()
+        if (login != null) remote.keyring(login) ?: createKeyring(login)
+        val drive = readHalfDOrNull()?.generation ?: 0
+        val gitHub = login?.let { readHalfGOrNull(it)?.generation } ?: 0
+        start(changeTo(ChangeKind.NEW, maxOf(drive, gitHub) + 1, AgeIdentity.generate(random)))
     }
 
     private fun gitHubUnavailable() {
@@ -539,6 +668,13 @@ internal class VaultKeysImpl(
 
     private suspend fun readHalfGOrNull(login: String): HalfGFile? = try {
         remote.readHalfG(login)
+    } catch (e: DamagedKeyFile) {
+        null
+    }
+
+    /** A key file from Drive, or null when it is missing or too damaged to use. */
+    private suspend fun readDriveOrNull(name: String): ByteArray? = try {
+        remote.readDrive(name)
     } catch (e: DamagedKeyFile) {
         null
     }
@@ -580,9 +716,11 @@ internal class VaultKeysImpl(
         fun unsafeNotice(repo: RepoInfo, others: List<String>) =
             if (!repo.isPrivate) VaultText.KEYRING_PUBLIC else VaultText.keyringShared(others)
 
-        /** One list per key, newest first; the first of equal generations wins (the one just rebuilt or made). */
-        fun mergeKeys(candidates: List<VaultKey>): List<VaultKey> =
-            candidates.distinctBy { it.identity }.sortedByDescending { it.generation }
+        /** [current] first, then every other key once, each numbered below it, so the list order is the key order. */
+        fun withCurrent(current: VaultKey, others: List<VaultKey>): List<VaultKey> =
+            (listOf(current) + others.map { if (it.generation < current.generation) it else VaultKey(current.generation - 1, it.identity) })
+                .distinctBy { it.identity }
+                .sortedByDescending { it.generation }
 
         fun PasswordRecord.toKey(): PasswordKey? {
             val saltBytes = decodeBase64(salt) ?: return null

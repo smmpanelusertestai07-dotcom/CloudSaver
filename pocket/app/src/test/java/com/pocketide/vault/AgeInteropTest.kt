@@ -2,6 +2,7 @@ package com.pocketide.vault
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -22,8 +23,17 @@ class AgeInteropTest {
     @Test
     fun `files made by the reference age tool decrypt to the fixture plaintext`() {
         val files = manifest.keys.filter { it.startsWith("ref-") }
-        assertEquals(5, files.size)
+        assertEquals(6, files.size)
         files.forEach(::assertOpens)
+    }
+
+    @Test
+    fun `an ssh-ed25519 stanza from the reference tool is skipped, not taken for damage`() {
+        val header = VaultFixtures.bytes("age/ref-mixed-100.age").toString(Charsets.ISO_8859_1).substringBefore("\n---")
+        assertEquals(listOf("X25519", "X25519", "ssh-ed25519"), header.lines().filter { it.startsWith("-> ") }.map { it.split(' ')[1] })
+        assertThrows(AgeNoMatchException::class.java) {
+            Age.decryptBytes(listOf(AgeIdentity.generate(java.security.SecureRandom())), VaultFixtures.bytes("age/ref-mixed-100.age"))
+        }
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.pocketide.github.RepoInfo
 import com.pocketide.google.DriveStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
@@ -24,6 +25,9 @@ internal class DamagedKeyFile(message: String) : VaultException(message)
 /**
  * The phone's copy, sealed with the Keystore by [SecureStore]: "vault.keys" (a JSON list of
  * {generation, ageSecretKey}, newest first) and "vault.state" (this phone's progress).
+ *
+ * Writes are not cancellable: once one starts it completes, so the caller's copy in memory can
+ * always be updated to match what is stored.
  */
 internal class PhoneKeys(private val store: SecureStore, private val io: CoroutineDispatcher = Dispatchers.IO) {
     class Loaded(val keys: List<VaultKey>, val state: PhoneState)
@@ -31,13 +35,21 @@ internal class PhoneKeys(private val store: SecureStore, private val io: Corouti
     /** Read once when the vault starts, so its state reflects the phone from the first moment. */
     fun load(): Loaded = Loaded(loadKeys(), loadState())
 
-    suspend fun saveKeys(keys: List<VaultKey>) = withContext(io) {
+    /** Reads again, for a Keystore that could not open the files a moment ago. */
+    suspend fun reload(): Loaded = withContext(io) { load() }
+
+    suspend fun saveKeys(keys: List<VaultKey>) = withContext(io + NonCancellable) {
         val stored = keys.map { StoredKey(it.generation, it.identity.encoded()) }
         store.putString(KEYS, AppJson.encodeToString(STORED_KEYS, stored))
     }
 
-    suspend fun saveState(state: PhoneState) = withContext(io) {
+    suspend fun saveState(state: PhoneState) = withContext(io + NonCancellable) {
         store.putString(STATE, AppJson.encodeToString(PhoneState.serializer(), state))
+    }
+
+    suspend fun clear() = withContext(io + NonCancellable) {
+        store.delete(KEYS)
+        store.delete(STATE)
     }
 
     private fun loadKeys(): List<VaultKey> {
@@ -70,13 +82,11 @@ internal class RemoteKeys(private val drive: DriveStore, private val gitHub: Git
 
     suspend fun has(name: String): Boolean = drive.find(name) != null
 
-    /** A vault exists in this Google account when either key file is there. */
-    suspend fun driveHasVault(): Boolean = has(VaultKeyFiles.HALF_D) || has(VaultKeyFiles.KEY_CHECK)
-
     suspend fun readDrive(name: String, damaged: String = VaultText.DRIVE_FILE_DAMAGED): ByteArray? {
         val file = drive.find(name) ?: return null
         if (file.size > MAX_KEY_FILE_BYTES) throw DamagedKeyFile(damaged)
-        val sink = ByteArrayOutputStream()
+        // The listed size can be stale by the time the content arrives, so the download is capped too.
+        val sink = CappedSink(MAX_KEY_FILE_BYTES.toInt(), damaged)
         drive.download(file.id, sink)
         return sink.toByteArray()
     }
@@ -88,7 +98,7 @@ internal class RemoteKeys(private val drive: DriveStore, private val gitHub: Git
     suspend fun readHalfD(): HalfDFile? {
         val bytes = readDrive(VaultKeyFiles.HALF_D, VaultText.DRIVE_HALF_DAMAGED) ?: return null
         val file = decode(HalfDFile.serializer(), bytes, VaultText.DRIVE_HALF_DAMAGED)
-        if (file.entries().any { !isHalf(it.half) }) throw DamagedKeyFile(VaultText.DRIVE_HALF_DAMAGED)
+        if (file.entries().any { !isHalf(it.half) || !isGeneration(it.generation) }) throw DamagedKeyFile(VaultText.DRIVE_HALF_DAMAGED)
         return file
     }
 
@@ -107,7 +117,7 @@ internal class RemoteKeys(private val drive: DriveStore, private val gitHub: Git
     suspend fun readHalfG(login: String): HalfGFile? {
         val found = gitHub.readFile(login, VaultKeyFiles.KEYRING_REPO, VaultKeyFiles.HALF_G_PATH) ?: return null
         val file = decode(HalfGFile.serializer(), found.bytes, VaultText.GITHUB_HALF_DAMAGED)
-        if ((file.half == null) == (file.wrapped == null) || file.half?.let(::isHalf) == false) {
+        if ((file.half == null) == (file.wrapped == null) || file.half?.let(::isHalf) == false || !isGeneration(file.generation)) {
             throw DamagedKeyFile(VaultText.GITHUB_HALF_DAMAGED)
         }
         return file
@@ -168,3 +178,22 @@ internal fun decodeBase64(text: String): ByteArray? = try {
 internal fun decodeHalf(text: String): ByteArray? = decodeBase64(text)?.takeIf { it.size == KeySplit.KEY_SIZE }
 
 private fun isHalf(text: String) = decodeHalf(text)?.also { it.fill(0) } != null
+
+internal fun isGeneration(generation: Int) = generation in 1..MAX_GENERATION
+
+/** Collects a download, and stops it as damaged once it grows past [limit] bytes. */
+private class CappedSink(private val limit: Int, private val damaged: String) : ByteArrayOutputStream() {
+    override fun write(b: Int) {
+        ensureRoom(1)
+        super.write(b)
+    }
+
+    override fun write(b: ByteArray, off: Int, len: Int) {
+        ensureRoom(len)
+        super.write(b, off, len)
+    }
+
+    private fun ensureRoom(more: Int) {
+        if (more > limit - size()) throw DamagedKeyFile(damaged)
+    }
+}

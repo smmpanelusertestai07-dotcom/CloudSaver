@@ -8,9 +8,11 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.InflaterInputStream
 
 /**
- * The official age test vectors (C2SP CCTV, "age/testdata", 0BSD/CC0) that use X25519: every
- * success, header, MAC, no-match and payload case must come out exactly as the testkit expects,
- * including the plaintext released before a payload failure.
+ * The official age test vectors (github.com/C2SP/CCTV, age/testdata at commit 4448f209, 0BSD, CC0
+ * or Unlicense), byte for byte: every vector with an X25519 identity except the ASCII-armored ones
+ * (PocketIDE never armors), plus "empty". Every success, header, MAC, no-match and payload case
+ * must come out exactly as the testkit expects, including the plaintext released before a payload
+ * failure.
  */
 class AgeTestkitTest {
     private class Vector(val name: String, val fields: Map<String, List<String>>, val file: ByteArray) {

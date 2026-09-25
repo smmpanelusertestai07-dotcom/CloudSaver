@@ -3,14 +3,21 @@
 # identity.txt is age-keygen output; "recipient" below is its public key.
 # The plaintext of N bytes is SHA-256("pocketide age fixture" + " " + 4-byte big-endian counter) blocks cut to N bytes.
 # ref-N.age: made by the reference tool with `age -r <recipient> -o ref-N.age plain-N`.
+# ref-mixed-100.age: made by the reference tool for three recipients, `age -r <another X25519 key>
+# -R <an ssh-ed25519 key> -r <recipient>`, so its header also holds an ssh-ed25519 stanza to skip.
 # ours-N.age: made by PocketIDE's Age.encryptBytes; `age -d -i identity.txt ours-N.age` gave back the plaintext.
 # Also made by PocketIDE and opened by `age -d` here, not kept: 1 byte, 65536 bytes, 131072 bytes (two full
 # chunks, the second one final), and a 1000-byte file for two recipients, opened with each of the two identities.
+# Checked again 24 Sep 2026 in review, same tool: all files above; PocketIDE files of 0, 1, 15, 16, 17, 65535,
+# 65536, 65537, 131071, 131072, 131073 and 1048579 bytes; 1000003 bytes written through AgeOutputStream in
+# 7001-byte pieces; a file for three recipients opened with each identity; and a PocketIDE key copy of three keys
+# used as the identity file of `age -d -i copy.txt` for a file made for its oldest key.
 recipient: age17m8n263s7mf3m2n3rekqagsykk93pampc4c7trjyyguwrp53qdxqn8vuyd
 ref-0.age: 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ref-1.age: 1 32ebb1abcc1c601ceb9c4e3c4faba0caa5b85bb98c4f1e6612c40faa528a91c9
 ref-65536.age: 65536 de05d25304cc68b740e1314880357f722e4f90e83bdbebace48702c0190d97bd
 ref-65537.age: 65537 e28a38854cf70502279b8afa0115ce3cefd93d6cec8f40f5733bf638ff97ae38
 ref-204800.age: 204800 f76934197bd77088aba7331c58c2ddd40331bb86ca332bdce26f936a6fe0c299
+ref-mixed-100.age: 100 33d9a486afab5789c02f31bac7cd2c01a4d8234ce40a6898e645c2a0b556fcb9
 ours-0.age: 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ours-70000.age: 70000 4f63b6d5c0f86ab0503248c1aac4135ded60a793a0dfa662e00ff4d2766b9fba

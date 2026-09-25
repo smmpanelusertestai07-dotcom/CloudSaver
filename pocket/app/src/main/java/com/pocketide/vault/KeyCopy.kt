@@ -33,7 +33,7 @@ internal object KeyCopy {
             val line = raw.trim()
             when {
                 line.isEmpty() -> Unit
-                line.startsWith("#") -> generation = GENERATION.find(line)?.groupValues?.get(1)?.toIntOrNull()
+                line.startsWith("#") -> generation = GENERATION.find(line)?.groupValues?.get(1)?.toIntOrNull()?.takeIf(::isGeneration)
                 else -> {
                     val identity = try {
                         AgeIdentity.parse(line)
