@@ -1,6 +1,7 @@
 package com.pocketide.media
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
@@ -25,9 +26,12 @@ fun createMediaLibrary(graph: AppGraph): MediaLibrary = SessionMediaLibrary(
     io = Dispatchers.IO,
     metaDir = graph.dirs.mediaMeta,
     stagingDir = File(graph.dirs.downloads, "media-staging"),
-    uriFor = { file -> FileProvider.getUriForFile(graph.context, "${graph.context.packageName}.files", file) },
+    uriFor = { file -> FileProvider.getUriForFile(graph.context, filesAuthority(graph.context), file) },
     phoneFiles = ContentResolverFiles(graph.context.contentResolver),
 )
+
+/** The app's FileProvider (see res/xml): it serves only the share and APK folders in the cache. */
+internal fun filesAuthority(context: Context): String = "${context.packageName}.files"
 
 /** Reads what the owner picked through Android's own pickers; no storage permission is needed. */
 private class ContentResolverFiles(private val resolver: ContentResolver) : PhoneFiles {
