@@ -110,7 +110,8 @@ class RoomProcessesTest {
         val ring = OutputRing(capacity = 3)
         ring.add("one")
         ring.add("   ")
-        ring.add("token ghp_abcdefghijklmnopqrstuvwxyz0123456789")
+        // Put together here, so the repository holds nothing shaped like a live token.
+        ring.add("token " + "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789")
         ring.add("three")
         ring.add("four")
         assertEquals(listOf("token [hidden]", "three", "four"), ring.last(3))
