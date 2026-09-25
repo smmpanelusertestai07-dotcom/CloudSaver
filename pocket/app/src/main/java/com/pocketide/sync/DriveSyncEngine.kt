@@ -164,6 +164,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
                 dirs.downloads, dirs.share, dirs.apk,
             )
                 .forEach { deleteTree(it) }
+            ports.forgetLocal()
             ports.wipeSecureStore()
             ports.forgetVaultKey()
             ports.settings.update { it.copy(onboardingDone = false) }
@@ -256,6 +257,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             }
             val run = Run(kit, cipher)
             try {
+                ports.loadLocal()
                 block(run).also { retryable = false }
             } catch (e: CancellationException) {
                 throw e
@@ -273,6 +275,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             val cipher = ports.cipher() ?: throw SyncException(Plain.KEY_NOT_READY)
             val run = Run(kit, cipher)
             try {
+                ports.loadLocal()
                 block(run)
             } catch (e: CancellationException) {
                 throw e

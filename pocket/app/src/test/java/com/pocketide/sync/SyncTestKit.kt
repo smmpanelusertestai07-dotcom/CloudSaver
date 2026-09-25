@@ -261,9 +261,20 @@ internal class TestPhone(
     override fun account(): String = account
     override fun cipher(): VaultCipher? = cipher.takeIf { keyReady }
     override fun keyGeneration(): Int = cipher.generation
-    override fun localSessions(): List<SessionRecord> = sessions.toList()
-    override fun localProjects(): List<Project> = projects.toList()
-    override fun activeSessionIds(): Set<String> = active.toSet()
+
+    /** Like a process Android has just started: the phone's own lists read as empty until loaded. */
+    var coldStart = false
+    override suspend fun loadLocal() {
+        coldStart = false
+    }
+    override suspend fun forgetLocal() {
+        sessions.clear()
+        projects.clear()
+        active.clear()
+    }
+    override fun localSessions(): List<SessionRecord> = if (coldStart) emptyList() else sessions.toList()
+    override fun localProjects(): List<Project> = if (coldStart) emptyList() else projects.toList()
+    override fun activeSessionIds(): Set<String> = if (coldStart) emptySet() else active.toSet()
     override fun roomsRunning() = roomsRunning || runningRooms.isNotEmpty()
     override fun roomRunning(agentId: String) = agentId in runningRooms
     override suspend fun stopRooms() {
@@ -402,7 +413,15 @@ fun mockPendingIntent(): android.app.PendingIntent {
     return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, android.app.PendingIntent::class.java) as android.app.PendingIntent
 }
 
-fun session(id: String, projectId: String = "owner/app", agent: String = "claude", at: Long, deletedAt: Long? = null, backUp: Boolean = true, ref: String? = null) =
+fun session(
+    id: String,
+    projectId: String = "owner/app",
+    agent: String = "claude",
+    at: Long,
+    deletedAt: Long? = null,
+    backUp: Boolean = true,
+    ref: String? = null,
+) =
     SessionRecord(
         id = id, agentId = agent, projectId = projectId, title = "Chat $id", branch = "pocket/$agent/$id",
         startedAt = at, lastActivityAt = at, deletedAt = deletedAt, backUp = backUp, deviceId = "phone-a", agentSessionRef = ref,

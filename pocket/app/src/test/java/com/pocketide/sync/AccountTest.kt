@@ -1,6 +1,7 @@
 package com.pocketide.sync
 
 import com.pocketide.google.DriveAuthResult
+import com.pocketide.model.Project
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -175,6 +176,22 @@ class AccountTest {
         assertEquals(1, phone.scheduler.cancelled)
         assertEquals(SyncStatus.Idle, phone.engine.status.value)
         assertTrue(phone.engine.driveSessions.value.isEmpty())
+    }
+
+    @Test
+    fun noChatOrProjectReachesTheNextVaultAfterDeleteEverything() = runBlocking {
+        val phone = syncedPhone()
+        phone.projects += Project("owner/app", "owner", "app", addedAt = clock.now, lastActivityAt = clock.now)
+        phone.engine.syncNow()
+        assertEquals(listOf("owner/app"), phone.remoteIndex()!!.projects.map { it.id })
+
+        phone.engine.deleteEverything()
+        phone.settings.update { it.copy(onboardingDone = true) }
+        phone.engine.syncNow()
+
+        val index = phone.remoteIndex()!!
+        assertTrue(index.sessions.isEmpty())
+        assertTrue(index.projects.isEmpty())
     }
 
     @Test

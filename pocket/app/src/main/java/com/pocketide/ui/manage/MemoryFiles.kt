@@ -45,8 +45,16 @@ object MemoryFiles {
 
     /** Relative paths per agent; `*` matches one directory level or one file name. */
     private val patterns = mapOf(
-        "claude" to listOf(".claude/CLAUDE.md", ".claude/rules/*.md", ".claude/projects/*/memory/*.md"),
-        "codex" to listOf(".codex/AGENTS.md", ".codex/AGENTS.override.md"),
+        "claude" to listOf(
+            ".claude/CLAUDE.md",
+            ".claude/rules/*.md",
+            ".claude/projects/*/memory/*.md",
+            ".claude/skills/*/SKILL.md",
+            ".claude/agents/*.md",
+            ".claude/commands/*.md",
+            ".claude/output-styles/*.md",
+        ),
+        "codex" to listOf(".codex/AGENTS.md", ".codex/AGENTS.override.md", ".codex/skills/*/SKILL.md"),
         "antigravity" to listOf(
             ".gemini/GEMINI.md",
             ".gemini/AGENTS.md",

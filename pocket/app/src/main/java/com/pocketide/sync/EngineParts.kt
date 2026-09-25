@@ -128,12 +128,13 @@ internal class SessionBook(local: List<SessionRecord>, drive: List<SessionRecord
 
     /**
      * Room-level files always; a session's files unless "not backed up" or erased. A chat in
-     * Recently deleted still uploads what was waiting, so Restore brings back all of it.
+     * Recently deleted still uploads what was waiting, so Restore brings back all of it. Files of
+     * a session this phone does not know wait: it may be one the owner keeps off Drive.
      */
     fun uploadable(id: String?): Boolean {
         if (id == null) return true
         if (id in erased) return false
-        val s = byId[id] ?: return true
+        val s = byId[id] ?: return false
         return s.backUp && s.deletedAt != Sessions.ERASE_NOW
     }
 

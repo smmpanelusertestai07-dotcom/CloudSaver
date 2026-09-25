@@ -22,6 +22,12 @@ class KeyCopyTest {
         assertEquals(keys.map { it.identity }, parsed.map { it.identity })
     }
 
+    @Test(timeout = 5_000)
+    fun `a four-million-character line is refused as not a key copy`() {
+        val refused = assertThrows(VaultException::class.java) { KeyCopy.parse("AGE-SECRET-KEY-1" + "Q".repeat(4_000_000)) }
+        assertEquals(VaultText.NOT_A_KEY_COPY, refused.message)
+    }
+
     @Test
     fun `a copy tolerates Windows line ends and stray spaces from a notes app`() {
         val text = KeyCopy.format(keys, savedAt = 0).replace("\n", "  \r\n")

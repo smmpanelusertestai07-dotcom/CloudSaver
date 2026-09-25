@@ -33,6 +33,20 @@ class AgentFilesTest {
     }
 
     @Test
+    fun claudeSkillsSubagentsAndCommandsSyncLikeCodexSkills() {
+        listOf(
+            ".claude/skills/release-notes/SKILL.md", ".claude/skills/release-notes/scripts/collect.py",
+            ".claude/agents/reviewer.md", ".claude/agents/team/tester.md",
+            ".claude/commands/ship.md", ".claude/commands/git/tidy.md",
+            ".claude/output-styles/terse.md", ".codex/skills/release-notes/SKILL.md",
+        ).forEach { assertEquals(it, FileClass.SYNC, AgentFiles.classify(it)) }
+        // A credential dropped among them is still a credential.
+        listOf(".claude/skills/deploy/.env", ".claude/skills/deploy/service-account-credentials.json")
+            .forEach { assertEquals(it, FileClass.SECRET, AgentFiles.classify(it)) }
+        assertEquals(FileClass.LOCAL, AgentFiles.classify(".claude/agents/notes.txt"))
+    }
+
+    @Test
     fun otherAntigravityFoldersStayLocal() {
         listOf(".gemini/antigravity-web/brain/abc/plan.md", ".gemini/antigravity-cli/rules/nested/style.md", ".gemini/antigravity-cli/rules/notes.txt")
             .forEach { assertEquals(it, FileClass.LOCAL, AgentFiles.classify(it)) }

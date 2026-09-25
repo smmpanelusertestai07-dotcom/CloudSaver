@@ -122,7 +122,8 @@ internal class SealedProjectSecrets(
         } finally {
             bytes.fill(0)
         }
-        update { list -> list.map { if (it.key() == entry.key()) it.copy(pushedToGitHub = true) else it } }
+        // Only the value sent: one saved meanwhile is not on GitHub yet.
+        update { list -> list.map { if (it == entry) it.copy(pushedToGitHub = true) else it } }
     }
 
     override suspend fun exportBlob(): ByteArray = lock.withLock {

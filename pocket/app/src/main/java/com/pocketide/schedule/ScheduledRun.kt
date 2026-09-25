@@ -19,7 +19,7 @@ internal interface RunPorts {
     val clock: Clock
 
     suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord
-    fun session(sessionId: String): SessionRecord?
+    suspend fun session(sessionId: String): SessionRecord?
 
     /**
      * Runs [argv] in the agent's room as the room's own programs run (its binds, its environment
@@ -68,7 +68,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
 
     suspend fun run(task: ScheduledTask, existingSessionId: String? = null): RunOutcome {
         ports.heavyWorkRefusal()?.let { throw ScheduleException(it) }
-        val session = existingSessionId?.let { ports.session(it) } ?: newSession(task)
+        val session = if (existingSessionId == null) newSession(task) else shownSession(task, existingSessionId)
         val worktree = AppDirs.guestWorktree(session.projectId, session.id)
         val argv = HeadlessCommand.argv(task.agentId, task.prompt, worktree) ?: throw ScheduleException(NO_HEADLESS)
         val startedAt = ports.clock.now()
@@ -112,6 +112,12 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
         return RunOutcome(session.id, succeeded, timedOut, exitCode)
     }
 
+    /** "Run now" already showed the owner its session: the task runs there or not at all. */
+    private suspend fun shownSession(task: ScheduledTask, sessionId: String): SessionRecord = ports.session(sessionId) ?: run {
+        ports.notify(task.id, "Scheduled task needs a look", "${task.title}: $SESSION_GONE")
+        throw ScheduleException(SESSION_GONE)
+    }
+
     private suspend fun save(task: ScheduledTask, startedAt: Long, sessionId: String, output: List<String>, ended: String, cut: Boolean) {
         val file = ports.scratchFile()
         try {
@@ -136,6 +142,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
 
     companion object {
         const val MAX_OUTPUT_BYTES = 2L * 1024 * 1024
+        const val SESSION_GONE = "The chat this task was started in is no longer on this phone. Run the task again."
         const val NO_HEADLESS = "This agent has no command-line mode, so it cannot run scheduled tasks. Choose Claude Code, Codex or Antigravity."
     }
 }

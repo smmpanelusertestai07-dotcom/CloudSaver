@@ -89,6 +89,11 @@ object AgentFiles {
         Regex("^\\.claude/projects/[^/]+/memory/.+$"),
         Regex("^\\.claude/history\\.jsonl$"),
         Regex("^\\.claude/plans/.+$"),
+        // The owner's own skills, subagents, slash commands and output styles.
+        Regex("^\\.claude/skills/.+$"),
+        Regex("^\\.claude/agents/.+\\.md$"),
+        Regex("^\\.claude/commands/.+\\.md$"),
+        Regex("^\\.claude/output-styles/[^/]+\\.md$"),
         // Codex
         Regex("^\\.codex/AGENTS(\\.override)?\\.md$"),
         Regex("^\\.codex/(sessions|archived_sessions)/.+\\.jsonl$"),

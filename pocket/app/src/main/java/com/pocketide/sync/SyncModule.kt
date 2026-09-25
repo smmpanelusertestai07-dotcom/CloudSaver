@@ -129,6 +129,16 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
 
     override fun keyGeneration(): Int = graph.vault.generation()
 
+    override suspend fun loadLocal() {
+        graph.projects.loaded()
+        graph.sessions.loaded()
+    }
+
+    override suspend fun forgetLocal() {
+        graph.sessions.forgetEverything()
+        graph.projects.forgetEverything()
+    }
+
     override fun localSessions(): List<SessionRecord> = graph.sessions.all.value
 
     override fun localProjects(): List<Project> = graph.projects.all.value
@@ -158,7 +168,13 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
         val context = graph.context
         if (context.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted == true) return Plain.BACKGROUND_OFF
         val bucket = context.getSystemService(UsageStatsManager::class.java)?.appStandbyBucket ?: return null
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED) Plain.BACKGROUND_RESTRICTED else null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED
+        ) {
+            Plain.BACKGROUND_RESTRICTED
+        } else {
+            null
+        }
     }
 
     override suspend fun exportSecrets(): ByteArray? = try {

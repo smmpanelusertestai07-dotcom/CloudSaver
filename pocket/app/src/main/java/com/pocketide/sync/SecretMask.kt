@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.git.SecretPatterns
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -11,7 +12,13 @@ import java.io.InputStream
  * keep their offsets. The phone's own copy is never changed.
  */
 internal object SecretMask {
-    private val whole = listOf(
+    /**
+     * Shapes only a history needs, then every token the check-post knows. These run first: the
+     * whole private-key block goes before the check-post's header-only match could hide it.
+     */
+    private val whole by lazy { ownShapes + SecretPatterns.tokenShapes }
+
+    private val ownShapes = listOf(
         Regex("gh[pousr]_[A-Za-z0-9]{20,}"),
         Regex("github_pat_[A-Za-z0-9_]{20,}"),
         Regex("sk-[A-Za-z0-9_-]{20,}"),

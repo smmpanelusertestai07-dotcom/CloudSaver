@@ -136,6 +136,27 @@ class SealedProjectSecretsTest {
     }
 
     @Test
+    fun aValueSavedWhileTheOldOneIsSentIsNotMarkedOnGitHub() = runTest {
+        lateinit var s: SealedProjectSecrets
+        s = SealedProjectSecrets(
+            store = SecureStore(temp.root, FlipBox()),
+            clock = { now },
+            io = Dispatchers.Unconfined,
+            pushSecret = { _, name, _ ->
+                // The owner saves a new value while the old one is on its way.
+                now += 1_000
+                s.set("alice/demo", name, SecretKind.SECRET, "new-value".toCharArray())
+            },
+        )
+        s.set("alice/demo", "STORE_PASSWORD", SecretKind.SECRET, "old-value".toCharArray())
+
+        s.pushToGitHub("alice/demo", "STORE_PASSWORD")
+
+        assertEquals("new-value", s.reveal("alice/demo", "STORE_PASSWORD")?.concatToString())
+        assertFalse("GitHub holds the old value", s.values.value.single().pushedToGitHub)
+    }
+
+    @Test
     fun aGlobalSecretCanBePushedToAProject() = runTest {
         val s = secrets()
         s.set(null, "SHARED_TOKEN", SecretKind.SECRET, "shared".toCharArray())
@@ -211,10 +232,13 @@ class SealedProjectSecretsTest {
         val dir = temp.newFolder("broken")
         secrets(dir).set(null, "A", SecretKind.VARIABLE, "x-value".toCharArray())
         val broken = SealedProjectSecrets(
-            store = SecureStore(dir, object : SecretBox {
-                override fun seal(plain: ByteArray) = plain
-                override fun open(sealed: ByteArray): ByteArray = throw javax.crypto.AEADBadTagException()
-            }),
+            store = SecureStore(
+                dir,
+                object : SecretBox {
+                    override fun seal(plain: ByteArray) = plain
+                    override fun open(sealed: ByteArray): ByteArray = throw javax.crypto.AEADBadTagException()
+                },
+            ),
             clock = { now },
             io = Dispatchers.Unconfined,
             pushSecret = { _, _, _ -> },

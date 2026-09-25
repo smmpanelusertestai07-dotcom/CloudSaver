@@ -66,6 +66,19 @@ internal interface SyncPorts {
 
     fun keyGeneration(): Int
 
+    /**
+     * Waits until the phone's own chat and project lists are read from the disk. Android often
+     * starts the process just for a sync; until then [localSessions], [localProjects] and
+     * [activeSessionIds] would say the phone has nothing.
+     */
+    suspend fun loadLocal() = Unit
+
+    /**
+     * "Delete everything" removed the phone's chat and project lists from the disk: they are
+     * forgotten in memory too, so the next vault never receives the old records.
+     */
+    suspend fun forgetLocal()
+
     fun localSessions(): List<SessionRecord>
 
     fun localProjects(): List<Project>
