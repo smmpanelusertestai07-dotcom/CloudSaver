@@ -307,6 +307,7 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
             revoked += port
         }
         override fun isInternal(url: String) = true
+        override suspend fun listeners(candidates: Collection<Int>) = emptyList<com.pocketide.bridge.PortListener>()
         override fun shutdown() = Unit
     }
 

@@ -210,6 +210,8 @@ class DocsContentTest {
         val manifest = listOf(File("src/main/AndroidManifest.xml"), File("app/src/main/AndroidManifest.xml"))
             .firstOrNull { it.isFile }
         return USES_PERMISSION.findAll(checkNotNull(manifest) { "manifest not found" }.readText())
+            // tools:node="remove" takes a permission a library would merge in back out.
+            .filterNot { it.value.contains("tools:node=\"remove\"") }
             .map { it.groupValues[1].substringAfterLast('.') }
             .toSet()
     }
@@ -259,7 +261,7 @@ class DocsContentTest {
         /** Pages Help shows that are not doc sections. */
         val HELP_PAGE_IDS = setOf("faq", "glossary")
 
-        val USES_PERMISSION = Regex("""<uses-permission[^>]*android:name="([^"]+)"""")
+        val USES_PERMISSION = Regex("""<uses-permission[^>]*android:name="([^"]+)"[^>]*>""")
         val LEGAL_IDS = listOf("terms", "privacy-policy", "open-source")
 
         val APP_WORDS = listOf(
