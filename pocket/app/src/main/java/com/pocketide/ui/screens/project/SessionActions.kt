@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.git.Hold
 import com.pocketide.model.SessionRecord
 import com.pocketide.sessions.PutOnMainResult
@@ -44,6 +45,7 @@ import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import kotlinx.coroutines.launch
 
 private sealed interface PutPhase {
@@ -56,12 +58,20 @@ private sealed interface PutPhase {
 
 /**
  * "Put on main" for [session]: asks first, runs the merge (check-post, push), then says what
- * happened in plain words. Conflicts and check-post findings are listed, never hidden.
+ * happened in plain words. Conflicts and check-post findings are listed, never hidden. The merge
+ * runs in the computer: when it failed because the computer is not set up, [onSetUpComputer]
+ * leads there.
  */
 @Composable
-fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((String) -> Unit)? = null) {
+fun PutOnMainFlow(
+    session: SessionRecord,
+    onClose: () -> Unit,
+    onSetUpComputer: () -> Unit,
+    onOpenSession: ((String) -> Unit)? = null,
+) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     var phase by remember(session.id) { mutableStateOf<PutPhase>(PutPhase.Confirm) }
     // What would go to main, shown before the owner agrees: an agent may have changed more than it was asked to.
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
@@ -126,7 +136,9 @@ fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((
             text = { Text(current.outcome.text) },
             confirmButton = {
                 val open = onOpenSession
-                if (open != null && current.outcome.tone != Tone.OK) {
+                if (current.outcome.tone == Tone.ERROR && SetUpOffer.needsOwner(computer)) {
+                    TextButton(onClick = { onClose(); onSetUpComputer() }) { Text(SetUpOffer.TITLE) }
+                } else if (open != null && current.outcome.tone != Tone.OK) {
                     TextButton(onClick = { onClose(); open(session.id) }) { Text("Open session") }
                 } else {
                     TextButton(onClick = onClose) { Text("OK") }
@@ -183,12 +195,14 @@ private const val SUMMARY_FILES = 6
 
 /**
  * What a session changed compared with main: its pull request and checks on GitHub ([onOpen]
- * opens them there), then its commits and files, with lines added and removed.
+ * opens them there), then its commits and files, with lines added and removed. The changes are
+ * read in the computer: when that failed because it is not set up, [onSetUpComputer] leads there.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChangesSheet(session: SessionRecord, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+fun ChangesSheet(session: SessionRecord, onOpen: (String) -> Unit, onDismiss: () -> Unit, onSetUpComputer: () -> Unit) {
     val graph = rememberGraph()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
         value = attempt { graph.sessions.changes(session.id) }
     }
@@ -211,10 +225,16 @@ fun ChangesSheet(session: SessionRecord, onOpen: (String) -> Unit, onDismiss: ()
             val result = changes
             when {
                 result == null -> Row(Modifier.padding(vertical = 24.dp)) { CircularProgressIndicator() }
-                result.isFailure -> Text(
-                    "Could not read the changes: ${plainReason(result.exceptionOrNull() ?: IllegalStateException())}",
-                    modifier = Modifier.padding(vertical = 16.dp),
-                )
+                result.isFailure -> {
+                    Text(
+                        "Could not read the changes: ${plainReason(result.exceptionOrNull() ?: IllegalStateException())}",
+                        modifier = Modifier.padding(vertical = 16.dp),
+                    )
+                    // Changes are read in the computer, so setting it up is what helps.
+                    if (SetUpOffer.needsOwner(computer)) {
+                        TextButton(onClick = { onDismiss(); onSetUpComputer() }) { Text(SetUpOffer.TITLE) }
+                    }
+                }
                 else -> ChangesList(result.getOrThrow(), onOpen = { viewing = it })
             }
             Spacer(Modifier.size(16.dp))

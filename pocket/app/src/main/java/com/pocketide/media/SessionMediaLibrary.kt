@@ -123,13 +123,48 @@ internal class SessionMediaLibrary(
     }
 
     override fun shareUri(item: MediaItem): Uri {
-        if (!insideWork(item.file) || !item.file.isFile) throw MediaException("This file is no longer on the phone.")
-        cleanShareFolder()
-        val folder = File(dirs.share, UUID.randomUUID().toString())
-        if (!folder.mkdirs()) throw MediaException("Could not prepare the file for sharing.")
-        val copy = File(folder, item.name)
-        item.file.copyTo(copy)
+        val copy = privateCopy(mediaFile(item), dirs.share, item.name, "Could not prepare the file for sharing.")
         return uriFor(copy)
+    }
+
+    override suspend fun stageApk(item: MediaItem): PrivateCopy = withContext(io) {
+        val copy = privateCopy(mediaFile(item), File(dirs.apk, APK_STAGING), item.name, "Could not prepare the APK. The phone may be full.")
+        if (MediaSniffer.kindOf(copy.name, MediaSniffer.head(copy)) != MediaKind.APK) {
+            copy.parentFile?.deleteRecursively()
+            throw MediaException("${safeName(item.name)} is not an APK any more.")
+        }
+        PrivateCopy(copy, uriFor)
+    }
+
+    /**
+     * The item's file, while it is still a plain file right inside its session's real media folder.
+     * Linux can write there, so the item's path alone proves nothing about what is there now.
+     */
+    private fun mediaFile(item: MediaItem): File {
+        val folder = session(item.sessionId)?.let { folderOf(it) }
+        val file = item.file
+        if (folder == null || file.parentFile?.path != folder.path || !isMediaFile(file)) {
+            throw MediaException("This file is no longer on the phone.")
+        }
+        return file
+    }
+
+    /** Copies [source], never through a link, into a fresh folder under [root]; day-old copies are cleared first. */
+    private fun privateCopy(source: File, root: File, name: String, failure: String): File {
+        cleanOld(root)
+        val folder = File(root, UUID.randomUUID().toString())
+        if (!folder.mkdirs()) throw MediaException(failure)
+        val copy = File(folder, safeName(name))
+        try {
+            copyNoFollow(source, copy, name, notPlain = "This file is no longer on the phone.")
+        } catch (e: IOException) {
+            folder.deleteRecursively()
+            throw MediaException(failure)
+        } catch (e: MediaException) {
+            folder.deleteRecursively()
+            throw e
+        }
+        return copy
     }
 
     /** Lists a session's folder; hidden, partial and linked files are not media. */
@@ -201,14 +236,14 @@ internal class SessionMediaLibrary(
     }
 
     /** Copies [source] without following a link, and stops at the largest size Media keeps. */
-    private fun copyNoFollow(source: File, target: File, name: String) {
+    private fun copyNoFollow(source: File, target: File, name: String, notPlain: String = "Only plain files can be added to Media.") {
         val path = source.toPath()
         val attributes = try {
             Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
         } catch (e: IOException) {
             throw MediaException("${safeName(name)} is not on the phone any more.")
         }
-        if (!attributes.isRegularFile) throw MediaException("Only plain files can be added to Media.")
+        if (!attributes.isRegularFile) throw MediaException(notPlain)
         if (attributes.size() > MediaSniffer.VIDEO_LIMIT) throw MediaException("${safeName(name)} is larger than any file Media keeps.")
         Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { copyCapped(it, target, name) }
     }
@@ -341,9 +376,9 @@ internal class SessionMediaLibrary(
         return candidate
     }
 
-    private fun cleanShareFolder() {
+    private fun cleanOld(root: File) {
         val cutoff = clock.now() - SHARE_KEEP_MS
-        dirs.share.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.deleteRecursively() }
+        root.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.deleteRecursively() }
     }
 
     private fun metaFile(sessionId: String): File? =
@@ -385,6 +420,8 @@ internal class SessionMediaLibrary(
         private const val MAX_STEM = 80
         private const val COPY_BUFFER = 64 * 1024
         private const val WEBP_SUFFIX = ".webp"
+        /** Inside the FileProvider's apk/ path, beside the self-updater's own folder. */
+        private const val APK_STAGING = "media"
         private const val SHARE_KEEP_MS = 24 * 60 * 60 * 1000L
         private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,128}")
         private val UNSAFE = Regex("[^A-Za-z0-9._-]+")

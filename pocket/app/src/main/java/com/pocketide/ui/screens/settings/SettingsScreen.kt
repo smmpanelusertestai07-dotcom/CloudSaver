@@ -335,7 +335,7 @@ private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Sett
                     SettingChoices.computerUnusedDays,
                     settings.computerUnusedDays,
                     onPick = { d -> update { it.copy(computerUnusedDays = d) } },
-                    why = "Removed only when everything is synced, after a 7-day notice; set up again on next use.",
+                    why = "Removed only when everything is synced, after a 7-day notice. Set it up again from Home when you're on Wi-Fi.",
                     fallbackLabel = { "After $it days" },
                 )
             },

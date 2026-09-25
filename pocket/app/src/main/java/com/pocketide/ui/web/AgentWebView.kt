@@ -408,6 +408,9 @@ private class UsedWebView(context: Context, private val holder: WebViewHolder) :
 
 private const val INTERACTION_EVERY_MS = 60_000L
 
+// Lint flags the super-constructor call of every Kotlin WebViewClient, even one that overrides
+// onRenderProcessGone as each of ours does; WebViewClientsTest holds them to it instead.
+@SuppressLint("MissingOnRenderProcessGone")
 private class AgentClient(private val holder: WebViewHolder) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
@@ -493,6 +496,7 @@ private class AgentChrome(private val holder: WebViewHolder) : WebChromeClient()
  * address goes to Chrome (after a question when no tap opened it) and the throwaway view is
  * destroyed before it loads anything. JavaScript stays off in it.
  */
+@SuppressLint("MissingOnRenderProcessGone") // Overridden below; see AgentClient.
 private class PopupCatcher(
     private val holder: WebViewHolder,
     private val popup: WebView,
@@ -514,6 +518,12 @@ private class PopupCatcher(
 
     override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
         handle(url)
+    }
+
+    /** The renderer is shared with the agent's view: answering false here would end the whole app. */
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        destroyPopup()
+        return true
     }
 
     private fun handle(url: String?) {

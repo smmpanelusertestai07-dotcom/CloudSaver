@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -67,6 +66,8 @@ import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.rememberLoad
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.SetUpComputerCard
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -103,7 +104,10 @@ fun ComputerScreen(nav: PocketNav) {
     LaunchedEffect(Unit) { attempt { graph.phone.refresh() } }
 
     ManagePage("Computer", nav, runner) {
-        item { StateCard(state, size.value, daysLeft, removalAt) }
+        // One item either way, so the set-up card keeps its progress while the state changes.
+        item(key = "state") {
+            if (SetUpOffer.shows(state)) SetUpComputerCard() else StateCard(state, size.value, daysLeft, removalAt)
+        }
         item { PhoneCard(snapshot, info.value) }
         item { VersionsCard(info.value, info.error, agents.map { it.displayName to it.version }) }
         item {
@@ -231,33 +235,19 @@ private fun RepairReport(items: List<RepairItem>) {
     }
 }
 
+/** A computer that is set up; the others get the set-up card instead ([SetUpOffer]). */
 @Composable
 private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?, removalAt: Long?) {
     SectionCard("Ubuntu computer") {
-        if (daysLeft != null && state !is ComputerState.NotInstalled) {
+        if (daysLeft != null) {
             StatusChip(ComputerExpiry.chip(daysLeft), if (daysLeft <= 7) Tone.WARN else Tone.NEUTRAL)
         }
-        if (removalAt != null && state !is ComputerState.NotInstalled) {
+        if (removalAt != null) {
             ToneLine(Told("Removed on ${Ist.date(removalAt)} unless an agent runs. Your projects and chats stay.", Tone.WARN))
         }
         when (state) {
-            ComputerState.NotInstalled -> ToneLine(Told("Not set up yet.", Tone.NEUTRAL))
-            ComputerState.Ready -> ToneLine(Told("Ready.", Tone.OK))
             is ComputerState.Updating -> ToneLine(Told("Updating ${state.what}…", Tone.WARN))
-            is ComputerState.Broken -> {
-                ErrorNote(state.why)
-                Hint(state.fix)
-            }
-            is ComputerState.Installing -> {
-                ToneLine(Told(state.step, Tone.WARN))
-                val fraction = state.fraction
-                if (fraction != null) {
-                    LinearProgressIndicator(progress = { fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                } else {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                }
-                if (state.bytesTotal > 0) Hint("${ManageFormat.bytes(state.bytesDone)} of ${ManageFormat.bytes(state.bytesTotal)}")
-            }
+            else -> ToneLine(Told("Ready.", Tone.OK))
         }
         if (sizeBytes != null && sizeBytes > 0) InfoRow("Size on this phone", ManageFormat.bytes(sizeBytes))
     }

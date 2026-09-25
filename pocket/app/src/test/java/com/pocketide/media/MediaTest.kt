@@ -88,6 +88,10 @@ class SessionMediaLibraryTest {
     private var now = 10_000L
     private val shrunk = mutableListOf<File>()
 
+    // android.net.Uri cannot be built in a JVM test; the library only passes the value through.
+    @Suppress("UNCHECKED_CAST")
+    private val noUri = { _: File -> null } as (File) -> Uri
+
     private val pngHead = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
     private val webpHead = "RIFF\u0000\u0000\u0000\u0000WEBPVP8 ".toByteArray(Charsets.ISO_8859_1)
 
@@ -111,7 +115,7 @@ class SessionMediaLibraryTest {
         io = Dispatchers.Unconfined,
         metaDir = File(dirs.base, "media-meta"),
         stagingDir = File(dirs.downloads, "staging"),
-        uriFor = { Uri.EMPTY },
+        uriFor = noUri,
         pollMs = 10,
     )
 
@@ -263,6 +267,64 @@ class SessionMediaLibraryTest {
         media.delete(item)
         assertFalse(item.file.exists())
         assertTrue(media.forSession("s1").first().isEmpty())
+    }
+
+    @Test
+    fun anApkIsReadAndInstalledFromOnePrivateCopy() = runTest {
+        val media = library()
+        val zip = "PK\u0003\u0004".toByteArray(Charsets.ISO_8859_1)
+        val original = zip + "the app the owner checked".toByteArray()
+        val item = media.add("s1", source("app.apk", original), "app-release.apk", "actions")
+
+        val staged = media.stageApk(item)
+        // The agent swaps the APK in the room's media folder after the owner has seen its signer.
+        item.file.writeBytes(zip + "something else".toByteArray())
+
+        assertTrue(staged.file.toPath().startsWith(dirs.apk.toPath()))
+        assertTrue(original.contentEquals(staged.file.readBytes()))
+    }
+
+    @Test
+    fun anApkSwappedForALinkIsNotStaged() = runTest {
+        val media = library()
+        val zip = "PK\u0003\u0004".toByteArray(Charsets.ISO_8859_1)
+        val item = media.add("s1", source("app.apk", zip), "app-release.apk", "actions")
+        val other = File(dirs.work, "other.apk").apply { writeBytes(zip + byteArrayOf(9)) }
+        item.file.delete()
+        Files.createSymbolicLink(item.file.toPath(), other.toPath())
+
+        try {
+            media.stageApk(item)
+            fail("a link must not be staged")
+        } catch (expected: MediaException) {
+            assertTrue(File(dirs.apk, "media").walk().none { it.isFile })
+        }
+    }
+
+    @Test
+    fun shareNeverFollowsALinkSwappedIntoTheMediaFolder() = runTest {
+        val media = library()
+        val item = media.add("s1", source("notes.txt", "notes".toByteArray()), "notes.txt", "you")
+        // A file elsewhere in the work tree, which the old canonical-path check let through.
+        val secret = File(dirs.work, "private.txt").apply { writeText("not for sharing") }
+        item.file.delete()
+        Files.createSymbolicLink(item.file.toPath(), secret.toPath())
+
+        try {
+            media.shareUri(item)
+            fail("a link must not be shared")
+        } catch (expected: MediaException) {
+            assertTrue(dirs.share.walk().none { it.isFile })
+        }
+    }
+
+    @Test
+    fun shareCopiesThePlainFile() = runTest {
+        val media = library()
+        val item = media.add("s1", source("notes.txt", "notes".toByteArray()), "notes.txt", "you")
+        media.shareUri(item)
+        val copies = dirs.share.walk().filter { it.isFile }.toList()
+        assertEquals(listOf("notes"), copies.map { it.readText() })
     }
 
     @Test

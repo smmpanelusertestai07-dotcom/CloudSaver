@@ -33,7 +33,9 @@ class ChecksTest {
         val installing = setup(computer = ComputerState.Installing("Unpacking Ubuntu…", 0.4f, 1, 2), engine = null)
         assertEquals(CheckStatus.WAITING, installing.getValue("computer").status)
         assertTrue(installing.getValue("computer").detail.contains("Unpacking Ubuntu"))
-        assertEquals(CheckStatus.WAITING, setup(computer = ComputerState.NotInstalled).getValue("computer").status)
+        val notSetUp = setup(computer = ComputerState.NotInstalled).getValue("computer")
+        assertEquals(CheckStatus.WAITING, notSetUp.status)
+        assertEquals("Not set up yet. Set it up from Home when you're on Wi-Fi.", notSetUp.detail)
         assertEquals(CheckStatus.WAITING, setup(key = KeyState.OnlyOnPhone).getValue("key").status)
     }
 

@@ -217,6 +217,9 @@ private fun DriveDisconnected() {
     }
 }
 
+private const val EMPTY_RECENTLY_DELETED = "Delete forever from Recently deleted"
+private const val DELETED_KEEP_SPACE = "Deleted chats keep their Drive space for 30 days, until they are deleted forever."
+
 @Composable
 private fun StorageFull(googleStorageFull: Boolean, nav: PocketNav) {
     val graph = rememberGraph()
@@ -246,13 +249,16 @@ private fun StorageFull(googleStorageFull: Boolean, nav: PocketNav) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (googleStorageFull) {
                 PrimaryAction("See what uses your Google storage", onClick = { nav.openExternal(Links.GOOGLE_STORAGE) })
-                SecondaryAction("Delete PocketIDE's old chats", onClick = nav::yourData)
+                SecondaryAction("Delete PocketIDE's old or large chats", onClick = nav::yourData)
+                SecondaryAction(EMPTY_RECENTLY_DELETED, onClick = nav::recentlyDeleted)
                 SecondaryAction("Choose what to upload", onClick = nav::waitingUploads)
-                FinePrint("Gmail, Photos and Drive share one Google storage. Google One sells more if you want it.")
+                FinePrint("$DELETED_KEEP_SPACE Gmail, Photos and Drive share one Google storage. Google One sells more if you want it.")
             } else {
                 PrimaryAction("Raise the limit", onClick = { raise = true })
                 SecondaryAction("Delete old or large chats", onClick = nav::yourData)
+                SecondaryAction(EMPTY_RECENTLY_DELETED, onClick = nav::recentlyDeleted)
                 SecondaryAction("Choose what to upload", onClick = nav::waitingUploads)
+                FinePrint(DELETED_KEEP_SPACE)
                 AutoTrimRow(
                     on = settings.autoTrimOldChats,
                     onChange = { on -> graph.settings.update { it.copy(autoTrimOldChats = on) } },

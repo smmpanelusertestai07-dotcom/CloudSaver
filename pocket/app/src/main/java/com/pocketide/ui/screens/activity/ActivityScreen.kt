@@ -69,6 +69,7 @@ import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.screens.project.rememberTicker
 import com.pocketide.ui.shell.Formats
 import kotlinx.coroutines.async
@@ -255,6 +256,10 @@ private fun AgentsCard(
         }
         val failed = agents.mapNotNull { agent -> (rooms[agent.id] as? RoomState.Failed)?.let { agent to it } }
         failed.forEach { (agent, state) -> ToneLine(Told("${agent.displayName}: ${state.why}", Tone.ERROR)) }
+        val computer by graph.computer.state.collectAsStateWithLifecycle()
+        if (failed.isNotEmpty() && SetUpOffer.needsOwner(computer)) {
+            TextButton(onClick = nav::computer) { Text(SetUpOffer.TITLE) }
+        }
         if (active.isNotEmpty()) {
             HorizontalDivider()
             OutlinedButton(
