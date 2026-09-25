@@ -26,7 +26,7 @@ internal object FixLadder {
             "Takes seconds.",
             how = "The agent's menu → $RELOAD_ITEM.",
         ),
-        Rung("Restart the agent", "For an agent that stopped answering.", "The chat is kept.", how = "The agent's menu → $RESTART_ITEM."),
+        Rung("Restart the agent", "For an agent that stopped answering.", "The chat is kept.", how = "Its menu → $RESTART_ITEM."),
         Rung(
             "Restart the computer",
             "For several stuck agents.",

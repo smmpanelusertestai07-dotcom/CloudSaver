@@ -92,7 +92,7 @@ internal object GuideSafety {
         link("Antigravity terms", DocLinks.ANTIGRAVITY_TERMS),
         warn(
             "Never paste passwords or keys into a chat: they go to the AI company. Put them in Project → " +
-                "Secrets, which only set-up steps and your Actions builds get.",
+                "Secrets, which only your Actions builds get, once sent to GitHub.",
         ),
     )
 

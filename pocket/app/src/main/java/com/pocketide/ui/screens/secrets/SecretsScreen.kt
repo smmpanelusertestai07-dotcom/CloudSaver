@@ -81,9 +81,9 @@ private data class Editing(val existing: ProjectValue?)
 private class Revealed(val name: String, val chars: CharArray)
 
 /**
- * Variables (the agent sees them) and Secrets (never the agent: only set-up steps and GitHub
- * Actions builds), for one project or the global set. Values stay masked; showing one needs
- * the fingerprint or screen lock.
+ * Variables (the agent sees them) and Secrets (never the agent: only GitHub Actions builds, once
+ * sent there), for one project or the global set. A global Secret is sent from each project that
+ * uses it. Values stay masked; showing one needs the fingerprint or screen lock.
  */
 @Composable
 fun SecretsScreen(projectId: String?, nav: PocketNav) {
@@ -95,6 +95,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
     val project = projects.firstOrNull { it.id == projectId }
     val values = remember(all, projectId) { ValueNames.scoped(all, projectId) }
     val globals = remember(all) { ValueNames.scoped(all, null) }
+    val inherited = remember(all, projectId) { projectId?.let { inheritedSecrets(all, it) }.orEmpty() }
     var editing by remember { mutableStateOf<Editing?>(null) }
     var deleting by remember { mutableStateOf<ProjectValue?>(null) }
     var pushing by remember { mutableStateOf<ProjectValue?>(null) }
@@ -125,7 +126,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
 
     val title = if (projectId == null) "Global Variables and Secrets" else "Variables and Secrets"
     ManagePage(title, nav, runner) {
-        item { Explainer(projectLabel = project?.let { "${it.owner}/${it.repo}" } ?: projectId) }
+        item { Explainer(projectLabel = project?.let { "${it.owner}/${it.repo}" } ?: projectId, global = projectId == null) }
         item {
             Button(onClick = { editing = Editing(null) }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.Add, contentDescription = null)
@@ -168,6 +169,9 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
                     )
                     NavRow(Icons.Outlined.Public, "Global Variables and Secrets", null) { nav.secrets(null) }
                 }
+            }
+            items(inherited, key = { "global:${it.name}" }) { value ->
+                InheritedSecretRow(value, busy = runner.isBusy("push:${value.name}"), onPush = { pushing = value })
             }
         }
     }
@@ -235,8 +239,34 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
     }
 }
 
+/**
+ * The global Secrets a project uses and does not replace with its own: each goes to that project's
+ * GitHub Actions from here, since a global Secret has no project to go to by itself.
+ */
+internal fun inheritedSecrets(all: List<ProjectValue>, projectId: String): List<ProjectValue> {
+    val own = ValueNames.scoped(all, projectId)
+    return ValueNames.scoped(all, null).filter { global ->
+        global.kind == SecretKind.SECRET && global.agentId == null && own.none { ValueNames.sameName(it.name, global.name) }
+    }
+}
+
 @Composable
-private fun Explainer(projectLabel: String?) {
+private fun InheritedSecretRow(value: ProjectValue, busy: Boolean, onPush: () -> Unit) {
+    SectionCard(null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(value.name, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace)
+                Hint("Global Secret. Send it to use it in this project's builds.")
+            }
+            IconButton(onClick = onPush, enabled = !busy) {
+                Icon(Icons.Outlined.CloudUpload, contentDescription = "Send ${value.name} to GitHub Actions")
+            }
+        }
+    }
+}
+
+@Composable
+private fun Explainer(projectLabel: String?, global: Boolean) {
     SectionCard(null) {
         Text(
             if (projectLabel != null) "For $projectLabel" else "For every project",
@@ -244,7 +274,8 @@ private fun Explainer(projectLabel: String?) {
             fontWeight = FontWeight.SemiBold,
         )
         Text(lead("Variables", "the agent sees: test keys, API addresses, feature flags."), style = MaterialTheme.typography.bodyMedium)
-        Text(lead("Secrets", "never the agent: only set-up steps and your GitHub Actions builds."), style = MaterialTheme.typography.bodyMedium)
+        Text(lead("Secrets", "never the agent: only your GitHub Actions builds, once you tap Send to GitHub."), style = MaterialTheme.typography.bodyMedium)
+        if (global) Hint("A global Secret is sent from each project that uses it: open the project's Variables and Secrets.")
         Hint("Both are encrypted on this phone and in your Drive, and never go into git.")
     }
 }
@@ -323,7 +354,7 @@ private fun ValueEditor(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 KindChoice(SecretKind.VARIABLE, kind, "Variable", "The agent sees it in its room.") { kind = it }
-                KindChoice(SecretKind.SECRET, kind, "Secret", "Never the agent. Set-up steps and GitHub builds only.") { kind = it }
+                KindChoice(SecretKind.SECRET, kind, "Secret", "Never the agent. Only GitHub builds, once you send it.") { kind = it }
                 if (existing?.kind == SecretKind.SECRET && kind == SecretKind.VARIABLE) {
                     Text(
                         "As a Variable, the agent will see this value in its room.",

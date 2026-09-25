@@ -88,7 +88,7 @@ internal object Glossary {
         term("Restore plan", "What a new phone will download now and what waits, shown before anything downloads."),
         term("Conflict copy", "A session kept separately when two phones changed the same thing, so nothing is lost."),
         term("Variables", "Settings the agent may see, such as a test URL. They are set in its room."),
-        term("Secrets", "Keys and tokens the agent never sees. Only set-up steps and GitHub Actions builds get them."),
+        term("Secrets", "Keys and tokens the agent never sees. Only your GitHub Actions builds get them, once you tap Send to GitHub."),
         term(
             "Preview",
             "The project tab that shows a dev server running on the phone, in the phone's own browser view.",
