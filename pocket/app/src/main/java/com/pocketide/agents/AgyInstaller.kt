@@ -41,7 +41,8 @@ internal class AgyInstaller(
     private val env: AgentsEnv,
     private val download: VerifiedDownload,
     private val manifestUrl: HttpUrl = MANIFEST,
-    private val archiveHost: String = ARCHIVE_HOST,
+    /** Archives are fetched only from under here. */
+    private val archiveBase: HttpUrl = ARCHIVES,
 ) {
 
     suspend fun latest(): AgyManifest {
@@ -122,15 +123,15 @@ internal class AgyInstaller(
 
     private fun archiveUrl(manifest: AgyManifest): HttpUrl {
         val url = manifest.url.toHttpUrlOrNull()
-        val trusted = url != null && url.isHttps && url.host == archiveHost && url.encodedPath.startsWith(ARCHIVE_PATH)
+        val trusted = url != null && url.scheme == archiveBase.scheme && url.host == archiveBase.host &&
+            url.port == archiveBase.port && url.encodedPath.startsWith(archiveBase.encodedPath)
         if (!trusted) throw PackageRejected("agy's update manifest points somewhere other than Google's download server")
         return url
     }
 
     companion object {
         val MANIFEST = "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json".toHttpUrl()
-        const val ARCHIVE_HOST = "storage.googleapis.com"
-        private const val ARCHIVE_PATH = "/antigravity-public/"
+        val ARCHIVES = "https://storage.googleapis.com/antigravity-public/".toHttpUrl()
         private const val PROGRAM = "antigravity"
         private const val AGY = "agy"
         private const val PREVIOUS = "agy.previous"
