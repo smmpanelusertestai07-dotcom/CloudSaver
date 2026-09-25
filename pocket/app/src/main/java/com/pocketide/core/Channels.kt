@@ -11,7 +11,8 @@ object Channels {
 /**
  * Notification ids, all in one place: Android replaces a notification posted with the same id
  * (and tag), so two kinds of notice sharing one would overwrite each other, or the engine's
- * ongoing notification. Build and scheduled-task results use hashed ids of their own.
+ * ongoing notification. Notices of one kind that may show side by side (one per room, build or
+ * scheduled task) share their kind's id and differ by tag.
  */
 object NotificationIds {
     /** The sync worker's "Syncing chats" (a large upload runs in the foreground). */
@@ -32,4 +33,10 @@ object NotificationIds {
     const val ROOM = 4300
     const val NEW_AGENTS = 4400
     const val APP_UPDATE = 4500
+
+    /** A build's end, tagged with its run id. */
+    const val BUILD_ENDED = 4600
+
+    /** A scheduled task's end, tagged with the task's id. */
+    const val SCHEDULED_TASK_ENDED = 4601
 }

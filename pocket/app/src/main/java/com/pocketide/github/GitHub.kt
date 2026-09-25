@@ -119,6 +119,10 @@ data class WorkflowJob(
     val steps: List<JobStep>,
 )
 
+/** The runner labels of the first job that names any, such as `ubuntu-latest`; null when none does. */
+fun runnerLabels(jobs: List<WorkflowJob>): String? =
+    jobs.firstNotNullOfOrNull { job -> job.labels.takeIf { it.isNotEmpty() }?.joinToString(", ") }
+
 /** A job's log, trimmed: the runner image named at its top and its last lines. */
 data class JobLog(val runnerImage: String?, val tail: String)
 
@@ -162,8 +166,15 @@ interface GitHubApi {
     suspend fun mergePullRequest(owner: String, name: String, number: Int, method: String = "merge"): Boolean
     suspend fun dispatchWorkflow(owner: String, name: String, workflowFile: String, ref: String, inputs: Map<String, String> = emptyMap())
     suspend fun runs(owner: String, name: String, branch: String? = null): List<WorkflowRun>
+
+    /**
+     * [runs], and with [runners] false without looking up the runner of the newest few (one more
+     * request each): for a refresh that already knows them, or a search that needs none.
+     */
+    suspend fun runs(owner: String, name: String, branch: String?, runners: Boolean): List<WorkflowRun> = runs(owner, name, branch)
     suspend fun artifacts(owner: String, name: String, runId: Long): List<RunArtifact>
     suspend fun downloadArtifact(artifact: RunArtifact, dest: File)
+
     /** Encrypts with the repository's public key (libsodium sealed box) and stores the secret. */
     suspend fun setActionsSecret(owner: String, name: String, secretName: String, value: ByteArray)
     suspend fun accountUsage(): AccountUsage
@@ -181,7 +192,7 @@ interface GitHubApi {
         return null
     }
 
-    /** One run by id, with the runner it used; null when it does not exist. */
+    /** One run by id; null when it does not exist. The runner it asked for is in its [jobs]. */
     suspend fun run(owner: String, name: String, runId: Long): WorkflowRun? = runs(owner, name).find { it.id == runId }
 
     /** The run's jobs with their live steps. */

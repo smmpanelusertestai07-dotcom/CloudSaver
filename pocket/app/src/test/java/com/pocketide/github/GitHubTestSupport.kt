@@ -68,7 +68,8 @@ internal class ApiFixture(val server: MockWebServer, clock: TestClock = TestCloc
     val tokens = ScriptedTokens()
     val waits = mutableListOf<Long>()
     val sealed = mutableListOf<Pair<ByteArray, ByteArray>>()
-    val rest = RestClient(testHttp, server.url("/"), tokens, clock, io = Dispatchers.IO, pause = { waits += it })
+    val apiVersion = ApiVersionChoice()
+    val rest = RestClient(testHttp, server.url("/"), tokens, clock, io = Dispatchers.IO, pause = { waits += it }, apiVersion = apiVersion)
     val api = GitHubRestApi(
         rest = rest,
         sealer = Sealer { key, value ->

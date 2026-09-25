@@ -34,6 +34,7 @@ internal object GitHubText {
     const val NAME_TAKEN = "That name is already used on your GitHub account. Choose another name."
     const val SERVER = "GitHub is having trouble right now. Try again in a few minutes."
     const val OTHER = "GitHub answered with an error. Try again in a minute."
+    const val API_RETIRED = "GitHub changed its API. Update PocketIDE to its newest version."
     const val IS_FOLDER = "That path is a folder on GitHub, not a file."
     const val TOO_BIG = "That file is too big to read through GitHub's API."
     const val NOT_FROM_GITHUB = "That download link does not point to GitHub, so PocketIDE will not send your sign-in to it."
@@ -67,6 +68,7 @@ internal object GitHubErrors {
         status == 404 -> GitHubText.NOT_FOUND
         status == 403 -> GitHubText.FORBIDDEN
         status == 409 -> GitHubText.CONFLICT
+        ApiVersionChoice.refuses(status, body) -> GitHubText.API_RETIRED
         status == 410 -> GitHubText.GONE
         status == 422 && details(body).any { it.contains("already exists") } -> GitHubText.NAME_TAKEN
         status == 400 || status == 422 -> GitHubText.REJECTED

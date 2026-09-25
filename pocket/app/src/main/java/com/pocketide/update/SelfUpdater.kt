@@ -2,6 +2,7 @@ package com.pocketide.update
 
 import android.app.Activity
 import com.pocketide.agents.SemVer
+import com.pocketide.github.ReleasesMovedException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,9 @@ internal interface UpdaterEnv {
     val pinnedSigner: String
 
     fun self(): ApkFacts
+
+    /** The tag of a release whose APK proved not newer than this app, kept across restarts; null when none. */
+    var passedOver: String?
 
     /** Package, version and signers of the APK at [file], or null when Android cannot read it. */
     fun inspect(file: File): ApkFacts?
@@ -134,24 +138,40 @@ internal class SelfUpdater(
         val current = SemVer.parse(env.currentVersion)?.core() ?: return
         val release = try {
             withContext(Dispatchers.IO) { releases.newest(current) }
+        } catch (moved: ReleasesMovedException) {
+            mutable.value = UpdateState.Failed(moved.message.orEmpty(), retry = false)
+            return
         } catch (failed: IOException) {
             mutable.value = UpdateState.Failed(failed.message ?: "PocketIDE could not check for updates. Try again later.")
             return
         }
-        pending = release
-        withContext(Dispatchers.IO) { tidy(keep = release?.version) }
+        val offered = release?.takeUnless { it.tag == env.passedOver }
+        pending = offered
+        withContext(Dispatchers.IO) { tidy(keep = offered?.version) }
         mutable.value = when {
-            release == null -> UpdateState.UpToDate
-            apkFile(release.version).isFile -> withContext(Dispatchers.IO) { verified(release, apkFile(release.version)) }
-            else -> UpdateState.Available(release)
+            offered == null -> UpdateState.UpToDate
+            apkFile(offered.version).isFile -> withContext(Dispatchers.IO) { verified(offered, apkFile(offered.version)) }
+            else -> UpdateState.Available(offered)
         }
     }
 
-    /** Ready when the file passes every rule; otherwise it is deleted and the state says why. */
+    /**
+     * Ready when the file passes every rule; otherwise it is deleted and the state says why. A
+     * release that is not a newer build is remembered and no longer offered: downloading it again
+     * would only be refused again.
+     */
     private fun verified(release: AppRelease, file: File): UpdateState {
-        val problem = UpdateRules.problem(env.inspect(file), env.self(), env.pinnedSigner) ?: return UpdateState.Ready(release)
+        val candidate = env.inspect(file)
+        val self = env.self()
+        val problem = UpdateRules.problem(candidate, self, env.pinnedSigner) ?: return UpdateState.Ready(release)
         file.delete()
-        return UpdateState.Failed(problem)
+        return if (UpdateRules.notNewer(candidate, self)) {
+            env.passedOver = release.tag
+            pending = null
+            UpdateState.UpToDate
+        } else {
+            UpdateState.Failed(problem)
+        }
     }
 
     private fun finished(ready: UpdateState.Ready, result: InstallResult) {

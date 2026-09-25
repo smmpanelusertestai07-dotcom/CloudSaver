@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import androidx.core.content.edit
 import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
 import com.pocketide.core.Http
@@ -46,6 +47,12 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
         return facts(info)
     }
 
+    private val prefs get() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    override var passedOver: String?
+        get() = prefs.getString(PASSED_OVER, null)
+        set(tag) = prefs.edit { putString(PASSED_OVER, tag) }
+
     /**
      * GET_SIGNING_CERTIFICATES alone leaves signingInfo null for an archive on Android 10 and on
      * the first Android 13 release, so GET_SIGNATURES is asked for too (brief §4, risk R24).
@@ -70,6 +77,9 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private companion object {
+        const val PREFS = "pocketide.update"
+        const val PASSED_OVER = "passed_over_tag"
+
         @Suppress("DEPRECATION")
         val SIGNERS = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
     }

@@ -115,6 +115,38 @@ class TemplateGateTest {
         }
     }
 
+    /**
+     * Anything the repository's code runs in a job can change what that job's later steps run, so
+     * a job given Secrets must not check the repository out or build it.
+     */
+    @Test
+    fun secretsReachOnlyAJobThatNeverRunsTheRepositorysCode() {
+        val jobHeader = Regex("^ {2}[A-Za-z0-9_-]+:$")
+        for (file in files) {
+            val lines = file.readLines()
+            val jobs = lines.drop(lines.indexOf("jobs:") + 1)
+            val starts = jobs.indices.filter { jobHeader.matches(jobs[it]) }
+            for ((index, start) in starts.withIndex()) {
+                val job = jobs.subList(start, starts.getOrElse(index + 1) { jobs.size }).joinToString("\n")
+                if (!job.contains("secrets.")) continue
+                val name = "${file.name} ${jobs[start].trim()}"
+                assertTrue("$name must not check out the repository", !job.contains("actions/checkout@"))
+                assertTrue("$name must not run the repository's build", !job.contains("gradlew"))
+            }
+        }
+        val release = File(folder, "android-release.yml").readText()
+        assertTrue("the release template still signs", release.contains("secrets.ANDROID_KEYSTORE_BASE64"))
+    }
+
+    /** A template that reads Secrets is one only the owner may start, never an agent's run_build. */
+    @Test
+    fun onlyTheTemplatesThatReadSecretsAreMarkedSo() {
+        for (template in TemplateCatalog.all) {
+            val readsSecrets = File(folder, "${template.id}.yml").readText().contains("secrets.")
+            assertEquals(template.id, readsSecrets, template.usesSecrets)
+        }
+    }
+
     @Test
     fun workflowNamesMatchTheCatalog() {
         for (template in TemplateCatalog.all) {

@@ -244,9 +244,35 @@ fun stepMark(step: JobStep): String = when {
     else -> "·"
 }
 
-/** The list keeps checking while a run is unfinished, or while the run started here is not listed yet. */
+/**
+ * The list keeps checking while a run other than [followed] is unfinished. The run started here is
+ * followed by its id instead (listed or not: 20 newer runs may have pushed it off the list).
+ */
 fun needsPolling(runs: List<WorkflowRun>, followed: Long?): Boolean =
-    runs.any { it.status != "completed" } || (followed != null && runs.none { it.id == followed })
+    runs.any { it.status != "completed" && it.id != followed }
+
+/** [runs] with [run] in place of its older entry, or first when the list does not have it. */
+fun withRun(runs: List<WorkflowRun>, run: WorkflowRun): List<WorkflowRun> =
+    if (runs.any { it.id == run.id }) runs.map { if (it.id == run.id) run else it } else listOf(run) + runs
+
+/** [after], a refresh that looked up no runners, with the runner each run had in [before]. */
+fun keepRunners(before: List<WorkflowRun>?, after: List<WorkflowRun>): List<WorkflowRun> {
+    val known = before.orEmpty().associate { it.id to it.runnerImage }
+    return after.map { run -> if (run.runnerImage == null) run.copy(runnerImage = known[run.id]) else run }
+}
+
+/** How long to wait before the next look at a build: longer while GitHub's answer stays the same. */
+fun pollDelayMs(unchanged: Int): Long = when {
+    unchanged < SLOWER_AFTER -> POLL_MS
+    unchanged < SLOWEST_AFTER -> SLOWER_POLL_MS
+    else -> SLOWEST_POLL_MS
+}
+
+private const val POLL_MS = 15_000L
+private const val SLOWER_POLL_MS = 30_000L
+private const val SLOWEST_POLL_MS = 60_000L
+private const val SLOWER_AFTER = 2
+private const val SLOWEST_AFTER = 4
 
 /** The run this phone started, listed first; the others keep GitHub's order (newest first). */
 fun followedFirst(runs: List<WorkflowRun>, followed: Long?): List<WorkflowRun> {
@@ -267,8 +293,10 @@ sealed interface RoomView {
     data class Opening(val step: String?) : RoomView
     data class Ready(val url: String) : RoomView
     data class Failed(val why: String) : RoomView
+
     /** The agent's room is open on a different session now. */
     data object Elsewhere : RoomView
+
     /** The room stopped after it had opened (idle close, the limiter, or Stop). */
     data object Stopped : RoomView
 }

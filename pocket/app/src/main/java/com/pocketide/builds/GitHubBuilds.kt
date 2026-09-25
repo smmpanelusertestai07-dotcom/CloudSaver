@@ -8,6 +8,7 @@ import com.pocketide.github.GitHubException
 import com.pocketide.github.RunArtifact
 import com.pocketide.github.WorkflowJob
 import com.pocketide.github.WorkflowRun
+import com.pocketide.github.runnerLabels
 import com.pocketide.media.MediaException
 import com.pocketide.media.MediaKind
 import com.pocketide.media.MediaLibrary
@@ -127,15 +128,19 @@ internal class GitHubBuilds(
         return runId
     }
 
-    override suspend fun recentRuns(projectId: String): List<WorkflowRun> {
+    override suspend fun recentRuns(projectId: String): List<WorkflowRun> = recentRuns(projectId, runners = true)
+
+    override suspend fun recentRuns(projectId: String, runners: Boolean): List<WorkflowRun> {
         val project = projectOf(projectId)
-        return ports.gitHub.runs(project.owner, project.repo).take(RECENT_RUNS)
+        return ports.gitHub.runs(project.owner, project.repo, null, runners).take(RECENT_RUNS)
     }
 
+    /** Two requests: the run and its jobs, which also name the runner it asked for. */
     override suspend fun progress(projectId: String, runId: Long): BuildProgress? {
         val project = projectOf(projectId)
-        val run = ports.gitHub.run(project.owner, project.repo, runId) ?: return null
+        val listed = ports.gitHub.run(project.owner, project.repo, runId) ?: return null
         val jobs = ports.gitHub.jobs(project.owner, project.repo, runId)
+        val run = listed.copy(runnerImage = listed.runnerImage ?: runnerLabels(jobs))
         if (run.status != COMPLETED) return BuildProgress(run, jobs)
         val ending = ending(project, run, jobs)
         return BuildProgress(
@@ -153,7 +158,7 @@ internal class GitHubBuilds(
         val logs = keepFailureLog(projectId, sessionId, runId)
         val artifacts = ports.gitHub.artifacts(project.owner, project.repo, runId)
         if (artifacts.isEmpty()) return logs
-        val live = artifacts.filterNot { it.expired }
+        val live = artifacts.filterNot { it.expired }.let(::withoutReplaced)
         if (live.isEmpty()) throw BuildsException("These results are no longer on GitHub. Run the build again.")
         ports.downloadRefusal(live.sumOf { it.sizeBytes })?.let { throw BuildsException(it) }
         val scratch = ports.scratch()
@@ -211,6 +216,15 @@ internal class GitHubBuilds(
         return ending
     }
 
+    /**
+     * A template that signs in a job of its own uploads the unsigned build as `<name>-unsigned`
+     * and the signed one as `<name>`; when both are there, only the signed one is brought back.
+     */
+    private fun withoutReplaced(artifacts: List<RunArtifact>): List<RunArtifact> {
+        val names = artifacts.mapTo(HashSet()) { it.name }
+        return artifacts.filterNot { it.name.endsWith(UNSIGNED) && it.name.removeSuffix(UNSIGNED) in names }
+    }
+
     /** Downloads one artifact, unpacks it safely and adds what Media shows; returns the stored paths. */
     private suspend fun bring(artifact: RunArtifact, sessionId: String, folder: File, room: Int): List<String> {
         val zip = File(folder.parentFile, "${artifact.id}.zip")
@@ -247,15 +261,14 @@ internal class GitHubBuilds(
     }
 
     /** What the Media strip is for: pictures, videos, APKs, report pages and short logs. */
-    private fun worthKeeping(file: File): Boolean {
-        return when (ports.media.kindOf(file.name, MediaSniffer.head(file))) {
+    private fun worthKeeping(file: File): Boolean =
+        when (ports.media.kindOf(file.name, MediaSniffer.head(file))) {
             MediaKind.IMAGE, MediaKind.VIDEO, MediaKind.APK, MediaKind.PDF -> true
             // A report is a folder of pages; its entry page is enough.
             MediaKind.HTML -> file.name.equals("index.html", ignoreCase = true)
             MediaKind.TEXT -> file.length() <= MAX_LOG_BYTES
             MediaKind.OTHER -> false
         }
-    }
 
     /**
      * The run this dispatch started. GitHub lists it a moment after the request; only a run of
@@ -264,7 +277,7 @@ internal class GitHubBuilds(
     private suspend fun findRun(project: Project, ref: String, template: BuildTemplate, since: Long): Long? {
         repeat(FIND_ATTEMPTS) {
             delay(FIND_DELAY_MS)
-            val match = ports.gitHub.runs(project.owner, project.repo, ref)
+            val match = ports.gitHub.runs(project.owner, project.repo, ref, runners = false)
                 .filter { it.name == template.workflowName }
                 .mapNotNull { run -> createdAt(run)?.let { run to it } }
                 .filter { (_, created) -> created >= since - CLOCK_SKEW_MS }
@@ -337,6 +350,7 @@ internal class GitHubBuilds(
 
     private companion object {
         const val FROM_ACTIONS = "actions"
+        const val UNSIGNED = "-unsigned"
         const val COMPLETED = "completed"
         const val SUCCESS = "success"
         val FAILED = setOf("failure", "timed_out", "startup_failure", "cancelled", "action_required")

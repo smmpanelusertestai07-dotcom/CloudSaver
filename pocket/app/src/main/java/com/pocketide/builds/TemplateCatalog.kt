@@ -32,7 +32,7 @@ object TemplateCatalog {
             ANDROID_RELEASE, "Android release APK", "PocketIDE Android release", LINUX, 1,
             "Builds the release APK with Gradle. Signs it when the project has the signing Secrets; " +
                 "otherwise it stays unsigned.",
-        ),
+        ).copy(usesSecrets = true),
         template(
             ANDROID_EMULATOR, "Android emulator tests", "PocketIDE Android emulator tests", LINUX, 1,
             "Installs the debug APK on an Android emulator, records the screen, takes a screenshot, saves the " +

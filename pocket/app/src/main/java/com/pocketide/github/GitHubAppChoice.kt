@@ -60,11 +60,14 @@ class GitHubAppChoice(private val settings: SettingsStore, built: GitHubApp) {
 
     companion object {
         const val NEW_APP_PAGE = "https://github.com/settings/apps/new"
-        const val BAD_CLIENT_ID = "Copy the Client ID from your App's page on GitHub. It starts with Iv and has 20 characters."
+        const val BAD_CLIENT_ID = "Copy the Client ID from your App's page on GitHub. It is one word of letters and numbers, " +
+            "such as Iv23li followed by more letters and numbers."
         const val BAD_SLUG = "Use the name from your App's address, github.com/apps/name: small letters, numbers and hyphens."
 
-        // "Iv1." and 16 hex digits (older Apps), or "Iv23" and 16 letters or digits: 20 characters either way.
-        private val CLIENT_ID = Regex("Iv1\\.[0-9a-fA-F]{16}|Iv23[A-Za-z0-9]{16}")
+        // Only the shape of a client ID, not today's formats ("Iv1." + 16 hex digits, "Iv23" + 16
+        // letters or digits): GitHub changed it once already, and its answer to the first
+        // sign-in request says whether an ID is real (GitHubText.BAD_CLIENT_ID when it is not).
+        private val CLIENT_ID = Regex("[A-Za-z0-9._-]{8,100}")
         private val SLUG = Regex("[a-z0-9-]{1,34}")
         private const val APPS_PATH = "github.com/apps/"
 

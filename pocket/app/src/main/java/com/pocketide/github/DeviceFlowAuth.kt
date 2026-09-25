@@ -18,6 +18,8 @@ import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.util.Locale
 
 /**
  * GitHub App sign-in with the device flow, and the user token's life after it.
@@ -55,11 +57,12 @@ internal class DeviceFlowAuth(
     override val configured: Boolean get() = app().configured
 
     override suspend fun startDeviceFlow(): DeviceCode {
-        val reply = postForm(DEVICE_CODE_PATH, mapOf("client_id" to clientId()))
-        when (reply.error) {
+        // GitHub answers a client ID it has no App for with 404: the owner typed a wrong one.
+        val reply = postForm(DEVICE_CODE_PATH, mapOf("client_id" to clientId()), notFound = GitHubText.BAD_CLIENT_ID)
+        when (reply.error?.lowercase(Locale.ROOT)) {
             null -> Unit
             "device_flow_disabled" -> throw GitHubException(GitHubText.DEVICE_FLOW_OFF, 200)
-            "incorrect_client_credentials" -> throw GitHubException(GitHubText.BAD_CLIENT_ID, 200)
+            "incorrect_client_credentials", "not found", "not_found" -> throw GitHubException(GitHubText.BAD_CLIENT_ID, 200)
             else -> throw GitHubException(GitHubText.SIGN_IN_FAILED, 200)
         }
         val deviceCode = reply.deviceCode
@@ -267,7 +270,7 @@ internal class DeviceFlowAuth(
     }
 
     /** github.com/login answers errors with HTTP 200 and an `error` field; other statuses are failures. */
-    private suspend fun postForm(path: String, fields: Map<String, String>): OAuthReply {
+    private suspend fun postForm(path: String, fields: Map<String, String>, notFound: String? = null): OAuthReply {
         val form = FormBody.Builder().apply { fields.forEach { (k, v) -> add(k, v) } }.build()
         val request = Request.Builder()
             .url(oauthBase.newBuilder().addPathSegments(path).build())
@@ -277,6 +280,7 @@ internal class DeviceFlowAuth(
         return withContext(io) {
             http.newCall(request).await().use { response ->
                 val body = response.body.string()
+                if (response.code == HttpURLConnection.HTTP_NOT_FOUND && notFound != null) throw GitHubException(notFound, response.code)
                 if (!response.isSuccessful) throw GitHubErrors.of(response.code, body)
                 decode(OAuthReply.serializer(), body)
             }
@@ -301,6 +305,7 @@ internal class DeviceFlowAuth(
         const val ACCESS_TOKEN_PATH = "login/oauth/access_token"
         const val DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
         const val INSTALLATIONS_PAGE = "https://github.com/settings/installations"
+
         /** The code page is opened in the browser, so it must be GitHub's own. */
         private const val VERIFICATION_PREFIX = "https://github.com/"
         private const val DEFAULT_VERIFICATION_URI = "https://github.com/login/device"

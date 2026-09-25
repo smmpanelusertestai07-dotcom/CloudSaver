@@ -27,5 +27,12 @@ internal object UpdateRules {
         else -> null
     }
 
+    /**
+     * True when [candidate] is this app but not a newer build: a release published without raising
+     * versionCode. Such a release is passed over for good instead of downloaded again every day.
+     */
+    fun notNewer(candidate: ApkFacts?, self: ApkFacts): Boolean =
+        candidate != null && candidate.packageName == self.packageName && candidate.versionCode <= self.versionCode
+
     private const val MAX_NAME = 80
 }

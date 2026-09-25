@@ -4,7 +4,10 @@
 A template runs in someone's own GitHub account and spends their Actions minutes, so each one:
   - runs only when asked (workflow_dispatch and nothing else: 2.6.0's ran on every push);
   - reads, never writes: top-level `permissions: contents: read`, and no write grant anywhere;
-  - pins every action to a full commit SHA, so a moved tag cannot change what runs.
+  - pins every action to a full commit SHA, so a moved tag cannot change what runs;
+  - keeps Secrets away from the repository's code: a job that reads a Secret never checks the
+    repository out, because anything the build runs in a job (gradlew, build scripts) can change
+    what that job's later steps run, and so read the Secrets they are given.
 """
 from __future__ import annotations
 
@@ -18,6 +21,11 @@ import yaml_lite
 
 def template_dir(root: Path) -> Path:
     return common.assets(root) / "templates"
+
+
+def checks_out(job: dict) -> bool:
+    steps = job.get("steps") or []
+    return any(isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/checkout@") for step in steps)
 
 
 def check_template(name: str, text: str) -> list[str]:
@@ -44,6 +52,11 @@ def check_template(name: str, text: str) -> list[str]:
             grants += [f"{s} (job {job_name})" for s in actions_rules.write_grants(job.get("permissions"))]
     for grant in grants:
         problems.append(f"{name}: grants write access to {grant}; templates only read")
+
+    for job_name, job in (workflow.get("jobs") or {}).items():
+        if isinstance(job, dict) and "secrets." in str(job) and checks_out(job):
+            problems.append(f"{name}: job {job_name} reads Secrets and checks out the repository, whose code could "
+                            "take them; use the Secrets in a job of their own, without a checkout")
 
     for line, reference, _comment in actions_rules.uses_lines(text):
         why = actions_rules.pin_problem(reference)
