@@ -59,22 +59,16 @@ internal object GuideSafety {
     val privacy = section(
         "privacy",
         "Privacy",
-        "Who sees what, where your chats are saved, what each AI company keeps, and the switches that stop training.",
+        "Who sees what, what each company keeps, and the switches that stop training.",
         table(
             listOf("Who", "What they can see"),
-            row(
-                "The company whose agent you use",
-                "Your prompts, its replies, and the code and images the agent reads",
-            ),
-            row("An extra agent's publisher", "The same, and so does its model service"),
-            row("GitHub", "Your code and build logs, and Half G"),
-            row("Google", "Encrypted files and their sizes, and Half D"),
+            row("The agent's company", "Your prompts, its replies, and the code and images it reads"),
+            row("An extra agent's publisher", "The same, plus its model service"),
+            row("GitHub", "Your code, build logs and Half G"),
+            row("Google", "Encrypted files, their sizes, and Half D"),
             row("PocketIDE's developer", "Nothing: no server, no analytics"),
         ),
-        p(
-            "Each company keeps what you send under its own policy; deleting a chat in PocketIDE does not " +
-                "delete its copy.",
-        ),
+        p("Deleting a chat here does not delete a company's copy."),
         bullets(
             "Anthropic: on Free, Pro and Max, chats are kept 30 days with \"Help improve Claude\" off, and up " +
                 "to 5 years with it on.",
@@ -84,22 +78,7 @@ internal object GuideSafety {
                 "unless you turn off Settings → Account → Enable Telemetry.",
         ),
         info("Policies as of ${DocLinks.CHECKED_ON}. $LABELS_NOTE"),
-        ChatHomes.summaryTable(),
-        p(
-            "Claude: with Settings → Agents → \"Also save Claude chats in your Claude account\" on, Claude Code " +
-                "connects each session to Remote Control. Anthropic then stores its transcript (your messages, " +
-                "Claude's replies and tool activity) in your Claude account, under its data-usage policy and your " +
-                "\"Help improve Claude\" choice. The Claude app and claude.ai/code show it, and you can continue it " +
-                "there. It needs a Claude plan sign-in, Pro or higher; an API key does not work. Turn the switch " +
-                "off to stop it.",
-        ),
-        p(
-            "Codex keeps local chats on the phone only; OpenAI has no way to keep them yet. ${ChatHomes.JULES_LINE}",
-        ),
-        link("Claude Code on the web", DocLinks.CLAUDE_CODE_WEB),
-        link("Claude Code Remote Control", DocLinks.CLAUDE_REMOTE_CONTROL),
-        link("Codex on the web", DocLinks.CODEX_WEB),
-        link("Jules", DocLinks.JULES),
+        ChatHomes.table(),
         link("Claude privacy settings", DocLinks.CLAUDE_PRIVACY),
         link("Claude Code data usage", DocLinks.CLAUDE_DATA_USAGE),
         link("ChatGPT data controls", DocLinks.CHATGPT_DATA_CONTROLS),
@@ -107,8 +86,7 @@ internal object GuideSafety {
         link("Antigravity settings", DocLinks.ANTIGRAVITY_SETTINGS),
         link("Antigravity terms", DocLinks.ANTIGRAVITY_TERMS),
         warn(
-            "Never paste passwords or keys into a chat: they go to the AI company. Put them in Project → " +
-                "Secrets, which only set-up steps and your Actions builds get.",
+            "Never paste passwords or keys into a chat: they go to the AI company. Put them in Project → Secrets.",
         ),
     )
 

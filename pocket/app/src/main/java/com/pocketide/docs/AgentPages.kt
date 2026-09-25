@@ -148,25 +148,10 @@ internal object AgentPages {
             "The publisher and the model service it uses keep it under their own policies."
         }
 
-    /** Where an official agent's chats are saved, and the company's own page for them. */
+    /** Where an official agent's chats are saved, and the company pages that show them. */
     private fun chatsLines(agent: Details): List<DocBlock> {
         val home = ChatHomes.of(agent.id)?.takeIf { agent.official } ?: return emptyList()
-        return buildList {
-            add(p("Where its chats are saved: ${home.kept}"))
-            when (home) {
-                ChatHomes.claude -> add(link("Claude Code Remote Control", DocLinks.CLAUDE_REMOTE_CONTROL))
-                ChatHomes.codex -> {
-                    add(p(ChatHomes.CODEX_CLOUD_LINE))
-                    add(link("Codex in the cloud", DocLinks.CODEX_CLOUD))
-                    add(link("OpenAI: request to keep local chats", DocLinks.CODEX_LOCAL_SYNC_REQUEST))
-                }
-                ChatHomes.antigravity -> {
-                    add(p(ChatHomes.JULES_LINE))
-                    add(ChatHomes.jules)
-                }
-            }
-            home.page?.let(::add)
-        }
+        return listOfNotNull(p("Where its chats are saved: ${home.kept}"), home.note?.let(::p), home.open) + home.sources
     }
 
     private fun roomLine(agent: Details) =

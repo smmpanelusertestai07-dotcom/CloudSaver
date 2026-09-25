@@ -66,22 +66,29 @@ class DocsContentTest {
 
     @Test
     fun `Privacy says where each official agent's chats are saved, and each agent's page says it too`() {
-        val official = OfficialAgents.all.map { it.id }
-        assertEquals(official, ChatHomes.all.map { it.agentId })
+        assertEquals(OfficialAgents.all.map { it.id }, ChatHomes.all.map { it.agentId })
         val table = requireSection("privacy").blocks.filterIsInstance<DocBlock.Table>()
-            .single { it.header.last() == "Where its chats are saved" }
-        assertEquals(OfficialAgents.all.map { it.displayName }, table.rows.map { it.first() })
-        assertTrue(table.rows.all { it.last().contains("PocketIDE's encrypted backup") })
-        val privacy = sectionText(requireSection("privacy"))
-        assertTrue(privacy.contains(ChatHomes.JULES_LINE))
-        assertTrue(privacy.contains("Remote Control") && privacy.contains("Also save Claude chats in your Claude account"))
+            .single { it.header.last() == ChatHomes.TABLE_HEADER }
+        assertEquals("one row per official agent", OfficialAgents.all.map { it.displayName }, table.rows.map { it.first() })
+        assertTrue("where Claude's switch is", table.rows.first().last().contains("Settings → Agents"))
+        val claudeNote = checkNotNull(ChatHomes.claude.note)
+        assertTrue("what Anthropic stores", claudeNote.contains("transcript") && claudeNote.contains("Help improve Claude"))
+        assertTrue("how to turn it off", claudeNote.contains("turn off Settings → Agents → \"${ChatHomes.CLAUDE_SWITCH}\""))
+        assertTrue(sectionText(requireSection("privacy-policy")).contains(claudeNote))
+        assertTrue(sectionText(DocsContent.agentPage(OfficialAgents.claude)).contains(claudeNote))
         for (agent in OfficialAgents.all) {
+            val home = checkNotNull(ChatHomes.of(agent.id))
             val page = DocsContent.agentPage(agent)
-            assertTrue(agent.id, sectionText(page).contains("Where its chats are saved: ${ChatHomes.of(agent.id)?.kept}"))
+            assertTrue(agent.id, sectionText(page).contains("Where its chats are saved: ${home.kept}"))
+            assertTrue(agent.id, page.blocks.containsAll(listOfNotNull(home.open) + home.sources))
         }
-        val codexLinks = DocsContent.agentPage(OfficialAgents.codex).blocks.filterIsInstance<DocBlock.Link>().map { it.url }
+        val codex = DocsContent.agentPage(OfficialAgents.codex)
+        assertTrue(sectionText(codex).contains(ChatHomes.CODEX_CLOUD_LINE))
+        val codexLinks = codex.blocks.filterIsInstance<DocBlock.Link>().map { it.url }
         assertTrue(codexLinks.containsAll(listOf(DocLinks.CODEX_WEB, DocLinks.CODEX_LOCAL_SYNC_REQUEST)))
-        assertTrue(sectionText(DocsContent.agentPage(OfficialAgents.codex)).contains(ChatHomes.CODEX_CLOUD_LINE))
+        val antigravity = DocsContent.agentPage(OfficialAgents.antigravity)
+        assertTrue(sectionText(antigravity).contains(ChatHomes.JULES_LINE))
+        assertTrue(antigravity.blocks.filterIsInstance<DocBlock.Link>().any { it.url == DocLinks.JULES })
     }
 
     @Test

@@ -57,8 +57,8 @@ internal object Legal {
             "Who can see it: you. GitHub sees your code, as any repository host does. Google stores files it " +
                 "cannot read. Each AI company receives what its agent sends (your prompts, and the code and " +
                 "images the agent reads) and keeps it under its own policy. PocketIDE cannot delete their copy. " +
-                "While \"Also save Claude chats in your Claude account\" is on (the default), Anthropic also keeps " +
-                "Claude Code's sessions in your Claude account; turn it off in Settings.",
+                "While \"${ChatHomes.CLAUDE_SWITCH}\" is on (the default), Claude Code connects each session to " +
+                "Remote Control, so it is also kept in your Claude account. ${ChatHomes.claude.note}",
         ),
         p(
             "Encryption: vault files are encrypted on the phone with age (X25519) before upload. Tokens and " +
