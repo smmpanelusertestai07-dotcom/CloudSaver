@@ -171,6 +171,50 @@ class GplNotice(unittest.TestCase):
                           "talloc-2.4.3-source.tar.gz", "libandroid-shmem-0.7-source.tar.gz"], [p.name for p in saved])
         self.assertEqual(("https://x/build.sh", "f" * 64), download.call_args_list[1].args[:2])
 
+    def test_an_unreachable_host_is_retried_then_its_mirror_is_used(self):
+        good = b"talloc source"
+        pinned = hashlib.sha256(good).hexdigest()
+
+        class Body(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def fake_urlopen(request, timeout):
+            if "www.samba.org" in request.full_url:
+                raise gpl_notice.urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+            return Body(good)
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(gpl_notice.urllib.request, "urlopen", side_effect=fake_urlopen) as urlopen, \
+                mock.patch.object(gpl_notice.time, "sleep") as sleep:
+            out = Path(tmp) / "talloc.tar.gz"
+            gpl_notice.download_verified("https://www.samba.org/ftp/t.tar.gz", pinned, out,
+                                         mirrors=("https://download.samba.org/pub/t.tar.gz",))
+            self.assertEqual(good, out.read_bytes())
+        self.assertEqual(4, urlopen.call_count)  # three tries on the dead host, then the mirror
+        self.assertEqual(2, sleep.call_count)
+
+    def test_a_wrong_checksum_moves_on_and_no_match_anywhere_is_refused(self):
+        class Body(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(gpl_notice.urllib.request, "urlopen", side_effect=lambda r, timeout: Body(b"changed")) as urlopen, \
+                mock.patch.object(gpl_notice.time, "sleep"):
+            out = Path(tmp) / "x"
+            with self.assertRaises(gpl_notice.NoticeError) as refused:
+                gpl_notice.download_verified("https://a/x", "0" * 64, out, mirrors=("https://b/x",))
+            self.assertFalse(out.exists())
+        self.assertEqual(2, urlopen.call_count)  # one try each: a checksum is not a network error
+        self.assertIn("not the pinned", str(refused.exception))
+
     def test_the_release_notice_for_the_shipped_apk(self):
         jni = TOOLS.parent / "app/src/main/jniLibs/arm64-v8a"
         with tempfile.TemporaryDirectory() as tmp:

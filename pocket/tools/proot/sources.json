@@ -1,5 +1,5 @@
 {
-  "_comment": "Where the PRoot inside each PocketIDE APK comes from. The release job reads the version string inside the APK's libproot.so, finds the matching entry, checks the APK's native libraries against the entry's recorded binaries, and attaches every archive and build recipe listed here to the release (GPL-2.0 for PRoot, LGPL-3.0-or-later for talloc). gpl_notice.py refuses to release an entry whose GPL or LGPL part lacks a pinned url and sha256. build-proot.sh builds the entry marked build: true from exactly these archives. Checksums: from Termux's packages (termux-packages packages/*/build.sh at the commits named); talloc's also recomputed from samba.org on 24 Sep 2026; the recipes' from raw.githubusercontent.com on 25 Sep 2026.",
+  "_comment": "Where the PRoot inside each PocketIDE APK comes from. The release job reads the version string inside the APK's libproot.so, finds the matching entry, checks the APK's native libraries against the entry's recorded binaries, and attaches every archive and build recipe listed here to the release (GPL-2.0 for PRoot, LGPL-3.0-or-later for talloc). gpl_notice.py refuses to release an entry whose GPL or LGPL part lacks a pinned url and sha256. build-proot.sh builds the entry marked build: true from exactly these archives. Checksums: from Termux's packages (termux-packages packages/*/build.sh at the commits named); talloc's also recomputed from samba.org on 24 Sep 2026 (and its download.samba.org mirror on 25 Sep 2026); the recipes' from raw.githubusercontent.com on 25 Sep 2026.",
   "ndk": "29.0.14206865",
   "releases": [
     {
@@ -17,6 +17,7 @@
         "license": "LGPL-3.0-or-later",
         "version": "2.4.3",
         "url": "https://www.samba.org/ftp/talloc/talloc-2.4.3.tar.gz",
+        "mirrors": ["https://download.samba.org/pub/talloc/talloc-2.4.3.tar.gz"],
         "sha256": "dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd"
       },
       "libandroid_shmem": {
@@ -51,6 +52,7 @@
         "license": "LGPL-3.0-or-later",
         "version": "2.4.3",
         "url": "https://www.samba.org/ftp/talloc/talloc-2.4.3.tar.gz",
+        "mirrors": ["https://download.samba.org/pub/talloc/talloc-2.4.3.tar.gz"],
         "sha256": "dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd",
         "recipe": {
           "url": "https://raw.githubusercontent.com/termux/termux-packages/08b49b3ce00b1e14a3a0365200f30e50f8dfafe1/packages/libtalloc/build.sh",

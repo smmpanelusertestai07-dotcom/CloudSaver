@@ -55,13 +55,39 @@ print(value)
 PY
 }
 
+# The part's url, then its mirrors, one per line.
+release_urls() {
+  python3 - "$SOURCES_JSON" "$1" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+builds = [r for r in data["releases"] if r.get("build")]
+if len(builds) != 1:
+    sys.exit("sources.json must mark exactly one release with build: true")
+part = builds[0][sys.argv[2]]
+print("\n".join([part["url"], *part.get("mirrors", [])]))
+PY
+}
+
+# Saves the first of the given URLs whose download matches the pinned SHA-256. A plain
+# curl --retry skips "could not connect", which is how one CI run lost samba.org, so every
+# error is retried, and a host that stays down falls through to the next mirror.
 fetch_verified() {
-  local url="$1" sha256="$2" dest="$3"
-  if [ ! -f "$dest" ] || ! echo "$sha256  $dest" | sha256sum --check --status; then
-    curl --fail --location --silent --show-error --retry 3 --output "$dest.part" "$url"
-    mv "$dest.part" "$dest"
+  local sha256="$1" dest="$2" url
+  shift 2
+  if [ -f "$dest" ] && echo "$sha256  $dest" | sha256sum --check --status; then
+    return 0
   fi
-  echo "$sha256  $dest" | sha256sum --check --status || die "${url##*/} does not match its pinned SHA-256"
+  for url in "$@"; do
+    if curl --fail --location --silent --show-error --connect-timeout 30 \
+        --retry 5 --retry-delay 5 --retry-all-errors --output "$dest.part" "$url" &&
+      echo "$sha256  $dest.part" | sha256sum --check --status; then
+      mv "$dest.part" "$dest"
+      return 0
+    fi
+    printf 'build-proot: %s failed or did not match its pinned SHA-256; trying the next source\n' "$url" >&2
+  done
+  rm -f "$dest.part"
+  die "${dest##*/}: no source gave a file matching its pinned SHA-256"
 }
 
 check_ndk() {
@@ -202,9 +228,13 @@ main() {
   proot="$OUT/sources/proot-$VERSION.zip"
   talloc="$OUT/sources/talloc-$(release_field talloc.version).tar.gz"
   shmem="$OUT/sources/libandroid-shmem-$(release_field libandroid_shmem.version).tar.gz"
-  fetch_verified "$(release_field proot.url)" "$(release_field proot.sha256)" "$proot"
-  fetch_verified "$(release_field talloc.url)" "$(release_field talloc.sha256)" "$talloc"
-  fetch_verified "$(release_field libandroid_shmem.url)" "$(release_field libandroid_shmem.sha256)" "$shmem"
+  local -a urls
+  mapfile -t urls < <(release_urls proot)
+  fetch_verified "$(release_field proot.sha256)" "$proot" "${urls[@]}"
+  mapfile -t urls < <(release_urls talloc)
+  fetch_verified "$(release_field talloc.sha256)" "$talloc" "${urls[@]}"
+  mapfile -t urls < <(release_urls libandroid_shmem)
+  fetch_verified "$(release_field libandroid_shmem.sha256)" "$shmem" "${urls[@]}"
   build_shmem "$shmem"
   build_talloc "$talloc"
   build_proot "$proot" "$VERSION"

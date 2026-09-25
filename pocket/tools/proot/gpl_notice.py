@@ -18,6 +18,8 @@ import hashlib
 import json
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -131,14 +133,35 @@ def _archive_lines(part: dict) -> list[str]:
     return lines
 
 
-def download_verified(url: str, sha256: str, destination: Path) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "pocketide-ci"})
-    with urllib.request.urlopen(request, timeout=120) as response:
-        data = response.read()
-    actual = hashlib.sha256(data).hexdigest()
-    if actual != sha256:
-        raise NoticeError(f"{url} now hashes to {actual}, not the pinned {sha256}")
-    destination.write_bytes(data)
+def download_verified(url: str, sha256: str, destination: Path, mirrors: tuple[str, ...] = (), tries: int = 3) -> None:
+    """Saves the first of url and its mirrors whose bytes match the pinned SHA-256.
+
+    A host that cannot be reached or answers 5xx is tried again, so one dropped connection does
+    not fail a release; a wrong checksum or a 4xx moves on to the next mirror at once.
+    """
+    problems = []
+    for candidate in (url, *mirrors):
+        for attempt in range(tries):
+            try:
+                request = urllib.request.Request(candidate, headers={"User-Agent": "pocketide-ci"})
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    data = response.read()
+            except urllib.error.HTTPError as error:
+                problems.append(f"{candidate}: HTTP {error.code}")
+                if error.code < 500 and error.code not in (408, 429):
+                    break
+            except OSError as error:
+                problems.append(f"{candidate}: {error}")
+            else:
+                actual = hashlib.sha256(data).hexdigest()
+                if actual == sha256:
+                    destination.write_bytes(data)
+                    return
+                problems.append(f"{candidate} now hashes to {actual}, not the pinned {sha256}")
+                break
+            if attempt + 1 < tries:
+                time.sleep(5 * (attempt + 1))
+    raise NoticeError("; ".join(problems))
 
 
 def fetch_sources(release: dict, directory: Path) -> list[Path]:
@@ -149,7 +172,7 @@ def fetch_sources(release: dict, directory: Path) -> list[Path]:
         stem = f"{key.replace('_', '-')}-{part.get('version') or release['version']}"
         if part.get("sha256"):
             saved.append(directory / f"{stem}-source{_suffix(part['url'])}")
-            download_verified(part["url"], part["sha256"], saved[-1])
+            download_verified(part["url"], part["sha256"], saved[-1], mirrors=tuple(part.get("mirrors", ())))
         if part.get("recipe"):
             saved.append(directory / f"{stem}-termux-build.sh")
             download_verified(part["recipe"]["url"], part["recipe"]["sha256"], saved[-1])
