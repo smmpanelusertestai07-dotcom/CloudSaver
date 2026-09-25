@@ -15,14 +15,18 @@ internal object FixLadder {
      */
     data class Rung(val title: String, val fixes: String, val cost: String, val action: Action? = null, val how: String? = null)
 
+    /** The agent menu's items the first two levels send the owner to; the menu shows these exact words. */
+    const val RELOAD_ITEM = "Reload screen"
+    const val RESTART_ITEM = "Restart agent"
+
     val rungs = listOf(
         Rung(
             "Reload the agent screen",
             "For a blank or frozen agent screen.",
             "Takes seconds.",
-            how = "Go back and open the session again.",
+            how = "The agent's menu → $RELOAD_ITEM.",
         ),
-        Rung("Restart the agent", "For an agent that stopped answering.", "The chat is kept.", how = "Its menu → Restart agent."),
+        Rung("Restart the agent", "For an agent that stopped answering.", "The chat is kept.", how = "The agent's menu → $RESTART_ITEM."),
         Rung(
             "Restart the computer",
             "For several stuck agents.",

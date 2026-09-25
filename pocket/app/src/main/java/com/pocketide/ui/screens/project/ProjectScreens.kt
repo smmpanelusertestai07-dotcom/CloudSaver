@@ -91,6 +91,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.core.Ist
+import com.pocketide.docs.FixLadder
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
@@ -708,6 +709,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onHandOff = { handOffTo = it },
                         onRenameBranch = { renamingBranch = true },
                         onAddFile = { addingFile = true },
+                        onReload = agentWeb::reload,
                         onRestart = {
                             scope.act(snackbar, "Could not restart $name", done = "$name started again. The chat is kept.") {
                                 graph.rooms.restart(agentId)
@@ -824,6 +826,7 @@ private fun AgentBar(
     onHandOff: (AgentInfo) -> Unit,
     onRenameBranch: () -> Unit,
     onAddFile: () -> Unit,
+    onReload: () -> Unit,
     onRestart: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -881,7 +884,9 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text("Full screen") }, onClick = { menu = false; onImmersive() })
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Restart agent") }, onClick = { menu = false; onRestart() })
+                    // The fix-it ladder's first two levels, named as Help and the Computer screen name them.
+                    DropdownMenuItem(text = { Text(FixLadder.RELOAD_ITEM) }, onClick = { menu = false; onReload() })
+                    DropdownMenuItem(text = { Text(FixLadder.RESTART_ITEM) }, onClick = { menu = false; onRestart() })
                     DropdownMenuItem(text = { Text("Stop agent") }, onClick = { menu = false; onStop() })
                 }
             }
