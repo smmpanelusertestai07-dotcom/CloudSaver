@@ -121,8 +121,9 @@ import java.io.File
  * builds made for the owner. Only safe formats are rendered, each by Android's own decoder.
  */
 @Composable
-fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
+fun MediaPanel(sessionId: String, snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
     val graph = rememberGraph()
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val flow = remember(sessionId) { graph.media.forSession(sessionId) }
@@ -159,7 +160,7 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostStat
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            waitingVideosText(pendingVideos)?.let { StatusChip(it, Tone.WARN) }
+            waitingVideosChip(backups[sessionId])?.let { StatusChip(it, Tone.WARN) }
             if (adding) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             } else {

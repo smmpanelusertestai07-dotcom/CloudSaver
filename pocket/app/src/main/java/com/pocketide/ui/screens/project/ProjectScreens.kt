@@ -254,7 +254,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                     } else {
                         when (tab) {
                             ProjectTab.PREVIEW -> PreviewPanel(selected.id, preview, nav, snackbar)
-                            ProjectTab.MEDIA -> MediaPanel(selected.id, selected.pendingVideos, snackbar)
+                            ProjectTab.MEDIA -> MediaPanel(selected.id, snackbar)
                             ProjectTab.TERMINAL -> TerminalPanel(selected.id, terminal, nav, snackbar)
                             else -> Unit
                         }
@@ -392,6 +392,7 @@ private fun SessionsTab(
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     var putting by remember { mutableStateOf<SessionRecord?>(null) }
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
     var browsing by remember { mutableStateOf<SessionRecord?>(null) }
@@ -425,6 +426,7 @@ private fun SessionsTab(
                     SessionCard(
                         session = session,
                         running = room is RoomState.Running && room.sessionId == session.id,
+                        waitingVideos = waitingVideosChip(backups[session.id]),
                         onOpen = { nav.agent(session.id) },
                         onPin = {
                             val pinned = SessionShortcut.pin(context, session, agentName(agent, agentId))
@@ -459,6 +461,7 @@ private fun SessionsTab(
 private fun SessionCard(
     session: SessionRecord,
     running: Boolean,
+    waitingVideos: String?,
     onOpen: () -> Unit,
     onPin: () -> Unit,
     onChanges: () -> Unit,
@@ -490,7 +493,7 @@ private fun SessionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                waitingVideosText(session.pendingVideos)?.let { StatusChip(it, Tone.WARN) }
+                waitingVideos?.let { StatusChip(it, Tone.WARN) }
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session actions") }
@@ -770,7 +773,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                             when (p) {
                                 AgentPanel.PREVIEW -> PreviewPanel(sessionId, preview, nav, snackbar)
-                                AgentPanel.MEDIA -> MediaPanel(sessionId, session.pendingVideos, snackbar)
+                                AgentPanel.MEDIA -> MediaPanel(sessionId, snackbar)
                                 AgentPanel.TERMINAL -> TerminalPanel(sessionId, terminal, nav, snackbar)
                             }
                         }
