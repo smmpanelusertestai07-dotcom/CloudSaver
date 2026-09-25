@@ -65,6 +65,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="pocketide" android:host="return" />
             </intent-filter>
+            <!-- Share to PocketIDE: the owner picks a session for the file. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <!-- Keeps the Linux computer alive while agents run, and only then. -->
