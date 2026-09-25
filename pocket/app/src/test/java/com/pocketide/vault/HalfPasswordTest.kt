@@ -32,6 +32,14 @@ class HalfPasswordTest {
     }
 
     @Test
+    fun `a lone surrogate in the password is refused with a plain sentence`() {
+        val refused = assertThrows(VaultException::class.java) {
+            HalfPassword.derive("pass\uD83D".toCharArray(), Argon2Cost(64, 1, 1), ByteArray(16))
+        }
+        assertEquals(VaultText.PASSWORD_UNUSABLE, refused.message)
+    }
+
+    @Test
     fun `the default cost is the plan's 64 MiB, 3 passes, 1 lane`() {
         assertEquals(Argon2Cost(65_536, 3, 1), Argon2Cost.DEFAULT)
     }
