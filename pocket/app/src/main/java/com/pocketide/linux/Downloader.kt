@@ -25,7 +25,7 @@ import java.security.MessageDigest
 internal class ChecksumMismatch(val fileName: String) : IOException("$fileName did not match its published checksum")
 
 /** A download that could not finish, said plainly. What arrived is kept and continued next time. */
-internal class DownloadFailed(message: String) : IOException(message)
+internal class DownloadFailed(message: String, val worthRetrying: Boolean = true) : IOException(message)
 
 /** Fetches a pinned file into place (production: [Downloader]). [kind] labels the data it uses. */
 internal fun interface Fetcher {
@@ -102,7 +102,11 @@ internal class Downloader(
             true
         }
         200 -> false
-        else -> throw DownloadFailed("The download server answered ${response.code}")
+        // A missing file or a refusal does not change a few seconds later; a busy server may.
+        else -> throw DownloadFailed(
+            "The download server answered ${response.code}",
+            worthRetrying = response.code >= 500 || response.code == 408 || response.code == 429,
+        )
     }
 
     private suspend fun receive(
@@ -146,7 +150,8 @@ internal class Downloader(
     }
 
     private fun retryable(failure: IOException) =
-        failure !is ChecksumMismatch && failure !is FileSystemException && !outOfSpace(failure)
+        failure !is ChecksumMismatch && failure !is FileSystemException && !outOfSpace(failure) &&
+            (failure as? DownloadFailed)?.worthRetrying != false
 
     /** Network failures in the owner's words; disk and checksum failures keep their own type. */
     private fun plain(failure: IOException, pin: PinnedDownload): IOException = when {

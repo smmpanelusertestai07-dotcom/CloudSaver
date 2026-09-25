@@ -61,11 +61,12 @@ internal class GuestRoot(rootDir: File) {
 
     /**
      * Replaces [guestPath] with [bytes] through a temporary file and a rename, so whatever was
-     * there (a file, or a link to anywhere) is replaced and never written through.
+     * there (a file, or a link to anywhere) is replaced and never written through. False when
+     * the file already held exactly [bytes].
      */
-    fun write(guestPath: String, bytes: ByteArray, mode: Int = 0b110_100_100) {
+    fun write(guestPath: String, bytes: ByteArray, mode: Int = 0b110_100_100): Boolean {
         val target = entry(guestPath)
-        if (sameContent(target, bytes)) return
+        if (sameContent(target, bytes)) return false
         val temporary = Files.createTempFile(target.parent, ".pocketide-", ".tmp")
         try {
             Files.write(temporary, bytes)
@@ -74,6 +75,7 @@ internal class GuestRoot(rootDir: File) {
         } finally {
             Files.deleteIfExists(temporary)
         }
+        return true
     }
 
     private fun walk(names: List<String>, create: Boolean): Path? {

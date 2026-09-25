@@ -13,9 +13,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -26,7 +28,9 @@ import java.net.InetAddress
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.TimeZone
+import java.util.UUID
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -34,12 +38,12 @@ import kotlin.concurrent.write
 /**
  * The computer on the phone: Ubuntu under proot, rooted at [AppDirs.rootfs].
  *
- * Set-up, reset and updates run one at a time in the computer's own scope, so leaving a screen
- * never stops dpkg half way; the caller only stops waiting. Every program starts through
- * [ProotCommand] with an empty environment and only the folders its command names.
+ * Set-up, reset, repair and updates run one at a time in the computer's own scope, so leaving
+ * a screen never stops dpkg half way; the caller only stops waiting. Every program starts
+ * through [ProotCommand] with an empty environment and only the folders its command names.
  */
 internal class ProotComputer(
-    context: Context,
+    private val context: Context,
     private val dirs: AppDirs,
     private val dataBudget: () -> DataBudget,
     private val clock: Clock,
@@ -47,6 +51,7 @@ internal class ProotComputer(
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val oneAtATime = Mutex()
     private val host = ProotHost(File(context.applicationInfo.nativeLibraryDir), dirs.prootTmp)
+    private val variablesDir = File(dirs.prootTmp, VARIABLES_DIR)
     private val table = ProcTable()
     private val processes = ProcessKeeper(
         signals = { pid, signal -> android.os.Process.sendSignal(pid, signal) },
@@ -89,30 +94,45 @@ internal class ProotComputer(
 
     init {
         mutableState.value = setup.stateOnDisk()
+        // Variables files a killed app could not delete.
+        variablesDir.listFiles()?.forEach { it.delete() }
+        // A long set-up or a day of work crosses from Wi-Fi to mobile data; Linux follows.
+        dns.watch { servers -> runCatching { GuestConfig.writeResolver(GuestRoot(dirs.rootfs), servers) } }
     }
 
-    override suspend fun install() = exclusively { setup.install() }
+    override suspend fun install() {
+        exclusively { setup.install() }
+    }
 
-    override suspend fun reset() = exclusively {
-        close("The computer is being rebuilt.")
-        try {
-            processes.stopAll()
-            mutableState.value = ComputerState.Installing("Removing the old computer…", null, 0, 0)
-            setup.remove()
-            setup.install()
-        } finally {
-            reopen()
+    override suspend fun reset() {
+        exclusively {
+            close("The computer is being rebuilt.")
+            try {
+                processes.stopAllAndWait()
+                mutableState.value = ComputerState.Installing("Removing the old computer…", null, 0, 0)
+                if (removeQuietly() == null) setup.install()
+            } finally {
+                reopen()
+            }
         }
     }
 
-    override suspend fun remove() = exclusively {
-        close("The computer is being removed.")
-        try {
-            processes.stopAll()
-            setup.remove()
-        } finally {
-            reopen()
+    override suspend fun remove() {
+        exclusively {
+            close("The computer is being removed.")
+            try {
+                processes.stopAllAndWait()
+                removeQuietly()
+            } finally {
+                reopen()
+            }
         }
+    }
+
+    override suspend fun restart() = processes.stopAllAndWait()
+
+    override suspend fun repair(): List<RepairItem> = exclusively {
+        hostItems() + setup.repair()
     }
 
     override fun start(command: LinuxCommand): Process = gate.read {
@@ -120,7 +140,6 @@ internal class ProotComputer(
         val current = state.value
         check(current is ComputerState.Ready || current is ComputerState.Updating) { "The computer is not set up yet." }
         val guest = GuestRoot(dirs.rootfs)
-        dns.watch { servers -> runCatching { GuestConfig.writeResolver(guest, servers) } }
         runCatching { GuestConfig.writeBasics(guest, onlyMissing = true) }
         launch(dirs.rootfs, command)
     }
@@ -139,6 +158,19 @@ internal class ProotComputer(
     }
 
     override fun liveProcesses(): Int = table.countOwnedBy(android.os.Process.myUid(), android.os.Process.myPid())
+
+    override fun liveProcesses(process: Process): Int = processes.count(process)
+
+    override suspend fun checkNetwork(): NetworkReport = withContext(Dispatchers.IO) {
+        val hosts = HostProbe(Http.client).checkAll(NeededHosts.all)
+        val linux = linuxLookup()
+        NetworkReport(
+            checkedAt = clock.now(),
+            hosts = hosts,
+            linuxDns = linux,
+            blockers = NetworkBlockers.describe(PhoneNetwork.read(context), hosts, linux),
+        )
+    }
 
     override suspend fun info(): ComputerInfo = withContext(Dispatchers.IO) {
         val guest = GuestRoot(dirs.rootfs)
@@ -166,13 +198,82 @@ internal class ProotComputer(
         Files.createDirectories(host.tmpDir.toPath())
         // Android gives a container no resolver; the phone's servers of the moment are written each time.
         runCatching { GuestConfig.writeResolver(GuestRoot(root), dns.servers()) }
-        val call = ProotCommand.build(host, root, standIns.binds(), TimeZone.getDefault().id, command)
-        val builder = ProcessBuilder(call.argv).redirectErrorStream(command.mergeErrors)
-        builder.environment().run {
-            clear()
-            putAll(call.environment)
+        val variables = command.env.takeIf { it.isNotEmpty() }?.let { writeVariables(command) }
+        try {
+            val call = ProotCommand.build(host, root, standIns.binds(), TimeZone.getDefault().id, command, variables)
+            val builder = ProcessBuilder(call.argv).redirectErrorStream(command.mergeErrors)
+            builder.environment().run {
+                clear()
+                putAll(call.environment)
+            }
+            return builder.start().also(processes::track)
+        } finally {
+            // launch.pl deletes the file once it has read it; this catches a start that failed first.
+            variables?.let { file -> work.launch { delay(VARIABLES_LIFETIME_MS); file.delete() } }
         }
-        return builder.start().also(processes::track)
+    }
+
+    /** The command's variables, in a file only the app can read, under a name no one can guess. */
+    private fun writeVariables(command: LinuxCommand): File {
+        Files.createDirectories(variablesDir.toPath())
+        val file = File(variablesDir, UUID.randomUUID().toString())
+        val path = Files.createFile(file.toPath(), PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+        Files.write(path, ProotCommand.variables(command))
+        return file
+    }
+
+    private suspend fun removeQuietly(): ComputerState.Broken? = try {
+        setup.remove()
+        null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: IOException) {
+        ComputerState.Broken("The old computer could not be deleted completely.", "Restart the phone, then reset the computer again.")
+            .also { mutableState.value = it }
+    }
+
+    /** The parts of a repair that live outside Linux. */
+    private fun hostItems(): List<RepairItem> = buildList {
+        add(
+            if (host.proot.isFile && host.loader.isFile) {
+                RepairItem("proot", RepairStatus.OK, "Present in the app.")
+            } else {
+                RepairItem("proot", RepairStatus.WARN, "Missing from the app. Install PocketIDE again from its release page.")
+            },
+        )
+        val free = dirs.base.usableSpace
+        add(
+            if (free >= LOW_SPACE) {
+                RepairItem("Free space", RepairStatus.OK, "${free / 1_000_000_000} GB free.")
+            } else {
+                RepairItem("Free space", RepairStatus.WARN, "Only ${free / 1_000_000} MB free. Free some space on the phone.")
+            },
+        )
+        val standing = runCatching { standIns.binds().keys }.getOrDefault(emptySet())
+        if (standing.isNotEmpty()) {
+            add(RepairItem("Hidden system files", RepairStatus.NOTE, "Android hides ${standing.joinToString()}; Linux sees placeholders."))
+        }
+    }
+
+    /** Looks up a name from inside Linux, the way apt and the agents do. */
+    private suspend fun linuxLookup(): HostCheck? {
+        if (state.value !is ComputerState.Ready) return null
+        val name = NeededHosts.LINUX_LOOKUP
+        val purpose = "Looking up names inside Linux"
+        val code = try {
+            withTimeout(LOOKUP_TIMEOUT_MS) { run(LinuxCommand(listOf("getent", "ahosts", name))) {} }
+        } catch (tooSlow: TimeoutCancellationException) {
+            return HostCheck(name, purpose, ok = false, detail = "No answer within ${LOOKUP_TIMEOUT_MS / 1000} s.")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            return HostCheck(name, purpose, ok = false, detail = "Linux could not be started: ${failure.message}")
+        }
+        return if (code == 0) {
+            HostCheck(name, purpose, ok = true, detail = "Linux looked up $name.")
+        } else {
+            HostCheck(name, purpose, ok = false, detail = "Linux could not look up $name.")
+        }
     }
 
     /**
@@ -191,17 +292,17 @@ internal class ProotComputer(
         val code = try {
             withTimeout(AGY_TIMEOUT_MS) {
                 run(LinuxCommand(listOf("/root/$AGY_PATH", "--version"), binds = listOf(Bind(home.absolutePath, "/root")))) { line ->
-                    if (first == null && line.isNotBlank()) first = line
+                    if (first == null) first = GuestFacts.version(line)
                 }
             }
         } catch (tooSlow: TimeoutCancellationException) {
             null
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failed: Exception) {
+        } catch (failure: Exception) {
             null
         }
-        val shown = GuestFacts.version(first).takeIf { code == 0 } ?: AGY_DOES_NOT_START
+        val shown = first.takeIf { code == 0 } ?: AGY_DOES_NOT_START
         agyVersion = key to shown
         return shown
     }
@@ -260,6 +361,10 @@ internal class ProotComputer(
 
     private companion object {
         const val RECORD_FILE = "computer.json"
+        const val VARIABLES_DIR = "variables"
+        const val VARIABLES_LIFETIME_MS = 60_000L
+        const val LOOKUP_TIMEOUT_MS = 15_000L
+        const val LOW_SPACE = 2_000_000_000L
 
         /** The Antigravity agent's id (AgentInfo.id), and where its CLI installs itself. */
         const val ANTIGRAVITY_ROOM = "antigravity"

@@ -6,8 +6,10 @@
 # again: every step checks before it acts, and the app runs it again when an app update
 # changes it.
 #
-# Lines starting with "pocketide-progress" move the app's progress bar, and apt's own status
-# lines (APT::Status-Fd) say which package is being fetched or set up.
+# Lines starting with "pocketide-progress" move the app's progress bar, "pocketide-step"
+# lines name the step it shows, apt's own status
+# lines (APT::Status-Fd) say which package is being fetched or set up, and
+# "pocketide-installed <count>" says how many missing tools were installed (for Repair).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -23,6 +25,9 @@ readonly STAMP=/opt/pocketide/bootstrap.stamp
 readonly VERSION=1
 
 say() { printf '%s\n' "$*"; }
+
+# A step the app shows as the set-up's current activity.
+step() { printf 'pocketide-step %s\n' "$*"; }
 
 progress() { printf 'pocketide-progress %s\n' "$1"; }
 
@@ -102,20 +107,22 @@ install_packages() {
   mapfile -t missing < <(missing_packages)
   if [ "${#missing[@]}" -eq 0 ]; then
     say "The tools are already installed."
+    printf 'pocketide-installed 0\n'
     return 0
   fi
   write_sources http
-  say "Updating the package list…"
-  if ! apt_try update; then
+  step "Updating the package list…"
+  if ! apt_try update --error-on=any; then
     say "Could not reach Ubuntu's servers."
     return 1
   fi
   progress 30
-  say "Installing tools…"
+  step "Installing tools…"
   if ! apt_try install -y --no-install-recommends "${missing[@]}"; then
     say "Could not install the tools."
     return 1
   fi
+  printf 'pocketide-installed %s\n' "${#missing[@]}"
 }
 
 configure_git() {
@@ -143,7 +150,7 @@ tidy() {
   rm -rf /var/lib/apt/lists/*
 }
 
-say "Preparing Ubuntu…"
+step "Preparing Ubuntu…"
 progress 0
 make_folders
 block_services
