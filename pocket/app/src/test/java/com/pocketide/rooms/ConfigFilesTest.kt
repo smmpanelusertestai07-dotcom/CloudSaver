@@ -79,6 +79,20 @@ class ConfigFilesTest {
         assertEquals(JsonPrimitive("Dark Modern"), reset["workbench.preferredDarkColorTheme"])
     }
 
+    @Test fun `the screen's title is the agent's name, never the session's folder`() {
+        assertEquals("Claude Code", obj(ConfigFiles.codeServerSettings(null, claude, 14)?.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content)
+        val codex = RoomProfiles.of("codex", null)!!
+        assertEquals("Codex", obj(ConfigFiles.codeServerSettings(null, codex, 14)?.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content)
+        // PocketIDE's own key: whatever else the file says is set back, and it is not an agent's change.
+        val rewritten = ConfigFiles.codeServerSettings("""{ "window.title": "${'$'}{rootName}" }""", codex, 14)!!
+        assertEquals("Codex", obj(rewritten.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content)
+        assertTrue(rewritten.added.isEmpty())
+        // A discovered agent's name cannot bring in one of VS Code's title variables.
+        val discovered = RoomProfile(agentId = "acme.agent", name = "Acme ${'$'}{activeEditorLong}", engine = Engine.CODE_SERVER)
+        val title = obj(ConfigFiles.codeServerSettings(null, discovered, 14)?.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content
+        assertFalse(title, title.contains("${'$'}"))
+    }
+
     @Test fun `the Codex room gets its own enter key setting`() {
         val written = obj(ConfigFiles.codeServerSettings(null, RoomProfiles.of("codex", null)!!, 14)?.text)
         assertEquals("cmdAlways", written["chatgpt.composerEnterBehavior"]!!.jsonPrimitive.content)

@@ -25,8 +25,9 @@ import kotlinx.serialization.json.put
 internal object ConfigFiles {
 
     /**
-     * code-server's user settings: phone layout, no telemetry, no self-updates, the agent's own
-     * keys, and with [careful] (someone else's code) the agent's ask-before-running settings.
+     * code-server's user settings: phone layout, the agent's name as the window title, no
+     * telemetry, no self-updates, the agent's own keys, and with [careful] (someone else's code)
+     * the agent's ask-before-running settings.
      * The settings that start programs or loosen the agent's permissions are rebuilt.
      */
     fun codeServerSettings(existing: String?, profile: RoomProfile, fontSize: Int, careful: Boolean = false, kept: List<Entry> = emptyList()): Rebuilt? {
@@ -35,6 +36,9 @@ internal object ConfigFiles {
         CODE_SERVER_SETTINGS.forEach { (key, value) -> managed[key] = value }
         managed["editor.fontSize"] = JsonPrimitive(fontSize)
         managed["terminal.integrated.fontSize"] = JsonPrimitive(fontSize)
+        // The agent's name on the screen's top line, not the session's long worktree folder. VS Code
+        // reads ${...} in it as a variable, so a discovered agent's name loses its "$".
+        managed[WINDOW_TITLE] = JsonPrimitive(profile.name.replace("$", ""))
         managed.putAll(profile.extensionSettings)
         if (careful) managed.putAll(profile.carefulSettings)
         // What VS Code itself rewrote at its start is still PocketIDE's value: left as it is, not written back.
@@ -251,6 +255,7 @@ internal object ConfigFiles {
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
     const val CLAUDE_KEEP_DAYS = 3650
+    const val WINDOW_TITLE = "window.title"
 
     /** Claude Code's switch that connects each interactive session to Remote Control as it starts. */
     const val CLAUDE_REMOTE_CONTROL = "remoteControlAtStartup"
