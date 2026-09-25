@@ -129,6 +129,32 @@ class LeaseTest {
     }
 
     @Test
+    fun aWriteOnTopOfWorkThisPhoneHasNotBroughtInLeavesItForTheNextSync() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("start\n")
+        a.engine.syncNow()
+
+        val b = phoneB()
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+        b.homeFile("claude", path).appendText("continued on B\n")
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        clock.advance(LeasePolicy.TTL_MS + 1)
+
+        // A write that does not reconcile first, as the daily job's once did, takes the expired lease.
+        val kit = SyncKit(a)
+        val run = Run(kit, a.cipher)
+        val drive = run.drive()
+        Committer(kit).commit(run, drive, kit.remote.fetch(drive, run.cipher, run.state.remote, run.index), CommitMode.HOLDER)
+        assertEquals("phone-a", a.remoteIndex()!!.lease!!.deviceId)
+
+        a.engine.syncNow()
+        assertEquals("start\ncontinued on B\n", file.readText())
+    }
+
+    @Test
     fun aPhoneThatTakesTheLeaseBackContinuesFromDrive() = runBlocking {
         val a = phoneA()
         val file = a.homeFile("claude", path)

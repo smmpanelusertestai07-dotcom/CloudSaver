@@ -32,9 +32,8 @@ internal class Maintenance(
      */
     suspend fun run(run: Run): List<String> {
         val settings = ports.settings.settings.value
-        val book = pass.book(run)
-        cleanPhone(run, settings, book, force = false)
-        computer(run, settings, book)
+        cleanPhone(run, settings, pass.book(run), force = false)
+        computer(run, settings, pass.book(run))
         run.save()
         if (!ports.network.online()) return emptyList()
         val drive = run.drive()
@@ -45,6 +44,9 @@ internal class Maintenance(
             run.save()
             return emptyList()
         }
+        // An expired lease is taken below: what the other phone did before it went quiet comes in first.
+        pass.catchUp(run, drive, snapshot, pass.book(run))
+        val book = pass.book(run)
         val extras = retention(run, index, settings, book)
         var latest = committer.commit(run, drive, snapshot, CommitMode.HOLDER, extras)
         phoneCopies(run, latest.index ?: index, settings, book)

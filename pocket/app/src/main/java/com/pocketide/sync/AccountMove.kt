@@ -72,7 +72,8 @@ internal class AccountMove(private val kit: SyncKit) {
                 move = job,
                 account = job.to,
                 remote = RemoteMark(written.id, written.md5, written.modifiedTime, moved.revision, bytes.size.toLong(), moved.updatedAt),
-                alignedRevision = moved.revision,
+                // Another phone's writes this phone had not brought in yet are reconciled at the next pass.
+                alignedRevision = if (index.revision == run.state.alignedRevision) moved.revision else run.state.alignedRevision,
                 heldLease = true,
             )
             run.index = moved

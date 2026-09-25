@@ -186,7 +186,9 @@ internal class Committer(private val kit: SyncKit) {
             projectMarks = state.projectMarks + pushed.projects.associate { it.id to Diffs.projectHash(it) },
             settingsPushed = pushed.settingsJson ?: state.settingsPushed,
             heldLease = if (mode == CommitMode.ADDITIVE) state.heldLease else true,
-            alignedRevision = if (mode == CommitMode.ADDITIVE) state.alignedRevision else after.revision,
+            // Written on top of the revision this phone's files match, they match this one too. On
+            // top of a newer one (another phone wrote first), the next pass reconciles that first.
+            alignedRevision = if (mode != CommitMode.ADDITIVE && after.revision == state.alignedRevision + 1) after.revision else state.alignedRevision,
             pendingConflicts = state.pendingConflicts - pushed.conflicts.toSet(),
             eraseQueue = state.eraseQueue - erased,
             erased = state.erased + erased.associateWith { now },

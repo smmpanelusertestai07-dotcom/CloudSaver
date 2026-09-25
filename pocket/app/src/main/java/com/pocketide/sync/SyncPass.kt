@@ -56,9 +56,7 @@ internal class SyncPass(
         if (snapshot == null) return offline(run)
         LeasePolicy.heldByOther(snapshot.index, ports.device, run.now)?.let { return locked(run, drive, snapshot, it, book) }
         kit.flows.leaseHolder.value = null
-        val remoteIndex = snapshot.index
-        if (remoteIndex != null && remoteIndex.revision != run.state.alignedRevision) reconciler.reconcile(run, remoteIndex, drive, book)
-        adoptRemote(run, snapshot)
+        catchUp(run, drive, snapshot, book)
         val report = upload(run, drive, opts, book, onlyConflicts = false)
         val removals = removals(run, book)
         val erase = run.state.eraseQueue + book.erasingNow()
@@ -197,6 +195,17 @@ internal class SyncPass(
         } finally {
             bytes.fill(0)
         }
+    }
+
+    /**
+     * Brings in what another phone wrote since this phone's files last matched Drive: its changes
+     * to files first, then its records. Every path that writes the index as the lease holder calls
+     * this first, so none of them can record this phone's work over the other phone's unseen.
+     */
+    suspend fun catchUp(run: Run, drive: DriveStore, snapshot: RemoteSnapshot, book: SessionBook) {
+        val index = snapshot.index
+        if (index != null && index.revision != run.state.alignedRevision) reconciler.reconcile(run, index, drive, book)
+        adoptRemote(run, snapshot)
     }
 
     /** Takes what another phone (or a restore) brought into the index: settings, sessions, projects. */
