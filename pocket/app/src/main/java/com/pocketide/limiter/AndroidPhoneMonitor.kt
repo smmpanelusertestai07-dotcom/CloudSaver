@@ -66,8 +66,13 @@ internal class AndroidPhoneMonitor(
     private var loop: Job? = null
 
     private val dataBytes = AtomicLong(0)
-    private val dataMeasuredAt = AtomicLong(0)
     private val measuring = AtomicBoolean(false)
+    private val dataSize = DataSize(
+        quick = ::ownStorageBytes,
+        walk = { DirectorySize.of(listOf(dirs.base, dirs.cacheBase)) },
+        quickEveryMs = QUICK_SIZE_EVERY_MS,
+        walkEveryMs = WALK_EVERY_MS,
+    )
 
     private val thermalListener = PowerManager.OnThermalStatusChangedListener { wake() }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -159,33 +164,20 @@ internal class AndroidPhoneMonitor(
         network.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) ||
             (Build.VERSION.SDK_INT >= 30 && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED))
 
-    /**
-     * The app's size on disk, from Android's own storage accounting, which answers at once and
-     * needs no permission. Only where Android has no answer is the computer walked file by file,
-     * which costs seconds: then at most every 10 minutes, and only while someone looks at the app,
-     * never in a process woken for a background job.
-     */
     private fun measureDataIfDue() {
-        val measuredAt = dataMeasuredAt.get()
-        val age = clock.now() - measuredAt
-        if (measuredAt > 0 && age < DATA_EVERY_MS) return
         if (!measuring.compareAndSet(false, true)) return
         scope.launch(Dispatchers.IO) {
             try {
-                val bytes = ownStorageBytes()
-                    ?: DirectorySize.of(listOf(dirs.base, dirs.cacheBase)).takeIf { visible() && (measuredAt == 0L || age >= WALK_EVERY_MS) }
-                if (bytes != null) {
-                    dataBytes.set(bytes)
-                    dataMeasuredAt.set(clock.now())
-                    flow.value = flow.value.let { if (it.at > 0) it.copy(appDataBytes = bytes) else it }
-                }
+                val bytes = dataSize.measureIfDue(clock.now(), visible()) ?: return@launch
+                dataBytes.set(bytes)
+                flow.value = flow.value.let { if (it.at > 0) it.copy(appDataBytes = bytes) else it }
             } finally {
                 measuring.set(false)
             }
         }
     }
 
-    /** The app, its data and its cache as Android counts them for this app; null when Android cannot say. */
+    /** The app, its data and its cache as Android counts them (dataBytes includes the cache); null when Android cannot say. */
     private fun ownStorageBytes(): Long? = try {
         storage?.queryStatsForPackage(StorageManager.UUID_DEFAULT, context.packageName, Process.myUserHandle())
             ?.let { it.appBytes + it.dataBytes }
@@ -223,7 +215,7 @@ internal class AndroidPhoneMonitor(
     private companion object {
         const val FAST_MS = 5_000L
         const val SLOW_MS = 30_000L
-        const val DATA_EVERY_MS = 60_000L
+        const val QUICK_SIZE_EVERY_MS = 60_000L
         const val WALK_EVERY_MS = 10 * 60_000L
     }
 }
