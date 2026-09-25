@@ -148,7 +148,7 @@ internal class SetupWorld(base: File) {
         return CodeServerPin(version, url, Downloader.sha256(archive), archive.size.toLong())
     }
 
-    fun setup() = ComputerSetup(
+    fun setup(ubuntuSupportEnds: Long = LinuxPins.UBUNTU_SUPPORT_ENDS) = ComputerSetup(
         places = SetupPlaces(rootfs, downloads, record),
         host = host,
         fetcher = fetcher,
@@ -159,6 +159,7 @@ internal class SetupWorld(base: File) {
         ubuntu = ubuntu,
         ubuntuVersion = "24.04.5",
         codeServer = codeServer,
+        ubuntuSupportEnds = ubuntuSupportEnds,
     )
 
     fun savedRecord(): SetupRecord = RecordStore(record).load()

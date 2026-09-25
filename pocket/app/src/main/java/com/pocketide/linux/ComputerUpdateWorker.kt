@@ -9,13 +9,16 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.pocketide.github.createPublicReleases
 import com.pocketide.graph
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * The computer's daily upkeep, on Wi-Fi: Ubuntu's security fixes, and code-server moved to the
- * version this app pins. Nothing runs while the phone asks for no heavy work (low battery,
- * heat), and a code-server switch waits until no agent is open.
+ * The computer's daily upkeep, on Wi-Fi: Ubuntu's security fixes, and code-server moved to its
+ * newest stable release ([CodeServerChannel]), or at least to the version this app pins, so the
+ * agents' extensions never outgrow it between app updates. Nothing runs while the phone asks for
+ * no heavy work (low battery, heat), and a code-server switch waits until no agent is open.
  */
 class ComputerUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -24,9 +27,20 @@ class ComputerUpdateWorker(context: Context, params: WorkerParameters) : Corouti
         val computer = graph.computer
         if (computer.state.value !is ComputerState.Ready) return Result.success()
         if (!graph.limiter.canStartHeavyWork("Computer updates").allowed) return Result.retry()
-        val outcomes = listOf(computer.updateBase(), computer.updateCodeServer(LinuxPins.codeServer))
+        val outcomes = listOf(computer.updateBase(), computer.updateCodeServer(codeServerTarget()))
         val again = outcomes.any { it is UpdateOutcome.Failed || it is UpdateOutcome.Waiting }
         return if (again && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.success()
+    }
+
+    /** The newest stable code-server when GitHub can say, else the pinned one. */
+    private suspend fun codeServerTarget(): CodeServerPin {
+        val floor = LinuxPins.codeServer
+        val latest = try {
+            createPublicReleases().latest(CodeServerChannel.REPOSITORY)
+        } catch (_: IOException) {
+            return floor
+        }
+        return CodeServerChannel.newer(latest, floor) ?: floor
     }
 
     companion object {

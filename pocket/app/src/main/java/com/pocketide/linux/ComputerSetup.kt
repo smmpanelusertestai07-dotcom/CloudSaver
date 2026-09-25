@@ -1,5 +1,6 @@
 package com.pocketide.linux
 
+import com.pocketide.agents.SemVer
 import com.pocketide.core.Clock
 import com.pocketide.model.Decision
 import kotlinx.coroutines.CancellationException
@@ -51,6 +52,7 @@ internal class ComputerSetup(
     private val ubuntu: PinnedDownload = LinuxPins.ubuntuBase,
     private val ubuntuVersion: String = LinuxPins.UBUNTU_VERSION,
     private val codeServer: CodeServerPin = LinuxPins.codeServer,
+    private val ubuntuSupportEnds: Long = LinuxPins.UBUNTU_SUPPORT_ENDS,
     private val extractor: TarGzExtractor = TarGzExtractor(),
 ) {
     private val records = RecordStore(places.record)
@@ -108,7 +110,7 @@ internal class ComputerSetup(
         }
         publish(ComputerState.Updating("Repair"))
         try {
-            guestFiles() + listOf(tools(), securityFixes(), codeServerItem(record))
+            guestFiles() + listOf(tools(), securityFixes(), codeServerItem(record)) + listOfNotNull(supportEnded(record))
         } finally {
             publish(stateOnDisk())
         }
@@ -173,6 +175,13 @@ internal class ComputerSetup(
         }
     }
 
+    /** Ubuntu past the end of its security fixes, which only a computer built on the next LTS gets again. */
+    private fun supportEnded(record: SetupRecord): RepairItem? {
+        if (clock.now() < ubuntuSupportEnds || record.ubuntu != ubuntuVersion) return null
+        val release = ubuntuVersion.split('.').take(2).joinToString(".")
+        return RepairItem(SUPPORT, RepairStatus.WARN, "Ubuntu $release no longer gets security fixes. $FIX_NEXT_LTS")
+    }
+
     /** code-server is checked by starting it; one that does not start is unpacked again from the pinned release. */
     private suspend fun codeServerItem(record: SetupRecord): RepairItem {
         val version = record.codeServer ?: codeServer.version
@@ -198,6 +207,13 @@ internal class ComputerSetup(
         slot.prune(keep = pin.version)
         Files.deleteIfExists(archive.toPath())
         return RepairItem(CODE_SERVER, RepairStatus.NEW, "Unpacked version ${pin.version} again; it starts.")
+    }
+
+    private fun movesForward(installed: String?, wanted: String): Boolean {
+        if (installed == wanted) return false
+        val from = installed?.let(SemVer::parse) ?: return true
+        val to = SemVer.parse(wanted) ?: return false
+        return to > from
     }
 
     private fun stoppedBecause(result: ScriptResult) = result.lastWords?.removeSuffix(".") ?: "exit code ${result.exitCode}"
@@ -250,14 +266,15 @@ internal class ComputerSetup(
     }
 
     /**
-     * Moves code-server to [pin]. [hold] stops new rooms from starting and answers false while
-     * any are running; [release] opens them again.
+     * Moves code-server to [pin], never to an older version than the one in place: a computer
+     * that took a newer release keeps it when the pin is all the daily job has. [hold] stops new
+     * rooms from starting and answers false while any are running; [release] opens them again.
      */
     suspend fun updateCodeServer(pin: CodeServerPin, hold: () -> Boolean, release: () -> Unit): UpdateOutcome =
         withContext(Dispatchers.IO) {
             val record = records.load()
             if (record.readyAt == null || !healthy(record)) return@withContext UpdateOutcome.Waiting(NOT_SET_UP)
-            if (record.codeServer == pin.version) return@withContext UpdateOutcome.UpToDate
+            if (!movesForward(record.codeServer, pin.version)) return@withContext UpdateOutcome.UpToDate
             val staged = slot.unpacked(pin.version)
             if (!staged) {
                 val decision = host.allow(pin.bytes, KIND_UPDATE)
@@ -577,6 +594,9 @@ internal class ComputerSetup(
         private const val FIX_CONNECTION = "Check the connection and try again. It continues where it stopped."
         private const val FIX_TRY_AGAIN = "Try again. If it keeps stopping, reset the computer."
         private const val FIX_RESET = "Reset the computer. Projects and chats are not affected."
+        private const val SUPPORT = "Ubuntu's support"
+        private const val FIX_NEXT_LTS =
+            "Update PocketIDE: once an update brings the next Ubuntu, Reset the computer to move to it. Projects and chats are not affected."
         private const val FIX_SET_UP_AGAIN = "Set it up again. Projects and chats are not affected."
     }
 }

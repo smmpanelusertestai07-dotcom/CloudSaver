@@ -153,7 +153,8 @@ interface Computer {
 
     /**
      * Moves code-server to [pin]: unpacked beside the current one, checked, switched over, and
-     * switched back if it does not start. Waits while any room is running.
+     * switched back if it does not start. Waits while any room is running. Never moves to an
+     * older version than the one in place.
      */
     suspend fun updateCodeServer(pin: CodeServerPin): UpdateOutcome = UpdateOutcome.UpToDate
 

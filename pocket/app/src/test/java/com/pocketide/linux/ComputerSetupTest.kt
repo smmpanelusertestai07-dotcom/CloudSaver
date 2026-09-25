@@ -237,6 +237,20 @@ class ComputerSetupTest {
     }
 
     @Test
+    fun codeServerNeverMovesBackToTheOlderPin() {
+        install()
+        val setup = world.setup()
+        runBlocking { setup.updateCodeServer(world.codeServerRelease("4.140.0"), hold = { true }, release = {}) }
+        val fetches = world.fetcher.fetched.size
+        // GitHub could not be asked today: the daily job has only the app's own pin.
+        val outcome = runBlocking { setup.updateCodeServer(world.codeServer, hold = { true }, release = {}) }
+        assertEquals(UpdateOutcome.UpToDate, outcome)
+        assertEquals("4.140.0", world.savedRecord().codeServer)
+        assertEquals(Paths.get("code-server-4.140.0"), Files.readSymbolicLink(File(world.rootfs, "opt/code-server").toPath()))
+        assertEquals(fetches, world.fetcher.fetched.size)
+    }
+
+    @Test
     fun codeServerWaitsForTheRoomsAndKeepsWhatItUnpacked() {
         install()
         val setup = world.setup()
@@ -282,6 +296,16 @@ class ComputerSetupTest {
         assertEquals(RepairStatus.NEW, report.getValue("Ubuntu's security fixes").status)
         assertEquals(RepairStatus.OK, report.getValue("code-server").status)
         assertEquals(ComputerState.Ready, world.published.last())
+    }
+
+    @Test
+    fun repairSaysWhenUbuntuNoLongerGetsSecurityFixes() {
+        install()
+        val during = runBlocking { world.setup(ubuntuSupportEnds = SetupWorld.NOW + 1).repair() }
+        assertTrue(during.none { it.what == "Ubuntu's support" })
+        val after = runBlocking { world.setup(ubuntuSupportEnds = SetupWorld.NOW).repair() }.single { it.what == "Ubuntu's support" }
+        assertEquals(RepairStatus.WARN, after.status)
+        assertTrue(after.detail, after.detail.startsWith("Ubuntu 24.04 no longer gets security fixes."))
     }
 
     @Test
