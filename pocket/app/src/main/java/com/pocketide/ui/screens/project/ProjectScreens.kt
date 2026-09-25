@@ -739,8 +739,8 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false })
     if (putting) PutOnMainFlow(session, onClose = { putting = false })
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
-    if (renamingBranch) RenameBranchDialog(session, snackbar, onDismiss = { renamingBranch = false })
-    if (addingFile) AddFileFlow(sessionId, snackbar, onClose = { addingFile = false })
+    if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
+    if (addingFile) AddFileFlow(sessionId, snackbar, scope, onClose = { addingFile = false })
     if (stopping) {
         ConfirmDialog(
             title = "Stop ${agentName(agent, agentId)}?",

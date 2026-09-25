@@ -26,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +36,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.sessions.HandOff
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.shell.External
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,11 +100,13 @@ private fun copyText(context: Context, label: String, text: String) {
     context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(label, text))
 }
 
-/** Renames the session's branch; only a branch not yet on GitHub can be renamed. */
+/**
+ * Renames the session's branch; only a branch not yet on GitHub can be renamed. [scope] outlives
+ * the dialog, which closes before the rename runs.
+ */
 @Composable
-fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, onDismiss: () -> Unit) {
+fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, scope: CoroutineScope, onDismiss: () -> Unit) {
     val graph = rememberGraph()
-    val scope = rememberCoroutineScope()
     val prefix = BranchName.prefix(session.branch)
     var name by remember(session.id) { mutableStateOf(BranchName.tail(session.branch)) }
     val clean = name.trim()
@@ -139,10 +141,9 @@ fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, onDi
 
 /** Where a picked file goes: into the project, for the agent to work on, or to Media as an attachment. */
 @Composable
-fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, onClose: () -> Unit) {
+fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: CoroutineScope, onClose: () -> Unit) {
     val graph = rememberGraph()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Uri?>(null) }
     var launched by remember { mutableStateOf(false) }
     // The system file picker: no storage permission, and only the file the owner picks.

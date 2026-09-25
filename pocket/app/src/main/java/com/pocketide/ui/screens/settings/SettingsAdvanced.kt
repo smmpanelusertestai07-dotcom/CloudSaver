@@ -51,6 +51,8 @@ import com.pocketide.core.Redact
 import com.pocketide.core.Settings
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
+import com.pocketide.rooms.RoomState
+import com.pocketide.rooms.StopReason
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
@@ -362,10 +364,28 @@ private suspend fun buildReport(context: Context, graph: AppGraph): String {
         (graph.sync.status.value as? SyncStatus.Error)?.let { add("Sync: ${it.why}") }
         (graph.computer.state.value as? ComputerState.Broken)?.let { add("Computer: ${it.why}") }
         (graph.updater.state.value as? UpdateState.Failed)?.let { add("Update: ${it.why}") }
+        addAll(roomProblems(graph))
         addAll(recentExits(context))
     }
     return Diagnostics.report(facts, errors)
 }
+
+/** Rooms that failed, with their last engine lines (the rooms module removes secrets), and stops the owner did not ask for. */
+private fun roomProblems(graph: AppGraph): List<String> {
+    val stops = graph.rooms.stops.value
+    return graph.rooms.states.value.flatMap { (agentId, state) ->
+        buildList {
+            if (state is RoomState.Failed) {
+                add("Room $agentId: ${state.why}")
+                runCatching { graph.rooms.recentOutput(agentId) }.getOrDefault(emptyList())
+                    .takeLast(ROOM_OUTPUT_LINES).forEach { add("Room $agentId output: $it") }
+            }
+            stops[agentId]?.takeIf { it.reason != StopReason.OWNER }?.let { add("Room $agentId stopped: ${it.message}") }
+        }
+    }
+}
+
+private const val ROOM_OUTPUT_LINES = 5
 
 private fun computerLabel(state: ComputerState): String = when (state) {
     ComputerState.NotInstalled -> "not installed"

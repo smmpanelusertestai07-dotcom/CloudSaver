@@ -27,7 +27,12 @@ import com.pocketide.ui.manage.OutlivingWork
 import com.pocketide.ui.manage.PlainError
 import com.pocketide.ui.manage.attempt
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** Screen state changes from the app's scope go back to the main thread. */
+private suspend fun onMain(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
 
 /** The key of a running reset, shared with the Computer screen's runner so its buttons wait. */
 internal const val RESET_KEY = "reset"
@@ -78,17 +83,21 @@ internal fun ResetComputerDialogs(graph: AppGraph, onClose: () -> Unit, onNotice
             try {
                 val problems = if (saveFirst) saveBeforeReset(graph) else emptyList()
                 if (problems.isNotEmpty()) {
-                    step = ResetStep.Unsaved(problems)
+                    onMain { step = ResetStep.Unsaved(problems) }
                     return@launch
                 }
-                onClose()
-                onNotice(ResetText.STARTED, Tone.OK)
+                onMain {
+                    onClose()
+                    onNotice(ResetText.STARTED, Tone.OK)
+                }
                 graph.computer.reset()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onClose()
-                onNotice(PlainError.of(e), Tone.ERROR)
+                onMain {
+                    onClose()
+                    onNotice(PlainError.of(e), Tone.ERROR)
+                }
             } finally {
                 OutlivingWork.release(RESET_KEY)
             }
