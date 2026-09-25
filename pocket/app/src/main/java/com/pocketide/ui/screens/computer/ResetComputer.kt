@@ -140,8 +140,8 @@ private fun ResetQuestion(title: String, text: String, confirmLabel: String, onD
 }
 
 /**
- * Stops the rooms, pushes every open session's branch and waits for a sync. Returns what could
- * not be saved, in plain sentences; empty when everything is in GitHub and Drive.
+ * Stops the rooms, commits and pushes every open session's work now and waits for a sync.
+ * Returns what could not be saved, in plain sentences; empty when everything is in GitHub and Drive.
  */
 private suspend fun saveBeforeReset(graph: AppGraph): List<String> {
     graph.rooms.stopAll()
@@ -149,7 +149,7 @@ private suspend fun saveBeforeReset(graph: AppGraph): List<String> {
     graph.sessions.all.value
         .filter { it.status == SessionStatus.OPEN && it.deletedAt == null }
         .forEach { session ->
-            val why = attempt { graph.sessions.autosave(session.id) }.fold({ it }, PlainError::of)
+            val why = attempt { graph.sessions.saveNow(session.id) }.fold({ it }, PlainError::of)
             if (why != null) problems += "\"${session.title}\": $why"
         }
     attempt { graph.sync.syncNow() }.onFailure { problems += "Your data: ${PlainError.of(it)}" }

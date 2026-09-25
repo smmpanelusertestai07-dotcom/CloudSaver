@@ -43,6 +43,13 @@ interface PortBridge {
     val exposed: List<BridgedPort>
 
     /**
+     * [listener] hears that data went through [bridge] to [port] (its own target, or the dev
+     * server a "<n>.localhost" name routes to), at most about twice a minute per port. It runs on
+     * a bridge thread, so it must return quickly.
+     */
+    fun onTraffic(listener: (bridge: BridgedPort, port: Int) -> Unit) = Unit
+
+    /**
      * Servers listening on this phone (the bridge's own ports left out), each with whether
      * other devices on the same Wi-Fi can open it, for Preview's list and its warning.
      * Where Android lets the app read the phone's socket table this is every listening port of

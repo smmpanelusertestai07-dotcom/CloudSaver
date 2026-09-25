@@ -118,7 +118,7 @@ internal class RoomTerminals(
                 withContext(NonCancellable + Dispatchers.IO) { bridgeFiles.delete(secretFile) }
             }
         }
-        val bridge = env.portBridge.expose(port, "terminal:${session.id}", mapOf(SECRET_HEADER to secret))
+        val bridge = env.portBridge.expose(port, RoomTraffic.terminalPurpose(session.id), mapOf(SECRET_HEADER to secret))
         val terminal = Terminal(
             sessionId = session.id,
             agentId = agentId,

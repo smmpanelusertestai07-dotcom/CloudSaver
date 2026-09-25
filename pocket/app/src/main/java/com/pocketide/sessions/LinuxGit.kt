@@ -2,6 +2,7 @@ package com.pocketide.sessions
 
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Redact
+import com.pocketide.github.GitHubAccount
 import com.pocketide.linux.Bind
 import com.pocketide.linux.Computer
 import com.pocketide.linux.ComputerState
@@ -30,7 +31,14 @@ internal class LinuxGit(
 ) {
 
     /** Who a merge commit is by: the owner, with the address GitHub keeps private. */
-    data class Identity(val name: String, val email: String)
+    data class Identity(val name: String, val email: String) {
+        companion object {
+            fun of(account: GitHubAccount) = Identity(
+                name = account.name?.takeIf { it.isNotBlank() } ?: account.login,
+                email = "${account.id}+${account.login}@users.noreply.github.com",
+            )
+        }
+    }
 
     class Output(val exitCode: Int, val lines: List<String>) {
         val ok: Boolean get() = exitCode == 0

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.bridge.BridgedPort
 import com.pocketide.bridge.PortBridge
+import com.pocketide.rooms.RoomTraffic
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -92,7 +93,7 @@ fun PreviewPanel(sessionId: String, state: PreviewState, nav: PocketNav, snackba
     val announced = announcedBySession[sessionId].orEmpty()
     val ports = previewPorts(announced, state.found.orEmpty(), appPorts(graph.portBridge))
 
-    val open = { port: Int -> openPort(scope, graph.portBridge, state, port, snackbar) }
+    val open = { port: Int -> openPort(scope, graph.portBridge, sessionId, state, port, snackbar) }
     LaunchedEffect(state, announced) { scanInto(graph.portBridge, state, announced) }
     LaunchedEffect(state, ports) {
         if (state.autoOpened || state.showing != null) return@LaunchedEffect
@@ -187,10 +188,10 @@ private fun WifiWarning(port: Int, modifier: Modifier = Modifier) {
     }
 }
 
-private fun openPort(scope: CoroutineScope, bridge: PortBridge, state: PreviewState, port: Int, snackbar: SnackbarHostState) {
+private fun openPort(scope: CoroutineScope, bridge: PortBridge, sessionId: String, state: PreviewState, port: Int, snackbar: SnackbarHostState) {
     scope.launch {
         // Exposing binds a listening socket: not on the main thread.
-        attempt { withContext(Dispatchers.IO) { bridge.expose(port, "preview") } }
+        attempt { withContext(Dispatchers.IO) { bridge.expose(port, RoomTraffic.previewPurpose(sessionId)) } }
             .onSuccess { exposed ->
                 state.web.retry()
                 state.showing = exposed
@@ -209,7 +210,7 @@ private fun closePreview(bridge: PortBridge, state: PreviewState) {
 /** Ports the app itself serves: agent screens, terminals and the bridge's own listeners. */
 private fun appPorts(bridge: PortBridge): Set<Int> =
     bridge.exposed.flatMap { port ->
-        if (port.purpose == "preview") listOf(port.bridgePort) else listOf(port.bridgePort, port.targetPort)
+        if (RoomTraffic.isPreview(port.purpose)) listOf(port.bridgePort) else listOf(port.bridgePort, port.targetPort)
     }.toSet()
 
 private suspend fun scanInto(bridge: PortBridge, state: PreviewState, announced: List<Int>) {

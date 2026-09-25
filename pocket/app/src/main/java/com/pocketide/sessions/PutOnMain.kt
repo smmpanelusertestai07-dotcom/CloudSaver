@@ -2,7 +2,6 @@ package com.pocketide.sessions
 
 import com.pocketide.core.AppDirs
 import com.pocketide.git.PushResult
-import com.pocketide.github.GitHubAccount
 import com.pocketide.github.NotConnectedException
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
@@ -70,7 +69,7 @@ internal class MainMerger(
         val tip = revParse(project, branch) ?: return failed(NO_BRANCH)
         if (commitsAhead(project, base, tip) == 0) return failed(NOTHING_NEW)
 
-        val previousMain = when (val merge = merge(session, project, base, tip, identity(account))) {
+        val previousMain = when (val merge = merge(session, project, base, tip, LinuxGit.Identity.of(account))) {
             is Merge.Conflicted -> return Outcome(PutOnMainResult.Conflicts(merge.files), session.status)
             is Merge.Failed -> return failed(merge.why)
             is Merge.Done -> merge.previousMain
@@ -204,11 +203,6 @@ internal class MainMerger(
     }
 
     private fun message(session: SessionRecord) = "Merge session: ${oneLine(session.title, TITLE_CHARS)}"
-
-    private fun identity(account: GitHubAccount) = LinuxGit.Identity(
-        name = account.name?.takeIf { it.isNotBlank() } ?: account.login,
-        email = "${account.id}+${account.login}@users.noreply.github.com",
-    )
 
     private companion object {
         const val TITLE_CHARS = 60

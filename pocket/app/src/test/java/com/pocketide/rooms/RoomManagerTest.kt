@@ -3,10 +3,10 @@ package com.pocketide.rooms
 import com.pocketide.bridge.BridgedPort
 import com.pocketide.bridge.PhoneBridge
 import com.pocketide.bridge.PortBridge
+import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
 import com.pocketide.core.AppDirs
 import com.pocketide.github.PullRequest
-import com.pocketide.github.WorkflowRun
 import com.pocketide.linux.Computer
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
@@ -464,7 +464,7 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override suspend fun putOnMain(sessionId: String): PutOnMainResult = PutOnMainResult.Merged
         override fun templates() = emptyList<BuildTemplate>()
         override suspend fun runBuild(projectId: String, templateId: String, ref: String): Long? = null
-        override suspend fun recentRuns(projectId: String) = emptyList<WorkflowRun>()
+        override suspend fun buildProgress(projectId: String, runId: Long): BuildProgress? = null
         override suspend fun collect(projectId: String, sessionId: String, runId: Long) = 0
         override suspend fun openPullRequest(project: Project, head: String, title: String, body: String): PullRequest = throw UnsupportedOperationException()
         override suspend fun addMedia(sessionId: String, file: File, name: String): MediaItem = throw UnsupportedOperationException()

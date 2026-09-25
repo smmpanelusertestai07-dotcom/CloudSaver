@@ -65,7 +65,7 @@ internal class ProjectRegistry(
         // With a first commit the repository has a default branch, which every session starts from.
         val project = add(network { env.gitHub.createPrivateRepo(repoName, about, autoInit = true) })
         setTrust(project.id, ProjectTrust.YOURS)
-        return project
+        return all.value.find { it.id == project.id } ?: project
     }
 
     override suspend fun import(owner: String, repo: String): Project {

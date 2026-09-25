@@ -83,6 +83,13 @@ interface Sessions {
      */
     suspend fun autosave(sessionId: String): String?
 
+    /**
+     * Before the computer is reset: commits whatever the session's worktree holds that is not
+     * committed yet (as the owner), then pushes the branch through the check-post now, without
+     * waiting for the autosave window. Returns null when saved, or a plain reason it was not.
+     */
+    suspend fun saveNow(sessionId: String): String? = autosave(sessionId)
+
     /** Rescans transcripts and worktrees (sizes, commits, tokens, last activity). */
     suspend fun refresh()
 

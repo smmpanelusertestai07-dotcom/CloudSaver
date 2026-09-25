@@ -94,6 +94,13 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private var monitor: Job? = null
 
     init {
+        // Terminal output and Preview traffic are the owner at work in a room: it stays awake.
+        env.portBridge.onTraffic { bridge, port ->
+            val agentId = RoomTraffic.agentOf(bridge.purpose, bridge.targetPort, port) { sessionId ->
+                env.sessions().firstOrNull { it.id == sessionId }?.agentId
+            }
+            if (agentId != null) touch(agentId)
+        }
         env.phoneBridge.handle(MCP_OP) { agentId, args ->
             val writes = McpTools.writes(args)
             if (writes) holds.hold(agentId, WorkHolds.WRITE)
@@ -312,7 +319,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         // A new secret each launch, so each launch gets a new bridge and token too.
         val inject = if (profile.engine == Engine.CODE_SERVER) mapOf("Cookie" to RoomEngines.sessionCookie(secret)) else emptyMap()
         val bridge = try {
-            env.portBridge.expose(chosenPort, "agent:$agentId", inject)
+            env.portBridge.expose(chosenPort, RoomTraffic.agentPurpose(agentId), inject)
         } catch (failed: IllegalStateException) {
             shutDown(agentId, room)
             return fail(agentId, failed.message ?: "The agent's screen could not be opened.")
@@ -660,7 +667,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         override suspend fun putOnMain(sessionId: String) = env.putOnMain(sessionId)
         override fun templates() = env.templates()
         override suspend fun runBuild(projectId: String, templateId: String, ref: String) = env.runBuild(projectId, templateId, ref)
-        override suspend fun recentRuns(projectId: String) = env.recentRuns(projectId)
+        override suspend fun progress(projectId: String, runId: Long) = env.buildProgress(projectId, runId)
         override suspend fun collect(projectId: String, sessionId: String, runId: Long) = env.collect(projectId, sessionId, runId)
         override suspend fun openPullRequest(project: com.pocketide.model.Project, head: String, title: String, body: String) =
             env.openPullRequest(project, head, title, body)

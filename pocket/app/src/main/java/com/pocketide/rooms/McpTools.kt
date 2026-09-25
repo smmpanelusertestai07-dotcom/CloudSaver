@@ -1,10 +1,11 @@
 package com.pocketide.rooms
 
+import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
+import com.pocketide.builds.WorkflowApprovalNeeded
 import com.pocketide.core.AgentFiles
 import com.pocketide.core.AppDirs
 import com.pocketide.github.PullRequest
-import com.pocketide.github.WorkflowRun
 import com.pocketide.media.MediaItem
 import com.pocketide.model.Guard
 import com.pocketide.model.PhoneSnapshot
@@ -41,7 +42,8 @@ internal interface McpPorts {
     suspend fun putOnMain(sessionId: String): PutOnMainResult
     fun templates(): List<BuildTemplate>
     suspend fun runBuild(projectId: String, templateId: String, ref: String): Long?
-    suspend fun recentRuns(projectId: String): List<WorkflowRun>
+    /** The run [runId] of this project by its id, however old; null when GitHub has no such run. */
+    suspend fun progress(projectId: String, runId: Long): BuildProgress?
     suspend fun collect(projectId: String, sessionId: String, runId: Long): Int
     suspend fun openPullRequest(project: Project, head: String, title: String, body: String): PullRequest
     suspend fun addMedia(sessionId: String, file: File, name: String): MediaItem
@@ -138,8 +140,15 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         val template = templates.firstOrNull { it.id == templateId }
             ?: throw IllegalArgumentException("Unknown template \"$templateId\". This project has: " + templates.joinToString("; ") { "${it.id} (${it.title})" } + ".")
         pushFirst(session)
-        val runId = ports.runBuild(session.projectId, template.id, session.branch)
-            ?: throw IllegalStateException("GitHub did not start the build. The workflow file may not be on this branch yet: commit it, then try again.")
+        val runId = try {
+            ports.runBuild(session.projectId, template.id, session.branch)
+        } catch (held: WorkflowApprovalNeeded) {
+            // Only the owner approves, on the diff card in PocketIDE; never the agent.
+            val paths = held.holds.map { it.path }.distinct().joinToString(", ")
+            throw IllegalStateException(
+                "The owner must read and approve the change to GitHub Actions code in $paths in PocketIDE before this build can run.",
+            )
+        } ?: throw IllegalStateException("GitHub did not start the build. The workflow file may not be on this branch yet: commit it, then try again.")
         ports.buildStarted(agentId, runId)
         return "Build started on GitHub Actions: ${template.title}, run $runId on ${session.branch}. " +
             "Call build_result with run_id $runId in a few minutes."
@@ -147,9 +156,16 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
 
     private suspend fun buildResult(agentId: String, session: SessionRecord, input: JsonObject): String {
         val runId = (input["run_id"] as? JsonPrimitive)?.longOrNull ?: throw IllegalArgumentException("run_id must be a number.")
-        val run = ports.recentRuns(session.projectId).firstOrNull { it.id == runId }
-            ?: throw IllegalArgumentException("Run $runId is not among this project's recent runs.")
-        if (run.status != "completed") return "Run $runId is still ${run.status.replace('_', ' ')}. Check again in a few minutes. ${run.htmlUrl}"
+        val progress = ports.progress(session.projectId, runId)
+            ?: throw IllegalArgumentException("Run $runId is not one of this project's runs on GitHub.")
+        val run = progress.run
+        if (run.status != "completed") {
+            return listOfNotNull(
+                "Run $runId is still ${run.status.replace('_', ' ')}.",
+                steps(progress),
+                "Check again in a few minutes. ${run.htmlUrl}",
+            ).joinToString(" ")
+        }
         ports.buildEnded(agentId, runId)
         val saved = ports.collect(session.projectId, session.id, runId)
         val outcome = when (run.conclusion) {
@@ -158,7 +174,29 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
             else -> "finished: ${run.conclusion.replace('_', ' ')}"
         }
         val files = if (saved == 1) "1 file was" else "$saved files were"
-        return "Run $runId $outcome. $files saved to this session's Media. Logs: ${run.htmlUrl}"
+        return listOfNotNull(
+            "Run $runId $outcome.",
+            failure(progress),
+            "$files saved to this session's Media. Logs: ${run.htmlUrl}",
+        ).joinToString(" ")
+    }
+
+    /** Where a running build is: each job's current step, or null before GitHub lists any. */
+    private fun steps(progress: BuildProgress): String? {
+        val lines = progress.jobs.map { job ->
+            val step = job.steps.firstOrNull { it.status == "in_progress" } ?: job.steps.lastOrNull { it.status == "completed" }
+            if (step == null) "${job.name}: ${job.status.replace('_', ' ')}" else "${job.name}: step ${step.number} \"${step.name}\""
+        }
+        return if (lines.isEmpty()) null else "Now: ${lines.joinToString("; ")}."
+    }
+
+    /** For a failed run: the job and step that failed and the last lines of its log, for the agent to fix. */
+    private fun failure(progress: BuildProgress): String? {
+        val job = progress.failedJob ?: return null
+        val where = "It failed in job \"$job\"" + (progress.failedStep?.let { ", step \"$it\"" } ?: "") + "."
+        val tail = progress.failureLog?.lines()?.takeLast(FAILURE_LINES)?.joinToString("\n")?.takeIf { it.isNotBlank() }
+            ?: return where
+        return "$where The last lines of its log:\n$tail\n"
     }
 
     private suspend fun openPr(session: SessionRecord, input: JsonObject): String {
@@ -235,6 +273,7 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         private const val MAX_TITLE = 256
         private const val MAX_BODY = 60_000
         private const val MAX_LISTED = 20
+        private const val FAILURE_LINES = 30
         const val MAX_MEDIA_BYTES = 200_000_000L
         private val UNSAFE_NAME = Regex("[^A-Za-z0-9 ._()-]")
 

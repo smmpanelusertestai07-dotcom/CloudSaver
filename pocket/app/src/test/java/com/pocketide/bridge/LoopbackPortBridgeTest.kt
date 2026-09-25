@@ -60,6 +60,21 @@ class LoopbackPortBridgeTest {
         assertEquals("ok", page.bodyText)
     }
 
+    @Test fun `traffic through a bridge is reported for its port, not for refused requests`() {
+        val heard = LinkedBlockingQueue<Pair<String, Int>>()
+        bridge.onTraffic { bridged, port -> heard += bridged.purpose to port }
+        val up = upstream()
+        val port = bridge.expose(up.port, "preview:s1")
+
+        rawExchange(port.bridgePort, head("GET / HTTP/1.1", port.host))
+        assertNull("a refused request is no work", heard.poll(300, TimeUnit.MILLISECONDS))
+
+        assertEquals(200, get(port).status)
+        assertEquals("preview:s1" to up.port, heard.poll(5, TimeUnit.SECONDS))
+        assertEquals(200, get(port).status)
+        assertNull("reported at most twice a minute", heard.poll(300, TimeUnit.MILLISECONDS))
+    }
+
     @Test fun `tokens are long, random and different for every exposed port`() {
         val first = bridge.expose(upstream().port, "a")
         val second = bridge.expose(upstream().port, "b")

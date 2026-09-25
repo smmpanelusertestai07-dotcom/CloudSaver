@@ -1,8 +1,14 @@
 package com.pocketide.rooms
 
+import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
+import com.pocketide.builds.WorkflowApprovalNeeded
 import com.pocketide.core.AppDirs
+import com.pocketide.git.Hold
+import com.pocketide.git.HoldKind
+import com.pocketide.github.JobStep
 import com.pocketide.github.PullRequest
+import com.pocketide.github.WorkflowJob
 import com.pocketide.github.WorkflowRun
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
@@ -94,14 +100,32 @@ class McpToolsTest {
         assertTrue(failure { call("run_build", args = buildJsonObject { put("template", "android-release") }) }.contains("check-post"))
     }
 
+    @Test fun `run_build leaves a held workflow change to the owner`() {
+        ports.templates = listOf(BuildTemplate("android-release", "Android release", "", "android.yml", "ubuntu-latest"))
+        ports.held = listOf(Hold(HoldKind.WORKFLOW_CHANGE, ".github/workflows/android.yml", "abc", "changed", approvalKey = "k"))
+        val text = failure { call("run_build", args = buildJsonObject { put("template", "android-release") }) }
+        assertTrue(text, text.contains("The owner must read and approve the change to GitHub Actions code in .github/workflows/android.yml"))
+    }
+
     @Test fun `build_result reports progress and collects outputs when done`() {
-        ports.runs = listOf(WorkflowRun(77, "Android", "b", "in_progress", null, "", "", "https://github.com/octo/app/actions/runs/77"))
-        assertTrue(call("build_result", args = buildJsonObject { put("run_id", 77) }).contains("still in progress"))
-        ports.runs = listOf(WorkflowRun(77, "Android", "b", "completed", "failure", "", "", "https://github.com/octo/app/actions/runs/77"))
+        val steps = listOf(JobStep(1, "Set up job", "completed", "success"), JobStep(2, "Build", "in_progress", null))
+        val job = WorkflowJob(1, "build", "in_progress", null, "", listOf("ubuntu-latest"), null, steps)
+        ports.progress = BuildProgress(run(status = "in_progress", conclusion = null), listOf(job))
+        val running = call("build_result", args = buildJsonObject { put("run_id", 77) })
+        assertTrue(running, running.contains("still in progress") && running.contains("build: step 2 \"Build\""))
+
+        val log = (1..40).joinToString("\n") { "line $it" }
+        ports.progress = BuildProgress(run(status = "completed", conclusion = "failure"), listOf(job), "build", "Build", log)
         val text = call("build_result", args = buildJsonObject { put("run_id", 77) })
         assertTrue(text, text.contains("finished: failure") && text.contains("3 files were saved"))
-        assertTrue(failure { call("build_result", args = buildJsonObject { put("run_id", 5) }) }.contains("not among"))
+        assertTrue(text, text.contains("job \"build\", step \"Build\"") && text.contains("line 40") && !text.contains("line 10\n"))
+
+        ports.progress = null
+        assertTrue(failure { call("build_result", args = buildJsonObject { put("run_id", 5) }) }.contains("not one of this project's runs"))
     }
+
+    private fun run(status: String, conclusion: String?) =
+        WorkflowRun(77, "Android", "b", status, conclusion, "", "", "https://github.com/octo/app/actions/runs/77")
 
     @Test fun `put_on_main says what happened in words the agent can act on`() {
         ports.putOnMain = PutOnMainResult.Conflicts(listOf("a.kt", "b.kt"))
@@ -184,7 +208,8 @@ class McpToolsTest {
         var snapshot = PhoneSnapshot.UNKNOWN
         var guard = Guard.OK
         var templates = emptyList<BuildTemplate>()
-        var runs = emptyList<WorkflowRun>()
+        var progress: BuildProgress? = null
+        var held = emptyList<Hold>()
         var putOnMain: PutOnMainResult = PutOnMainResult.Merged
         var autosaveProblem: String? = null
         var own = emptySet<Int>()
@@ -207,10 +232,11 @@ class McpToolsTest {
         override suspend fun putOnMain(sessionId: String) = putOnMain
         override fun templates() = templates
         override suspend fun runBuild(projectId: String, templateId: String, ref: String): Long {
+            if (held.isNotEmpty()) throw WorkflowApprovalNeeded(held)
             calls += "run $projectId $templateId $ref"
             return 77
         }
-        override suspend fun recentRuns(projectId: String) = runs
+        override suspend fun progress(projectId: String, runId: Long) = progress?.takeIf { it.run.id == runId }
         override suspend fun collect(projectId: String, sessionId: String, runId: Long) = 3
         override suspend fun openPullRequest(project: Project, head: String, title: String, body: String): PullRequest {
             calls += "pr ${project.id} $head $title"

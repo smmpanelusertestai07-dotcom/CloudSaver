@@ -45,6 +45,15 @@ internal class Autosaver(
         }
     }
 
+    /** Pushes now, whatever the window says; the window starts again from here. */
+    suspend fun saveNow(sessionId: String): String? {
+        val window = windows.computeIfAbsent(sessionId) { Window() }
+        return window.lock.withLock {
+            window.lastAt = clock.now()
+            push(sessionId).also { window.lastResult = it }
+        }
+    }
+
     /** Stops tracking a session that no longer exists here. */
     fun forget(sessionId: String) {
         windows.remove(sessionId)?.followUp?.cancel()

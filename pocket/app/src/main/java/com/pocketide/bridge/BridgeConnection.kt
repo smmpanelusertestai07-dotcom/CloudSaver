@@ -33,6 +33,9 @@ internal interface BridgeDirectory {
 
     /** The bridge ports open right now. */
     fun liveBridgePorts(): Set<Int>
+
+    /** Data went through [target]'s bridge to [port]. */
+    fun traffic(target: BridgeTarget, port: Int) = Unit
 }
 
 /**
@@ -392,6 +395,7 @@ internal class BridgeConnection(
 
     private fun touch() {
         lastProgress = System.nanoTime()
+        routedPort?.let { directory.traffic(target, it) }
     }
 
     private companion object {

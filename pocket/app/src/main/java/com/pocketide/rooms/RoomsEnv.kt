@@ -2,10 +2,10 @@ package com.pocketide.rooms
 
 import com.pocketide.bridge.PhoneBridge
 import com.pocketide.bridge.PortBridge
+import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
 import com.pocketide.core.AppDirs
 import com.pocketide.github.PullRequest
-import com.pocketide.github.WorkflowRun
 import com.pocketide.linux.Computer
 import com.pocketide.media.MediaItem
 import com.pocketide.model.AgentInfo
@@ -88,7 +88,7 @@ internal interface RoomsEnv {
     suspend fun putOnMain(sessionId: String): PutOnMainResult
     fun templates(): List<BuildTemplate>
     suspend fun runBuild(projectId: String, templateId: String, ref: String): Long?
-    suspend fun recentRuns(projectId: String): List<WorkflowRun>
+    suspend fun buildProgress(projectId: String, runId: Long): BuildProgress?
     suspend fun collect(projectId: String, sessionId: String, runId: Long): Int
     suspend fun openPullRequest(project: Project, head: String, title: String, body: String): PullRequest
     suspend fun addMedia(sessionId: String, file: File, name: String): MediaItem

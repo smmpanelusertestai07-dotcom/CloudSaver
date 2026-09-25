@@ -93,7 +93,7 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
     override suspend fun putOnMain(sessionId: String) = graph.sessions.putOnMain(sessionId)
     override fun templates() = graph.builds.templates()
     override suspend fun runBuild(projectId: String, templateId: String, ref: String) = graph.builds.run(projectId, templateId, ref)
-    override suspend fun recentRuns(projectId: String) = graph.builds.recentRuns(projectId)
+    override suspend fun buildProgress(projectId: String, runId: Long) = graph.builds.progress(projectId, runId)
     override suspend fun collect(projectId: String, sessionId: String, runId: Long) = graph.builds.collect(projectId, sessionId, runId)
     override suspend fun openPullRequest(project: Project, head: String, title: String, body: String) =
         graph.gitHub.openPullRequest(project.owner, project.repo, head, project.defaultBranch, title, body)

@@ -332,6 +332,22 @@ class SessionLifecycleTest {
     }
 
     @Test
+    fun `saving now commits unfinished work as the owner and pushes it at once`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Unfinished")
+        rig.agentCommits(session, "a.txt", "a\n")
+        assertNull(sessions.autosave(session.id))
+        File(rig.worktree(session), "b.txt").writeText("half done\n")
+
+        assertNull(sessions.saveNow(session.id))
+
+        assertEquals("", hostGit(rig.worktree(session), "status", "--porcelain"))
+        assertEquals("half done\n", hostGit(rig.bare(), "show", "refs/heads/${session.branch}:b.txt") + "\n")
+        assertEquals("by the owner", "Alice Example", hostGit(rig.bare(), "log", "-1", "--format=%an", "refs/heads/${session.branch}"))
+        assertTrue(rig.originHas(session.branch))
+    }
+
+    @Test
     fun `files are added to the project folder under a safe new name, or to media`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Files")

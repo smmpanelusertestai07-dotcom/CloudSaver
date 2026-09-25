@@ -17,6 +17,7 @@ import java.net.URI
 import java.net.URISyntaxException
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
 /** The bridge's limits; tests shorten the timeouts. */
@@ -68,6 +69,8 @@ internal class LoopbackPortBridge(
     private val byBridge = ConcurrentHashMap<Int, Exposure>()
     private val connections: MutableSet<BridgeConnection> = ConcurrentHashMap.newKeySet()
     private val openConnections = AtomicInteger()
+    private val trafficListeners = CopyOnWriteArrayList<(BridgedPort, Int) -> Unit>()
+    private val lastTraffic = ConcurrentHashMap<Int, Long>()
     private var reaper: Job? = null
     private var shutDown = false
     private val hasMirror: Boolean by lazy {
@@ -158,6 +161,26 @@ internal class LoopbackPortBridge(
     override fun isExposed(port: Int): Boolean = byTarget.containsKey(port)
 
     override fun liveBridgePorts(): Set<Int> = byBridge.keys.toSet()
+
+    override fun onTraffic(listener: (bridge: BridgedPort, port: Int) -> Unit) {
+        trafficListeners += listener
+    }
+
+    override fun traffic(target: BridgeTarget, port: Int) {
+        if (trafficListeners.isEmpty()) return
+        val now = System.nanoTime()
+        val last = lastTraffic[port]
+        if (last != null && now - last < TRAFFIC_EVERY_NS) return
+        lastTraffic[port] = now
+        val exposure = byTarget[target.targetPort]?.takeIf { it.target == target } ?: return
+        trafficListeners.forEach { listener ->
+            try {
+                listener(exposure.published, port)
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "A traffic listener failed.", e)
+            }
+        }
+    }
 
     private fun listen(port: Int, purpose: String, inject: List<Pair<String, String>>): Exposure {
         repeat(BIND_ATTEMPTS) {
@@ -266,6 +289,8 @@ internal class LoopbackPortBridge(
         const val TAG = "PocketBridge"
         const val BACKLOG = 50
         const val BIND_ATTEMPTS = 8
+        /** Traffic is reported at most this often per port: enough for idle sleep, which counts minutes. */
+        const val TRAFFIC_EVERY_NS = 30_000_000_000L
         val LOOPBACK_V4: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
         val LOOPBACK_V6: InetAddress = InetAddress.getByAddress(ByteArray(16).also { it[15] = 1 })
         val RESERVED_HEADERS = setOf(

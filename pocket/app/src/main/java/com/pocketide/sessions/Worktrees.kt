@@ -84,6 +84,20 @@ internal class Worktrees(private val git: LinuxGit, private val dirs: AppDirs) {
     }
 
     /**
+     * Commits everything the worktree holds that is not committed (ignored files stay out), by
+     * [identity]. Returns false when there was nothing to commit.
+     */
+    suspend fun commitAll(session: SessionRecord, identity: LinuxGit.Identity, message: String): Boolean {
+        if (isDirty(session) != true) return false
+        val guest = AppDirs.guestWorktree(session.projectId, session.id)
+        val add = git.run(session.agentId, listOf("-C", guest, "add", "--all"))
+        if (!add.ok) throw SessionException("Could not save this session's files: ${add.reason()}")
+        val commit = git.run(session.agentId, listOf("-C", guest, "commit", "--quiet", "--no-verify", "-m", message), identity)
+        if (!commit.ok) throw SessionException("Could not commit this session's files: ${commit.reason()}")
+        return true
+    }
+
+    /**
      * Removes a clean worktree (ignored files such as `node_modules` do not count). Returns false,
      * leaving it locked in place, when git refuses because something changed meanwhile.
      */

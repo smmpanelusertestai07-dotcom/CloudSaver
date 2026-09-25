@@ -438,6 +438,14 @@ internal class SessionManager(
 
     override suspend fun autosave(sessionId: String): String? = autosaver.save(sessionId)
 
+    override suspend fun saveNow(sessionId: String): String? {
+        val session = session(sessionId)
+        if (session.status != SessionStatus.OPEN) return null
+        val account = env.gitHubAuth.account.value ?: return "Connect GitHub to save this chat's code."
+        worktrees.commitAll(session, LinuxGit.Identity.of(account), UNFINISHED_WORK)
+        return autosaver.saveNow(sessionId)
+    }
+
     override suspend fun refresh() {
         refreshLock.withLock {
             active.current()
@@ -778,6 +786,7 @@ internal class SessionManager(
         private const val TITLE_FROM_CHAT_CHARS = 60
         private const val MAX_NAME_ATTEMPTS = 3
         private const val MAX_COMMITS_SHOWN = 500
+        private const val UNFINISHED_WORK = "Unfinished work, saved by PocketIDE before the computer was reset"
         private const val MEDIA_WAIT_MS = 5_000L
         private const val MEDIA_FOLDER = ".media"
         private const val FROM_OWNER = "you"
