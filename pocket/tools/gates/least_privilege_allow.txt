@@ -1,0 +1,3 @@
+# Reviewed exceptions to the least-privilege gate, one per line:
+#   <path relative to app/src/main/java/com/pocketide>: <the exact trimmed source line>
+# Each needs a reason in the commit that adds it. Empty on purpose: the plan allows none.

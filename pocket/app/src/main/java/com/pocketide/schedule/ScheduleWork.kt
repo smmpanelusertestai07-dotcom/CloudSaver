@@ -1,0 +1,133 @@
+package com.pocketide.schedule
+
+import android.app.Notification
+import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequest
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import com.pocketide.R
+import com.pocketide.core.Channels
+import com.pocketide.graph
+import kotlinx.coroutines.CancellationException
+import java.util.concurrent.TimeUnit
+
+/** Puts scheduled tasks into WorkManager and takes them out. */
+internal interface TaskScheduler {
+    /** [update] replaces a job already there (an edited task); otherwise an existing job is kept. */
+    fun schedule(task: ScheduledTask, update: Boolean = true)
+    fun cancel(taskId: String)
+    fun runOnce(taskId: String, sessionId: String)
+}
+
+/**
+ * The WorkManager side. Every run waits for the phone to be charging, on an unmetered network
+ * (Wi-Fi) and with a battery that is not low, so a task never drains the battery or uses
+ * mobile data.
+ */
+internal object ScheduleWork {
+    const val KEY_TASK = "task"
+    const val KEY_SESSION = "session"
+    const val TAG = "pocketide.schedule"
+    private const val PERIODIC = "pocketide.schedule."
+    private const val ONCE = "pocketide.schedule.now."
+
+    fun constraints(): Constraints = Constraints.Builder()
+        .setRequiresCharging(true)
+        .setRequiredNetworkType(NetworkType.UNMETERED)
+        .setRequiresBatteryNotLow(true)
+        .build()
+
+    fun periodic(task: ScheduledTask): PeriodicWorkRequest {
+        require(task.everyHours >= 1) { "A task runs at most once an hour." }
+        return PeriodicWorkRequestBuilder<ScheduledTaskWorker>(task.everyHours.toLong(), TimeUnit.HOURS)
+            .setConstraints(constraints())
+            .setInputData(workDataOf(KEY_TASK to task.id))
+            .addTag(TAG)
+            .build()
+    }
+
+    fun once(taskId: String, sessionId: String): OneTimeWorkRequest =
+        OneTimeWorkRequestBuilder<ScheduledTaskWorker>()
+            .setConstraints(constraints())
+            .setInputData(workDataOf(KEY_TASK to taskId, KEY_SESSION to sessionId))
+            .addTag(TAG)
+            .build()
+
+    class Manager(private val context: Context) : TaskScheduler {
+        private val work get() = WorkManager.getInstance(context)
+
+        override fun schedule(task: ScheduledTask, update: Boolean) {
+            if (!task.enabled) return cancel(task.id)
+            val policy = if (update) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
+            work.enqueueUniquePeriodicWork(PERIODIC + task.id, policy, periodic(task))
+        }
+
+        override fun cancel(taskId: String) {
+            work.cancelUniqueWork(PERIODIC + taskId)
+        }
+
+        override fun runOnce(taskId: String, sessionId: String) {
+            work.enqueueUniqueWork(ONCE + taskId, ExistingWorkPolicy.KEEP, once(taskId, sessionId))
+        }
+    }
+}
+
+/** Runs one scheduled task in its agent's room. */
+class ScheduledTaskWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        val taskId = inputData.getString(ScheduleWork.KEY_TASK) ?: return Result.success()
+        val schedules = applicationContext.graph.schedules as? TaskSchedules ?: return Result.success()
+        schedules.load()
+        val task = schedules.find(taskId)?.takeIf { it.enabled || inputData.getString(ScheduleWork.KEY_SESSION) != null }
+            ?: return Result.success()
+        // Past ten minutes a job needs the foreground; when Android refuses, the run keeps the time a job has.
+        try {
+            setForeground(getForegroundInfo())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Started from the background on Android 12+: not allowed, and not needed to begin.
+        }
+        return try {
+            schedules.runner.run(task, inputData.getString(ScheduleWork.KEY_SESSION))
+            Result.success()
+        } catch (e: ScheduleException) {
+            // Battery or heat said no: the next period tries again.
+            Result.success()
+        }
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification: Notification = NotificationCompat.Builder(applicationContext, Channels.BUILDS)
+            .setSmallIcon(R.drawable.ic_stat_pocketide)
+            .setContentTitle("Scheduled task running")
+            .setContentText("An agent is working on a scheduled task while the phone charges.")
+            .setOngoing(true)
+            .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ForegroundInfo(FOREGROUND_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            ForegroundInfo(FOREGROUND_ID, notification)
+        }
+    }
+
+    private companion object {
+        const val FOREGROUND_ID = 4300
+    }
+}

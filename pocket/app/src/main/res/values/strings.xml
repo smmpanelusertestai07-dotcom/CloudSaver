@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PocketIDE</string>
+    <string name="tagline">Claude Code, Codex and Antigravity on your phone, with your code on GitHub.</string>
+    <string name="engine_channel_name">Computer running</string>
+    <string name="engine_channel_description">Shown while the Linux computer and your agents are running.</string>
+    <string name="sync_channel_name">Sync and storage</string>
+    <string name="sync_channel_description">Sync problems, storage limits and notices before anything is deleted.</string>
+    <string name="agents_channel_name">New agents and updates</string>
+    <string name="agents_channel_description">A new verified agent was found, or an app update is ready.</string>
+    <string name="builds_channel_name">Builds and scheduled tasks</string>
+    <string name="builds_channel_description">A GitHub Actions build or a scheduled task finished.</string>
+    <string name="engine_fgs_subtype">Runs a local Linux development computer (proot) that hosts coding agents the user opened, until the user stops it.</string>
+</resources>

@@ -1,0 +1,105 @@
+# PocketIDE build: the app on a real Android emulator, on GitHub's Linux machine (a phone
+# cannot run one). It builds the debug APK, installs it, starts a screen recording, opens the
+# app, takes a screenshot, saves the app's own log, runs the instrumented tests when the
+# project has them, and sends everything back into the session's Media.
+#
+# One Android version runs by default. Choose "all" to test every version from 29 to 37: that
+# runs nine jobs and uses about nine times the minutes.
+name: PocketIDE Android emulator tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      api-level:
+        description: Android version (API level), or all
+        type: choice
+        default: '35'
+        options: ['29', '30', '31', '32', '33', '34', '35', '36', '37', 'all']
+      package:
+        description: The app's package name (empty = read it from the APK)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketide-android-emulator-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ${{ fromJSON(inputs.api-level == 'all' && '[29,30,31,32,33,34,35,36,37]' || format('[{0}]', inputs.api-level)) }}
+    env:
+      PACKAGE: ${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build the debug APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+      # The runner has the hardware but not the permission by default.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # The emulator action runs each script line on its own, so the steps live in one file.
+      - name: Write the emulator script
+        run: |
+          mkdir -p out
+          cat > "$RUNNER_TEMP/run.sh" <<'EOF'
+          set -euo pipefail
+          apk=$(find . -path '*/build/outputs/apk/debug/*.apk' | head -n 1)
+          if [ -z "$PACKAGE" ]; then
+            tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+            PACKAGE=$("$tools/aapt2" dump packagename "$apk")
+          fi
+          adb install -r "$apk"
+          # Record first, so the recording shows the app starting.
+          adb shell screenrecord --time-limit 30 /data/local/tmp/recording.mp4 &
+          recorder=$!
+          sleep 2
+          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
+          sleep 10
+          adb exec-out screencap -p > out/screenshot.png
+          wait "$recorder" || true
+          adb pull /data/local/tmp/recording.mp4 out/recording.mp4 || true
+          pid=$(adb shell pidof -s "$PACKAGE" | tr -d '\r' || true)
+          if [ -n "$pid" ]; then adb logcat -d --pid="$pid" > out/logcat.txt || true; else adb logcat -d > out/logcat.txt || true; fi
+          if [ -d app/src/androidTest ]; then ./gradlew connectedDebugAndroidTest --no-daemon || echo "Instrumented tests failed" > out/tests-failed.txt; fi
+          EOF
+      - name: Run on the emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disk-size: 6G
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash "$RUNNER_TEMP/run.sh"
+      - name: Fail when the instrumented tests failed
+        run: test ! -f out/tests-failed.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pocketide-emulator-api-${{ matrix.api }}
+          path: |
+            out/
+            **/build/reports/androidTests/
+          if-no-files-found: ignore
+          retention-days: 7

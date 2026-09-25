@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only files the owner chose to share or install are ever handed to another app. -->
+<paths>
+    <cache-path name="share" path="share/" />
+    <cache-path name="apk" path="apk/" />
+</paths>
