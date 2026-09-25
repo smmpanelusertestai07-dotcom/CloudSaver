@@ -99,13 +99,15 @@ internal class Materializer(
          * (missing ones are made), and just before the rename the target's folder must still
          * resolve inside the room, so one swapped for a link meanwhile is caught. Renaming
          * replaces a link at the target itself instead of writing through it. False, with
-         * nothing moved, when a link or a file is in the way.
+         * nothing moved, when a link, a file or a folder is in the way.
          */
         fun placeAt(target: RoomFile): Boolean {
             val names = target.path.split('/')
             val folder = realFolder(target.root, names.dropLast(1)) ?: return false
             if (!resolvesInside(folder, target.root)) return false
-            Files.move(content.toPath(), folder.resolve(names.last()), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            val destination = folder.resolve(names.last())
+            if (attributes(destination)?.isDirectory == true) return false
+            Files.move(content.toPath(), destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             return true
         }
 

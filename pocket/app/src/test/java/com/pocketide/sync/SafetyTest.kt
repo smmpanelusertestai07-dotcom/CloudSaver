@@ -105,6 +105,23 @@ class SafetyTest {
     }
 
     @Test
+    fun aFolderPlantedWhereAChatBelongsIsLeftAloneAndStopsNothing() = runBlocking {
+        val phone = TestPhone(accounts, clock).apply { sessions += session("s", at = clock.now, ref = "c0ffee00-1111") }
+        val transcript = phone.homeFile("claude", claudeTranscript("owner/app", "s", "c0ffee00-1111"))
+        transcript.writeText("the chat\n")
+        phone.engine.syncNow()
+
+        // The room replaces its transcript with a folder of the same name.
+        transcript.delete()
+        File(transcript, "inside").apply { parentFile?.mkdirs() }.writeText("the room's")
+        phone.engine.fetchSession("s")
+
+        assertEquals("the room's", File(transcript, "inside").readText())
+        phone.engine.syncNow()
+        assertTrue(phone.engine.status.value is SyncStatus.UpToDate)
+    }
+
+    @Test
     fun pastedKeysInPromptHistoryAreMaskedBeforeUploadAndTheFileKeepsItsLength() = runBlocking {
         val phone = TestPhone(accounts, clock)
         val history = phone.homeFile("claude", ".claude/history.jsonl")
