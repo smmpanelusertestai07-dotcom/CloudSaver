@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 sealed interface SyncStatus {
@@ -26,6 +27,37 @@ sealed interface SyncStatus {
 }
 
 data class PendingUpload(val sessionId: String, val title: String, val bytes: Long, val videos: Int)
+
+/** Where one session's backup stands, for the chip on its row ("Backed up · 2 min ago"). */
+enum class BackupState {
+    /** Everything this phone has of the session is in Drive. */
+    BACKED_UP,
+
+    /** New parts wait for the next sync (or for room in Drive: see [SyncStatus.Waiting]). */
+    WAITING,
+
+    /** Only videos wait, for Wi-Fi ("1 video waiting for Wi-Fi"). */
+    WAITING_FOR_WIFI,
+
+    /** "Don't back up this chat": kept on this phone only. */
+    NOT_BACKED_UP,
+}
+
+data class SessionBackup(
+    val state: BackupState,
+    /** When Drive last confirmed new parts of this session from this phone; null when not known here. */
+    val lastBackedUpAt: Long? = null,
+    val pendingBytes: Long = 0,
+    val videosWaitingForWifi: Int = 0,
+)
+
+/** Recently deleted keeps a chat for 30 days, counted from the date stored in Drive (§6.4). */
+object RecentlyDeleted {
+    const val DAYS = 30
+
+    /** When a chat deleted at [deletedAt] is erased for good; the daily job may run a little later. */
+    fun erasesAt(deletedAt: Long): Long = deletedAt + DAYS * 24L * 60 * 60 * 1000
+}
 
 /** What a new phone downloads now and what waits in Drive (restore plan, §6.9). */
 data class RestorePlan(
@@ -114,6 +146,21 @@ interface SyncEngine {
 
     val move: StateFlow<MoveState>
 
+    /** Each session's backup state by session id, for its chip and the sync dot on Home. */
+    val backups: StateFlow<Map<String, SessionBackup>> get() = NO_BACKUPS
+
+    /**
+     * When the unused computer will be removed (its 7-day notice is running), or null. Removal
+     * also waits until everything is synced and no agent runs.
+     */
+    val computerRemovalAt: StateFlow<Long?> get() = NOTHING
+
+    /**
+     * A plain sentence when Android holds back PocketIDE's background work (restricted standby
+     * bucket, or background use off): backup and the daily clean-up then run late. Null when not.
+     */
+    val backgroundLimit: StateFlow<String?> get() = NOTHING
+
     /** Schedules a sync soon (end of a task, or every few minutes while agents run). */
     fun requestSync(reason: String)
 
@@ -149,6 +196,9 @@ interface SyncEngine {
     /** Starts the periodic sync and the daily maintenance job. */
     fun schedule()
 }
+
+private val NO_BACKUPS: StateFlow<Map<String, SessionBackup>> = MutableStateFlow(emptyMap())
+private val NOTHING: StateFlow<Nothing?> = MutableStateFlow(null)
 
 /** Metered-only accounting and the daily limit, checked before every big transfer. */
 interface DataBudget {

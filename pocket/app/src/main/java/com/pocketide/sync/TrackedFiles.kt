@@ -1,6 +1,8 @@
 package com.pocketide.sync
 
+import com.pocketide.core.AgentFiles
 import com.pocketide.core.AppDirs
+import com.pocketide.core.FileClass
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import java.io.File
@@ -28,98 +30,58 @@ internal data class Candidate(
 }
 
 /**
- * What is synced from each room (researched from each agent's own documentation and files):
- * transcripts, memory and instructions, the agent state needed to resume a session, and the
- * session media folders. Never logins or tokens, never build outputs, never app-managed config.
+ * What is synced from each room. Whether a file may leave the phone at all is decided by
+ * [AgentFiles], the one classification shared with the check-post and the Your data screen:
+ * only SYNC files are uploaded (allow-list first), and a credential is SECRET wherever it sits
+ * (deny-list second). Logins, app-generated config (hooks, MCP entries, permission rules) and
+ * caches never go. This object only says what kind of object a SYNC file becomes.
  */
 internal object TrackRules {
-    private val claudeMemory = listOf(".claude/CLAUDE.md", ".claude/rules", ".claude/agents", ".claude/skills", ".claude/commands", ".claude/output-styles", ".claude/agent-memory", ".claude/workflows")
-    private val codexMemory = listOf(".codex/AGENTS.md", ".codex/AGENTS.override.md", ".codex/prompts", ".codex/skills", ".codex/rules")
-    private val agyMemory = listOf(
-        ".gemini/GEMINI.md", ".gemini/AGENTS.md", ".gemini/config/GEMINI.md", ".gemini/config/AGENTS.md", ".gemini/config/rules",
-        ".gemini/antigravity/knowledge", ".gemini/antigravity/global_workflows",
+    /** Folders and files walked in every room's home; [AgentFiles] decides file by file. */
+    val roots = listOf(
+        ".claude/CLAUDE.md", ".claude/rules", ".claude/projects", ".claude/history.jsonl", ".claude/plans",
+        ".codex/AGENTS.md", ".codex/AGENTS.override.md", ".codex/sessions", ".codex/archived_sessions",
+        ".codex/history.jsonl", ".codex/rules", ".codex/skills",
+        ".gemini/GEMINI.md", ".gemini/AGENTS.md", ".gemini/config", ".gemini/antigravity", ".gemini/antigravity-cli",
     )
-    private const val AGY_SUMMARIES = ".gemini/antigravity/conversation_summaries.db"
 
-    /** Folders and files walked in each room's home, by agent. Other agents sync their media only. */
-    fun roots(agentId: String): List<String> = when (agentId) {
-        "claude" -> listOf(".claude/projects", ".claude/history.jsonl", ".claude/tasks", ".claude/plans") + claudeMemory
-        "codex" -> listOf(".codex/sessions", ".codex/archived_sessions", ".codex/history.jsonl") + codexMemory
-        "antigravity" -> listOf(".gemini/antigravity/conversations", ".gemini/antigravity/brain", AGY_SUMMARIES, "$AGY_SUMMARIES-wal") + agyMemory
-        else -> emptyList()
-    }
+    private val memoryNames = setOf("CLAUDE.md", "AGENTS.md", "AGENTS.override.md", "GEMINI.md", "memory.txtpb")
 
-    /** A database file is copied only once it has been still for a minute, so the copy is whole. */
-    fun needsQuiet(path: String): Boolean = path.endsWith(".db") || path.endsWith(".db-wal")
-
-    /** The kind of a file under a room's home, or null when it must never leave the phone. */
-    fun homeKind(agentId: String, path: String): ObjectKind? {
-        if (denied(path)) return null
-        return when (agentId) {
-            "claude" -> claudeKind(path)
-            "codex" -> codexKind(path)
-            "antigravity" -> agyKind(path)
-            else -> null
+    /** The kind of a file under a room's home, or null when it must not leave the phone. */
+    fun homeKind(path: String): ObjectKind? {
+        if (AgentFiles.classify(path) != FileClass.SYNC || transient(path.substringAfterLast('/'))) return null
+        val name = path.substringAfterLast('/')
+        return when {
+            name in memoryNames || "/memory/" in path || "/rules/" in path || path.startsWith(".codex/skills/") -> ObjectKind.MEMORY
+            // Antigravity's conversations are opaque files: when one is rewritten instead of
+            // appended to, its changed prefix makes the whole file a new base piece.
+            path.endsWith(".jsonl") || "/conversations/" in path -> ObjectKind.CHAT_PIECE
+            else -> ObjectKind.AGENT_STATE
         }
     }
 
-    private fun claudeKind(path: String): ObjectKind? = when {
-        path == ".claude/history.jsonl" -> ObjectKind.CHAT_PIECE
-        path.startsWith(".claude/projects/") -> {
-            val parts = path.split('/')
-            when {
-                parts.size > 4 && parts[3] == "memory" -> ObjectKind.MEMORY
-                path.endsWith(".jsonl") -> ObjectKind.CHAT_PIECE
-                else -> ObjectKind.AGENT_STATE
-            }
-        }
-        path.startsWith(".claude/tasks/") || path.startsWith(".claude/plans/") -> ObjectKind.AGENT_STATE
-        claudeMemory.any { path == it || path.startsWith("$it/") } -> ObjectKind.MEMORY
-        else -> null
-    }
+    /** A folder the walk never enters: a link, or a place where logins live. */
+    fun skipFolder(relativePath: String): Boolean = AgentFiles.isSecret("$relativePath/")
 
-    private fun codexKind(path: String): ObjectKind? = when {
-        path == ".codex/history.jsonl" -> ObjectKind.CHAT_PIECE
-        path.startsWith(".codex/sessions/") || path.startsWith(".codex/archived_sessions/") ->
-            if (path.endsWith(".jsonl")) ObjectKind.CHAT_PIECE else ObjectKind.AGENT_STATE
-        codexMemory.any { path == it || path.startsWith("$it/") } -> ObjectKind.MEMORY
-        else -> null
-    }
+    /** SQLite files are copied only while their agent's room is stopped and they have been still for a minute. */
+    fun isDatabase(path: String): Boolean = path.endsWith(".db") || path.endsWith(".db-wal")
 
-    private fun agyKind(path: String): ObjectKind? = when {
-        path.startsWith(".gemini/antigravity/conversations/") -> ObjectKind.CHAT_PIECE
-        path.startsWith(".gemini/antigravity/brain/") -> if (path.endsWith(".jsonl")) ObjectKind.CHAT_PIECE else ObjectKind.AGENT_STATE
-        path == AGY_SUMMARIES || path == "$AGY_SUMMARIES-wal" -> ObjectKind.AGENT_STATE
-        agyMemory.any { path == it || path.startsWith("$it/") } -> ObjectKind.MEMORY
-        else -> null
-    }
+    /** History files are scanned for pasted secrets, which are masked before they leave the phone. */
+    fun needsSecretScan(path: String): Boolean = AgentFiles.needsSecretScan(path)
 
-    /** Media: images always; videos wait for Wi-Fi; never APKs, build outputs or archives. */
-    fun mediaSyncable(name: String): Boolean = !denied(name) && name.substringAfterLast('.', "").lowercase() !in NEVER_MEDIA
+    /** Media: images always; videos wait for Wi-Fi; never APKs, build outputs, archives or key files. */
+    fun mediaSyncable(name: String): Boolean =
+        !transient(name) && !AgentFiles.isSecret(name) && name.substringAfterLast('.', "").lowercase() !in NEVER_MEDIA
 
     fun isVideo(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in VIDEO
 
-    /**
-     * Logins, tokens and keys, wherever an agent keeps them (auth.json, .credentials.json, OAuth
-     * token files, keyrings), app-managed config (which can hold MCP secrets), auto-installed
-     * folders, and files still being written.
-     */
-    fun denied(path: String): Boolean = path.split('/').any { segment ->
-        val s = segment.lowercase()
-        s in DENIED_NAMES || s in DENIED_DIRS || "oauth" in s || "credential" in s ||
-            DENIED_SUFFIXES.any { s.endsWith(it) } || DENIED_PREFIXES.any { s.startsWith(it) }
+    /** Files still being written, or SQLite's shared-memory index, which is rebuilt on open. */
+    private fun transient(name: String): Boolean {
+        val n = name.lowercase()
+        return TRANSIENT_SUFFIXES.any { n.endsWith(it) }
     }
 
-    private val DENIED_NAMES = setOf(
-        "auth.json", "google_accounts.json", "cookies", "cookies.json", "cookies.sqlite", ".netrc",
-        ".claude.json", "mcp_config.json", "settings.json", "settings.local.json", "config.toml", "installation_id",
-    )
-    private val DENIED_DIRS = setOf("keyring", "keyrings", ".keyring", "backups", ".trash", ".system")
-    private val DENIED_SUFFIXES = listOf(
-        "token", "tokens.json", "token.json", ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
-        ".tmp", ".part", ".lock", ".swp", "~", "-shm", "-journal",
-    )
-    private val DENIED_PREFIXES = listOf("id_rsa", "id_ed25519", "id_ecdsa", "id_dsa")
+    private val TRANSIENT_SUFFIXES = listOf(".tmp", ".part", ".lock", ".swp", "~", "-shm", "-journal", ".pocketide-part")
     private val VIDEO = setOf("mp4", "webm")
     private val NEVER_MEDIA = setOf(
         "apk", "aab", "apks", "xapk", "ipa", "app", "exe", "msi", "dmg", "deb", "rpm", "jar", "aar", "war",
@@ -176,16 +138,21 @@ internal class Scanner(private val dirs: AppDirs) {
         return (fromRooms + fromWork).filter(::isSafeName).distinct().sorted()
     }
 
-    fun scan(matcher: SessionMatcher, tracks: Map<String, FileTrack>): List<Candidate> =
-        agents().flatMap { agent -> homeFiles(agent, matcher, tracks) + mediaFiles(agent) }
+    /**
+     * Every syncable file of every room. [roomRunning] says whether an agent's room is running:
+     * its databases are skipped then, because a copy taken mid-write may not open (R8).
+     */
+    fun scan(matcher: SessionMatcher, tracks: Map<String, FileTrack>, roomRunning: (String) -> Boolean): List<Candidate> =
+        agents().flatMap { agent -> homeFiles(agent, matcher, tracks, roomRunning(agent)) + mediaFiles(agent) }
 
-    private fun homeFiles(agentId: String, matcher: SessionMatcher, tracks: Map<String, FileTrack>): List<Candidate> {
+    private fun homeFiles(agentId: String, matcher: SessionMatcher, tracks: Map<String, FileTrack>, running: Boolean): List<Candidate> {
         val home = dirs.roomHome(agentId)
         if (!isRealDirectory(home)) return emptyList()
         val out = ArrayList<Candidate>()
-        for (root in TrackRules.roots(agentId)) {
+        for (root in TrackRules.roots) {
             walk(home, root) { path, file, facts ->
-                val kind = TrackRules.homeKind(agentId, path) ?: return@walk
+                val kind = TrackRules.homeKind(path) ?: return@walk
+                if (running && TrackRules.isDatabase(path)) return@walk
                 val track = tracks[fileKey(kind, agentId, path)]
                 val rollout = kind == ObjectKind.CHAT_PIECE && (path.startsWith(".codex/sessions/") || path.startsWith(".codex/archived_sessions/"))
                 val cwd = track?.headCwd ?: if (rollout && track?.sessionId == null) firstLineCwd(file) else null
@@ -219,8 +186,10 @@ internal class Scanner(private val dirs: AppDirs) {
         val basePath = base.canonicalFile.toPath()
         try {
             Files.walkFileTree(startPath, EnumSet.noneOf(java.nio.file.FileVisitOption::class.java), MAX_DEPTH, object : FileVisitor<Path> {
-                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                    if (attrs.isSymbolicLink || TrackRules.denied(dir.fileName.toString())) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    val rel = basePath.relativize(dir).toString().replace(File.separatorChar, '/')
+                    return if (attrs.isSymbolicLink || TrackRules.skipFolder(rel)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+                }
 
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                     if (attrs.isRegularFile) {

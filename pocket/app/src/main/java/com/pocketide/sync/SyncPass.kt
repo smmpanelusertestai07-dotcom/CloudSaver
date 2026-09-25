@@ -5,6 +5,7 @@ import com.pocketide.google.DriveStore
 import com.pocketide.model.Lease
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.VaultIndex
+import com.pocketide.sessions.Sessions
 
 internal data class PassOptions(
     /** "Upload now" for these sessions only; their videos may use mobile data. */
@@ -58,8 +59,9 @@ internal class SyncPass(
         adoptRemote(run, snapshot)
         val report = upload(run, drive, opts, book, onlyConflicts = false)
         val removals = removals(run, book)
+        val erase = run.state.eraseQueue + book.erasingNow()
         val committed = try {
-            committer.commit(run, drive, snapshot, CommitMode.HOLDER, CommitExtras(removeFiles = removals, eraseSessions = run.state.eraseQueue))
+            committer.commit(run, drive, snapshot, CommitMode.HOLDER, CommitExtras(removeFiles = removals, eraseSessions = erase))
         } catch (e: LeaseLostException) {
             return locked(run, drive, e.snapshot, e.holder, book)
         }
@@ -90,10 +92,10 @@ internal class SyncPass(
         val compactAllowed = !ports.network.metered()
         val tracks = run.state.tracks.toMutableMap()
         val seen = HashSet<String>()
-        for (c in kit.scanner.scan(book.matcher, tracks)) {
+        for (c in kit.scanner.scan(book.matcher, tracks, ports::roomRunning)) {
             seen += c.key
             if (!book.uploadable(c.sessionId)) continue
-            if (TrackRules.needsQuiet(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) continue
+            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) continue
             val waiting = queued[c.key].orEmpty()
             var track = tracks[c.key]
             if (track == null && waiting.isEmpty()) track = reconciler.adopt(index, c)?.also { tracks[c.key] = it }
@@ -174,16 +176,52 @@ internal class SyncPass(
         }
     }
 
-    /** Settings another phone changed come here, unless this phone changed them too (then its own win). */
-    fun adoptRemote(run: Run, snapshot: RemoteSnapshot) {
+    /** Takes what another phone (or a restore) brought into the index: settings, sessions, projects. */
+    suspend fun adoptRemote(run: Run, snapshot: RemoteSnapshot) {
         run.keepIndex(snapshot)
-        val remoteJson = snapshot.index?.settingsJson ?: return
+        val index = snapshot.index ?: return
+        adoptSettings(run, index)
+        adoptSessions(run, index)
+        adoptProjects(run, index)
+    }
+
+    /** Settings another phone changed come here, unless this phone changed them too (then its own win). */
+    private fun adoptSettings(run: Run, index: VaultIndex) {
+        val remoteJson = index.settingsJson ?: return
         val pushed = run.state.settingsPushed
         if (remoteJson == pushed) return
         val local = SyncedSettings.of(ports.settings.settings.value).json()
         if (pushed != null && local != pushed) return
         SyncedSettings.parse(remoteJson)?.let { synced -> ports.settings.update { synced.applyTo(it) } }
         run.state = run.state.copy(settingsPushed = remoteJson)
+    }
+
+    /**
+     * A session record that changed in Drive is taken when this phone did not change it since the
+     * last sync; when both changed, this phone's push merges them by the index's rule instead.
+     * Sessions only in Drive (a new phone, conflict copies) are added, with their "deleted on" date.
+     */
+    private suspend fun adoptSessions(run: Run, index: VaultIndex) {
+        val marks = run.state.sessionMarks
+        val erased = run.state.erased
+        val local = ports.localSessions().associateBy { it.id }
+        val incoming = index.sessions.filter { r ->
+            val mark = marks[r.id]?.hash
+            val mine = local[r.id]
+            r.deletedAt != Sessions.ERASE_NOW && r.id !in erased && mark != Diffs.hash(r) &&
+                (mine == null || Diffs.hash(mine) == mark)
+        }
+        if (incoming.isEmpty()) return
+        ports.adoptSessions(incoming)
+        run.state = run.state.copy(sessionMarks = marks + incoming.associate { it.id to SessionMark(Diffs.hash(it), it.deletedAt) })
+    }
+
+    private suspend fun adoptProjects(run: Run, index: VaultIndex) {
+        val marks = run.state.projectMarks
+        val incoming = index.projects.filter { marks[it.id] != Diffs.projectHash(it) }
+        if (incoming.isEmpty()) return
+        ports.adoptProjects(incoming)
+        run.state = run.state.copy(projectMarks = marks + incoming.associate { it.id to Diffs.projectHash(it) })
     }
 
     /**

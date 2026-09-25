@@ -8,6 +8,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.RandomAccessFile
 import java.security.DigestInputStream
 
 /** The newest state of a file this phone knows: what Drive has, plus anything still queued. */
@@ -70,32 +71,58 @@ internal class PieceMaker(
 
     fun transcript(c: Candidate, known: Known, compact: Boolean): MakeResult {
         val facts = c.facts
-        if (facts.size == known.size && facts.modifiedAt == known.modifiedAt && known.end >= facts.size) return MakeResult.Unchanged
         if (facts.size == 0L && known.end == 0L) return MakeResult.Unchanged
-        if (facts.size < known.end || compact || (known.end > 0 && known.sha == null)) return base(c, known)
+        val end = try {
+            uploadEnd(c)
+        } catch (_: IOException) {
+            return MakeResult.Changing
+        }
+        if (facts.size == known.size && facts.modifiedAt == known.modifiedAt && known.end >= end) return MakeResult.Unchanged
+        if (end < known.end || compact || (known.end > 0 && known.sha == null)) return base(c, known, end)
         return try {
-            appendOrRewrite(c, known)
+            appendOrRewrite(c, known, end)
         } catch (_: IOException) {
             MakeResult.Changing
         }
     }
 
-    private fun appendOrRewrite(c: Candidate, known: Known): MakeResult {
-        val facts = c.facts
+    /**
+     * Where the bytes to send end: the file's size, except for prompt histories, which go up to
+     * their last complete line so a secret still being written is never split across two pieces
+     * (each piece is masked on its own).
+     */
+    private fun uploadEnd(c: Candidate): Long {
+        if (!TrackRules.needsSecretScan(c.path)) return c.facts.size
+        RandomAccessFile(c.file, "r").use { f ->
+            val buffer = ByteArray(TAIL_BUFFER)
+            var pos = minOf(c.facts.size, f.length())
+            while (pos > 0) {
+                val start = maxOf(0L, pos - buffer.size)
+                val n = (pos - start).toInt()
+                f.seek(start)
+                f.readFully(buffer, 0, n)
+                for (i in n - 1 downTo 0) if (buffer[i] == NEWLINE) return start + i + 1
+                pos = start
+            }
+            return 0
+        }
+    }
+
+    private fun appendOrRewrite(c: Candidate, known: Known, end: Long): MakeResult {
         val prefix = Codec.newDigest()
         val raw = FileInputStream(c.file)
         raw.use {
-            val bounded = BoundedInputStream(raw, facts.size)
+            val bounded = BoundedInputStream(raw, end)
             val prefixed = DigestInputStream(bounded, prefix)
             if (!prefixed.consume(known.end)) return MakeResult.Changing
-            if (known.end > 0 && Codec.peek(prefix) != known.sha) return base(c, known)
-            if (facts.size == known.end) return MakeResult.Touched
+            if (known.end > 0 && Codec.peek(prefix) != known.sha) return base(c, known, end)
+            if (end == known.end) return MakeResult.Touched
             val id = Codec.objectName()
             val entry = queue.addBlob(cipher, id) { out ->
                 val piece = Codec.newDigest()
-                val counted = BoundedInputStream(DigestInputStream(prefixed, piece), Long.MAX_VALUE)
-                encrypt(counted, out)
-                if (known.end + counted.count != facts.size) {
+                val counted = BoundedInputStream(prefixed, Long.MAX_VALUE)
+                encrypt(DigestInputStream(masked(counted, c.path), piece), out)
+                if (known.end + counted.count != end) {
                     null
                 } else {
                     draft(c, known, id, offset = known.end, length = counted.count).copy(
@@ -109,19 +136,21 @@ internal class PieceMaker(
         }
     }
 
-    /** The whole file as a new base piece. */
-    private fun base(c: Candidate, known: Known): MakeResult = try {
+    /** The whole file (up to [end]) as a new base piece. */
+    private fun base(c: Candidate, known: Known, end: Long): MakeResult = try {
         val id = Codec.objectName()
         val entry = queue.addBlob(cipher, id) { out ->
             FileInputStream(c.file).use { raw ->
-                val digest = Codec.newDigest()
-                val bounded = BoundedInputStream(raw, c.facts.size)
-                encrypt(DigestInputStream(bounded, digest), out)
-                if (bounded.count != c.facts.size) {
+                val local = Codec.newDigest()
+                val sent = Codec.newDigest()
+                val bounded = BoundedInputStream(raw, end)
+                encrypt(DigestInputStream(masked(DigestInputStream(bounded, local), c.path), sent), out)
+                if (bounded.count != end) {
                     null
                 } else {
-                    val sha = Codec.hex(digest.digest())
-                    draft(c, known, id, offset = 0, length = bounded.count).copy(sha256 = sha, prefixSha256 = sha, base = true)
+                    // The piece is checked by what was sent; the file on the phone by its own bytes.
+                    draft(c, known, id, offset = 0, length = bounded.count)
+                        .copy(sha256 = Codec.hex(sent.digest()), prefixSha256 = Codec.hex(local.digest()), base = true)
                 }
             }
         }
@@ -182,7 +211,7 @@ internal class PieceMaker(
             FileInputStream(c.file).use { raw ->
                 val digest = Codec.newDigest()
                 val bounded = BoundedInputStream(raw, c.facts.size)
-                encrypt(DigestInputStream(bounded, digest), out)
+                encrypt(DigestInputStream(masked(bounded, c.path), digest), out)
                 val sha = Codec.hex(digest.digest())
                 QueueEntry(
                     id = id, name = id, kind = c.kind, agentId = c.agentId, sessionId = sessionId, path = path,
@@ -214,8 +243,16 @@ internal class PieceMaker(
         fileModifiedAt = c.facts.modifiedAt,
     )
 
+    private fun masked(input: InputStream, path: String): InputStream =
+        if (TrackRules.needsSecretScan(path)) SecretMaskingInputStream(input) else input
+
     /** gzip, then age: what every object in Drive is. */
     private fun encrypt(plain: InputStream, out: OutputStream) {
         GzipCompressingInputStream(plain).use { cipher.encrypt(it, out) }
+    }
+
+    private companion object {
+        const val TAIL_BUFFER = 8 * 1024
+        const val NEWLINE = '\n'.code.toByte()
     }
 }

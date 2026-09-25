@@ -3,6 +3,7 @@ package com.pocketide.sync
 import com.pocketide.core.Ist
 import com.pocketide.core.Settings
 import com.pocketide.model.VaultIndex
+import com.pocketide.sessions.Sessions
 import java.util.Locale
 
 /** What the screens show, computed from the queue and the index. */
@@ -11,12 +12,29 @@ internal object Views {
     /** Bytes waiting for Drive (conflict copies are counted apart: they never lock the app). */
     fun pendingBytes(entries: List<QueueEntry>): Long = entries.filter { !it.conflict }.sumOf { it.length }
 
+    /** "Waiting to upload" per session, and each session's backup chip. */
     fun publishWaiting(run: Run, book: SessionBook) {
-        run.kit.flows.waiting.value = run.entries()
+        val bySession = run.entries()
             .filter { !it.conflict && it.sessionId != null && book.uploadable(it.sessionId) }
             .groupBy { it.sessionId.orEmpty() }
+        run.kit.flows.waiting.value = bySession
             .map { (id, list) -> PendingUpload(id, book[id]?.title ?: "Chat", list.sumOf { it.length }, list.count { it.video }) }
             .sortedByDescending { it.bytes }
+        val videosWait = run.ports.network.metered() && !run.ports.settings.settings.value.videosOnMobileData
+        run.kit.flows.backups.value = book.all
+            .filter { it.deletedAt != Sessions.ERASE_NOW }
+            .associate { s -> s.id to backup(s.backUp, bySession[s.id].orEmpty(), run.state.backedUpAt[s.id], videosWait) }
+    }
+
+    fun backup(backUp: Boolean, pending: List<QueueEntry>, lastAt: Long?, videosWait: Boolean): SessionBackup {
+        if (!backUp) return SessionBackup(BackupState.NOT_BACKED_UP)
+        val videos = pending.count { it.video }
+        val state = when {
+            pending.isEmpty() -> BackupState.BACKED_UP
+            videosWait && videos == pending.size -> BackupState.WAITING_FOR_WIFI
+            else -> BackupState.WAITING
+        }
+        return SessionBackup(state, lastAt, pending.sumOf { it.length }, if (videosWait) videos else 0)
     }
 
     fun waitingStatus(run: Run, waiting: WaitingMark): SyncStatus.Waiting {
@@ -84,10 +102,11 @@ internal class Notices(private val kit: SyncKit) {
 
     fun retention(run: Run, count: Int, due: Long, trim: Boolean) {
         val chats = if (count == 1) "1 chat" else "$count chats"
+        val move = if (count == 1) "moves" else "move"
         val text = if (trim) {
-            "PocketIDE's space is full, so $chats older than 12 months move to Recently deleted on ${Ist.date(due)}. Raise the limit in Settings to keep them."
+            "PocketIDE's space is full, so $chats older than 12 months $move to Recently deleted on ${Ist.date(due)}. Raise the limit in Settings to keep them."
         } else {
-            "$chats with no new messages for a long time move to Recently deleted on ${Ist.date(due)}. Change \"Keep chats\" in Your data to keep them."
+            "$chats with no new messages for a long time $move to Recently deleted on ${Ist.date(due)}. Change \"Keep chats\" in Your data to keep them."
         }
         post(run, Notice(if (trim) "trim" else "keep", "Old chats move to Recently deleted", text))
     }
@@ -105,6 +124,17 @@ internal class Notices(private val kit: SyncKit) {
     fun computerNotice(run: Run, days: Int, due: Long) = post(
         run,
         Notice("computer", "The computer will be removed", "No agent has run for $days days. The computer is removed on ${Ist.date(due)} to free space and is rebuilt the next time you use it."),
+    )
+
+    fun computerTomorrow(run: Run, due: Long) = post(
+        run,
+        Notice("computer", "The computer is removed tomorrow", "It goes on ${Ist.date(due)} unless an agent runs before then. Your projects and chats are safe either way."),
+        force = true,
+    )
+
+    fun driveRevoked(run: Run) = post(
+        run,
+        Notice("drive", "Reconnect Google Drive", "PocketIDE can no longer reach your Drive, so new chats wait safely on this phone. Open PocketIDE to reconnect."),
     )
 
     fun computerRemoved(run: Run) = post(

@@ -37,7 +37,6 @@ internal object Limits {
 
 /** Retention (§6.4, §6.6, §6.8): Recently deleted for 30 days, and moves that come with a notice. */
 internal object Retention {
-    const val RECENTLY_DELETED_DAYS = 30
     const val NOTICE_DAYS = 7
     const val TRIM_MONTHS = 12
     const val RULE_KEEP = "keep"
@@ -45,7 +44,7 @@ internal object Retention {
 
     /** Recently deleted for 30 days or more, counted from the date stored in Drive. */
     fun dueForErase(index: VaultIndex, now: Long): Set<String> = index.sessions
-        .filter { s -> s.deletedAt?.let { now - it >= Durations.days(RECENTLY_DELETED_DAYS) } == true }
+        .filter { s -> s.deletedAt?.let { now >= RecentlyDeleted.erasesAt(it) } == true }
         .map { it.id }
         .toSet()
 

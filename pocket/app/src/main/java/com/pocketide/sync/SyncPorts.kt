@@ -33,6 +33,7 @@ internal interface SyncNotifier {
 /** WorkManager, seen from the engine. */
 internal interface SyncScheduling {
     fun requestSoon()
+
     fun requestMaintenance()
     fun schedulePeriodic()
     fun cancelAll()
@@ -74,10 +75,27 @@ internal interface SyncPorts {
 
     fun roomsRunning(): Boolean
 
+    fun roomRunning(agentId: String): Boolean
+
     suspend fun stopRooms()
 
     /** Moves a session to Recently deleted on this phone (the phone copy goes now). */
     suspend fun deleteSessionLocally(sessionId: String)
+
+    /** Session records from the index: another phone's changes, a restore, conflict copies. */
+    suspend fun adoptSessions(records: List<SessionRecord>)
+
+    /** These sessions were erased from Drive; the phone forgets them too. */
+    suspend fun sessionsErased(sessionIds: List<String>)
+
+    /** Projects from the index (a restore, or another phone's new project). */
+    suspend fun adoptProjects(projects: List<Project>)
+
+    /**
+     * A plain sentence when Android holds back this app's background work (a restricted standby
+     * bucket, or background use turned off), so sync and the daily job run late; null otherwise.
+     */
+    fun backgroundLimit(): String?
 
     /** Every Variable and Secret, serialized; null when the secrets store is not available. */
     suspend fun exportSecrets(): ByteArray?

@@ -49,12 +49,13 @@ internal object RestorePlanner {
         )
     }
 
-    /** Secrets, then memory, then the rest of the room, then chats from the newest. */
+    /** Memory, settings, Secrets, then the rest of the room, then chats from the newest (§6.9). */
     private fun rank(o: VaultObject, order: Map<String, Int>): Int = when {
-        o.kind == ObjectKind.SECRETS -> 0
-        o.kind == ObjectKind.MEMORY -> 1
-        o.sessionId == null -> 2
-        else -> 3 + (order[o.sessionId] ?: order.size)
+        o.kind == ObjectKind.MEMORY -> 0
+        o.kind == ObjectKind.SETTINGS -> 1
+        o.kind == ObjectKind.SECRETS -> 2
+        o.sessionId == null -> 3
+        else -> 4 + (order[o.sessionId] ?: order.size)
     }
 }
 

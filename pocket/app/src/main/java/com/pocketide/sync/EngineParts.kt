@@ -7,6 +7,7 @@ import com.pocketide.google.DriveStore
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.VaultIndex
+import com.pocketide.sessions.Sessions
 import com.pocketide.vault.VaultCipher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.Serializable
@@ -31,6 +32,9 @@ internal class SyncFlows {
     val driveProjects = MutableStateFlow<List<Project>>(emptyList())
     val storage = MutableStateFlow(StorageSummary())
     val move = MutableStateFlow<MoveState>(MoveState.Idle)
+    val backups = MutableStateFlow<Map<String, SessionBackup>>(emptyMap())
+    val computerRemovalAt = MutableStateFlow<Long?>(null)
+    val backgroundLimit = MutableStateFlow<String?>(null)
 }
 
 /**
@@ -109,15 +113,21 @@ internal class SessionBook(local: List<SessionRecord>, drive: List<SessionRecord
 
     operator fun get(id: String?): SessionRecord? = id?.let { byId[it] }
 
-    /** Room-level files always; a session's files unless "not backed up", deleted or erased. */
+    /**
+     * Room-level files always; a session's files unless "not backed up" or erased. A chat in
+     * Recently deleted still uploads what was waiting, so Restore brings back all of it.
+     */
     fun uploadable(id: String?): Boolean {
         if (id == null) return true
         if (id in erased) return false
         val s = byId[id] ?: return true
-        return s.backUp && s.deletedAt == null
+        return s.backUp && s.deletedAt != Sessions.ERASE_NOW
     }
 
     fun alive(id: String?): Boolean = id != null && byId[id]?.let { it.deletedAt == null } == true
+
+    /** Sessions the owner deleted forever: erased from Drive at this sync, not at the daily job. */
+    fun erasingNow(): Set<String> = byId.values.filter { it.deletedAt == Sessions.ERASE_NOW }.map { it.id }.toSet()
 }
 
 /** The settings that travel in the index (the ones marked "Synced" plus the automatic trim rule). */
@@ -199,6 +209,10 @@ internal object Plain {
     const val SYNCING = "Syncing chats"
     const val RESTORING = "Restoring your data"
     const val RESTORE_WAITS = "Restore continues on Wi-Fi."
+    const val BACKGROUND_OFF =
+        "Background use is turned off for PocketIDE, so chats back up only while the app is open. Turn it on in Android's settings for PocketIDE."
+    const val BACKGROUND_RESTRICTED =
+        "Android limits PocketIDE's background work because the app was not opened for a while, so backup and clean-up run about once a day. Opening PocketIDE lifts the limit."
 
     fun of(e: Throwable): String = when (e) {
         is SyncException -> e.message ?: FAILED
