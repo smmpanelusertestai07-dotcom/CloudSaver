@@ -54,7 +54,7 @@ internal class LiveUsage(
     override suspend fun estimate(): BuildEstimate? {
         val usage = github() ?: return null
         // Minutes on public repositories are free, so only private ones teach the average.
-        val private = projects().filter { it.isPrivate }
+        val (private, public) = projects().partition { it.isPrivate }
         if (private.isEmpty()) return null
         val runs = coroutineScope {
             private.map { project -> async { runsOf(project) } }.awaitAll().flatten()
@@ -62,7 +62,7 @@ internal class LiveUsage(
         val recent = BuildMinutes.samples(runs.sortedByDescending { it.createdAt })
             .groupBy { it.family }
             .values.flatMap { it.take(PER_KIND) }
-        return BuildMinutes.estimate(usage, recent)
+        return BuildMinutes.estimate(usage, recent, public.mapTo(HashSet()) { "${it.owner}/${it.repo}" })
     }
 
     private suspend fun runsOf(project: Project): List<WorkflowRun> = try {
