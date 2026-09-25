@@ -31,9 +31,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The sync job: soon after a task ends (and every few minutes while agents run), as soon as a
- * network is back when something waits on the phone, and once an hour as a safety net, when an
- * idle phone stops before the network. It is a durable WorkManager job, so it finishes after a
- * reboot or a kill; a large upload moves it to the foreground so it is not cut off.
+ * network is back when something waits on the phone, a minute after a database was left for being
+ * still written, and once an hour as a safety net, when an idle phone stops before the network. It
+ * is a durable WorkManager job, so it finishes after a reboot or a kill; a large upload moves it to
+ * the foreground so it is not cut off.
  */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
@@ -115,6 +116,16 @@ internal class WorkScheduler(private val context: Context) : SyncScheduling {
         work.enqueueUniqueWork(ONLINE, ExistingWorkPolicy.KEEP, request)
     }
 
+    /** One waiting follow-up covers every such file; one still being written then waits for the hourly run. */
+    override fun requestAfter(delayMs: Long) {
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setConstraints(online())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .build()
+        work.enqueueUniqueWork(LATER, ExistingWorkPolicy.KEEP, request)
+    }
+
     override fun requestMaintenance() {
         work.enqueueUniqueWork(MAINTAIN_NOW, ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<MaintenanceWorker>().build())
     }
@@ -138,7 +149,7 @@ internal class WorkScheduler(private val context: Context) : SyncScheduling {
     }
 
     override fun cancelAll() {
-        listOf(SOON, ONLINE, MAINTAIN_NOW, PERIODIC, DAILY).forEach(work::cancelUniqueWork)
+        listOf(SOON, ONLINE, LATER, MAINTAIN_NOW, PERIODIC, DAILY).forEach(work::cancelUniqueWork)
     }
 
     private fun online() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -146,6 +157,7 @@ internal class WorkScheduler(private val context: Context) : SyncScheduling {
     private companion object {
         const val SOON = "pocketide.sync.soon"
         const val ONLINE = "pocketide.sync.online"
+        const val LATER = "pocketide.sync.later"
         const val MAINTAIN_NOW = "pocketide.maintenance.now"
         const val PERIODIC = "pocketide.sync.periodic"
         const val DAILY = "pocketide.maintenance.daily"

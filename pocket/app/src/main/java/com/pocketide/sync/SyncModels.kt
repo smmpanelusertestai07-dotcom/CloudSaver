@@ -125,6 +125,8 @@ internal data class SyncState(
     val restore: RestoreJob? = null,
     val move: MoveJob? = null,
     val lastSyncAt: Long = 0,
+    /** When a run last failed: until a sync succeeds after it, a periodic run never counts as idle. */
+    val lastFailedAt: Long = 0,
     val lastMaintenanceAt: Long = 0,
     /** When Drive last confirmed new data of each session, for its "Backed up" chip. */
     val backedUpAt: Map<String, Long> = emptyMap(),

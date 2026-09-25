@@ -305,6 +305,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         val waiting = run.state.waiting
         flows.status.value = if (waiting != null && e !is SyncException) Views.waitingStatus(run, waiting) else SyncStatus.Error(Plain.of(e))
+        run.state = run.state.copy(lastFailedAt = run.now)
         try {
             run.save()
         } catch (_: java.io.IOException) {

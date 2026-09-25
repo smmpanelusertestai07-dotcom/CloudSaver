@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.google.DriveException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -59,6 +60,46 @@ class QuietRunsTest {
         clock.advance(SyncPass.IDLE_PULL_MS)
         phone.periodicRun()
         assertEquals("Renamed on another phone", phone.sessions.single().title)
+    }
+
+    @Test
+    fun aPeriodicRunAfterAFailedSyncTriesAgainInsteadOfSayingAllIsWell() = runBlocking {
+        val phone = syncedPhone()
+        // Another phone wrote, and Drive refuses this one now (its access was removed).
+        phone.rewriteRemoteIndex { it.copy(revision = it.revision + 1) }
+        phone.drive.beforeDownload = { throw DriveException.Revoked() }
+        clock.advance(Durations.HOUR)
+        phone.engine.syncNow()
+        assertEquals(SyncStatus.Error(Plain.REVOKED), phone.engine.status.value)
+
+        clock.advance(Durations.HOUR)
+        val checks = phone.keyringChecks
+        phone.periodicRun()
+        assertEquals("it went to GitHub and Drive again", checks + 1, phone.keyringChecks)
+        assertEquals(SyncStatus.Error(Plain.REVOKED), phone.engine.status.value)
+
+        phone.drive.beforeDownload = null
+        clock.advance(Durations.HOUR)
+        phone.periodicRun()
+        assertEquals(SyncStatus.UpToDate(clock.now), phone.engine.status.value)
+    }
+
+    @Test
+    fun aDatabaseStillBeingWrittenAsksForItsOwnSyncOnceItIsStill() = runBlocking {
+        val phone = syncedPhone()
+        val path = ".gemini/antigravity/conversation_summaries.db"
+        val db = phone.homeFile("antigravity", path)
+        db.writeBytes(ByteArray(64) { 7 })
+        db.setLastModified(clock.now - 10_000)
+
+        phone.engine.syncNow()
+        assertTrue("too fresh to copy yet", phone.remoteIndex()!!.objects.none { it.path == path })
+        assertEquals(listOf(SyncPass.QUIET_MS), phone.scheduler.after)
+
+        clock.advance(SyncPass.QUIET_MS)
+        phone.engine.runScheduled {}
+        assertEquals(1, phone.remoteIndex()!!.objects.count { it.path == path })
+        assertEquals("nothing more to wait for", 1, phone.scheduler.after.size)
     }
 
     @Test

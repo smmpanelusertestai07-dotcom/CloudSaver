@@ -56,7 +56,8 @@ internal class SyncPass(
         val book = book(run)
         val drive = run.drive()
         val snapshot = if (online) fetchOrNull(run, drive) else null
-        collect(run, book, snapshot?.index ?: run.index)
+        // A database still being written is copied once it has been still for a while: a sync then takes it.
+        if (collect(run, book, snapshot?.index ?: run.index).isNotEmpty()) ports.scheduler.requestAfter(QUIET_MS)
         queueSecrets(run, snapshot?.index ?: run.index)
         run.save()
         Views.publishWaiting(run, book)
@@ -80,14 +81,16 @@ internal class SyncPass(
      * Nothing to send, record or bring in, and Drive was asked a short while ago: nothing is queued
      * or waiting, no file on the phone changed size or time since it was recorded, and this phone's
      * records, settings, Variables and Secrets are as it last sent them. A periodic run stops here,
-     * before the keyring check and the network, so an idle phone wakes cheaply.
+     * before the keyring check and the network, so an idle phone wakes cheaply. After a failed run
+     * it goes on until a sync succeeds, so it neither says all is well nor stops trying.
      */
     suspend fun idle(run: Run): Boolean {
         val state = run.state
         val book = book(run)
         val nothingWaits = run.entries().isEmpty() && state.pendingConflicts.isEmpty() && state.eraseQueue.isEmpty() &&
             state.waiting == null && book.erasingNow().isEmpty()
-        return nothingWaits && run.now - state.lastSyncAt < IDLE_PULL_MS && !recordsChanged(run) && !filesChanged(run, book) && !secretsChanged(run)
+        val recentlyAsked = run.now - state.lastSyncAt < IDLE_PULL_MS && state.lastSyncAt > state.lastFailedAt
+        return nothingWaits && recentlyAsked && !recordsChanged(run) && !filesChanged(run, book) && !secretsChanged(run)
     }
 
     /** Sessions, projects or synced settings changed on this phone since it last sent them. */
@@ -166,14 +169,14 @@ internal class SyncPass(
         val deferred = collect(run, book, run.index)
         run.save()
         Views.publishWaiting(run, book)
-        return deferred + run.entries().filter { !it.conflict }.mapNotNull { it.sessionId }
+        return (deferred.mapNotNull { it.sessionId } + run.entries().filter { !it.conflict }.mapNotNull { it.sessionId }).toSet()
     }
 
     /**
      * Queues every new byte and changed file, and notes files that disappeared. Returns the
-     * sessions whose databases were left for a later run because they changed within [QUIET_MS].
+     * databases left for a later run because they changed within [QUIET_MS].
      */
-    fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
+    fun collect(run: Run, book: SessionBook, index: VaultIndex?): List<Candidate> {
         val maker = run.maker()
         val entries = dropStranded(run, index).filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
@@ -184,12 +187,12 @@ internal class SyncPass(
         val compactAllowed = !ports.network.metered()
         val tracks = run.state.tracks.toMutableMap()
         val seen = HashSet<String>()
-        val deferred = HashSet<String>()
+        val deferred = ArrayList<Candidate>()
         for (c in kit.scanner.scan(book.matcher, tracks, ports::roomRunning)) {
             seen += c.key
             if (!book.uploadable(c.sessionId)) continue
             if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) {
-                c.sessionId?.let(deferred::add)
+                deferred += c
                 continue
             }
             val waiting = queued[c.key].orEmpty()

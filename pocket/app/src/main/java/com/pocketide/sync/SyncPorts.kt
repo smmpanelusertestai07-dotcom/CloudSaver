@@ -37,6 +37,9 @@ internal interface SyncScheduling {
     /** A sync as soon as a network is back, for what waits on the phone meanwhile. */
     fun requestWhenOnline()
 
+    /** A sync after [delayMs], for a file left for later because it was still being written. */
+    fun requestAfter(delayMs: Long)
+
     fun requestMaintenance()
     fun schedulePeriodic()
     fun cancelAll()

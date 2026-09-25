@@ -218,6 +218,7 @@ internal class RecordingNotifier : SyncNotifier {
 internal class RecordingScheduler : SyncScheduling {
     var soon = 0
     var whenOnline = 0
+    val after = ArrayList<Long>()
     var maintenance = 0
     var periodic = 0
     var cancelled = 0
@@ -226,6 +227,9 @@ internal class RecordingScheduler : SyncScheduling {
     }
     override fun requestWhenOnline() {
         whenOnline++
+    }
+    override fun requestAfter(delayMs: Long) {
+        after += delayMs
     }
     override fun requestMaintenance() {
         maintenance++
