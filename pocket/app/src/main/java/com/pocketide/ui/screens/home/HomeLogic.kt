@@ -66,16 +66,6 @@ fun roomLabel(state: RoomState?): Pair<String, Tone> = when (state) {
     is RoomState.Failed -> "Stopped: ${state.why}" to Tone.ERROR
 }
 
-/**
- * An agent's sign-in in the words its card shows; null when PocketIDE cannot see it. The agent
- * signs in inside its own screen, so "Not signed in" also covers one never signed in yet.
- */
-fun signInLabel(signedIn: Boolean?): Pair<String, Tone>? = when (signedIn) {
-    true -> "Signed in" to Tone.OK
-    false -> "Not signed in" to Tone.WARN
-    null -> null
-}
-
 /** Settings pages that need "package:<app>" to open on this app's own entry. */
 private val PACKAGE_SCOPED_ACTIONS = setOf(
     Settings.ACTION_APPLICATION_DETAILS_SETTINGS,

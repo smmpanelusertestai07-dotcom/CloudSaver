@@ -4,7 +4,6 @@ import com.pocketide.linux.ComputerState
 import com.pocketide.vault.KeyState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -88,6 +87,13 @@ class ChecksTest {
         assertEquals(CheckStatus.INFO, lines.getValue("agents").status)
         assertEquals(SafetyFix.ONLY_OFFICIAL, lines.getValue("agents").fix)
         lines.values.filter { it.fix != null }.forEach { assertTrue(it.id, !it.fixLabel.isNullOrBlank()) }
+    }
+
+    @Test
+    fun theHeadingCountsWhatNeedsTheOwner() {
+        assertEquals("Everything here is as it should be.", SafetyCheck.summary(0))
+        assertEquals("1 thing needs you.", SafetyCheck.summary(1))
+        assertEquals("3 things need you.", SafetyCheck.summary(3))
     }
 
     @Test

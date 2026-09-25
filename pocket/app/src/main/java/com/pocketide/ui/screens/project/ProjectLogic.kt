@@ -284,8 +284,10 @@ sealed interface RoomView {
     data class Opening(val step: String?) : RoomView
     data class Ready(val url: String) : RoomView
     data class Failed(val why: String) : RoomView
+
     /** The agent's room is open on a different session now. */
     data object Elsewhere : RoomView
+
     /** The room stopped after it had opened (idle close, the limiter, or Stop). */
     data object Stopped : RoomView
 }

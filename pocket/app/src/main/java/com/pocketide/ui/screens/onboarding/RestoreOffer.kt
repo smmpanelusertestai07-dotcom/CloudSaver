@@ -6,6 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
+import com.pocketide.sync.RestorePlan
+import com.pocketide.ui.manage.PlainError
+import com.pocketide.ui.manage.attempt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +65,16 @@ class RestoreOffer internal constructor(private val flag: Flag) {
         }
     }
 }
+
+/** The restore plan as it loads: it needs Drive, so it can fail and be asked for again. */
+internal sealed interface PlanLoad {
+    data object Loading : PlanLoad
+    data class Loaded(val plan: RestorePlan) : PlanLoad
+    data class Failed(val why: String) : PlanLoad
+}
+
+internal suspend fun loadPlan(read: suspend () -> RestorePlan): PlanLoad =
+    attempt(read).fold(onSuccess = { PlanLoad.Loaded(it) }, onFailure = { PlanLoad.Failed(PlainError.of(it)) })
 
 @Composable
 fun rememberRestoreOffer(): RestoreOffer {

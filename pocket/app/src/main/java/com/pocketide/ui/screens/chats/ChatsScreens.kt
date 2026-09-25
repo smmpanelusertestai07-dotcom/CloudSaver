@@ -63,12 +63,12 @@ import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.TranscriptEntry
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
-import com.pocketide.ui.manage.BackgroundLimitNote
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.BackgroundLimitNote
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -449,7 +449,12 @@ fun RecentlyDeletedScreen(nav: PocketNav) {
                 val ids = deleted.map { it.id }
                 scope.launch {
                     val failures = finish { ids.count { id -> attempt { graph.sessions.deleteForever(id) }.isFailure } }.getOrDefault(ids.size)
-                    snackbar.showSnackbar(if (failures == 0) "Deleted forever." else "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again.")
+                    val message = if (failures == 0) {
+                        "Deleted forever."
+                    } else {
+                        "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again."
+                    }
+                    snackbar.showSnackbar(message)
                 }
             },
             onDismiss = { erasingAll = false },
@@ -559,7 +564,9 @@ fun WaitingUploadsScreen(nav: PocketNav) {
                             StatusChip("Not backed up", Tone.WARN)
                         }
                         TextButton(onClick = {
-                            scope.act(snackbar, "Could not change it", done = "It will be backed up to your Drive.") { graph.sessions.setBackUp(session.id, true) }
+                            scope.act(snackbar, "Could not change it", done = "It will be backed up to your Drive.") {
+                                graph.sessions.setBackUp(session.id, true)
+                            }
                         }) { Text("Back up again") }
                     }
                 }
@@ -578,7 +585,12 @@ fun WaitingUploadsScreen(nav: PocketNav) {
                 val ids = selected.toList()
                 scope.launch {
                     val failures = finish { ids.count { id -> attempt { graph.sessions.setBackUp(id, false) }.isFailure } }.getOrDefault(ids.size)
-                    snackbar.showSnackbar(if (failures == 0) "Kept on this phone only. Marked \"Not backed up\"." else "Some chats could not be changed. Try again.")
+                    val message = if (failures == 0) {
+                        "Kept on this phone only. Marked \"Not backed up\"."
+                    } else {
+                        "Some chats could not be changed. Try again."
+                    }
+                    snackbar.showSnackbar(message)
                 }
                 chosen = emptySet()
             },

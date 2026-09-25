@@ -48,7 +48,7 @@ class RestoreOfferTest {
     @Test
     fun `a plan Drive cannot give is a failure to try again, not nothing`() = runTest {
         val failed = loadPlan { throw IOException("No internet connection.") }
-        assertEquals(PlanLoad.Failed("No internet connection."), failed)
+        assertEquals(PlanLoad.Failed("No connection. Try again when you are online."), failed)
 
         val plan = RestorePlan(10, 5, 5, 1, 1, onWifi = true, freeBytes = 100)
         assertEquals(PlanLoad.Loaded(plan), loadPlan { plan })

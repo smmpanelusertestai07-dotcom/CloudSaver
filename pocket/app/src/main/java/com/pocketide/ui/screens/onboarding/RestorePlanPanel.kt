@@ -29,11 +29,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pocketide.core.Redact
 import com.pocketide.sync.RestoreChoice
 import com.pocketide.sync.RestorePlan
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.PlainError
+import com.pocketide.ui.manage.attempt
 import com.pocketide.ui.shell.CheckCard
 import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.Formats
@@ -45,23 +46,7 @@ import com.pocketide.ui.shell.SecondaryAction
 import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.SettingChoices
 import com.pocketide.ui.shell.rememberGraph
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-
-/** The restore plan as it loads: it needs Drive, so it can fail and be asked for again. */
-internal sealed interface PlanLoad {
-    data object Loading : PlanLoad
-    data class Loaded(val plan: RestorePlan) : PlanLoad
-    data class Failed(val why: String) : PlanLoad
-}
-
-internal suspend fun loadPlan(read: suspend () -> RestorePlan): PlanLoad = try {
-    PlanLoad.Loaded(read())
-} catch (e: CancellationException) {
-    throw e
-} catch (e: Exception) {
-    PlanLoad.Failed(Redact.text(e.message ?: "Your Drive could not be read.").take(200))
-}
 
 /**
  * "Your chats from before" (§6.9): what a returning owner's Drive holds, what downloads now and
@@ -179,13 +164,9 @@ private fun PlanChoice(plan: RestorePlan, network: Network, offer: RestoreOffer)
             val picked = if (mobileAllowed) choice else RestoreChoice.WIFI_ONLY
             // The app's scope: the restore goes on when this screen is left.
             graph.scope.launch {
-                try {
-                    graph.sync.restore(picked)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
+                attempt { graph.sync.restore(picked) }.onFailure {
                     offer.failed()
-                    error = Redact.text(e.message ?: "The restore could not start.").take(200)
+                    error = PlainError.of(it)
                 }
             }
         },

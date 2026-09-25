@@ -52,7 +52,6 @@ import org.junit.rules.Timeout
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -359,22 +358,6 @@ class RoomManagerTest {
         assertEquals(RoomLayout.binds(dirs, "claude"), signOut.binds)
     }
 
-    @Test fun `each official agent's sign-in is seen by its file alone, and a link is not a sign-in`() = runBlocking {
-        assertEquals(false, rooms.signedIn("claude"))
-        File(dirs.roomHome("claude"), ".claude").mkdirs()
-        File(dirs.roomHome("claude"), ".claude/.credentials.json").writeText("{}")
-        assertEquals(true, rooms.signedIn("claude"))
-
-        File(dirs.roomHome("antigravity"), ".gemini").mkdirs()
-        File(dirs.roomHome("antigravity"), ".gemini/jetski-standalone-oauth-token").writeText("t")
-        assertEquals(true, rooms.signedIn("antigravity"))
-
-        File(dirs.roomHome("codex"), ".codex").mkdirs()
-        Files.createSymbolicLink(File(dirs.roomHome("codex"), ".codex/auth.json").toPath(), File(dirs.roomHome("claude"), ".claude/.credentials.json").toPath())
-        assertEquals(false, rooms.signedIn("codex"))
-        assertEquals(null, rooms.signedIn("someone.else"))
-    }
-
     @Test fun `a scheduled run goes through the room with its launcher, binds, Variables rules and tools`() = runBlocking {
         env.variables = mapOf("API_URL" to "https://staging.example", "GH_TOKEN" to "x", "AGY_CLI_DISABLE_AUTO_UPDATE" to "false")
         var toolsUpDuringRun = false
@@ -664,5 +647,24 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         override suspend fun collect(projectId: String, sessionId: String, runId: Long) = 0
         override suspend fun openPullRequest(project: Project, head: String, title: String, body: String): PullRequest = throw UnsupportedOperationException()
         override suspend fun addMedia(sessionId: String, file: File, name: String): MediaItem = throw UnsupportedOperationException()
+    }
+
+    @Test fun `each official agent's sign-in is seen by its file alone, and a link is not a sign-in`() = runBlocking {
+        assertEquals(false, rooms.signedIn("claude"))
+        File(dirs.roomHome("claude"), ".claude").mkdirs()
+        File(dirs.roomHome("claude"), ".claude/.credentials.json").writeText("{}")
+        assertEquals(true, rooms.signedIn("claude"))
+
+        File(dirs.roomHome("antigravity"), ".gemini").mkdirs()
+        File(dirs.roomHome("antigravity"), ".gemini/jetski-standalone-oauth-token").writeText("t")
+        assertEquals(true, rooms.signedIn("antigravity"))
+
+        File(dirs.roomHome("codex"), ".codex").mkdirs()
+        java.nio.file.Files.createSymbolicLink(
+            File(dirs.roomHome("codex"), ".codex/auth.json").toPath(),
+            File(dirs.roomHome("claude"), ".claude/.credentials.json").toPath(),
+        )
+        assertEquals(false, rooms.signedIn("codex"))
+        assertEquals(null, rooms.signedIn("someone.else"))
     }
 }

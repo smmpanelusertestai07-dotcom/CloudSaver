@@ -63,9 +63,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -107,8 +107,8 @@ import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
 import com.pocketide.ui.web.WebPrefs
 import com.pocketide.ui.web.nextZoom
-import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberTerminalState
+import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberWebViewHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -419,7 +419,11 @@ private fun SessionsTab(
                         AgentMark(agent, agentId, size = 28.dp)
                         Spacer(Modifier.width(10.dp))
                         Text(agentName(agent, agentId), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Text(WorkFormat.count(list.size, "session", "sessions"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            WorkFormat.count(list.size, "session", "sessions"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 items(list, key = { it.id }) { session ->
@@ -493,7 +497,13 @@ private fun SessionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    session.branch,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN)) }
                 waitingVideosText(session.pendingVideos)?.let { StatusChip(it, Tone.WARN) }
             }
@@ -567,7 +577,11 @@ fun NewSessionDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (blocked) {
-                    Text(decision.reason ?: "The phone cannot start another agent right now.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        decision.reason ?: "The phone cannot start another agent right now.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             }
@@ -813,6 +827,9 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     }
 }
 
+/** Sessions whose files can be browsed: an open one, and a conflict copy, which keeps its branch. */
+private val WITH_FILES = setOf(SessionStatus.OPEN, SessionStatus.CONFLICT_COPY)
+
 @Composable
 private fun AgentBar(
     agent: AgentInfo?,
@@ -840,7 +857,10 @@ private fun AgentBar(
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back")
+                Icon(
+                    if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back",
+                )
             }
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))
@@ -868,7 +888,7 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text(p.title) }, onClick = { menu = false; onPanel(p) })
                     }
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
-                    if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                    if (session.status in WITH_FILES) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
                     }
                     if (canPutOnMain(session.status)) {

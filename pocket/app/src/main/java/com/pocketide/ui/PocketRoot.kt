@@ -33,13 +33,13 @@ import com.pocketide.core.ThemeMode
 import com.pocketide.graph
 import com.pocketide.lock.AppLock
 import com.pocketide.model.LockReason
-import com.pocketide.vault.KeyState
 import com.pocketide.ui.screens.lock.AppLockScreen
 import com.pocketide.ui.screens.lock.LockScreen
 import com.pocketide.ui.screens.onboarding.OnboardingFlow
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.RootGate
 import com.pocketide.ui.theme.PocketTheme
+import com.pocketide.vault.KeyState
 
 /**
  * The whole UI, in order: theme → app lock → phones that cannot run it → access locks (GitHub,

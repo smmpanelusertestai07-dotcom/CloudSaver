@@ -135,7 +135,8 @@ class ShellLogicTest {
     fun requirementsFlagWhatIsBelowTheMinimum() {
         val gib = 1L shl 30
         val gb = 1_000_000_000L
-        val realme = PhoneFacts(33, "13", arm64 = true, playServices = true, totalRamBytes = (3.7 * gib).toLong(), freeStorageBytes = 40 * gb, screenLock = true)
+        val realme =
+            PhoneFacts(33, "13", arm64 = true, playServices = true, totalRamBytes = (3.7 * gib).toLong(), freeStorageBytes = 40 * gb, screenLock = true)
         val rows = Requirements.rows(realme).associateBy { it.label }
         assertEquals(Tone.WARN, rows.getValue("Memory").tone)
         assertEquals(Tone.OK, rows.getValue("Android").tone)

@@ -75,6 +75,13 @@ data class SafetyFacts(
 
 /** A standing "Safety check" (screen lock, app lock, 2-step sign-in, keyring, agents, Variables). */
 object SafetyCheck {
+    /** The check's heading: all well, or how many lines need the owner. */
+    fun summary(problems: Int): String = when (problems) {
+        0 -> "Everything here is as it should be."
+        1 -> "1 thing needs you."
+        else -> "$problems things need you."
+    }
+
     fun lines(f: SafetyFacts): List<CheckLine> = listOf(
         if (f.screenLock) {
             CheckLine("screen-lock", "Screen lock", "On. It protects the key on this phone.", CheckStatus.DONE)

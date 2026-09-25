@@ -30,8 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 private sealed interface PutPhase {
     data object Confirm : PutPhase
     data object Running : PutPhase
+
     /** The check-post holds GitHub Actions changes: the owner reads their diffs, then approves or not. */
     data class Approve(val holds: List<Hold>, val outcome: Outcome) : PutPhase
     data class Done(val outcome: Outcome) : PutPhase

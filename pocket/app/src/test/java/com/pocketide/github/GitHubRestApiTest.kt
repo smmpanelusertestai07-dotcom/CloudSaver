@@ -101,21 +101,6 @@ class GitHubRestApiTest {
     }
 
     @Test
-    fun `the App counts as installed only on the owner's own account, and not while suspended`() = runBlocking {
-        val org = """{"id":1,"account":{"login":"octo-org"}}"""
-        val suspended = """{"id":2,"account":{"login":"octo"},"suspended_at":"2026-01-01T00:00:00Z"}"""
-        server.enqueue(json("""{"total_count":2,"installations":[$org,$suspended]}"""))
-        assertFalse(api.installedOn("octo"))
-        assertEquals("/user/installations", server.next().url.encodedPath)
-
-        server.enqueue(json("""{"total_count":2,"installations":[$org,{"id":3,"account":{"login":"Octo"}}]}"""))
-        assertTrue(api.installedOn("octo"))
-
-        server.enqueue(json("""{"total_count":0,"installations":[]}"""))
-        assertFalse(api.installedOn("octo"))
-    }
-
-    @Test
     fun `a missing repository is null and a refused one is a plain sentence`() = runBlocking {
         server.enqueue(json("""{"message":"Not Found"}""", 404))
         assertNull(api.repo("octo", "gone"))
@@ -477,6 +462,21 @@ class GitHubRestApiTest {
         assertEquals(2048L, usage.cacheBytes)
         assertEquals(1000L, usage.artifactsBytes)
         assertEquals(1, usage.artifactCount)
+    }
+
+    @Test
+    fun `the App counts as installed only on the owner's own account, and not while suspended`() = runBlocking {
+        val org = """{"id":1,"account":{"login":"octo-org"}}"""
+        val suspended = """{"id":2,"account":{"login":"octo"},"suspended_at":"2026-01-01T00:00:00Z"}"""
+        server.enqueue(json("""{"total_count":2,"installations":[$org,$suspended]}"""))
+        assertFalse(api.installedOn("octo"))
+        assertEquals("/user/installations", server.next().url.encodedPath)
+
+        server.enqueue(json("""{"total_count":2,"installations":[$org,{"id":3,"account":{"login":"Octo"}}]}"""))
+        assertTrue(api.installedOn("octo"))
+
+        server.enqueue(json("""{"total_count":0,"installations":[]}"""))
+        assertFalse(api.installedOn("octo"))
     }
 
     private companion object {

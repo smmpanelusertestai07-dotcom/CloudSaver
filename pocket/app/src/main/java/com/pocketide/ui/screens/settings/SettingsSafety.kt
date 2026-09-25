@@ -102,7 +102,7 @@ internal fun SafetySection(
     SectionLabel("Safety check")
     OutlinedCard {
         Text(
-            if (problems == 0) "Everything here is as it should be." else "$problems ${if (problems == 1) "thing needs" else "things need"} you.",
+            SafetyCheck.summary(problems),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),

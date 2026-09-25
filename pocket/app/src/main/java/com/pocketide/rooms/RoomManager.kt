@@ -824,14 +824,14 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     }
 
     /** When the hub's sign-in file last changed (read from its metadata only), or null. */
+    private fun hubSignInStamp(agentId: String): Long? =
+        if (agentId != RoomProfiles.ANTIGRAVITY) null
+        else RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
+
     override suspend fun signedIn(agentId: String): Boolean? {
         val file = SignOuts.signInFile(agentId) ?: HUB_SIGN_IN.takeIf { agentId == RoomProfiles.ANTIGRAVITY } ?: return null
         return withContext(Dispatchers.IO) { RoomFiles(dirs.roomHome(agentId), guardSecrets = true).isFile(file) }
     }
-
-    private fun hubSignInStamp(agentId: String): Long? =
-        if (agentId != RoomProfiles.ANTIGRAVITY) null
-        else RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
 
     // --- tools
 
