@@ -38,6 +38,21 @@ class SetUpOfferTest {
     }
 
     @Test
+    fun workThatFailsForWantOfTheComputerLeadsToItsSetUp() {
+        val screens = File("src/main/java/com/pocketide/ui/screens")
+        // Opening an agent, the agents' state, Put on main and a session's changes all run in the computer.
+        for (file in listOf("project/ProjectScreens.kt", "activity/ActivityScreen.kt", "project/SessionActions.kt")) {
+            val source = File(screens, file).readText()
+            assertTrue("$file does not lead to the set-up", source.contains("SetUpOffer.needsOwner(") && source.contains("SetUpOffer.TITLE"))
+        }
+        val actions = File(screens, "project/SessionActions.kt").readText()
+        for (flow in listOf("PutOnMainFlow", "ChangesSheet")) {
+            val signature = actions.substringAfter("fun $flow(").substringBefore(") {")
+            assertTrue("$flow cannot lead to the set-up", signature.contains("onSetUpComputer"))
+        }
+    }
+
+    @Test
     fun nothingPromisesASetUpThatHappensByItself() {
         val main = File("src/main/java/com/pocketide")
         val promises = listOf("rebuilt the next time", "set up again on next use", "Home offers it again")

@@ -415,8 +415,8 @@ private fun SessionsTab(
         }
     }
 
-    putting?.let { PutOnMainFlow(it, onClose = { putting = null }, onOpenSession = nav::agent) }
-    changes?.let { ChangesSheet(it, onDismiss = { changes = null }) }
+    putting?.let { PutOnMainFlow(it, onClose = { putting = null }, onSetUpComputer = nav::computer, onOpenSession = nav::agent) }
+    changes?.let { ChangesSheet(it, onDismiss = { changes = null }, onSetUpComputer = nav::computer) }
     deleting?.let { session ->
         ConfirmDialog(
             title = "Delete \"${session.title}\"?",
@@ -751,8 +751,8 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
         }
     }
 
-    if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false })
-    if (putting) PutOnMainFlow(session, onClose = { putting = false })
+    if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false }, onSetUpComputer = nav::computer)
+    if (putting) PutOnMainFlow(session, onClose = { putting = false }, onSetUpComputer = nav::computer)
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
     if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
     if (addingFile) AddFileFlow(sessionId, snackbar, scope, onClose = { addingFile = false })
