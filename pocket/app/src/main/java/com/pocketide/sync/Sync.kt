@@ -126,6 +126,23 @@ sealed interface MoveState {
 class SyncException(message: String) : Exception(message)
 
 /**
+ * A big download the owner started waits for Wi-Fi, but the owner may take it on mobile data
+ * (§6.7): the screen asks "Download [bytes] on mobile data?" and, on yes, calls
+ * [DataBudget.allowOnce] with [kind] and [bytes], then tries again.
+ */
+class NeedsMobileData(val kind: String, val bytes: Long) :
+    Exception("This download is about ${Sizes.human(bytes)}, so it waits for Wi-Fi.") {
+    /** The size as the question shows it ("60 MB"). */
+    val size: String get() = Sizes.human(bytes)
+
+    companion object {
+        /** [decision] as this question when the owner may lift it; null when it is allowed or refused for another reason. */
+        fun of(decision: com.pocketide.model.Decision, kind: String, bytes: Long): NeedsMobileData? =
+            if (!decision.allowed && decision.reason == MeteredDataBudget.WAITS_FOR_WIFI) NeedsMobileData(kind, bytes) else null
+    }
+}
+
+/**
  * Durable, append-only sync of AI data to the Drive hidden folder. New transcript bytes become
  * small compressed, encrypted pieces; images go with the chat; videos wait for Wi-Fi unless the
  * owner allows mobile data; nothing is marked synced until Drive confirms it. Holds the lease
@@ -222,10 +239,10 @@ private val NOTHING: StateFlow<Nothing?> = MutableStateFlow(null)
 
 /** Metered-only accounting and the daily limit, checked before every big transfer. */
 interface DataBudget {
-    /** This month's metered usage by type, for Settings → Data. */
+    /** This month's metered usage by type, for Settings → Mobile data. */
     val usage: StateFlow<DataUsage>
 
-    /** May [bytes] of kind [kind] be transferred now? Big items wait for Wi-Fi by default. */
+    /** May [bytes] of kind [kind] be transferred now? Big items wait for Wi-Fi by default ([NeedsMobileData] asks the owner). */
     fun allow(bytes: Long, kind: String, big: Boolean): com.pocketide.model.Decision
 
     fun record(bytes: Long, kind: String)

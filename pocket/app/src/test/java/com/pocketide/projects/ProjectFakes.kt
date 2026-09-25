@@ -110,10 +110,15 @@ class FakeCloneGate : GitGate {
 class FakeBudget(var decision: Decision = Decision.YES) : DataBudget {
     val asked = mutableListOf<Triple<Long, String, Boolean>>()
     val recorded = mutableListOf<Long>()
+    /** Kinds the owner allowed once on mobile data. */
+    val grants = mutableMapOf<String, Long>()
     override val usage: StateFlow<DataUsage> = MutableStateFlow(DataUsage(0, 0, emptyMap()))
     override fun allow(bytes: Long, kind: String, big: Boolean): Decision {
         asked += Triple(bytes, kind, big)
-        return decision
+        return if (kind in grants) Decision.YES else decision
+    }
+    override fun allowOnce(kind: String, bytes: Long) {
+        grants[kind] = bytes
     }
     override fun record(bytes: Long, kind: String) {
         recorded += bytes

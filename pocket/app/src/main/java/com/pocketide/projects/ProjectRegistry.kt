@@ -5,6 +5,7 @@ import com.pocketide.core.Clock
 import com.pocketide.github.NotConnectedException
 import com.pocketide.github.RepoInfo
 import com.pocketide.model.Project
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -208,9 +209,10 @@ internal class ProjectRegistry(
         val info = network { env.gitHub.repo(project.owner, project.repo) }
             ?: throw RepoNotReachableException(env.gitHubAuth.installUrl(), RepoAddress(project.owner, project.repo))
         val bytes = info.sizeKb * 1024
-        val decision = env.dataBudget.allow(bytes, "clone", big = info.sizeKb > BIG_CLONE_KB)
+        val decision = env.dataBudget.allow(bytes, DATA_KIND, big = info.sizeKb > BIG_CLONE_KB)
         if (!decision.allowed) {
-            throw ProjectException(decision.reason ?: "This project is big, so it downloads on Wi-Fi.")
+            throw NeedsMobileData.of(decision, DATA_KIND, bytes)
+                ?: ProjectException(decision.reason ?: "This project is big, so it downloads on Wi-Fi.")
         }
         val token = network { env.gitHubAuth.token() }
         val bare = dirs.bareRepo(project.id)
@@ -226,7 +228,7 @@ internal class ProjectRegistry(
             withContext(NonCancellable + io) { dropUnfinished(bare) }
             throw failure
         }
-        env.dataBudget.record(bytes, "clone")
+        env.dataBudget.record(bytes, DATA_KIND)
         state.update { list ->
             list.map {
                 if (it.id == project.id) {
@@ -280,6 +282,7 @@ internal class ProjectRegistry(
         val WHITESPACE = Regex("\\s+")
         const val MAX_DESCRIPTION = 350
         const val BIG_CLONE_KB = 50L * 1024
+        const val DATA_KIND = "clone"
         const val TOUCH_STEP_MS = 60_000L
     }
 }

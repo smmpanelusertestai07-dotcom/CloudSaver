@@ -107,7 +107,8 @@ private fun MobileDataSection(graph: AppGraph, settings: Settings, update: ((Set
             {
                 SwitchRow(
                     "Big downloads on Wi-Fi only",
-                    "Set-up, engine and agent updates, the agents' browser and large clones wait for Wi-Fi. Off: they ask first and show the size.",
+                    "Set-up, engine and agent updates, the agents' browser and large clones wait for Wi-Fi. One you start " +
+                        "on mobile data asks first and shows its size. Off: they use mobile data within the daily limit.",
                     settings.wifiOnlyBigDownloads,
                 ) { on -> update { it.copy(wifiOnlyBigDownloads = on) } }
             },

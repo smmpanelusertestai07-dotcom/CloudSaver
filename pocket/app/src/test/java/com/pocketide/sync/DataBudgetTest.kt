@@ -112,4 +112,21 @@ class DataBudgetTest {
         assertEquals(0L, budget.usage.value.todayMeteredBytes)
         assertEquals(5 * mb, budget.usage.value.monthMeteredBytes)
     }
+
+    @Test
+    fun aBigDownloadWaitingForWifiIsAQuestionTheOwnerCanAnswer() {
+        val waits = budget.allow(300 * mb, "clone", big = true)
+        val ask = NeedsMobileData.of(waits, "clone", 300 * mb)!!
+        assertEquals("clone", ask.kind)
+        assertEquals(300 * mb, ask.bytes)
+
+        budget.allowOnce(ask.kind, ask.bytes)
+        assertEquals(null, NeedsMobileData.of(budget.allow(300 * mb, "clone", big = true), "clone", 300 * mb))
+        assertTrue(budget.allow(300 * mb, "clone", big = true).allowed)
+
+        settings = settings.copy(mobileDailyLimitMb = 0)
+        val off = budget.allow(mb, "sync", big = false)
+        assertFalse(off.allowed)
+        assertEquals("only Wi-Fi-only big downloads are asked about", null, NeedsMobileData.of(off, "sync", mb))
+    }
 }

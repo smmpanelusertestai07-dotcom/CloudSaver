@@ -155,7 +155,7 @@ internal class MeteredDataBudget(
         const val KIND_AGENT_TRAFFIC = "agent-traffic"
 
         const val WAITS_FOR_WIFI = "Waits for Wi-Fi"
-        const val MOBILE_OFF = "PocketIDE's own transfers use Wi-Fi only (Settings → Data)"
+        const val MOBILE_OFF = "PocketIDE's own transfers use Wi-Fi only (Settings → Mobile data)"
         const val LIMIT_REACHED = "Today's mobile data limit is reached"
         const val DATA_SAVER = "Data Saver is on, so big transfers wait for Wi-Fi"
 

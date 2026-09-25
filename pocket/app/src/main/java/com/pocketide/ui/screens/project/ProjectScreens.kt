@@ -96,6 +96,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
+import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
@@ -141,9 +142,31 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     var creating by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
+    var askMobileData by remember(projectId) { mutableStateOf<NeedsMobileData?>(null) }
+
     LaunchedEffect(projectId, cloneTries) {
         cloneProblem = null
-        attempt { graph.projects.ensureCloned(projectId) }.onFailure { cloneProblem = plainReason(it) }
+        attempt { graph.projects.ensureCloned(projectId) }.onFailure {
+            cloneProblem = plainReason(it)
+            if (it is NeedsMobileData) askMobileData = it
+        }
+    }
+    askMobileData?.let { ask ->
+        AlertDialog(
+            onDismissRequest = { askMobileData = null },
+            title = { Text("Download ${ask.size} on mobile data?") },
+            text = { Text("This project is big, so it waits for Wi-Fi. It can download now on mobile data instead.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        askMobileData = null
+                        graph.dataBudget.allowOnce(ask.kind, ask.bytes)
+                        cloneTries++
+                    },
+                ) { Text("Use mobile data") }
+            },
+            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+        )
     }
 
     val terminal = rememberTerminalState("term:${selected?.id}")

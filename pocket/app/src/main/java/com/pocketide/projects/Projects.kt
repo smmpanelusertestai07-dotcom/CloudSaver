@@ -72,7 +72,10 @@ interface Projects {
      */
     suspend fun import(owner: String, repo: String): Project
 
-    /** Clones (first time) or fetches. Asks the data rules first for a big clone on mobile data. */
+    /**
+     * Clones (first time) or fetches. Asks the data rules first: a big clone on mobile data throws
+     * [com.pocketide.sync.NeedsMobileData], so the screen can ask the owner with its size.
+     */
     suspend fun ensureCloned(projectId: String)
 
     suspend fun fetch(projectId: String)
