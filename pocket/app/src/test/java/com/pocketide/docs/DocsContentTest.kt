@@ -12,7 +12,7 @@ class DocsContentTest {
     @Test
     fun `guide has the planned sections in order`() {
         assertEquals(GUIDE_IDS, DocsContent.guide.map { it.id })
-        assertEquals(GUIDE_IDS + LEGAL_IDS, DocsContent.sections.map { it.id })
+        assertEquals(GUIDE_IDS + OWNER_IDS + LEGAL_IDS, DocsContent.sections.map { it.id })
     }
 
     @Test
@@ -345,6 +345,7 @@ class DocsContentTest {
         val NOT_TOOLS = setOf("invalid_request", "invalid_client")
 
         val USES_PERMISSION = Regex("""<uses-permission[^>]*android:name="([^"]+)"[^>]*>""")
+        val OWNER_IDS = listOf("google-cloud")
         val LEGAL_IDS = listOf("terms", "privacy-policy", "open-source")
 
         val APP_WORDS = listOf(

@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -100,7 +101,8 @@ fun DriveConnectPanel(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (val current = link) {
             DriveLink.Cancelled -> NoticeCard("Google's window was closed before you allowed access. Nothing changed.", Tone.WARN)
-            is DriveLink.Failed -> NoticeCard(current.why, Tone.ERROR)
+            // Selectable: a build Google does not know shows its package and SHA-1 for the owner to copy.
+            is DriveLink.Failed -> SelectionContainer { NoticeCard(current.why, Tone.ERROR) }
             else -> Unit
         }
         if (link != DriveLink.Done) {

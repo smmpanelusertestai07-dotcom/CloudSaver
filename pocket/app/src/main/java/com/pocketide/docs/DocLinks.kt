@@ -14,6 +14,7 @@ internal object DocLinks {
     const val GOOGLE_STORAGE = "https://one.google.com/storage"
     const val GOOGLE_CONNECTIONS = "https://myaccount.google.com/connections"
     const val GOOGLE_SECURITY = "https://myaccount.google.com/security"
+    const val GOOGLE_CLOUD_CLIENTS = "https://console.cloud.google.com/auth/clients"
 
     const val GITHUB_INSTALLATIONS = "https://github.com/settings/installations"
     const val GITHUB_AUTHORIZATIONS = "https://github.com/settings/apps/authorizations"
