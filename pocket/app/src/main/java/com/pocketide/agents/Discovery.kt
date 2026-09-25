@@ -4,6 +4,7 @@ import com.pocketide.core.Clock
 import com.pocketide.model.AgentCandidate
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** An agent that passed every check, with what its card shows beyond [AgentCandidate]. */
@@ -16,19 +17,20 @@ internal sealed interface Verdict {
 }
 
 /** The checks of plan §7, in the order they run (cheap ones first, from the search row). */
-internal enum class Rule {
-    ALREADY_KNOWN,
-    NOT_VERIFIED,
-    TOO_FEW_DOWNLOADS,
-    DEPRECATED,
-    LOOKALIKE,
-    MICROSOFT,
-    GONE,
-    NO_ARM64_BUILD,
-    NOT_AI_OR_CHAT,
-    NOT_PUBLISHED,
-    NO_AGENT_SCREEN,
-    TOO_NEW,
+internal enum class Rule(val why: String) {
+    ALREADY_KNOWN("it is already on this phone"),
+    NOT_VERIFIED("its publisher is not verified"),
+    TOO_FEW_DOWNLOADS("it has fewer than 50,000 downloads"),
+    DEPRECATED("its publisher marked it as no longer maintained"),
+    LOOKALIKE("its name imitates an official agent"),
+    MICROSOFT("Microsoft's extensions may be used only in Microsoft's own products"),
+    GONE("it is no longer on Open VSX"),
+    NO_ARM64_BUILD("it has no build for this phone"),
+    NOT_AI_OR_CHAT("it is not in the AI or Chat category"),
+    NOT_PUBLISHED("Open VSX has not published this version"),
+    NO_AGENT_SCREEN("it has no agent screen the app can show full screen"),
+    TOO_NEW("it was first published less than 14 days ago"),
+    UNREADABLE("its details on Open VSX could not be read"),
 }
 
 /**
@@ -54,7 +56,14 @@ internal class Discovery(private val vsx: OpenVsx, private val clock: Clock) {
             for (entry in popular(category)) {
                 if (!seen.add(entry.id)) continue
                 currentCoroutineContext().ensureActive()
-                verdicts += examine(entry, known)
+                verdicts += try {
+                    examine(entry, known)
+                } catch (busy: RegistryBusy) {
+                    throw busy
+                } catch (unreadable: IOException) {
+                    // One extension with broken details must not end the whole search.
+                    Verdict.Skipped(entry.id, Rule.UNREADABLE)
+                }
             }
         }
         return verdicts

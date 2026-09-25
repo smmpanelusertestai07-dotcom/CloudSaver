@@ -39,8 +39,9 @@ internal object OfficialAgents {
         dataGoesTo = "Your prompts, and the code and files Codex reads, go to OpenAI.",
         signIn = "Sign in with your ChatGPT account, on a plan that includes Codex.",
         instructionsFile = "~/.codex/AGENTS.md",
-        // An editor tab in the active group, no split; it comes back after a reload.
-        openCommand = "chatgpt.newCodexPanel",
+        // The secondary side bar, maximised by the room; safe to repeat on every reload, while
+        // chatgpt.newCodexPanel would open a new chat each time.
+        openCommand = "chatgpt.openSidebar",
     )
 
     /** Runs Google's agy hub in its own screen. Its Open VSX extension is never installed (it fetches agy by itself). */
