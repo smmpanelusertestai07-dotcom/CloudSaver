@@ -10,6 +10,7 @@ import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.sessions.SessionChanges
+import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.Tone
 import com.pocketide.usage.BuildEstimate
 import java.time.Instant
@@ -172,6 +173,12 @@ fun defaultSession(sessions: List<SessionRecord>): SessionRecord? {
 /** The session whose branch a build ran on, so its results land in that session's Media. */
 fun sessionForBranch(sessions: List<SessionRecord>, branch: String): SessionRecord? =
     sessions.filter { it.branch == branch && it.status != SessionStatus.DELETED }.maxByOrNull { it.lastActivityAt }
+
+/**
+ * The chip for a session's videos held back for Wi-Fi. The count comes from the sync engine's
+ * [backup] of that session, the only place that knows it (the session record never counts them).
+ */
+fun waitingVideosChip(backup: SessionBackup?): String? = waitingVideosText(backup?.videosWaitingForWifi ?: 0)
 
 fun waitingVideosText(count: Int): String? = when {
     count <= 0 -> null

@@ -29,6 +29,7 @@ import com.pocketide.AppGraph
 import com.pocketide.core.Redact
 import com.pocketide.graph
 import com.pocketide.model.AgentInfo
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.theme.Brand
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -166,7 +167,7 @@ fun ConfirmDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(text) },
+        text = { DialogBody { Text(text) } },
         confirmButton = {
             TextButton(onClick = { onConfirm(); onDismiss() }) {
                 Text(confirmLabel, color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified)

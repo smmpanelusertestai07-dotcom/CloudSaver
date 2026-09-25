@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.ShortcutManagerCompat
@@ -63,6 +64,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.sync.MoveState
 import com.pocketide.sync.PhoneSpace
 import com.pocketide.ui.components.InfoRow
+import com.pocketide.ui.components.LabelValueRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -153,7 +155,13 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     ManagePage("Your data", nav, runner) {
         if (storage.phone != PhoneSpace.OK) {
             item {
-                PhoneSpaceNotice(storage, clean = graph.sync::cleanNow, onRaise = nav::settings, onLargest = null, say = runner::say)
+                PhoneSpaceNotice(
+                    storage,
+                    clean = graph.sync::cleanNow,
+                    onRaise = nav::settings.takeIf { nav.opensEveryScreen },
+                    onLargest = null,
+                    say = runner::say,
+                )
             }
         }
         item { SectionLabel("Where it lives") }
@@ -182,7 +190,9 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { ConfigChangesCard(graph, agents, runner) }
         item {
             SectionCard(null) {
-                NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
+                if (nav.opensEveryScreen) {
+                    NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
+                }
                 NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Chats you deleted in the last 30 days") { nav.recentlyDeleted() }
             }
         }
@@ -190,7 +200,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item {
             SectionCard(null) {
                 ManageText.retention(settings).forEach { (what, rule) -> InfoRow(what, rule) }
-                NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
+                if (nav.opensEveryScreen) NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
             }
         }
         item { SectionLabel("Move to another Google account") }
@@ -271,13 +281,15 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     }
     // The phone's clones and worktrees go too: code GitHub does not have yet is pushed first,
     // and what still cannot be is named, so it is never lost without the owner saying so.
-    if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
-        runner.run(
-            CHECK_CODE,
-            onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
-        ) {
-            graph.rooms.stopAll()
-            graph.sessions.codeOnlyOnPhone()
+    if (confirmDelete) {
+        DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
+            runner.run(
+                CHECK_CODE,
+                onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
+            ) {
+                graph.rooms.stopAll()
+                graph.sessions.codeOnlyOnPhone()
+            }
         }
     }
     codeAtRisk?.let { left ->
@@ -311,10 +323,10 @@ private suspend fun readSizes(graph: AppGraph, agents: List<AgentInfo>): PhoneSi
 @Composable
 private fun TypeRow(title: String, value: String, places: List<Place>, note: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text(value, style = MaterialTheme.typography.bodyMedium)
-        }
+        LabelValueRow(
+            label = { Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium) },
+            value = { Text(value, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End) },
+        )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             places.forEach { StatusChip(it.label, Tone.NEUTRAL) }
         }
@@ -618,7 +630,7 @@ private fun WithoutAppCard(nav: PocketNav) {
 }
 
 @Composable
-private fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+internal fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     var typed by rememberSaveable { mutableStateOf("") }
     ConfirmDialog(
         title = "Delete everything?",

@@ -47,6 +47,7 @@ import com.pocketide.model.AgentInfo
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.schedule.ScheduledTask
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.manage.ActionRunner
 import com.pocketide.ui.manage.ConfirmDialog
@@ -235,6 +236,7 @@ private fun TaskEditor(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = KeepTypedInput,
         title = { Text(if (existing == null) "New scheduled task" else "Change task") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -94,6 +94,7 @@ internal class LimitedNav(
 
     // Not reachable before set-up is finished or while the app is locked.
     override val opensChats: Boolean get() = false
+    override val opensEveryScreen: Boolean get() = false
     override fun home() = Unit
     override fun chats() = Unit
     override fun activity() = Unit

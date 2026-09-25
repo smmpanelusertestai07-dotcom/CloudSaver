@@ -63,9 +63,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +98,7 @@ import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.NeedsMobileData
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
@@ -105,8 +106,8 @@ import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
 import com.pocketide.ui.web.WebPrefs
 import com.pocketide.ui.web.nextZoom
-import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberTerminalState
+import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberWebViewHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -254,7 +255,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                     } else {
                         when (tab) {
                             ProjectTab.PREVIEW -> PreviewPanel(selected.id, preview, nav, snackbar)
-                            ProjectTab.MEDIA -> MediaPanel(selected.id, selected.pendingVideos, snackbar)
+                            ProjectTab.MEDIA -> MediaPanel(selected.id, snackbar)
                             ProjectTab.TERMINAL -> TerminalPanel(selected.id, terminal, nav, snackbar)
                             else -> Unit
                         }
@@ -392,6 +393,7 @@ private fun SessionsTab(
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     var putting by remember { mutableStateOf<SessionRecord?>(null) }
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
     var browsing by remember { mutableStateOf<SessionRecord?>(null) }
@@ -417,7 +419,11 @@ private fun SessionsTab(
                         AgentMark(agent, agentId, size = 28.dp)
                         Spacer(Modifier.width(10.dp))
                         Text(agentName(agent, agentId), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Text(WorkFormat.count(list.size, "session", "sessions"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            WorkFormat.count(list.size, "session", "sessions"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 items(list, key = { it.id }) { session ->
@@ -425,6 +431,7 @@ private fun SessionsTab(
                     SessionCard(
                         session = session,
                         running = room is RoomState.Running && room.sessionId == session.id,
+                        waitingVideos = waitingVideosChip(backups[session.id]),
                         onOpen = { nav.agent(session.id) },
                         onPin = {
                             val pinned = SessionShortcut.pin(context, session, agentName(agent, agentId))
@@ -459,6 +466,7 @@ private fun SessionsTab(
 private fun SessionCard(
     session: SessionRecord,
     running: Boolean,
+    waitingVideos: String?,
     onOpen: () -> Unit,
     onPin: () -> Unit,
     onChanges: () -> Unit,
@@ -489,8 +497,14 @@ private fun SessionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                waitingVideosText(session.pendingVideos)?.let { StatusChip(it, Tone.WARN) }
+                Text(
+                    session.branch,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                waitingVideos?.let { StatusChip(it, Tone.WARN) }
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session actions") }
@@ -535,6 +549,7 @@ fun NewSessionDialog(
 
     AlertDialog(
         onDismissRequest = { if (!starting) onDismiss() },
+        properties = KeepTypedInput,
         title = { Text("New session") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -560,7 +575,11 @@ fun NewSessionDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (blocked) {
-                    Text(decision.reason ?: "The phone cannot start another agent right now.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        decision.reason ?: "The phone cannot start another agent right now.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             }
@@ -770,7 +789,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                             when (p) {
                                 AgentPanel.PREVIEW -> PreviewPanel(sessionId, preview, nav, snackbar)
-                                AgentPanel.MEDIA -> MediaPanel(sessionId, session.pendingVideos, snackbar)
+                                AgentPanel.MEDIA -> MediaPanel(sessionId, snackbar)
                                 AgentPanel.TERMINAL -> TerminalPanel(sessionId, terminal, nav, snackbar)
                             }
                         }
@@ -831,7 +850,22 @@ private fun AgentBar(
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back")
+                Icon(
+                    if (panelTitle !=
+                        null
+                    ) {
+                        Icons.Filled.Close
+                    } else {
+                        Icons.AutoMirrored.Filled.ArrowBack
+                    },
+                    contentDescription = if (panelTitle !=
+                        null
+                    ) {
+                        "Close $panelTitle"
+                    } else {
+                        "Back"
+                    },
+                )
             }
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))

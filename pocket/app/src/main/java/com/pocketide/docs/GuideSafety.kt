@@ -8,14 +8,12 @@ internal object GuideSafety {
         "Security",
         "The locks on your accounts, code and chats, and what a harmful agent could reach.",
         p(
-            "PocketIDE is a GitHub App signed in with a device code. It works only on the repos you choose, " +
-                "never deletes a repo, and keeps its token in the Android Keystore. In Drive it can use only its " +
-                "own hidden folder.",
+            "PocketIDE is a GitHub App that works only on the repos you choose, never deletes a repo, and " +
+                "keeps its token in the Android Keystore. In Drive it can use only its own hidden folder.",
         ),
         p(
             "The check-post runs before every push. If it finds secrets, AI data or very large files, nothing " +
-                "is pushed and you see what it found. APK, AAB and other build outputs are held too; builds live " +
-                "in Media.",
+                "is pushed and you see why. Build outputs are held too; they live in Media.",
         ),
         p(
             "Changes to .github/workflows or .github/actions wait for you to read the diff and tap Approve: " +
@@ -23,8 +21,8 @@ internal object GuideSafety {
         ),
         p(
             "The app never takes a token, key or setting from the computer; only Variables enter a room. " +
-                "Settings that can run code, such as hooks, are rewritten at each room start, and an agent's " +
-                "change to them is kept only after you approve it.",
+                "Settings that can run code, such as hooks, are rewritten at each room start; an agent's " +
+                "change stays only once you approve it.",
         ),
         p(
             "The agents' screens listen only on this phone, with a new secret each launch. App lock uses your " +
@@ -43,8 +41,9 @@ internal object GuideSafety {
             row("Your phone's files, photos and apps", "No: Android keeps the app apart"),
         ),
         p(
-            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex may run " +
-                "without its own sandbox inside its room ($BEING_TESTED). That is why only checked agents run.",
+            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex runs " +
+                "without its own sandbox here, scheduled tasks too: PRoot lacks what it needs. That is why only " +
+                "checked agents run.",
         ),
         table(
             listOf("Risk", "Safeguard"),
@@ -52,7 +51,7 @@ internal object GuideSafety {
             row("HTML or PDF from agents", "Opened with JavaScript off and no file or network access."),
             row("Built APKs", "Installed only on your tap, after showing the package and signer."),
             row("Saving or sharing", "Only through Android's share sheet, when you tap."),
-            row("Viruses", "No phone antivirus scans Linux files reliably, so files are contained instead."),
+            row("Agents' test browser", "No Chromium sandbox under PRoot, so a page reaches only its room."),
         ),
     )
 

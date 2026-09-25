@@ -53,6 +53,7 @@ import com.pocketide.core.Ist
 import com.pocketide.git.Hold
 import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
+import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.nav.PocketNav
@@ -182,7 +183,7 @@ fun BuildsPanel(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionRow {
                     AssistChip(
                         onClick = { nav.secrets(projectId) },
                         label = { Text("Variables & Secrets") },
@@ -303,7 +304,7 @@ private fun TemplateCard(
         )
         if (session != null) {
             cost?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionRow {
                 Button(enabled = !busy, onClick = { onRun(session) }) { Text("Run") }
                 OutlinedButton(enabled = !busy, onClick = { onAdd(session) }) { Text("Add to session") }
             }
@@ -353,7 +354,7 @@ private fun RunCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         progress?.let { RunProgress(it) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             if (shown.status == "completed" && target != null) {
                 OutlinedButton(enabled = !busy, onClick = { onCollect(target) }) { Text("Bring results to Media") }
             }

@@ -56,6 +56,7 @@ import com.pocketide.linux.ComputerState
 import com.pocketide.rooms.RoomState
 import com.pocketide.rooms.StopReason
 import com.pocketide.sync.SyncStatus
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.computer.ResetComputerDialogs
@@ -241,7 +242,7 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
             onDismissRequest = {},
             title = { Text("Your key copy") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DialogBody {
                     NoticeCard("Shown once. Long-press to copy it into a password manager. Never paste it into a chat.", Tone.WARN)
                     SelectableText(monospace(key), sizeSp = 14f, modifier = Modifier.fillMaxWidth())
                 }

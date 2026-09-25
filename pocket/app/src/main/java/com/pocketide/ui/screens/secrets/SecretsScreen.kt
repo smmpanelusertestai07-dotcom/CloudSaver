@@ -54,6 +54,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.secrets.ProjectValue
 import com.pocketide.secrets.SecretKind
+import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
@@ -163,8 +165,12 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
             item {
                 SectionCard(null) {
                     Hint(
-                        if (globals.isEmpty()) "No global values. They apply to all projects; a project's own value with the same name wins."
-                        else "${globals.size} global ${if (globals.size == 1) "value applies" else "values apply"} here too; a project's own value with the same name wins.",
+                        if (globals.isEmpty()) {
+                            "No global values. They apply to all projects; a project's own value with the same name wins."
+                        } else {
+                            "${globals.size} global ${if (globals.size == 1) "value applies" else "values apply"} here too; " +
+                                "a project's own value with the same name wins."
+                        },
                     )
                     NavRow(Icons.Outlined.Public, "Global Variables and Secrets", null) { nav.secrets(null) }
                 }
@@ -308,9 +314,10 @@ private fun ValueEditor(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = KeepTypedInput,
         title = { Text(if (existing == null) "Add a value" else "Change ${existing.name}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DialogBody {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.trim() },

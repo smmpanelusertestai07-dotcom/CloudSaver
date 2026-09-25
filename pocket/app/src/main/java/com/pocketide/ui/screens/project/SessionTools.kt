@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.SessionRecord
 import com.pocketide.sessions.HandOff
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.shell.External
 import kotlinx.coroutines.CoroutineScope
@@ -128,7 +129,7 @@ fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, scop
         onDismissRequest = onDismiss,
         title = { Text("Rename branch") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DialogBody(spacing = 8.dp) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.take(BranchName.MAX_LENGTH) },
