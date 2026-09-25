@@ -50,6 +50,9 @@ fun GitHubStepScreen(onDone: () -> Unit) {
     // An App the owner enters below lands in the settings; reading them here redraws the step then.
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val configured = remember(settings.gitHubAppClientId) { auth.configured }
+    val appEntered = remember(settings.gitHubAppClientId) { appChoice.entered() != null }
+    // A typo GitHub rejects must be fixable here: Settings is not reachable before set-up ends.
+    var editingApp by remember { mutableStateOf(false) }
     // The poll's answer shows at once, even before the module publishes the account.
     var justConnected by remember { mutableStateOf<GitHubAccount?>(null) }
     val shown = account ?: justConnected
@@ -79,11 +82,14 @@ fun GitHubStepScreen(onDone: () -> Unit) {
         Gap(24.dp)
 
         when {
-            !configured -> GitHubAppSetUp(
+            !configured || editingApp -> GitHubAppSetUp(
                 form = appForm,
                 choice = appChoice,
                 openUrl = { External.openUrl(context, it) },
-                onSaved = signIn::start,
+                onSaved = {
+                    editingApp = false
+                    signIn.start()
+                },
             )
             shown != null -> {
                 SectionLabel("Check before you go on")
@@ -116,11 +122,26 @@ fun GitHubStepScreen(onDone: () -> Unit) {
                     },
                 )
             }
-            else -> GitHubConnectPanel(
-                signIn = signIn,
-                openUrl = { External.openUrl(context, it) },
-                onConnected = { justConnected = it },
-            )
+            else -> {
+                GitHubConnectPanel(
+                    signIn = signIn,
+                    openUrl = { External.openUrl(context, it) },
+                    onConnected = { justConnected = it },
+                )
+                if (appEntered) {
+                    QuietAction(
+                        "Change the GitHub App's details",
+                        onClick = {
+                            signIn.reset()
+                            appChoice.current().let { app ->
+                                appForm.clientId = app.clientId
+                                appForm.slug = app.slug
+                            }
+                            editingApp = true
+                        },
+                    )
+                }
+            }
         }
     }
 }

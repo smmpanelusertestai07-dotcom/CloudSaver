@@ -21,7 +21,7 @@ internal object GitHubText {
 
     const val DEVICE_FLOW_OFF =
         "Device sign-in is switched off for your GitHub App. Tick \"Enable Device Flow\" in the App's settings on GitHub, then try again."
-    const val BAD_CLIENT_ID = "GitHub does not know this App's client ID. Check it in Settings > Advanced > GitHub App."
+    const val BAD_CLIENT_ID = "GitHub does not know this App client ID. Copy it again from the App's page on GitHub."
     const val VERIFY_EMAIL = "GitHub needs your primary email verified first. Verify it on GitHub, then try again."
     const val SIGN_IN_FAILED = "GitHub sign-in did not finish. Try again."
     const val PROFILE_FAILED = "You approved PocketIDE, but GitHub did not answer afterwards. Try again."
