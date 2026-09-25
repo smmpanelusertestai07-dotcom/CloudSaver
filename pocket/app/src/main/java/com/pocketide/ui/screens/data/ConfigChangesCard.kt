@@ -21,10 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
-import com.pocketide.core.Redact
 import com.pocketide.model.AgentInfo
 import com.pocketide.rooms.ConfigChange
 import com.pocketide.rooms.sentence
+import com.pocketide.rooms.shownValue
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.manage.ActionRunner
 import com.pocketide.ui.manage.Hint
@@ -80,7 +80,7 @@ private fun ChangeRow(change: ConfigChange, agentName: String, actions: @Composa
         Text("~/${change.file}", style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SelectionContainer {
             Text(
-                Redact.text(change.value).take(MAX_SHOWN),
+                change.shownValue().take(MAX_SHOWN),
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,

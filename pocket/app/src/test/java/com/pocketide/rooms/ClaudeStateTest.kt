@@ -7,6 +7,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -64,6 +65,18 @@ class ClaudeStateTest {
         assertTrue(approval.sentence("Claude Code"), approval.sentence("Claude Code").contains("every tool server a project lists in its .mcp.json"))
         val tool = ConfigChange("claude", ClaudeState.FILE, "allowedTools", "Bash(*)", """["/w","allowedTools","Bash(*)",null]""")
         assertTrue(tool.sentence("Claude Code"), tool.sentence("Claude Code").contains("without asking"))
+    }
+
+    @Test fun `what the card shows keeps secrets out and what the setting runs in`() {
+        val withSecrets = """["","mcpServers","gh",{"command":"npx","env":{"GITHUB_TOKEN":"abc123","NODE_OPTIONS":"--require /tmp/x.js"},"headers":{"Authorization":"Bearer zzz"}}]"""
+        val shown = ConfigChange("claude", ClaudeState.FILE, "mcpServers", "gh", withSecrets).shownValue()
+        assertFalse(shown, shown.contains("abc123"))
+        assertFalse(shown, shown.contains("zzz"))
+        assertTrue(shown, shown.contains("--require /tmp/x.js"))
+        assertTrue(shown, shown.contains("\"command\":\"npx\""))
+        val toml = ConfigChange("codex", ".codex/config.toml", "mcp_servers", "gh", "[mcp_servers.gh]\ncommand = \"npx\"\nenv = { API_KEY = \"k-123\", PATH = \"/usr/bin\" }")
+        assertFalse(toml.shownValue(), toml.shownValue().contains("k-123"))
+        assertTrue(toml.shownValue(), toml.shownValue().contains("PATH = \"/usr/bin\""))
     }
 
     @Test fun `what the owner kept goes to room py as SHA-256s`() {

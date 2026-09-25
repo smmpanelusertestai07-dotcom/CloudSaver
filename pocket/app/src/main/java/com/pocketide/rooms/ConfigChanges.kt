@@ -1,6 +1,7 @@
 package com.pocketide.rooms
 
 import com.pocketide.core.AppJson
+import com.pocketide.core.Redact
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,9 +63,18 @@ fun ConfigChange.sentence(agentName: String): String {
         else -> "set $place${named?.let { " ($it)" }.orEmpty()}, which starts a program"
     }
     val project = projectOf().let { if (it == null) "" else " (in the project at $it)" }
-    val runs = commandsIn(value).takeIf { it.isNotEmpty() }?.let { " It runs: ${it.joinToString("; ")}." }.orEmpty()
+    val runs = commandsIn(value).map(Redact::text).takeIf { it.isNotEmpty() }?.let { " It runs: ${it.joinToString("; ")}." }.orEmpty()
     return "$agentName $what$project.$runs"
 }
+
+/**
+ * The setting as the owner reads it: known token formats masked, and the value of any name that
+ * looks like a secret ("GITHUB_TOKEN": "…", API_KEY = "…", "Authorization": "…"). What a setting
+ * runs stays readable, since that is what the owner decides on.
+ */
+fun ConfigChange.shownValue(): String = SECRET_VALUE.replace(Redact.text(value)) { "${it.groupValues[1]}[hidden]\"" }
+
+private val SECRET_VALUE = Regex("(?i)(\"?[A-Za-z0-9_.-]*(?:key|token|secret|passw|auth|credential|cookie)[A-Za-z0-9_.-]*\"?\\s*[:=]\\s*\")[^\"]*\"")
 
 /** The project folder a ~/.claude.json setting belongs to; null for Claude's own and for other files. */
 private fun ConfigChange.projectOf(): String? {
