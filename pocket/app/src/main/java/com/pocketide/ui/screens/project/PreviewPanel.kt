@@ -1,5 +1,7 @@
 package com.pocketide.ui.screens.project
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.bridge.BridgedPort
@@ -89,7 +93,7 @@ fun PreviewPanel(sessionId: String, state: PreviewState, nav: PocketNav, snackba
     val ports = previewPorts(announced, state.found.orEmpty(), appPorts(graph.portBridge))
 
     val open = { port: Int -> openPort(scope, graph.portBridge, state, port, snackbar) }
-    LaunchedEffect(state, announced) { scanInto(state, announced) }
+    LaunchedEffect(state, announced) { scanInto(graph.portBridge, state, announced) }
     LaunchedEffect(state, ports) {
         if (state.autoOpened || state.showing != null) return@LaunchedEffect
         autoOpenPort(ports)?.let { port ->
@@ -110,7 +114,7 @@ fun PreviewPanel(sessionId: String, state: PreviewState, nav: PocketNav, snackba
                     IconButton(onClick = { closePreview(graph.portBridge, state) }) { Icon(Icons.Filled.Close, contentDescription = "Close preview") }
                 }
             }
-            if (reach == Reach.WIFI) WifiWarning(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            if (reach == Reach.WIFI) WifiWarning(showing.targetPort, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             AgentWebView(
                 url = showing.entryUrl,
                 holder = state.web,
@@ -132,7 +136,7 @@ fun PreviewPanel(sessionId: String, state: PreviewState, nav: PocketNav, snackba
             if (state.scanning) {
                 CircularProgressIndicator(Modifier.size(20.dp))
             } else {
-                OutlinedButton(onClick = { scope.launch { scanInto(state, announced) } }) { Text("Check again") }
+                OutlinedButton(onClick = { scope.launch { scanInto(graph.portBridge, state, announced) } }) { Text("Check again") }
             }
         }
         if (ports.isEmpty()) {
@@ -161,7 +165,7 @@ private fun PortRow(port: PreviewPort, onOpen: () -> Unit) {
             }
             FilledTonalButton(onClick = onOpen) { Text("Open") }
         }
-        if (port.reach == Reach.WIFI) WifiWarning()
+        if (port.reach == Reach.WIFI) WifiWarning(port.port)
     }
 }
 
@@ -170,9 +174,17 @@ private fun ReachChip(reach: Reach, modifier: Modifier = Modifier) {
     StatusChip(reach.label, if (reach == Reach.WIFI) Tone.WARN else Tone.OK, modifier)
 }
 
+/** The warning, and the request to hand the agent so it restarts the server on 127.0.0.1. */
 @Composable
-private fun WifiWarning(modifier: Modifier = Modifier) {
-    Text(WIFI_WARNING, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN), modifier = modifier)
+private fun WifiWarning(port: Int, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Column(modifier) {
+        Text(WIFI_WARNING, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN))
+        TextButton(onClick = {
+            context.getSystemService(ClipboardManager::class.java)
+                ?.setPrimaryClip(ClipData.newPlainText("Request for the agent", loopbackRequest(port)))
+        }) { Text("Copy the request for the agent") }
+    }
 }
 
 private fun openPort(scope: CoroutineScope, bridge: PortBridge, state: PreviewState, port: Int, snackbar: SnackbarHostState) {
@@ -200,10 +212,10 @@ private fun appPorts(bridge: PortBridge): Set<Int> =
         if (port.purpose == "preview") listOf(port.bridgePort) else listOf(port.bridgePort, port.targetPort)
     }.toSet()
 
-private suspend fun scanInto(state: PreviewState, announced: List<Int>) {
+private suspend fun scanInto(bridge: PortBridge, state: PreviewState, announced: List<Int>) {
     state.scanning = true
     try {
-        state.found = PortScan.scan(COMMON_DEV_PORTS + announced)
+        attempt { bridge.listeners(COMMON_DEV_PORTS + announced) }.onSuccess { state.found = reachByPort(it) }
     } finally {
         state.scanning = false
     }

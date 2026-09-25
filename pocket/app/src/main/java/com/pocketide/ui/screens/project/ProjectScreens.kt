@@ -219,7 +219,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     ProjectTab.SESSIONS -> SessionsTab(projectId, sessions, agents, rooms, nav, snackbar)
-                    ProjectTab.BUILDS -> BuildsPanel(projectId, sessions, selected, nav, snackbar)
+                    ProjectTab.BUILDS -> BuildsPanel(projectId, sessions, selected, nav, snackbar, publicRepo = !project.isPrivate)
                     else -> if (selected == null) {
                         EmptyState(
                             Icons.Filled.Forum,

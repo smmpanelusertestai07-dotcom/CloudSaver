@@ -1,8 +1,15 @@
 package com.pocketide.ui.work
 
+import com.pocketide.bridge.PortListener
+import com.pocketide.builds.BuildTemplate
+import com.pocketide.ui.screens.project.buildCost
+import com.pocketide.usage.BuildEstimate
 import com.pocketide.projects.ProjectTrust
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.BranchName
+import com.pocketide.ui.screens.project.Reach
+import com.pocketide.ui.screens.project.loopbackRequest
+import com.pocketide.ui.screens.project.reachByPort
 import com.pocketide.ui.screens.project.sleepsSoon
 import com.pocketide.ui.screens.project.stoppedText
 import com.pocketide.ui.screens.project.trustText
@@ -36,6 +43,29 @@ class SessionToolsTest {
         assertEquals("Claude: Stopped. Nothing was lost.", stoppedText("Claude", "Stopped. Nothing was lost."))
         assertTrue(stoppedText("Claude", null).contains("Nothing was lost"))
         assertTrue(stoppedText("Claude", " ").startsWith("Claude stopped"))
+    }
+
+    @Test
+    fun `listeners on every address are visible on Wi-Fi`() {
+        val reach = reachByPort(listOf(PortListener(5173, onNetwork = false), PortListener(8000, onNetwork = true)))
+        assertEquals(mapOf(5173 to Reach.PHONE_ONLY, 8000 to Reach.WIFI), reach)
+        assertEquals("Only this phone", Reach.PHONE_ONLY.label)
+        assertTrue(loopbackRequest(8000).contains("port 8000"))
+        assertTrue(loopbackRequest(8000).contains("127.0.0.1"))
+    }
+
+    @Test
+    fun `the cost line uses the owner's own averages`() {
+        val android = BuildTemplate("android-release", "Android", "", "a.yml", "ubuntu-latest")
+        val ios = BuildTemplate("ios-simulator", "iPhone", "", "i.yml", "macos-latest", minutesMultiplier = 10)
+        val windows = BuildTemplate("windows", "Windows", "", "w.yml", "windows-latest", minutesMultiplier = 2)
+        val estimate = BuildEstimate(null, null, "", minutesLeft = 1200, androidMinutesEach = 8, iosMinutesEach = 90)
+        assertEquals("A run counts about 8 minutes; 1200 included minutes left this month.", buildCost(android, estimate, publicRepo = false))
+        assertEquals("A run counts about 90 minutes; 1200 included minutes left this month.", buildCost(ios, estimate, publicRepo = false))
+        assertEquals("Each minute counts 2×; 1200 included minutes left this month.", buildCost(windows, estimate, publicRepo = false))
+        assertEquals("Each minute counts 2×.", buildCost(windows, null, publicRepo = false))
+        assertNull(buildCost(android, null, publicRepo = false))
+        assertTrue(buildCost(ios, estimate, publicRepo = true).orEmpty().startsWith("Free"))
     }
 
     @Test
