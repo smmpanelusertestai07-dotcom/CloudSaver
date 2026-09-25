@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -48,9 +50,9 @@ import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.SettingChoices
 import com.pocketide.ui.shell.rememberGraph
 import com.pocketide.update.UpdateState
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 /**
  * The few settings PocketIDE has (§4, §6.7, §6.8). Every change goes through
@@ -62,6 +64,9 @@ fun SettingsScreen(nav: PocketNav) {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     fun update(change: (Settings) -> Settings) = graph.settings.update(change)
 
+    val scope = rememberCoroutineScope()
+    val privacyChecklist = remember { BringIntoViewRequester() }
+
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier
@@ -70,14 +75,15 @@ fun SettingsScreen(nav: PocketNav) {
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
         ) {
+            SafetySection(graph, settings, nav, ::update, onOpenPrivacyChecklist = { scope.launch { privacyChecklist.bringIntoView() } })
             MobileDataSection(graph, settings, ::update)
             StorageSection(graph, settings, ::update)
             AgentsSection(settings, ::update)
             SecuritySection(graph, settings, ::update)
             ManageDataSection(nav, settings, ::update)
-            PrivacySection(nav, settings)
+            PrivacySection(nav, settings, ::update, Modifier.bringIntoViewRequester(privacyChecklist))
             AdvancedSection(graph, settings)
-            AccountsSection(graph)
+            AccountsSection(graph, nav)
             AboutSection(graph, nav)
         }
     }
@@ -90,9 +96,14 @@ private fun MobileDataSection(graph: AppGraph, settings: Settings, update: ((Set
     SettingsGroup(
         listOf(
             {
-                ChoiceRow("Daily limit", SettingChoices.dailyMobileLimitMb, settings.mobileDailyLimitMb, onPick = { mb ->
-                    update { it.copy(mobileDailyLimitMb = mb) }
-                }, fallbackLabel = Formats::megabytes)
+                ChoiceRow(
+                    "Daily limit",
+                    SettingChoices.dailyMobileLimitMb,
+                    settings.mobileDailyLimitMb,
+                    onPick = { mb -> update { it.copy(mobileDailyLimitMb = mb) } },
+                    why = "Only mobile data counts. Once today's share is used, sync waits for Wi-Fi or tomorrow.",
+                    fallbackLabel = Formats::megabytes,
+                )
             },
             {
                 SwitchRow(
@@ -159,12 +170,19 @@ private fun StorageSection(graph: AppGraph, settings: Settings, update: ((Settin
                     SettingChoices.phoneLimitGb(snapshot.storageTotalBytes, settings.phoneLimitGb),
                     settings.phoneLimitGb,
                     onPick = { gb -> update { it.copy(phoneLimitGb = gb) } },
+                    why = "Higher keeps more chats and caches on the phone; lower cleans up sooner.",
+                    fallbackLabel = { "$it GB" },
                 )
             },
             {
-                ChoiceRow("In Google Drive", SettingChoices.driveLimitGb, settings.driveLimitGb, onPick = { gb ->
-                    update { it.copy(driveLimitGb = gb) }
-                }, fallbackLabel = { "$it GB" })
+                ChoiceRow(
+                    "In Google Drive",
+                    SettingChoices.driveLimitGb,
+                    settings.driveLimitGb,
+                    onPick = { gb -> update { it.copy(driveLimitGb = gb) } },
+                    why = "Your Google storage is shared with Gmail and Photos; a higher share leaves them less.",
+                    fallbackLabel = { "$it GB" },
+                )
             },
         ),
     )
@@ -183,9 +201,14 @@ private fun AgentsSection(settings: Settings, update: ((Settings) -> Settings) -
     SettingsGroup(
         listOf(
             {
-                ChoiceRow("Agents at the same time", SettingChoices.maxAgents, settings.maxAgents, onPick = { n ->
-                    update { it.copy(maxAgents = n) }
-                })
+                ChoiceRow(
+                    "Agents at the same time",
+                    SettingChoices.maxAgents,
+                    settings.maxAgents,
+                    onPick = { n -> update { it.copy(maxAgents = n) } },
+                    why = "Each open agent needs memory. Auto follows this phone's memory and heat as they change.",
+                    fallbackLabel = { "$it at a time" },
+                )
             },
             {
                 SwitchRow(
@@ -224,7 +247,13 @@ private fun SecuritySection(graph: AppGraph, settings: Settings, update: ((Setti
                 }
             },
             {
-                ChoiceRow("Theme", SettingChoices.theme, settings.theme, onPick = { mode -> update { it.copy(theme = mode) } })
+                ChoiceRow(
+                    "Theme",
+                    SettingChoices.theme,
+                    settings.theme,
+                    onPick = { mode -> update { it.copy(theme = mode) } },
+                    why = "Only how PocketIDE looks. Same as phone follows Android's dark theme.",
+                )
             },
         ),
     )
@@ -254,29 +283,54 @@ private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Sett
     SettingsGroup(
         listOf(
             {
-                ChoiceRow("Keep chats in Drive", SettingChoices.keepChatsMonths, settings.keepChatsMonths, onPick = { m ->
-                    update { it.copy(keepChatsMonths = m) }
-                }, fallbackLabel = { "$it months after the last message" })
+                ChoiceRow(
+                    "Keep chats in Drive",
+                    SettingChoices.keepChatsMonths,
+                    settings.keepChatsMonths,
+                    onPick = { m -> update { it.copy(keepChatsMonths = m) } },
+                    why = "Chats with no new message for this long are removed from Drive. Shorter saves space.",
+                    fallbackLabel = { "$it months after the last message" },
+                )
             },
             {
-                ChoiceRow("Phone copies of chats", SettingChoices.phoneChatDays, settings.phoneChatDays, onPick = { d ->
-                    update { it.copy(phoneChatDays = d) }
-                }, fallbackLabel = { "$it days" })
+                ChoiceRow(
+                    "Phone copies of chats",
+                    SettingChoices.phoneChatDays,
+                    settings.phoneChatDays,
+                    onPick = { d -> update { it.copy(phoneChatDays = d) } },
+                    why = "Drive keeps every chat; an older one downloads again when you open it.",
+                    fallbackLabel = { "$it days" },
+                )
             },
             {
-                ChoiceRow("Media copies on the phone", SettingChoices.phoneMediaDays, settings.phoneMediaDays, onPick = { d ->
-                    update { it.copy(phoneMediaDays = d) }
-                }, fallbackLabel = { "$it days" })
+                ChoiceRow(
+                    "Media copies on the phone",
+                    SettingChoices.phoneMediaDays,
+                    settings.phoneMediaDays,
+                    onPick = { d -> update { it.copy(phoneMediaDays = d) } },
+                    why = "Keeping all uses phone space but works offline; Drive keeps the originals either way.",
+                    fallbackLabel = { "$it days" },
+                )
             },
             {
-                ChoiceRow("Project caches", SettingChoices.cacheDays, settings.cacheDays, onPick = { d ->
-                    update { it.copy(cacheDays = d) }
-                }, fallbackLabel = { "After $it days unused" })
+                ChoiceRow(
+                    "Project caches",
+                    SettingChoices.cacheDays,
+                    settings.cacheDays,
+                    onPick = { d -> update { it.copy(cacheDays = d) } },
+                    why = "Caches rebuild when needed. Sooner frees space; the next build then takes longer.",
+                    fallbackLabel = { "After $it days unused" },
+                )
             },
             {
-                ChoiceRow("Unused computer", SettingChoices.computerUnusedDays, settings.computerUnusedDays, onPick = { d ->
-                    update { it.copy(computerUnusedDays = d) }
-                }, fallbackLabel = { "After $it days" })
+                ChoiceRow(
+                    "Unused computer",
+                    SettingChoices.computerUnusedDays,
+                    settings.computerUnusedDays,
+                    onPick = { d -> update { it.copy(computerUnusedDays = d) } },
+                    why = "Removed only when everything is synced, after a 7-day notice; set up again on next use.",
+                    fallbackLabel = { "After $it days" },
+                )
             },
             {
                 SwitchRow(
@@ -303,21 +357,7 @@ private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Sett
 }
 
 @Composable
-private fun PrivacySection(nav: PocketNav, settings: Settings) {
-    SectionLabel("Privacy checklist")
-    if (!settings.privacyChecklistDone) {
-        NoticeCard("Not finished during set-up. Each page takes a minute.", Tone.WARN)
-        Gap(12.dp)
-    }
-    SettingsGroup(
-        Links.privacyChecklist.map { link ->
-            @Composable { ActionRow(link.title, link.what, onClick = { nav.openExternal(link.url) }, external = true, icon = Icons.Outlined.PrivacyTip) }
-        },
-    )
-}
-
-@Composable
-private fun AccountsSection(graph: AppGraph) {
+private fun AccountsSection(graph: AppGraph, nav: PocketNav) {
     val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     val email by graph.driveAuth.email.collectAsStateWithLifecycle()
     SectionLabel("Accounts")
@@ -326,6 +366,21 @@ private fun AccountsSection(graph: AppGraph) {
             InfoRow("GitHub", account?.let { "@${it.login}" } ?: "Not connected")
             InfoRow("Google Drive", email ?: "Not connected")
         }
+    }
+    if (account != null) {
+        Gap(12.dp)
+        SettingsGroup(
+            listOf(
+                {
+                    ActionRow(
+                        "Repositories PocketIDE may use",
+                        "Changed on GitHub's site, in the app's installation",
+                        onClick = { nav.openExternal(graph.gitHubAuth.installUrl()) },
+                        external = true,
+                    )
+                },
+            ),
+        )
     }
 }
 
@@ -396,7 +451,8 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
             },
             { ActionRow("Help", "How it works, your data, questions", onClick = { nav.help(null) }, icon = Icons.AutoMirrored.Outlined.HelpOutline) },
             { ActionRow("Terms", null, onClick = { nav.help("terms") }, icon = Icons.Outlined.Description) },
-            { ActionRow("Privacy policy", null, onClick = { nav.help("privacy") }, icon = Icons.Outlined.PrivacyTip) },
+            { ActionRow("Privacy", "Who sees what", onClick = { nav.help("privacy") }, icon = Icons.Outlined.PrivacyTip) },
+            { ActionRow("Privacy policy", null, onClick = { nav.help("privacy-policy") }, icon = Icons.Outlined.Description) },
         ),
     )
     error?.let {

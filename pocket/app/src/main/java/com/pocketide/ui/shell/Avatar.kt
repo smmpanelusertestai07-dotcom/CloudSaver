@@ -1,5 +1,6 @@
 package com.pocketide.ui.shell
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,13 +73,38 @@ private suspend fun loadAvatar(url: String, pixels: Int): ImageBitmap? {
             if (!response.isSuccessful || body.contentLength() > MAX_AVATAR_BYTES) return null
             withContext(Dispatchers.IO) {
                 val bytes = body.byteStream().use { it.readNBytesCompat(MAX_AVATAR_BYTES + 1) }
-                if (bytes.size > MAX_AVATAR_BYTES) null else BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                if (bytes.size > MAX_AVATAR_BYTES) null else decodeSmall(bytes, pixels)?.asImageBitmap()
             }
         }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
         null
+    }
+}
+
+/**
+ * Decodes at about [pixels] wide: a small file can still claim a huge picture, and decoding that
+ * at full size would take more memory than the phone has to spare.
+ */
+private fun decodeSmall(bytes: ByteArray, pixels: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    val sample = AvatarSize.sampleSize(bounds.outWidth, bounds.outHeight, pixels) ?: return null
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+
+/** How much to shrink an avatar while decoding it. */
+object AvatarSize {
+    /** Larger than any real avatar; anything bigger is refused rather than decoded. */
+    private const val MAX_SIDE = 8192
+
+    /** A power of two that brings the picture near [target] pixels, or null when it is not a usable picture. */
+    fun sampleSize(width: Int, height: Int, target: Int): Int? {
+        if (width <= 0 || height <= 0 || width > MAX_SIDE || height > MAX_SIDE) return null
+        var sample = 1
+        while (minOf(width, height) / (sample * 2) >= target) sample *= 2
+        return sample
     }
 }
 

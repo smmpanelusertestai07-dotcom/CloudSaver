@@ -1,6 +1,7 @@
 package com.pocketide.ui.shell
 
 import com.pocketide.core.Redact
+import com.pocketide.core.Settings
 import com.pocketide.model.LockReason
 
 /** What the root shows, in order of precedence (PocketRoot). */
@@ -15,6 +16,8 @@ sealed interface RootGate {
         /**
          * The app lock comes first: nothing, not even why the app is locked, shows to someone
          * who has not passed it. An unsupported phone is refused before any account screen.
+         * Before set-up is finished, a missing GitHub or Drive is what set-up itself fixes, so
+         * it is not a lock; another phone or a full Drive still are.
          */
         fun of(
             appLockOn: Boolean,
@@ -25,20 +28,26 @@ sealed interface RootGate {
         ): RootGate = when {
             appLockOn && !unlocked -> AppLocked
             unsupportedReason != null -> Refused(unsupportedReason)
-            lock != null -> Locked(lock)
+            lock != null && (onboardingDone || !setUpFixes(lock)) -> Locked(lock)
             !onboardingDone -> Onboarding
             else -> Main
         }
+
+        private fun setUpFixes(lock: LockReason): Boolean =
+            lock == LockReason.GitHubDisconnected || lock == LockReason.DriveDisconnected
     }
 }
 
-/** First-run steps. Welcome is not numbered; the four set-up steps are. */
-enum class OnboardingStep(val number: Int) {
-    WELCOME(0),
-    GITHUB(1),
-    DRIVE(2),
-    COMPUTER(3),
-    PRIVACY(4),
+/**
+ * First-run steps. Welcome is not numbered; the four set-up steps are, each with how long it
+ * usually takes so the owner knows what they are starting.
+ */
+enum class OnboardingStep(val number: Int, val usualTime: String?) {
+    WELCOME(0, null),
+    GITHUB(1, "About 1 min"),
+    DRIVE(2, "About 1 min"),
+    COMPUTER(3, "About 10 min on Wi-Fi"),
+    PRIVACY(4, "About 3 min"),
     ;
 
     fun previous(): OnboardingStep? = entries.getOrNull(ordinal - 1)
@@ -63,13 +72,17 @@ enum class OnboardingStep(val number: Int) {
 object ExtraPasswordRules {
     const val MIN_LENGTH = 10
 
-    fun problem(password: CharArray, confirm: CharArray): String? = when {
+    /** Reads the fields as they are, so checking a password makes no extra copies of it. */
+    fun problem(password: CharSequence, confirm: CharSequence): String? = when {
         password.isEmpty() -> "Type a password."
-        password.size < MIN_LENGTH -> "Use at least $MIN_LENGTH characters."
+        password.length < MIN_LENGTH -> "Use at least $MIN_LENGTH characters."
         password.all { it.isWhitespace() } -> "Use letters, numbers or symbols, not only spaces."
-        !password.contentEquals(confirm) -> "The two passwords are different."
+        !sameText(password, confirm) -> "The two passwords are different."
         else -> null
     }
+
+    private fun sameText(a: CharSequence, b: CharSequence): Boolean =
+        a.length == b.length && a.indices.all { a[it] == b[it] }
 }
 
 /** GitHub's device flow timing (§5.3): never poll faster than GitHub asked. */
@@ -81,16 +94,60 @@ object DeviceFlowTiming {
     fun expired(expiresAtMs: Long, nowMs: Long): Boolean = nowMs >= expiresAtMs
 }
 
-/** Diagnostics text the owner can select and share: every line goes through [Redact]. */
+/**
+ * Diagnostics text the owner can select and share: every line goes through [Redact], and email
+ * addresses and `key=` values are hidden too. Nothing from chats is ever put in.
+ */
 object Diagnostics {
+    /** What the share sheet says, so the owner knows before sending it. */
+    const val SHARE_TITLE = "PocketIDE diagnostics (contains no tokens, keys or chat text)"
+
+    private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+    private val keyValue = Regex("(?i)\\b([a-z_]*key|authorization)(\\s*[=:]\\s*)([^\\s&,;]+)")
+    private val whitespace = Regex("\\s+")
+    private val bearer = Regex("(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]+")
+
     fun report(facts: List<Pair<String, String>>, errors: List<String>): String = buildString {
-        for ((label, value) in facts) append(label).append(": ").append(Redact.text(value)).append('\n')
-        append('\n')
+        for ((label, value) in facts) append(label).append(": ").append(clean(value)).append('\n')
+        if (facts.isNotEmpty()) append('\n')
         if (errors.isEmpty()) {
             append("No recent errors.")
         } else {
             append("Recent errors:\n")
-            errors.forEach { append("• ").append(Redact.text(it).trim()).append('\n') }
+            // One line each: text from inside Linux cannot start lines of its own.
+            errors.forEach { append("• ").append(clean(it).replace(whitespace, " ").trim()).append('\n') }
         }
     }.trimEnd()
+
+    fun clean(text: String): String {
+        val redacted = Redact.text(text).replace(email, "[email]").replace(bearer, "Bearer [hidden]")
+        return keyValue.replace(redacted) { m -> "${m.groupValues[1]}${m.groupValues[2]}[hidden]" }
+    }
+}
+
+/**
+ * "Set up on mobile data" after the owner confirmed the size: big downloads are allowed on
+ * mobile data and today's limit is raised far enough for set-up, then both go back to what
+ * they were. The data rules stay the only gate the computer's installer asks.
+ */
+object MobileSetup {
+    /** Enough for the computer's own downloads plus what the day already used. */
+    const val SETUP_LIMIT_MB = 2000
+
+    fun allow(settings: Settings): Settings =
+        settings.copy(wifiOnlyBigDownloads = false, mobileDailyLimitMb = maxOf(settings.mobileDailyLimitMb, SETUP_LIMIT_MB))
+
+    /** Puts back what [allow] changed, leaving alone anything the owner changed in the meantime. */
+    fun restore(current: Settings, before: Settings, allowed: Settings): Settings = current.copy(
+        wifiOnlyBigDownloads = if (current.wifiOnlyBigDownloads == allowed.wifiOnlyBigDownloads) {
+            before.wifiOnlyBigDownloads
+        } else {
+            current.wifiOnlyBigDownloads
+        },
+        mobileDailyLimitMb = if (current.mobileDailyLimitMb == allowed.mobileDailyLimitMb) {
+            before.mobileDailyLimitMb
+        } else {
+            current.mobileDailyLimitMb
+        },
+    )
 }

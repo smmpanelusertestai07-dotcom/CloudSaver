@@ -17,7 +17,7 @@ object Links {
         OutsideLink(
             id = "claude",
             title = "Claude: model training",
-            what = "Settings → Privacy → \"Help improve our AI models\". Off keeps your chats out of training.",
+            what = "Settings → Privacy → \"Help improve Claude\". Off keeps your chats out of training.",
             url = "https://claude.ai/settings/data-privacy-controls",
         ),
         OutsideLink(
@@ -29,7 +29,7 @@ object Links {
         OutsideLink(
             id = "antigravity",
             title = "Antigravity: telemetry",
-            what = "In Antigravity's own Settings → Account → \"Enable Telemetry\". It is on until you turn it off.",
+            what = "No web page has this switch: in Antigravity, open Settings → Account → \"Enable Telemetry\". It is on until you turn it off.",
             url = "https://antigravity.google/docs/settings/",
         ),
         OutsideLink(
@@ -47,8 +47,15 @@ object Links {
         OutsideLink(
             id = "copilot",
             title = "GitHub Copilot: training (if you use Copilot)",
-            what = "\"Allow GitHub to use my data for AI model training\" → Disabled.",
-            url = "https://github.com/settings/copilot",
+            what = "\"Allow GitHub to use my data for AI model training\" → Disabled. It is on by default.",
+            url = "https://github.com/settings/copilot/features",
+            optional = true,
+        ),
+        OutsideLink(
+            id = "codex-device-code",
+            title = "Codex: device-code sign-in (only if asked)",
+            what = "If Codex's sign-in asks for a device code, turn it on first in ChatGPT's Security settings.",
+            url = "https://chatgpt.com/#settings/Security",
             optional = true,
         ),
     )
@@ -99,11 +106,20 @@ object Links {
         ),
     )
 
-    /** Only web pages leave the app, and only over HTTPS. */
+    /**
+     * Only web pages leave the app, and only over HTTPS to a plain host: no user info (the
+     * `https://github.com@evil.example` trick), no backslashes or control characters.
+     */
     fun isOpenable(url: String): Boolean {
         val lower = url.trim().lowercase()
         if (!lower.startsWith("https://")) return false
+        if (lower.any { it <= ' ' || it == '\\' }) return false
         val host = lower.removePrefix("https://").substringBefore('/').substringBefore('?').substringBefore('#')
-        return host.isNotEmpty() && '@' !in host && ' ' !in host
+        return host.isNotEmpty() && '@' !in host
     }
+}
+
+/** The privacy checklist is done when every row that applies to everyone is ticked. */
+object PrivacyChecklist {
+    fun complete(ticked: Set<String>): Boolean = Links.privacyChecklist.filterNot { it.optional }.all { it.id in ticked }
 }

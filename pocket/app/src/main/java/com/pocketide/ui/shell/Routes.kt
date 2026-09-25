@@ -43,13 +43,18 @@ object Routes {
     fun secrets(projectId: String?) = withOptional("secrets", ARG_PROJECT, projectId)
     fun schedules(projectId: String?) = withOptional("schedules", ARG_PROJECT, projectId)
 
-    /** The tab a destination belongs to, so the bar keeps showing where the owner is. */
-    fun tabOf(pattern: String?): Tab = when (pattern) {
-        CHATS, TRANSCRIPT, RECENTLY_DELETED, WAITING_UPLOADS -> Tab.CHATS
-        ACTIVITY, USAGE, COMPUTER -> Tab.ACTIVITY
-        SETTINGS, YOUR_DATA, HELP -> Tab.SETTINGS
-        else -> Tab.HOME
-    }
+    /**
+     * The tab the owner is in, so the bar keeps showing where back leads: a tab itself, or the
+     * tab a pushed screen was opened from. Switching tabs keeps Home at the bottom of the back
+     * stack and at most one other tab above it, so that tab (when present) is the one.
+     */
+    fun tabOf(pattern: String?, inBackStack: (String) -> Boolean): Tab =
+        Tab.entries.firstOrNull { it.route == pattern }
+            ?: Tab.entries.firstOrNull { it != Tab.HOME && inBackStack(it.route) }
+            ?: Tab.HOME
+
+    /** An id a destination can be opened with: a blank one matches no route and would crash navigation. */
+    fun isUsableId(id: String): Boolean = id.isNotBlank()
 
     /** Top-level screens get the shell's title bar (with Help); pushed screens draw their own. */
     fun isTab(pattern: String?): Boolean = Tab.entries.any { it.route == pattern }

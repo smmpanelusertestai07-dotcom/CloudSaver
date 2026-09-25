@@ -20,10 +20,20 @@ class ShellLogicTest {
     @Test
     fun gatesFollowThePlannedOrder() {
         assertEquals(RootGate.Refused("old"), RootGate.of(true, true, "old", LockReason.DriveDisconnected, true))
-        assertEquals(RootGate.Locked(LockReason.GitHubDisconnected), RootGate.of(true, true, null, LockReason.GitHubDisconnected, false))
+        assertEquals(RootGate.Locked(LockReason.GitHubDisconnected), RootGate.of(true, true, null, LockReason.GitHubDisconnected, true))
         assertEquals(RootGate.Onboarding, RootGate.of(false, false, null, null, false))
         assertEquals(RootGate.Main, RootGate.of(false, false, null, null, true))
         assertEquals(RootGate.Main, RootGate.of(true, true, null, null, true))
+    }
+
+    @Test
+    fun setUpIsNotLockedForWhatSetUpItselfConnects() {
+        assertEquals(RootGate.Onboarding, RootGate.of(false, false, null, LockReason.GitHubDisconnected, false))
+        assertEquals(RootGate.Onboarding, RootGate.of(false, false, null, LockReason.DriveDisconnected, false))
+        // A returning owner's old phone still holds the vault: "Use here?" comes during set-up too.
+        assertEquals(RootGate.Locked(LockReason.OtherPhone("Pixel 7")), RootGate.of(false, false, null, LockReason.OtherPhone("Pixel 7"), false))
+        assertEquals(RootGate.Locked(LockReason.StorageFull(true)), RootGate.of(false, false, null, LockReason.StorageFull(true), false))
+        assertEquals(RootGate.Refused("32-bit"), RootGate.of(false, false, "32-bit", LockReason.GitHubDisconnected, false))
     }
 
     @Test
@@ -45,11 +55,13 @@ class ShellLogicTest {
 
     @Test
     fun extraPasswordMustBeLongAndTypedTwice() {
-        assertNotNull(ExtraPasswordRules.problem(CharArray(0), CharArray(0)))
-        assertNotNull(ExtraPasswordRules.problem("short".toCharArray(), "short".toCharArray()))
-        assertNotNull(ExtraPasswordRules.problem("          ".toCharArray(), "          ".toCharArray()))
-        assertNotNull(ExtraPasswordRules.problem("long enough pass".toCharArray(), "long enough pasS".toCharArray()))
-        assertNull(ExtraPasswordRules.problem("long enough pass".toCharArray(), "long enough pass".toCharArray()))
+        assertNotNull(ExtraPasswordRules.problem("", ""))
+        assertNotNull(ExtraPasswordRules.problem("short", "short"))
+        assertNotNull(ExtraPasswordRules.problem("          ", "          "))
+        assertNotNull(ExtraPasswordRules.problem("long enough pass", "long enough pasS"))
+        assertNotNull(ExtraPasswordRules.problem("long enough pass", "long enough pass "))
+        assertNull(ExtraPasswordRules.problem("long enough pass", "long enough pass"))
+        assertNull(ExtraPasswordRules.problem("पासवर्ड बहुत लंबा", StringBuilder("पासवर्ड बहुत लंबा")))
     }
 
     @Test
@@ -130,7 +142,14 @@ class ShellLogicTest {
     @Test
     fun onlyHttpsPagesLeaveTheApp() {
         assertTrue(Links.isOpenable("https://github.com/login/device"))
+        assertTrue(Links.isOpenable("  HTTPS://GitHub.com/login/device  "))
         assertFalse(Links.isOpenable("http://github.com"))
+        assertFalse(Links.isOpenable("javascript:alert(1)"))
+        assertFalse(Links.isOpenable("https://github.com\\@evil.example"))
+        assertFalse(Links.isOpenable("https://github.com%40@evil.example/"))
+        assertFalse(Links.isOpenable("https://github.com\n.evil.example"))
+        assertFalse(Links.isOpenable("https://github.com/\u0000"))
+        assertFalse(Links.isOpenable("https://a b.example"))
         assertFalse(Links.isOpenable("intent://x#Intent;end"))
         assertFalse(Links.isOpenable("file:///data/data/com.pocketide"))
         assertFalse(Links.isOpenable("https://user@evil.example"))

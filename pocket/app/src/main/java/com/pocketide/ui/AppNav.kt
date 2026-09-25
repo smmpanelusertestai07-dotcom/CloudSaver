@@ -98,9 +98,9 @@ class AppNavigator(private val controller: NavHostController, private val contex
     override fun chats() = tab(Tab.CHATS)
     override fun activity() = tab(Tab.ACTIVITY)
     override fun settings() = tab(Tab.SETTINGS)
-    override fun project(projectId: String) = push(Routes.project(projectId))
-    override fun agent(sessionId: String) = push(Routes.agent(sessionId))
-    override fun transcript(sessionId: String) = push(Routes.transcript(sessionId))
+    override fun project(projectId: String) = pushFor(projectId, Routes::project)
+    override fun agent(sessionId: String) = pushFor(sessionId, Routes::agent)
+    override fun transcript(sessionId: String) = pushFor(sessionId, Routes::transcript)
     override fun yourData() = push(Routes.YOUR_DATA)
     override fun computer() = push(Routes.COMPUTER)
     override fun usage() = push(Routes.USAGE)
@@ -115,7 +115,7 @@ class AppNavigator(private val controller: NavHostController, private val contex
     /** Tapping the tab you are on returns to its first screen; another tab restores its stack. */
     fun tab(tab: Tab) {
         val current = controller.currentBackStackEntry?.destination?.route
-        if (Routes.tabOf(current) == tab && current != tab.route) {
+        if (controller.tabOf(current) == tab && current != tab.route) {
             if (controller.popBackStack(tab.route, inclusive = false)) return
         }
         if (current == tab.route) return
@@ -127,6 +127,15 @@ class AppNavigator(private val controller: NavHostController, private val contex
     }
 
     private fun push(route: String) = controller.navigate(route) { launchSingleTop = true }
+
+    /** A screen that needs an id; a blank one (a record not loaded yet) opens nothing rather than crashing. */
+    private fun pushFor(id: String, route: (String) -> String) {
+        if (Routes.isUsableId(id)) push(route(id))
+    }
+}
+
+private fun NavHostController.tabOf(pattern: String?): Tab = Routes.tabOf(pattern) { route ->
+    runCatching { getBackStackEntry(route) }.isSuccess
 }
 
 /**
@@ -139,7 +148,7 @@ fun AppNav(navController: NavHostController = rememberNavController(), banner: S
     val nav = remember(navController, context) { AppNavigator(navController, context) }
     val entry by navController.currentBackStackEntryAsState()
     val pattern = entry?.destination?.route
-    val tab = Routes.tabOf(pattern)
+    val tab = remember(entry) { navController.tabOf(pattern) }
 
     Scaffold(
         topBar = { if (Routes.isTab(pattern)) ShellTopBar(tab, onHelp = { nav.help(null) }) },

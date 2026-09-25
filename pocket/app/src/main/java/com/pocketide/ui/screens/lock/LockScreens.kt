@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,7 @@ import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.CenteredTitle
+import com.pocketide.ui.shell.DeviceSignIn
 import com.pocketide.ui.shell.DriveConnectPanel
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.FinePrint
@@ -86,6 +88,7 @@ fun LockScreen(reason: LockReason) {
 /**
  * The app lock (fingerprint or screen lock). Android's prompt appears by itself when the screen
  * comes to the front, once per return; the button is there for a cancelled or failed prompt.
+ * [prompting] is true while Android's prompt or its PIN screen is up.
  */
 @Composable
 fun AppLockScreen(
@@ -93,25 +96,28 @@ fun AppLockScreen(
     message: String? = null,
     deviceSecure: Boolean = true,
     onSetScreenLock: () -> Unit = {},
+    prompting: Boolean = false,
 ) {
     // Asked on resume, not on first composition: a prompt requested while the activity is only
-    // started can be dropped by the system. Once per return, so a cancelled PIN screen (its own
-    // activity, which resumes us again) does not bring the prompt straight back.
+    // started can be dropped by the system. Once per return: the PIN screen is an activity of its
+    // own that stops and resumes this one, so a stop during a prompt is not a return, and a
+    // cancelled PIN screen does not bring the prompt straight back.
     var asked by remember { mutableStateOf(false) }
+    val promptingNow by rememberUpdatedState(prompting)
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        if (!asked) {
+        if (!asked && deviceSecure) {
             asked = true
             onUnlock()
         }
     }
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { asked = false }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (!promptingNow) asked = false }
 
     ShellPage(centered = true) {
         BrandMark(size = 72.dp)
         Gap(24.dp)
         CenteredTitle(Icons.Outlined.Lock, "PocketIDE is locked", "Unlock with your fingerprint or your screen lock.")
         Gap(24.dp)
-        PrimaryAction("Unlock", onClick = onUnlock)
+        PrimaryAction("Unlock", onClick = onUnlock, enabled = deviceSecure)
         if (message != null) {
             Gap(12.dp)
             Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
@@ -173,7 +179,7 @@ private fun GitHubDisconnected() {
         ConnectionStatus(graph)
         Gap(24.dp)
         GitHubConnectPanel(
-            auth = graph.gitHubAuth,
+            signIn = DeviceSignIn.of(graph),
             openUrl = { External.openUrl(context, it) },
             onConnected = { recheck.run() },
             startLabel = "Reconnect GitHub",

@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,6 +23,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.pocketide.AppGraph
@@ -49,7 +51,9 @@ fun PocketRoot(activity: FragmentActivity) {
     PocketTheme(settings.theme) {
         SystemBarIcons(settings.theme)
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            val unlocked by graph.appLock.unlocked.collectAsStateWithLifecycle()
+            // Not lifecycle-aware on purpose: the lock re-arms as the app stops, exactly when such a
+            // collector pauses, and the first frame back must already show the lock.
+            val unlocked by graph.appLock.unlocked.collectAsState()
             val access by graph.access.state.collectAsStateWithLifecycle()
             // Asked once: the answer depends on hardware and Android, which do not change while running.
             val unsupported = remember { runCatching { graph.limiter.unsupportedReason() }.getOrNull() }
@@ -60,15 +64,19 @@ fun PocketRoot(activity: FragmentActivity) {
                 lock = access.lock,
                 onboardingDone = settings.onboardingDone,
             )
-            // The main app keeps its back stack and screen state while a lock covers it.
+            // Each part keeps its saved state (steps, ticks, back stack, pending results from
+            // Google's sheet) while the app lock replaces it; a GitHub sign-in waiting in Chrome
+            // lives in DeviceSignIn. Nothing stays composed under the lock, so no dialog can
+            // show through it.
             val navController = rememberNavController()
             val saved = rememberSaveableStateHolder()
+
             Crossfade(targetState = gate, animationSpec = tween(220), label = "root") { shown ->
                 when (shown) {
                     RootGate.AppLocked -> AppLockGate(graph, activity)
                     is RootGate.Refused -> LockScreen(LockReason.Unsupported(shown.why))
-                    is RootGate.Locked -> LockScreen(shown.reason)
-                    RootGate.Onboarding -> OnboardingFlow()
+                    is RootGate.Locked -> saved.SaveableStateProvider("locked:${shown.reason::class.simpleName}") { LockScreen(shown.reason) }
+                    RootGate.Onboarding -> saved.SaveableStateProvider("onboarding") { OnboardingFlow() }
                     RootGate.Main -> saved.SaveableStateProvider("main") {
                         AppNav(navController = navController, banner = access.banner)
                     }
@@ -81,17 +89,24 @@ fun PocketRoot(activity: FragmentActivity) {
 @Composable
 private fun AppLockGate(graph: AppGraph, activity: FragmentActivity) {
     var message by remember { mutableStateOf<String?>(null) }
-    val secure = remember { graph.appLock.deviceSecure() }
+    // Android's prompt, or its PIN screen, is on its way or showing.
+    var prompting by remember { mutableStateOf(false) }
+    // The owner may add a screen lock in Android's settings and come back.
+    var secure by remember { mutableStateOf(graph.appLock.deviceSecure()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { secure = graph.appLock.deviceSecure() }
     AppLockScreen(
         onUnlock = {
             message = null
+            prompting = true
             graph.appLock.authenticate(activity, "Unlock PocketIDE") { ok ->
+                prompting = false
                 if (!ok) message = "Not unlocked. Tap Unlock to try again."
             }
         },
         message = message,
         deviceSecure = secure,
         onSetScreenLock = { External.openSecuritySettings(activity) },
+        prompting = prompting,
     )
 }
 
