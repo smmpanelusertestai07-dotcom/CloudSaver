@@ -37,8 +37,13 @@ internal object PathRules {
     private val credentialHomes = setOf(".config", ".ssh", ".gnupg", ".local", ".git-credentials", ".netrc")
     private val agentHomes = setOf(".claude", ".codex", ".gemini")
 
-    // Claude Code reads a project's own instructions from these too.
-    private val projectInstructions = listOf(Regex("^\\.claude/CLAUDE\\.md$"), Regex("^\\.claude/rules/[^/]+\\.md$"))
+    // Claude Code reads a project's own instructions, skills, subagents, commands and output
+    // styles from these too; the same paths in a home are the owner's, synced to Drive.
+    private val projectInstructions = listOf(
+        Regex("^\\.claude/CLAUDE\\.md$"),
+        Regex("^\\.claude/rules/[^/]+\\.md$"),
+        Regex("^\\.claude/(skills|agents|commands|output-styles)/.+$"),
+    )
 
     const val CLAUDE_DATA =
         "Claude Code's own data (chats, history or snapshots). It is kept in your Drive, never on GitHub."
