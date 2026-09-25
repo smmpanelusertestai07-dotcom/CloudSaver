@@ -108,8 +108,11 @@ internal class SyncPass(
             book.uploadable(c.sessionId) && (t == null || t.size != c.facts.size || t.modifiedAt != c.facts.modifiedAt)
         }
         val seen = found.map { it.key }.toSet()
-        return changed || tracks.any { (key, t) -> key != SECRETS_KEY && t.onPhone && key !in seen }
+        return changed || tracks.any { (key, t) -> key != SECRETS_KEY && t.onPhone && key !in seen && gone(t) }
     }
+
+    /** Not on the phone any more (a file the scan skips on purpose, like a running room's database, is still there). */
+    private fun gone(t: FileTrack): Boolean = kit.scanner.locate(t.kind, t.agentId, t.path)?.let(::factsOf) == null
 
     private suspend fun secretsChanged(run: Run): Boolean {
         val bytes = localSecrets() ?: return false
