@@ -101,6 +101,7 @@ import com.pocketide.rooms.RoomState
 import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
@@ -435,6 +436,7 @@ private fun SessionsTab(
                         onFiles = { browsing = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
+                        note = conflictCopyNote(session, sessions),
                     )
                 }
             }
@@ -466,6 +468,7 @@ private fun SessionCard(
     onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onDelete: () -> Unit,
+    note: String?,
 ) {
     var menu by remember { mutableStateOf(false) }
     val (label, tone) = sessionStatusLabel(session.status, running)
@@ -491,6 +494,7 @@ private fun SessionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN)) }
                 waitingVideosText(session.pendingVideos)?.let { StatusChip(it, Tone.WARN) }
             }
             Box {
@@ -500,7 +504,9 @@ private fun SessionCard(
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
-                        DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        if (canPutOnMain(session.status)) {
+                            DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        }
                         DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
                     }
                     HorizontalDivider()
@@ -864,6 +870,8 @@ private fun AgentBar(
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
+                    }
+                    if (canPutOnMain(session.status)) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                     }
                     if (open) {

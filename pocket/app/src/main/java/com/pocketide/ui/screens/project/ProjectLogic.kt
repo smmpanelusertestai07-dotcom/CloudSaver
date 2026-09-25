@@ -179,6 +179,23 @@ fun waitingVideosText(count: Int): String? = when {
     else -> "$count videos waiting for Wi-Fi"
 }
 
+/**
+ * Only an open session goes on main. A conflict copy is read or continued; its work reaches main
+ * through the original chat, so its menus do not offer what could only fail.
+ */
+fun canPutOnMain(status: SessionStatus): Boolean = status == SessionStatus.OPEN
+
+/** Said on a conflict copy: which chat goes on main instead. Null for any other session. */
+fun conflictCopyNote(session: SessionRecord, all: List<SessionRecord>): String? {
+    if (session.status != SessionStatus.CONFLICT_COPY) return null
+    val original = all.firstOrNull { it.id == session.conflictOf }
+    return if (original != null) {
+        "Conflict copy of \"${original.title}\": put the original on main."
+    } else {
+        "Conflict copy: put the original chat on main."
+    }
+}
+
 fun sessionStatusLabel(status: SessionStatus, running: Boolean): Pair<String, Tone> = when (status) {
     SessionStatus.OPEN -> if (running) "Running" to Tone.OK else "Open" to Tone.NEUTRAL
     SessionStatus.ON_MAIN -> "On main" to Tone.OK

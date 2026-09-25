@@ -79,6 +79,7 @@ import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.agentName
 import com.pocketide.ui.screens.project.attempt
+import com.pocketide.ui.screens.project.conflictCopyNote
 import com.pocketide.ui.screens.project.finish
 import com.pocketide.ui.screens.project.plainReason
 import com.pocketide.ui.screens.project.rememberGraph
@@ -182,6 +183,7 @@ fun ChatsScreen(nav: PocketNav) {
                     snackbar = snackbar,
                     scope = scope,
                     onDialog = { dialog = it to session.id },
+                    note = conflictCopyNote(session, sessions),
                 )
             }
         }
