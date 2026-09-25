@@ -291,7 +291,7 @@ private fun SectionPage(section: DocSection, nav: PocketNav) {
             item { EmptyNote(Icons.AutoMirrored.Outlined.MenuBook, "Nothing here yet", "This page has no text in this version.") }
         }
         items(section.blocks.size) { index -> DocBlockView(section.blocks[index], nav) }
-        if (notices != null) item { NoticesText(notices) }
+        if (notices != null) notices(notices)
         if (related.isNotEmpty()) {
             item { SectionLabel("Questions") }
             items(related, key = { it.id }) { entry ->
@@ -304,7 +304,7 @@ private fun SectionPage(section: DocSection, nav: PocketNav) {
 /** The open-source notices text shipped in the APK's assets; null while it is read. */
 private sealed interface Notices {
     data object Loading : Notices
-    data class Text(val text: String) : Notices
+    data class Text(val paragraphs: List<String>) : Notices
     data object Unreadable : Notices
 }
 
@@ -318,17 +318,19 @@ private fun rememberNotices(): Notices {
 }
 
 private fun readNotices(context: Context): Notices = try {
-    Notices.Text(context.assets.open(DocsContent.NOTICES_ASSET).bufferedReader().use { it.readText() })
+    Notices.Text(NoticeText.paragraphs(context.assets.open(DocsContent.NOTICES_ASSET).bufferedReader().use { it.readText() }))
 } catch (_: IOException) {
     Notices.Unreadable
 }
 
-@Composable
-private fun NoticesText(notices: Notices) {
+/** One list item per paragraph: the whole text (about 85 KB) in one Text would lay out slowly. */
+private fun LazyListScope.notices(notices: Notices) {
     when (notices) {
-        Notices.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
-        Notices.Unreadable -> Hint("The notices could not be read from the app. They are published with each release.")
-        is Notices.Text -> SelectableText(notices.text, Modifier.fillMaxWidth(), sizeSp = 13f)
+        Notices.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        Notices.Unreadable -> item { Hint("The notices could not be read from the app. They are published with each release.") }
+        is Notices.Text -> items(notices.paragraphs.size) { index ->
+            SelectableText(notices.paragraphs[index], Modifier.fillMaxWidth(), sizeSp = 13f)
+        }
     }
 }
 
