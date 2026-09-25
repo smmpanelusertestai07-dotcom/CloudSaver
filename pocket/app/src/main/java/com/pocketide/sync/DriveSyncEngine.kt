@@ -79,6 +79,11 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
     }
 
+    override suspend fun queueNow(sessionIds: List<String>): Set<String> = act { run ->
+        requireReady()
+        pass.queueOnly(run).intersect(sessionIds.toSet())
+    }
+
     override suspend fun restorePlan(): RestorePlan = act { run ->
         if (!ports.network.online()) throw SyncException(Plain.OFFLINE)
         restorer.plan(run)

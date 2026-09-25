@@ -158,13 +158,77 @@ class SessionLifecycleTest {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login fix")
         val transcript = claudeTranscript(session)
-        sessions.adopt(listOf(sessions.all.value.single().copy(pendingBytes = 500)))
+        val media = File(rig.dirs.sessionMedia("claude", PROJECT_ID, session.id), "screen.png").apply { writeText("png") }
+        rig.sync.notInDrive += session.id
         rig.sync.uploadFails = true
+
+        sessions.delete(session.id)
+        assertEquals("the newest bytes are queued first", listOf(session.id), rig.sync.queueRequests.first())
+        assertTrue(transcript.exists())
+        assertTrue(media.exists())
+
+        sessions.refresh()
+        assertTrue("still not in Drive", transcript.exists())
+
+        rig.sync.notInDrive.clear()
+        sessions.refresh()
+        assertFalse(transcript.exists())
+        assertFalse(media.exists())
+    }
+
+    @Test
+    fun `deleting uploads what waits, and the phone copy goes once drive has it`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Login fix")
+        val transcript = claudeTranscript(session)
+        rig.sync.notInDrive += session.id
+
+        sessions.delete(session.id)
+
+        assertFalse(transcript.exists())
+        assertEquals(listOf(listOf(session.id), listOf(session.id)), rig.sync.queueRequests)
+    }
+
+    @Test
+    fun `a chat that could not be queued keeps its phone copy`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Login fix")
+        val transcript = claudeTranscript(session)
+        rig.sync.queueFails = true
 
         sessions.delete(session.id)
         assertTrue(transcript.exists())
 
-        sessions.adopt(listOf(sessions.all.value.single().copy(pendingBytes = 0)))
+        rig.sync.queueFails = false
+        sessions.refresh()
+        assertFalse(transcript.exists())
+    }
+
+    @Test
+    fun `a chat kept off drive loses its phone copy at once`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Login fix")
+        sessions.setBackUp(session.id, false)
+        val transcript = claudeTranscript(session)
+        rig.sync.queueFails = true
+
+        sessions.delete(session.id)
+
+        assertFalse(transcript.exists())
+    }
+
+    @Test
+    fun `a chat deleted on another phone keeps its phone copy until drive has all of it`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Login fix")
+        val transcript = claudeTranscript(session)
+        rig.sync.notInDrive += session.id
+
+        sessions.adopt(listOf(sessions.all.value.single().copy(status = SessionStatus.DELETED, deletedAt = rig.now)))
+        waitFor("the engine to be asked") { rig.sync.queueRequests.isNotEmpty() }
+        assertTrue(transcript.exists())
+
+        rig.sync.notInDrive.clear()
         sessions.refresh()
         assertFalse(transcript.exists())
     }

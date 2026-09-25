@@ -168,6 +168,14 @@ interface SyncEngine {
 
     suspend fun uploadNow(sessionIds: List<String>)
 
+    /**
+     * Queues every new byte of the chats on this phone (compressed and encrypted, kept safely in
+     * the upload queue; works offline) and returns those of [sessionIds] that still have bytes
+     * Drive has not confirmed. A deleted chat's phone copy goes only once it is not returned.
+     * Throws [SyncException] when nothing could be queued (the key is not ready, say).
+     */
+    suspend fun queueNow(sessionIds: List<String>): Set<String> = sessionIds.toSet()
+
     suspend fun restorePlan(): RestorePlan
 
     suspend fun restore(choice: RestoreChoice)

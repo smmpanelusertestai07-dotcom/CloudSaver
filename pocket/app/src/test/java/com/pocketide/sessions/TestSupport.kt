@@ -274,6 +274,11 @@ class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     val erasedForever = mutableListOf<String>()
     var uploadFails = false
     var eraseFails = false
+    var queueFails = false
+    /** Sessions with bytes Drive has not confirmed; an upload that does not fail takes them there. */
+    val notInDrive = mutableSetOf<String>()
+    /** What each [queueNow] was asked for, in order. */
+    val queueRequests = mutableListOf<List<String>>()
 
     override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Idle)
     override val waiting: StateFlow<List<PendingUpload>> = MutableStateFlow(emptyList())
@@ -295,6 +300,12 @@ class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     override suspend fun syncNow() = Unit
     override suspend fun uploadNow(sessionIds: List<String>) {
         if (uploadFails) throw java.io.IOException("offline")
+        notInDrive.removeAll(sessionIds.toSet())
+    }
+    override suspend fun queueNow(sessionIds: List<String>): Set<String> {
+        queueRequests += sessionIds
+        if (queueFails) throw com.pocketide.sync.SyncException("Your chats' key is not ready on this phone yet.")
+        return sessionIds.filterTo(HashSet()) { it in notInDrive }
     }
     override suspend fun restorePlan(): RestorePlan = throw UnsupportedOperationException()
     override suspend fun restore(choice: RestoreChoice) = Unit
