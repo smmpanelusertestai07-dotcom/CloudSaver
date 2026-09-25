@@ -45,6 +45,7 @@ import com.pocketide.docs.DocLinks
 import com.pocketide.docs.DocsContent
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.AgentInfo
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -274,7 +275,7 @@ private fun DoctorDialog(name: String, report: DoctorReport, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         title = { Text(if (report.ok) "$name works on this phone" else "$name did not pass the test") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DialogBody(spacing = 8.dp) {
                 report.checks.forEach { (check, passed) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(

@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.github.RepoInfo
 import com.pocketide.projects.RepoAddress
 import com.pocketide.projects.RepoNotReachableException
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.WorkFormat
@@ -70,7 +71,7 @@ internal fun NewProjectDialog(onDismiss: () -> Unit, onCreated: (String) -> Unit
         onDismissRequest = { if (!creating) onDismiss() },
         title = { Text("New project") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            DialogBody(spacing = 10.dp) {
                 Text(
                     "PocketIDE creates a private repository on your GitHub for it. Only you can see it.",
                     style = MaterialTheme.typography.bodyMedium,

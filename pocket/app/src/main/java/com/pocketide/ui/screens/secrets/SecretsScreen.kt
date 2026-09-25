@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.secrets.ProjectValue
 import com.pocketide.secrets.SecretKind
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
@@ -310,7 +311,7 @@ private fun ValueEditor(
         onDismissRequest = onDismiss,
         title = { Text(if (existing == null) "Add a value" else "Change ${existing.name}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DialogBody {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.trim() },

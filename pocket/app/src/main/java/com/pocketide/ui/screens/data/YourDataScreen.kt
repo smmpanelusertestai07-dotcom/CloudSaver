@@ -599,7 +599,7 @@ private fun WithoutAppCard(nav: PocketNav) {
 }
 
 @Composable
-private fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+internal fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     var typed by rememberSaveable { mutableStateOf("") }
     ConfirmDialog(
         title = "Delete everything?",

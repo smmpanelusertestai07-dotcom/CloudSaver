@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.pocketide.ui.theme.LocalStatusColors
@@ -44,6 +47,16 @@ fun SectionCard(title: String?, modifier: Modifier = Modifier, content: @Composa
             content()
         }
     }
+}
+
+/**
+ * The text slot of a dialog. Material's AlertDialog clips that slot when its window is shorter
+ * than the content, which is what the keyboard or a large font size does on a small phone, so
+ * every dialog with a field or more than a line or two scrolls instead.
+ */
+@Composable
+fun DialogBody(modifier: Modifier = Modifier, spacing: Dp = 12.dp, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(spacing), content = content)
 }
 
 /** A label on the left, a value on the right. */

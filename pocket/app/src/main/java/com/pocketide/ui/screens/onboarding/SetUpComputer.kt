@@ -36,6 +36,7 @@ import com.pocketide.core.Redact
 import com.pocketide.limiter.EngineService
 import com.pocketide.linux.ComputerSetup
 import com.pocketide.linux.ComputerState
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.shell.FinePrint
@@ -142,12 +143,14 @@ internal fun SetUpComputer(state: ComputerState, onLater: (() -> Unit)?) {
             onDismissRequest = { askMobile = false },
             title = { Text("Set up on mobile data?") },
             text = {
-                Text(
-                    "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it. " +
-                        "On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
-                        "For this set-up only, its downloads may use mobile data today, up to " +
-                        "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Your data settings do not change.",
-                )
+                DialogBody {
+                    Text(
+                        "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it. " +
+                            "On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
+                            "For this set-up only, its downloads may use mobile data today, up to " +
+                            "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Your data settings do not change.",
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
