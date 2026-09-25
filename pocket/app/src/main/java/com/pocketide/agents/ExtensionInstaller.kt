@@ -157,6 +157,7 @@ internal class ExtensionInstaller(
         private const val INSTALL_TIMEOUT_MS = 20 * 60_000L
         private const val KEPT_LINES = 5
         private const val MAX_SAID = 160
+
         /** A version is also a file name here. */
         private val SAFE_VERSION = Regex("[0-9A-Za-z][0-9A-Za-z.+-]{0,63}")
 

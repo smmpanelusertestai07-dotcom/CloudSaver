@@ -26,13 +26,14 @@ internal fun interface PowerAndWifi {
  * per enabled task).
  */
 internal class TaskSchedules(
-    private val file: File,
+    file: File,
     private val scheduler: TaskScheduler,
     private val powerAndWifi: PowerAndWifi,
     private val io: CoroutineDispatcher,
     val runner: ScheduledRun,
 ) : Schedules {
 
+    private val store = TaskFile(file)
     private val lock = Mutex()
 
     /** One run of a task at a time, whether periodic or "Run now". */
@@ -46,7 +47,7 @@ internal class TaskSchedules(
     suspend fun load() {
         lock.withLock {
             if (loaded.isCompleted) return
-            state.value = withContext(io) { read() }
+            state.value = withContext(io) { store.read() }
             state.value.forEach { scheduler.schedule(it, update = false) }
             loaded.complete(Unit)
         }
@@ -55,7 +56,7 @@ internal class TaskSchedules(
     fun find(taskId: String): ScheduledTask? = state.value.firstOrNull { it.id == taskId }
 
     override suspend fun save(task: ScheduledTask) {
-        check(task)
+        checkTask(task, runner)
         load()
         lock.withLock {
             val old = state.value.firstOrNull { it.id == task.id }
@@ -87,8 +88,11 @@ internal class TaskSchedules(
     override suspend fun runNow(id: String): String? {
         load()
         val task = find(id) ?: throw ScheduleException("This task was deleted.")
-        if (running(id)) task.runningSessionId?.let { return it }
-        scheduler.queuedRun(id)?.let { return it }
+        val running = task.runningSessionId?.takeIf { runs[id]?.isLocked == true }
+        return running ?: scheduler.queuedRun(id) ?: queueRun(task)
+    }
+
+    private suspend fun queueRun(task: ScheduledTask): String {
         powerAndWifi.whyNot()?.let { throw ScheduleException(it) }
         val session = runner.newSession(task)
         scheduler.runOnce(task.id, session.id)
@@ -106,52 +110,61 @@ internal class TaskSchedules(
         }
     }
 
-    private fun running(taskId: String): Boolean = runs[taskId]?.isLocked == true
-
-    /** Called by a run before the agent starts. */
-    suspend fun recordStart(taskId: String, at: Long, sessionId: String) =
-        change(taskId) { it.copy(runningSessionId = sessionId, runningSince = at) }
-
-    /** Called by a run when it ends. */
-    suspend fun recordRun(taskId: String, at: Long, sessionId: String) =
-        change(taskId) { it.copy(lastRunAt = at, lastSessionId = sessionId, runningSessionId = null, runningSince = null) }
-
-    private suspend fun change(taskId: String, edit: (ScheduledTask) -> ScheduledTask) {
+    /**
+     * Called by a run before the agent starts ([ended] false: the task is marked as running),
+     * and when it ends (its last run, and the mark taken off).
+     */
+    suspend fun recordRun(taskId: String, at: Long, sessionId: String, ended: Boolean = true) {
         load()
         lock.withLock {
             val list = state.value
             if (list.none { it.id == taskId }) return
-            write(list.map { if (it.id == taskId) edit(it) else it })
+            write(
+                list.map { task ->
+                    when {
+                        task.id != taskId -> task
+                        ended -> task.copy(lastRunAt = at, lastSessionId = sessionId, runningSessionId = null, runningSince = null)
+                        else -> task.copy(runningSessionId = sessionId, runningSince = at)
+                    }
+                },
+            )
         }
-    }
-
-    private fun check(task: ScheduledTask) {
-        when {
-            task.title.isBlank() -> throw ScheduleException("Give the task a title.")
-            task.prompt.isBlank() -> throw ScheduleException("Write what the agent should do.")
-            task.everyHours < 1 -> throw ScheduleException("A task runs at most once an hour.")
-        }
-        runner.refusal(task)?.let { throw ScheduleException(it) }
     }
 
     private suspend fun write(list: List<ScheduledTask>) {
         val sorted = list.sortedBy { it.id }
-        withContext(io) {
-            file.parentFile?.mkdirs()
-            val temp = File(file.parentFile, "${file.name}.tmp")
-            temp.writeText(AppJson.encodeToString(LIST, sorted))
-            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        }
+        withContext(io) { store.write(sorted) }
         state.value = sorted
     }
+}
 
-    private fun read(): List<ScheduledTask> {
+/** Throws with a plain sentence when [task] cannot be saved. */
+private fun checkTask(task: ScheduledTask, runner: ScheduledRun) {
+    val problem = when {
+        task.title.isBlank() -> "Give the task a title."
+        task.prompt.isBlank() -> "Write what the agent should do."
+        task.everyHours < 1 -> "A task runs at most once an hour."
+        else -> runner.refusal(task)
+    }
+    problem?.let { throw ScheduleException(it) }
+}
+
+/** The tasks' private JSON file, replaced in one step on every change. */
+private class TaskFile(private val file: File) {
+    fun write(list: List<ScheduledTask>) {
+        file.parentFile?.mkdirs()
+        val temp = File(file.parentFile, "${file.name}.tmp")
+        temp.writeText(AppJson.encodeToString(LIST, list))
+        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    }
+
+    fun read(): List<ScheduledTask> {
         if (!file.isFile) return emptyList()
         return try {
             AppJson.decodeFromString(LIST, file.readText())
-        } catch (e: IllegalArgumentException) {
+        } catch (_: IllegalArgumentException) {
             emptyList()
-        } catch (e: IOException) {
+        } catch (_: IOException) {
             emptyList()
         }
     }

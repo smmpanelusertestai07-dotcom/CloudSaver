@@ -59,7 +59,9 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
         onLine: (String) -> Unit,
     ): Int {
         val state = graph.computer.state.value
-        if (state !is ComputerState.Ready && state !is ComputerState.Updating) throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")
+        if (state !is ComputerState.Ready && state !is ComputerState.Updating) {
+            throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")
+        }
         return try {
             graph.rooms.runHeadless(agentId, projectId, argv, workDir, programEnv, onLine)
         } catch (failed: IllegalStateException) {
@@ -96,9 +98,8 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override fun notify(taskId: String, heading: String, text: String) =
         BuildNotices.notify(graph.context, taskId.hashCode(), heading, text)
 
-    override suspend fun recordStart(taskId: String, at: Long, sessionId: String) = schedules().recordStart(taskId, at, sessionId)
-
-    override suspend fun recordRun(taskId: String, at: Long, sessionId: String) = schedules().recordRun(taskId, at, sessionId)
+    override suspend fun recordRun(taskId: String, at: Long, sessionId: String, ended: Boolean) =
+        schedules().recordRun(taskId, at, sessionId, ended)
 
     private companion object {
         const val CANNOT_RUN = "The agent's room could not run the task."

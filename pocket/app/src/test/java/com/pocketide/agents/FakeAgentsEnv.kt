@@ -41,6 +41,7 @@ internal class FakeAgentsEnv(base: File) : AgentsEnv {
     val inUse = mutableSetOf<String>()
     val configured = mutableListOf<String>()
     val deleted = mutableListOf<String>()
+
     /** What [saveBeforeRemoving] reports as still only on the phone. */
     var unsaved = emptyList<String>()
     val savedFirst = mutableListOf<String>()

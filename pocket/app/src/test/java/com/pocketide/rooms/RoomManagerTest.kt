@@ -63,6 +63,7 @@ import java.util.concurrent.TimeUnit
  */
 class RoomManagerTest {
     @get:Rule val temp = TemporaryFolder()
+
     @get:Rule val timeout: Timeout = Timeout.seconds(120)
 
     private lateinit var dirs: AppDirs
@@ -105,7 +106,12 @@ class RoomManagerTest {
         val config = env.computer.configs.single()
         val hash = Regex("hashed-password: \"([0-9a-f]{64})\"").find(config)!!.groupValues[1]
         assertEquals(mapOf("Cookie" to "code-server-session=$hash"), env.ports.injected[exposed.targetPort])
-        assertTrue("the password file is gone once code-server has started", dirs.roomBridge("claude").listFiles().orEmpty().none { it.name.endsWith(".secret") })
+        assertTrue(
+            "the password file is gone once code-server has started",
+            dirs.roomBridge("claude").listFiles().orEmpty().none {
+                it.name.endsWith(".secret")
+            },
+        )
 
         val command = env.computer.commands.single()
         assertEquals(RoomLayout.binds(dirs, "claude"), command.binds)
@@ -258,17 +264,23 @@ class RoomManagerTest {
 
     @Test fun `MCP calls from the room reach the tools`() = runBlocking {
         val handler = env.phone.handlers["mcp"]!!
-        val answer = handler("claude", buildJsonObject {
-            put("tool", "phone_status")
-            put("args", JsonObject(emptyMap()))
-            put("cwd", "/work/octo__app/s1")
-        })
+        val answer = handler(
+            "claude",
+            buildJsonObject {
+                put("tool", "phone_status")
+                put("args", JsonObject(emptyMap()))
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertTrue(answer.jsonObject["text"]!!.jsonPrimitive.content.contains("Everything is allowed"))
-        env.phone.handlers["notify"]!!("claude", buildJsonObject {
-            put("kind", "needs_you")
-            put("text", "Permission to run npm install?")
-            put("cwd", "/work/octo__app/s1")
-        })
+        env.phone.handlers["notify"]!!(
+            "claude",
+            buildJsonObject {
+                put("kind", "needs_you")
+                put("text", "Permission to run npm install?")
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertEquals(listOf("claude|s1|Claude Code needs you|Permission to run npm install?"), env.notices)
     }
 
@@ -299,10 +311,13 @@ class RoomManagerTest {
         val settings = File(dirs.roomHome("claude"), RoomConfigurator.CODE_SERVER_SETTINGS)
         assertEquals("default", Jsonc.parseObject(settings.readText())!!["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
         assertEquals(JsonNull, mcpEntries(env.computer.commands.last())["playwright"])
-        val browser = env.phone.handlers["mcp"]!!("claude", buildJsonObject {
-            put("tool", "install_browser")
-            put("cwd", "/work/octo__app/s1")
-        })
+        val browser = env.phone.handlers["mcp"]!!(
+            "claude",
+            buildJsonObject {
+                put("tool", "install_browser")
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertTrue(browser.jsonObject["text"]!!.jsonPrimitive.content.contains("stays off"))
 
         rooms.stop("claude")
@@ -354,10 +369,13 @@ class RoomManagerTest {
     private fun servers(state: File): JsonObject = Json.parseToJsonElement(state.readText()).jsonObject["mcpServers"]!!.jsonObject
 
     @Test fun `writes the agent asks for keep its room busy while they run`() = runBlocking {
-        env.phone.handlers["mcp"]!!("claude", buildJsonObject {
-            put("tool", "put_on_main")
-            put("cwd", "/work/octo__app/s1")
-        })
+        env.phone.handlers["mcp"]!!(
+            "claude",
+            buildJsonObject {
+                put("tool", "put_on_main")
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertEquals(listOf("claude|write|true", "claude|write|false"), env.busyReports)
     }
 
@@ -523,6 +541,7 @@ class RoomManagerTest {
         }
 
         val ran = CopyOnWriteArrayList<LinuxCommand>()
+
         @Volatile var running: suspend (LinuxCommand) -> Int = { 0 }
 
         override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int {
@@ -615,6 +634,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         val trust = ConcurrentHashMap<String, ProjectTrust>()
         val madeRoomFor = CopyOnWriteArrayList<String>()
         val busyReports = CopyOnWriteArrayList<String>()
+
         @Volatile var engineKeptAlive = 0
 
         override fun now() = System.currentTimeMillis()
@@ -623,6 +643,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         override fun sessions() = all
         override fun activeSession(agentId: String): String? = null
         override fun project(projectId: String) = Project(id = projectId, owner = "octo", repo = "app", addedAt = 0, lastActivityAt = 0)
+
         @Volatile var variables = mapOf("API_URL" to "https://staging.example")
         override suspend fun variables(projectId: String, agentId: String) = variables
         override fun trust(projectId: String) = trust[projectId] ?: ProjectTrust.YOURS

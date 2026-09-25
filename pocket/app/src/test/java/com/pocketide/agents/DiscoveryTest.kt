@@ -1,6 +1,5 @@
 package com.pocketide.agents
 
-import com.pocketide.agents.Rule as Check
 import com.pocketide.core.Clock
 import com.pocketide.model.Decision
 import com.pocketide.sync.MeteredDataBudget
@@ -23,6 +22,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
+import com.pocketide.agents.Rule as Check
 
 class DiscoveryTest {
     @get:Rule
@@ -45,7 +45,16 @@ class DiscoveryTest {
     @After
     fun tearDown() = server.close()
 
-    private fun agent(namespace: String, name: String, published: String = "2026-01-01T00:00:00Z", packageJson: String? = null, verified: Boolean = true, downloads: Long = 200_000, license: String? = "MIT", categories: List<String> = listOf("AI")) =
+    private fun agent(
+        namespace: String,
+        name: String,
+        published: String = "2026-01-01T00:00:00Z",
+        packageJson: String? = null,
+        verified: Boolean = true,
+        downloads: Long = 200_000,
+        license: String? = "MIT",
+        categories: List<String> = listOf("AI"),
+    ) =
         fixture.add(
             FakeExtension(namespace, name, verified = verified, downloads = downloads, license = license, categories = categories).apply {
                 versions += FakeVersion("1.0.0", timestamp = published, packageJson = packageJson ?: OpenVsxFixture.packageJson(namespace, name, "1.0.0"))
@@ -147,7 +156,13 @@ class VerifiedDownloadTest {
         assertThrows(PackageRejected::class.java) { fetch(Expected(sha512 = OpenVsxFixture.sha512(byteArrayOf(0)))) }
         val otherKeys = java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
         assertThrows(PackageRejected::class.java) {
-            fetch(Expected(sha256 = OpenVsxFixture.sha256(payload), signature = otherKeys.public.encoded.copyOfRange(12, 44) to OpenVsxFixture.sign(payload, otherKeys).also { it[0] = (it[0] + 1).toByte() }))
+            fetch(
+                Expected(
+                    sha256 = OpenVsxFixture.sha256(payload),
+                    signature =
+                    otherKeys.public.encoded.copyOfRange(12, 44) to OpenVsxFixture.sign(payload, otherKeys).also { it[0] = (it[0] + 1).toByte() },
+                ),
+            )
         }
         assertThrows(PackageRejected::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload), bytes = 10)) }
 

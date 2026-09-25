@@ -197,7 +197,11 @@ internal class OpenVsxCatalog(
         }
         val restored = putBack(agent, extensionId, namespace, vscode, present.version, folder)
         configure(agent.id)
-        val after = if (restored) "Version ${present.version} is back in place." else "Version ${present.version} could not be put back; repair it from the Computer screen."
+        val after = if (restored) {
+            "Version ${present.version} is back in place."
+        } else {
+            "Version ${present.version} could not be put back; repair it from the Computer screen."
+        }
         throw PackageRejected("${agent.displayName} ${release.version} did not pass its test on this phone (${report.note}). $after")
     }
 
@@ -284,8 +288,10 @@ internal class OpenVsxCatalog(
         )
     }
 
-    /** Deletes the agent's room, its kept packages and its record. */
-    /** Once the room starts going, the agent goes too: a cancelled caller never leaves one without the other. */
+    /**
+     * Deletes the agent's room, its kept packages and its record. Once the room starts going, the
+     * rest goes too: a cancelled caller never leaves one without the other.
+     */
     private suspend fun forget(agentId: String) = withContext(NonCancellable) {
         env.deleteRoom(agentId)
         withContext(Dispatchers.IO) { Trees.delete(File(packages, agentId).toPath()) }

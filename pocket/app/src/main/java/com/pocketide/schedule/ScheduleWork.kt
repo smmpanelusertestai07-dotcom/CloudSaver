@@ -142,7 +142,7 @@ class ScheduledTaskWorker(context: Context, params: WorkerParameters) : Coroutin
     private suspend fun run(runner: ScheduledRun, task: ScheduledTask, sessionId: String?) {
         try {
             runner.run(task, sessionId, background = !promoted())
-        } catch (refused: ScheduleException) {
+        } catch (_: ScheduleException) {
             // Battery or heat said no: the next period tries again.
         }
     }

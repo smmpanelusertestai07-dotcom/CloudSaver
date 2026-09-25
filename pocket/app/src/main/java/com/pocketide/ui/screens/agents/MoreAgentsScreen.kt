@@ -290,8 +290,11 @@ private fun CandidateFactLines(facts: CandidateFacts) {
     Hint(facts.repository?.let { "Source: $it" } ?: "Source: closed source (no repository given)")
     val rating = facts.averageRating
     Hint(
-        if (rating == null || facts.reviewCount == 0L) "No reviews yet"
-        else "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating),
+        if (rating == null || facts.reviewCount == 0L) {
+            "No reviews yet"
+        } else {
+            "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating)
+        },
     )
     Hint(CandidateFacts.VERIFIED_MEANS)
 }

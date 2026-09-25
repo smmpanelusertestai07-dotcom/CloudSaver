@@ -135,8 +135,10 @@ class CatalogTest {
 
     @Test
     fun codexNeverGetsAPreRelease() = runBlocking<Unit> {
-        codex.versions += FakeVersion("26.908.40401", engine = "^1.96.2", packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", "26.908.40401", "^1.96.2", listOf("chatgpt.openSidebar")))
-        codex.versions += FakeVersion("26.5908.31748", engine = "^1.96.2", preRelease = true, packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", "26.5908.31748", "^1.96.2", listOf("chatgpt.openSidebar")))
+        codex.versions +=
+            FakeVersion("26.908.40401", engine = "^1.96.2", packageJson = codexPackage("26.908.40401", "chatgpt.openSidebar"))
+        codex.versions +=
+            FakeVersion("26.5908.31748", engine = "^1.96.2", preRelease = true, packageJson = codexPackage("26.5908.31748", "chatgpt.openSidebar"))
 
         catalog.ensureInstalled("codex")
 
@@ -217,7 +219,7 @@ class CatalogTest {
     @Test
     fun codexReleasesAreFoundBehindAYearOfPreReleases() = runBlocking<Unit> {
         fun codexVersion(version: String, preRelease: Boolean) =
-            FakeVersion(version, engine = "^1.96.2", preRelease = preRelease, packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", version, "^1.96.2", listOf(OfficialAgents.CODEX_OPEN)))
+            FakeVersion(version, engine = "^1.96.2", preRelease = preRelease, packageJson = codexPackage(version, OfficialAgents.CODEX_OPEN))
         codex.versions += codexVersion("26.908.40401", preRelease = false)
         codex.versions += codexVersion("26.901.1", preRelease = false)
         // Open VSX orders by number: every 26.5MDD pre-release comes before the 26.MDD releases.
@@ -536,4 +538,7 @@ class CatalogTest {
             put("sha512", if (wrongDigest) OpenVsxFixture.sha512(byteArrayOf(1)) else OpenVsxFixture.sha512(archive))
         }.toString()
     }
+
+    private fun codexPackage(version: String, openCommand: String) =
+        OpenVsxFixture.packageJson("openai", "chatgpt", version, "^1.96.2", listOf(openCommand))
 }

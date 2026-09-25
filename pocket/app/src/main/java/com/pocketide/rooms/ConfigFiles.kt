@@ -163,21 +163,30 @@ internal object ConfigFiles {
         val ours = buildJsonObject {
             put("identifier", buildJsonObject { put("id", id) })
             put("version", version)
-            put("location", buildJsonObject {
-                put("\$mid", 1)
-                put("path", guestFolder)
-                put("scheme", "file")
-            })
+            put(
+                "location",
+                buildJsonObject {
+                    put("\$mid", 1)
+                    put("path", guestFolder)
+                    put("scheme", "file")
+                },
+            )
             put("relativeLocation", folder)
-            put("metadata", buildJsonObject {
-                put("installedTimestamp", now)
-                put("source", "vsix")
-            })
+            put(
+                "metadata",
+                buildJsonObject {
+                    put("installedTimestamp", now)
+                    put("source", "vsix")
+                },
+            )
         }
-        return Json.encodeToString(JsonArray.serializer(), buildJsonArray {
-            others.forEach { add(it) }
-            add(ours)
-        })
+        return Json.encodeToString(
+            JsonArray.serializer(),
+            buildJsonArray {
+                others.forEach { add(it) }
+                add(ours)
+            },
+        )
     }
 
     /**
@@ -229,12 +238,17 @@ internal object ConfigFiles {
 
     private fun notifyHook(command: String) = buildJsonObject {
         put("matcher", "")
-        put("hooks", buildJsonArray {
-            add(buildJsonObject {
-                put("type", "command")
-                put("command", command)
-            })
-        })
+        put(
+            "hooks",
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("type", "command")
+                        put("command", command)
+                    },
+                )
+            },
+        )
     }
 
     private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull

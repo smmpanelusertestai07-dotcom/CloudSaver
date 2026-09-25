@@ -126,23 +126,25 @@ internal class OpenVsx(
         enough: (ExtensionVersion) -> Boolean = { false },
     ): List<ExtensionVersion> {
         val found = mutableListOf<ExtensionVersion>()
-        var offset = 0
-        repeat(pages) {
-            val url = api("-", "query").newBuilder()
-                .addQueryParameter("namespaceName", namespace)
-                .addQueryParameter("extensionName", name)
-                .addQueryParameter("targetPlatform", target)
-                .addQueryParameter("includeAllVersions", "true")
-                .addQueryParameter("size", QUERY_PAGE.toString())
-                .addQueryParameter("offset", offset.toString())
-                .build()
-            val page = json<QueryPage>(url) ?: return found
-            found += page.extensions
-            offset += page.extensions.size
-            if (page.extensions.isEmpty() || offset >= page.totalSize || page.extensions.any(enough)) return found
-        }
+        var read = 0
+        do {
+            val page = json<QueryPage>(versionsPage(namespace, name, target, offset = found.size))
+            page?.let { found += it.extensions }
+            read++
+            val more = page != null && page.extensions.isNotEmpty() && found.size < page.totalSize && page.extensions.none(enough)
+        } while (more && read < pages)
         return found
     }
+
+    private fun versionsPage(namespace: String, name: String, target: String, offset: Int): HttpUrl =
+        api("-", "query").newBuilder()
+            .addQueryParameter("namespaceName", namespace)
+            .addQueryParameter("extensionName", name)
+            .addQueryParameter("targetPlatform", target)
+            .addQueryParameter("includeAllVersions", "true")
+            .addQueryParameter("size", QUERY_PAGE.toString())
+            .addQueryParameter("offset", offset.toString())
+            .build()
 
     /** The published SHA-256 of a file (the `.sha256` link: 64 hex characters, perhaps followed by a name). */
     suspend fun sha256(link: String?): String {
@@ -231,6 +233,7 @@ internal class OpenVsx(
         val DEFAULT_BASE = "https://open-vsx.org/".toHttpUrl()
         const val MAX_JSON_BYTES = 4 * 1024 * 1024
         private const val QUERY_PAGE = 50
+
         /** 1,000 versions: years of Codex's pre-releases. */
         private const val VERSION_PAGES = 20
         private const val MAX_CHECKSUM_BYTES = 1024

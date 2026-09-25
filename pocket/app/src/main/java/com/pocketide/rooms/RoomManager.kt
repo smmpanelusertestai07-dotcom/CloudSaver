@@ -85,10 +85,15 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         @Volatile var sessionId: String,
     ) {
         val pid: Int? = ProcFacts.pidOf(process)
+
         @Volatile var bridge: BridgedPort? = null
+
         @Volatile var url: String = ""
+
         @Volatile var memoryBytes: Long = 0
+
         @Volatile var signInStamp: Long? = null
+
         var watcher: Job? = null
     }
 
@@ -590,8 +595,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             HubGuard.GUARDED -> null
             HubGuard.GIVES_TOKEN_AWAY -> openToOtherApps(room, givesTokenAway(name), "served this launch's token to a request that did not have it")
             HubGuard.ANSWERS_WITHOUT_TOKEN -> openToOtherApps(room, answersWithoutToken(name), "answered a request without this launch's token")
-            HubGuard.REFUSES_TOKEN -> "$name's screen could not open: its hub refused this launch's key. " +
-                "An update of $name may have changed how its screen signs in."
+            HubGuard.REFUSES_TOKEN ->
+                "$name's screen could not open: its hub refused this launch's key. " +
+                    "An update of $name may have changed how its screen signs in."
             HubGuard.NO_ANSWER -> "$name stopped answering while it started."
         }
     }
@@ -860,8 +866,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     /** When the hub's sign-in file last changed (read from its metadata only), or null. */
     private fun hubSignInStamp(agentId: String): Long? =
-        if (agentId != RoomProfiles.ANTIGRAVITY) null
-        else RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
+        if (agentId != RoomProfiles.ANTIGRAVITY) {
+            null
+        } else {
+            RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
+        }
 
     // --- tools
 

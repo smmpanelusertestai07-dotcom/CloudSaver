@@ -297,11 +297,8 @@ class ScheduledRunTest {
         override fun notify(taskId: String, heading: String, text: String) {
             notices += heading to text
         }
-        override suspend fun recordStart(taskId: String, at: Long, sessionId: String) {
-            startMarks += taskId to sessionId
-        }
-        override suspend fun recordRun(taskId: String, at: Long, sessionId: String) {
-            recorded += taskId to sessionId
+        override suspend fun recordRun(taskId: String, at: Long, sessionId: String, ended: Boolean) {
+            if (ended) recorded += taskId to sessionId else startMarks += taskId to sessionId
         }
     }
 }
@@ -372,7 +369,7 @@ class TaskSchedulesTest {
     fun runNowWhileTheTaskRunsLeadsToThatRun() = runTest {
         val s = schedules()
         s.save(task())
-        s.recordStart("t1", 10, "s-running")
+        s.recordRun("t1", 10, "s-running", ended = false)
         val inside = s.exclusively("t1") {
             assertNull("one run of a task at a time", s.exclusively("t1") { "second" })
             s.runNow("t1")
@@ -389,7 +386,7 @@ class TaskSchedulesTest {
     fun theRunningMarkSurvivesAnEdit() = runTest {
         val s = schedules()
         s.save(task())
-        s.recordStart("t1", 10, "s-running")
+        s.recordRun("t1", 10, "s-running", ended = false)
         s.save(task().copy(prompt = "run every test"))
         assertEquals("s-running", s.tasks.value.single().runningSessionId)
     }

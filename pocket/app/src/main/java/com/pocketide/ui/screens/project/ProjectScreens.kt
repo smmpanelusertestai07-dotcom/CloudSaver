@@ -96,7 +96,6 @@ import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
-import com.pocketide.rooms.RoomProfiles
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.StatusChip
@@ -749,7 +748,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onRetry = { tries++ },
                         onBack = nav::back,
                         onSetUp = nav::computer.takeIf { SetUpOffer.needsOwner(computer) },
-                        onRemoteControl = { remoteControl = true }.takeIf { agentId == RoomProfiles.ANTIGRAVITY },
+                        onRemoteControl = { remoteControl = true }.takeIf { agentId == com.pocketide.rooms.RoomProfiles.ANTIGRAVITY },
                     ) { url ->
                         AgentWebView(
                             url = url,
@@ -856,7 +855,10 @@ private fun AgentBar(
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back")
+                Icon(
+                    if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back",
+                )
             }
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))

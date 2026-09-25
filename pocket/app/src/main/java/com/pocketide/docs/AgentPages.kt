@@ -17,7 +17,7 @@ internal object AgentPages {
             "and send notifications. PocketIDE turns it off again if it opens a port other apps on the phone could use. " +
             "Stopping the room stops it."
 
-    private const val SIGN_IN_STAYS ="Sign-ins stay only on this phone, so on a new phone you sign in again."
+    private const val SIGN_IN_STAYS = "Sign-ins stay only on this phone, so on a new phone you sign in again."
 
     /** Longest name or version shown; publishers write these, and a page must stay readable. */
     private const val MAX_NAME = 80
