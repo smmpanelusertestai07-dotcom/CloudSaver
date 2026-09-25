@@ -15,6 +15,8 @@ interface PocketNav {
     fun agent(sessionId: String)
     /** The read-only transcript of a session. */
     fun transcript(sessionId: String)
+    /** False where [transcript] and [agent] open nothing (while locked), so chats must not look tappable. */
+    val opensChats: Boolean get() = true
     fun yourData()
     fun computer()
     fun usage()

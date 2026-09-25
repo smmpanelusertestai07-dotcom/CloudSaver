@@ -1,6 +1,5 @@
 package com.pocketide.ui.shell
 
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -41,7 +40,9 @@ fun LimitedScreens(content: @Composable (nav: PocketNav) -> Unit) {
     // One entry per line: "help", "help:<section>", "your-data", ... Saved as a plain string.
     var saved by rememberSaveable { mutableStateOf("") }
     val stack = LimitedStack.parse(saved)
-    val nav = remember(context) { LimitedNav(context) { next -> saved = next(LimitedStack.parse(saved)).joinToString("\n") } }
+    val nav = remember(context) {
+        LimitedNav(openUrl = { url -> External.openUrl(context, url) }) { next -> saved = next(LimitedStack.parse(saved)).joinToString("\n") }
+    }
 
     BackHandler(enabled = stack.isNotEmpty()) { nav.back() }
     val top = stack.lastOrNull()
@@ -78,8 +79,8 @@ object LimitedStack {
     fun parse(saved: String): List<String> = saved.split('\n').filter { it.isNotEmpty() }
 }
 
-private class LimitedNav(
-    private val context: Context,
+internal class LimitedNav(
+    private val openUrl: (String) -> Unit,
     private val change: ((List<String>) -> List<String>) -> Unit,
 ) : PocketNav {
     private fun push(entry: String) = change { stack -> if (stack.lastOrNull() == entry) stack else stack + entry }
@@ -89,9 +90,10 @@ private class LimitedNav(
     override fun yourData() = push(LimitedStack.YOUR_DATA)
     override fun recentlyDeleted() = push(LimitedStack.RECENTLY_DELETED)
     override fun waitingUploads() = push(LimitedStack.WAITING_UPLOADS)
-    override fun openExternal(url: String) = External.openUrl(context, url)
+    override fun openExternal(url: String) = openUrl(url)
 
     // Not reachable before set-up is finished or while the app is locked.
+    override val opensChats: Boolean get() = false
     override fun home() = Unit
     override fun chats() = Unit
     override fun activity() = Unit

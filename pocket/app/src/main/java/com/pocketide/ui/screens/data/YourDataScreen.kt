@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.HideImage
@@ -85,6 +86,7 @@ import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.rememberLoad
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.project.DELETE_CHAT_TEXT
 import com.pocketide.ui.screens.project.SessionShortcut
 import com.pocketide.ui.shell.External
 import kotlinx.coroutines.Dispatchers
@@ -140,6 +142,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     val sizes = rememberLoad(agents, now) { readSizes(graph, agents) }
     val drive = rememberLoad("drive", now) { graph.usage.google() }
     var removeMediaOf by remember { mutableStateOf<SessionRecord?>(null) }
+    var deleting by remember { mutableStateOf<SessionRecord?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val largest = remember(sessions) { DataMath.largestSessions(sessions) }
 
@@ -163,7 +166,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { SectionLabel("By type") }
         item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
         item { SectionLabel("Largest sessions") }
-        item { LargestCard(largest, nav) { removeMediaOf = it } }
+        item { LargestCard(largest, nav, onRemoveMedia = { removeMediaOf = it }, onDelete = { deleting = it }) }
         item { SectionLabel("Memory and instructions") }
         item { MemoryCard(agents, sizes.value?.memory, sizes.loading, onEdit) }
         item {
@@ -216,6 +219,20 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             destructive = true,
             onConfirm = { runner.run("media:${session.id}", done = "Media removed. The chat is kept.") { graph.sessions.removeMedia(session.id) } },
             onDismiss = { removeMediaOf = null },
+        )
+    }
+    deleting?.let { session ->
+        ConfirmDialog(
+            title = "Delete \"${session.title}\"?",
+            text = DELETE_CHAT_TEXT,
+            confirmLabel = "Delete",
+            destructive = true,
+            onConfirm = {
+                runner.run("delete:${session.id}", done = "Moved to Recently deleted. Delete it forever there to free Drive space now.") {
+                    graph.sessions.delete(session.id)
+                }
+            },
+            onDismiss = { deleting = null },
         )
     }
     if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
@@ -312,15 +329,25 @@ private fun ByTypeCard(
     }
 }
 
+/**
+ * The largest chats, each with its own ways to free space. This is where the storage-full lock
+ * sends the owner, so everything here works without opening Chats.
+ */
 @Composable
-private fun LargestCard(largest: List<SessionRecord>, nav: PocketNav, onRemoveMedia: (SessionRecord) -> Unit) {
+private fun LargestCard(
+    largest: List<SessionRecord>,
+    nav: PocketNav,
+    onRemoveMedia: (SessionRecord) -> Unit,
+    onDelete: (SessionRecord) -> Unit,
+) {
     SectionCard(null) {
         if (largest.isEmpty()) Hint("No sessions yet.")
         largest.forEachIndexed { index, session ->
             if (index > 0) HorizontalDivider()
             Column(Modifier.fillMaxWidth()) {
+                val open = if (nav.opensChats) Modifier.clickable { nav.transcript(session.id) } else Modifier
                 Row(
-                    Modifier.fillMaxWidth().clickable { nav.transcript(session.id) }.padding(vertical = 4.dp),
+                    Modifier.fillMaxWidth().then(open).padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -337,11 +364,23 @@ private fun LargestCard(largest: List<SessionRecord>, nav: PocketNav, onRemoveMe
                         Text("Remove media, keep chat (${ManageFormat.bytes(session.mediaBytes)})")
                     }
                 }
+                TextButton(onClick = { onDelete(session) }) {
+                    Icon(Icons.Outlined.Delete, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Delete chat")
+                }
             }
         }
-        if (largest.isNotEmpty()) Hint("Deleting a whole session is in Chats; it goes to Recently deleted for 30 days.")
+        if (largest.isNotEmpty()) {
+            Hint(FREE_DRIVE_SPACE)
+            NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Delete forever to free Drive space") { nav.recentlyDeleted() }
+        }
     }
 }
+
+/** A deleted chat waits in Recently deleted, still in Drive; only "Delete forever" frees the space at once. */
+internal const val FREE_DRIVE_SPACE =
+    "A deleted chat stays in Recently deleted for 30 days and keeps its Drive space until then. Delete it forever there to free the space now."
 
 @Composable
 private fun MemoryCard(agents: List<AgentInfo>, memory: Map<String, List<MemoryFile>>?, loading: Boolean, onEdit: (MemoryFile) -> Unit) {
