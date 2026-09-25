@@ -99,6 +99,7 @@ import com.pocketide.rooms.RoomState
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
 import com.pocketide.ui.web.WebPrefs
 import com.pocketide.ui.web.nextZoom
@@ -583,6 +584,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val installed by graph.agents.installed.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val trusts by graph.projects.trust.collectAsStateWithLifecycle()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
     val found = sessions.firstOrNull { it.id == sessionId }
     // A list refresh that briefly lacks the session must not tear down the agent's page.
@@ -708,6 +710,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         stopReason = stops[agentId]?.message,
                         onRetry = { tries++ },
                         onBack = nav::back,
+                        onSetUp = nav::computer.takeIf { SetUpOffer.needsOwner(computer) },
                     ) { url ->
                         AgentWebView(
                             url = url,
@@ -855,13 +858,19 @@ private fun RoomContent(
     stopReason: String?,
     onRetry: () -> Unit,
     onBack: () -> Unit,
+    /** Set while the computer is not set up (or set-up stopped): retrying cannot help, setting it up does. */
+    onSetUp: (() -> Unit)?,
     ready: @Composable (String) -> Unit,
 ) {
     when (view) {
         is RoomView.Ready -> ready(view.url)
         is RoomView.Opening -> CenterMessage(view.step ?: "Opening $agentName…", progress = true)
         is RoomView.Failed -> CenterMessage("$agentName did not start: ${view.why}") {
-            Button(onClick = onRetry) { Text("Retry") }
+            if (onSetUp != null) {
+                Button(onClick = onSetUp) { Text(SetUpOffer.TITLE) }
+            } else {
+                Button(onClick = onRetry) { Text("Retry") }
+            }
             OutlinedButton(onClick = onBack) { Text("Back") }
         }
         RoomView.Elsewhere -> CenterMessage("$agentName's room is open on another session now.") {

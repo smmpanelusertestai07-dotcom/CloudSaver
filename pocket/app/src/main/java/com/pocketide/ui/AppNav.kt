@@ -74,6 +74,7 @@ import com.pocketide.ui.screens.chats.WaitingUploadsScreen
 import com.pocketide.ui.screens.computer.ComputerScreen
 import com.pocketide.ui.screens.data.YourDataScreen
 import com.pocketide.ui.screens.help.HelpScreen
+import com.pocketide.ui.screens.home.HomeBarActions
 import com.pocketide.ui.screens.home.HomeScreen
 import com.pocketide.ui.screens.project.AgentScreen
 import com.pocketide.ui.screens.project.ProjectScreen
@@ -164,7 +165,11 @@ fun AppNav(
     val tab = remember(entry) { navController.tabOf(pattern) }
 
     Scaffold(
-        topBar = { if (Routes.isTab(pattern)) ShellTopBar(tab, onHelp = { nav.help(null) }) },
+        topBar = {
+            if (Routes.isTab(pattern)) {
+                ShellTopBar(tab, onHelp = { nav.help(null) }) { if (tab == Tab.HOME) HomeBarActions(nav) }
+            }
+        },
         bottomBar = { if (Routes.showsBottomBar(pattern)) ShellBottomBar(tab, onSelect = nav::tab) },
         contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
     ) { padding ->
@@ -239,7 +244,7 @@ private fun NavBackStackEntry.arg(name: String): String? = arguments?.getString(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ShellTopBar(tab: Tab, onHelp: () -> Unit) {
+private fun ShellTopBar(tab: Tab, onHelp: () -> Unit, tabActions: @Composable () -> Unit) {
     TopAppBar(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -258,6 +263,7 @@ private fun ShellTopBar(tab: Tab, onHelp: () -> Unit) {
             IconButton(onClick = onHelp) {
                 Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = "Help")
             }
+            tabActions()
         },
     )
 }

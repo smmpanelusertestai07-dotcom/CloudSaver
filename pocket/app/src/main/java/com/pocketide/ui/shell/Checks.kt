@@ -50,7 +50,7 @@ object SetupChecklist {
         ComputerState.Ready -> CheckLine("computer", "Computer", engine?.let { "Ready · $it" } ?: "Ready", CheckStatus.DONE)
         is ComputerState.Installing -> CheckLine("computer", "Computer", "Still setting up: ${computer.step}", CheckStatus.WAITING)
         is ComputerState.Updating -> CheckLine("computer", "Computer", "Updating ${computer.what}", CheckStatus.WAITING)
-        ComputerState.NotInstalled -> CheckLine("computer", "Computer", "Not set up yet. Home offers it again, on Wi-Fi.", CheckStatus.WAITING)
+        ComputerState.NotInstalled -> CheckLine("computer", "Computer", "Not set up yet. Set it up from Home when you're on Wi-Fi.", CheckStatus.WAITING)
         is ComputerState.Broken -> CheckLine("computer", "Computer", "${computer.why} ${computer.fix}", CheckStatus.PROBLEM)
     }
 }
