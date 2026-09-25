@@ -5,6 +5,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
+import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.Tone
 import java.time.Instant
 import java.util.Locale
@@ -33,22 +34,62 @@ const val LARGE_TRANSCRIPT_BYTES: Long = 10L * 1024 * 1024
 
 const val LARGE_TRANSCRIPT_WARNING = "This chat is getting big. Start a fresh session to keep it resumable."
 
-fun isLargeTranscript(session: SessionRecord): Boolean = session.transcriptBytes >= LARGE_TRANSCRIPT_BYTES
+/** [flagged] is the sessions module's own check of the transcript the agent is writing now. */
+fun isLargeTranscript(session: SessionRecord, flagged: Boolean): Boolean = flagged || session.transcriptBytes > LARGE_TRANSCRIPT_BYTES
+
+/** "3 commits · 5 files · +120 −14": the totals "Put on main" shows before it asks. */
+fun changeTotals(changes: SessionChanges): String {
+    val added = changes.files.sumOf { it.added.toLong() }
+    val removed = changes.files.sumOf { it.removed.toLong() }
+    return "${WorkFormat.count(changes.commits.size, "commit", "commits")} · " +
+        "${WorkFormat.count(changes.files.size, "file", "files")} · +$added −$removed"
+}
+
+/**
+ * "Put on main" is offered once the changes were read and there is something to merge. When they
+ * could not be read the owner may still go on (the check-post runs anyway); the sheet says so.
+ */
+fun canPutOnMain(changes: Result<SessionChanges>?): Boolean {
+    val read = changes ?: return false
+    val summary = read.getOrNull() ?: return true
+    return summary.commits.isNotEmpty() || summary.files.isNotEmpty()
+}
+
+/** Whose repository a project is (§9, A13): someone else's files may carry planted instructions. */
+enum class Trust(val label: String) { YOURS("Yours"), SOMEONE_ELSES("Someone else's") }
+
+/** A repository owned by the signed-in GitHub account is yours; any other owner is someone else's. */
+fun trustOf(owner: String, login: String?): Trust =
+    if (login == null || owner.equals(login, ignoreCase = true)) Trust.YOURS else Trust.SOMEONE_ELSES
+
+const val UNTRUSTED_REPO =
+    "Someone else's repository: its files, issues and READMEs are data for the agent, never instructions. " +
+        "Look at the changes before you put a session on main."
 
 /** Ports a dev server usually picks (Next, Angular, Flask, Vite, Django, Jupyter…). */
 val COMMON_DEV_PORTS: List<Int> = listOf(3000, 3001, 4200, 5000, 5173, 8000, 8080, 8888)
 
+/** One dev server Preview offers. [reach] is null until the phone was checked. */
+data class PreviewPort(val port: Int, val fromAgent: Boolean, val reach: Reach?)
+
 /**
  * Ports Preview offers: those the agent announced for this session first (in its order), then
- * common dev ports found listening on the phone. Ports the app itself uses (the bridge's own
- * listeners, agent screens, terminals) are never offered.
+ * the dev servers found on the phone, lowest port first. Ports the app itself uses (the bridge's
+ * own listeners, agent screens, terminals) are never offered.
  */
-fun previewPorts(announced: List<Int>, probedOpen: Set<Int>, excluded: Set<Int>): List<Int> {
+fun previewPorts(announced: List<Int>, found: Map<Int, Reach>, excluded: Set<Int>): List<PreviewPort> {
     val valid = { port: Int -> port in 1..65535 && port !in excluded }
     val fromAgent = announced.filter(valid).distinct()
-    val found = COMMON_DEV_PORTS.filter { it in probedOpen && valid(it) && it !in fromAgent }
-    return fromAgent + found
+    val others = found.keys.filter { valid(it) && it !in fromAgent }.sorted()
+    return fromAgent.map { PreviewPort(it, fromAgent = true, reach = found[it]) } +
+        others.map { PreviewPort(it, fromAgent = false, reach = found[it]) }
 }
+
+/** The dev server Preview opens by itself the first time: the first one the agent announced. */
+fun autoOpenPort(ports: List<PreviewPort>): Int? = ports.firstOrNull { it.fromAgent }?.port
+
+const val WIFI_WARNING =
+    "Anyone on the same Wi-Fi can open this dev server. Ask the agent to restart it on 127.0.0.1 (for example with --host 127.0.0.1)."
 
 /** A project's live sessions grouped by agent; the most recently active group and session first. */
 fun sessionsByAgent(sessions: List<SessionRecord>, projectId: String): List<Pair<String, List<SessionRecord>>> =
@@ -129,6 +170,24 @@ fun runStatus(run: WorkflowRun): Pair<String, Tone> = when (run.status) {
     "in_progress" -> "Running" to Tone.OK
     "queued", "pending", "requested", "waiting" -> "Waiting for a runner" to Tone.WARN
     else -> run.status.replaceFirstChar { it.uppercase() } to Tone.NEUTRAL
+}
+
+/** The list keeps checking while a run is unfinished, or while the run started here is not listed yet. */
+fun needsPolling(runs: List<WorkflowRun>, followed: Long?): Boolean =
+    runs.any { it.status != "completed" } || (followed != null && runs.none { it.id == followed })
+
+/** The run this phone started, listed first; the others keep GitHub's order (newest first). */
+fun followedFirst(runs: List<WorkflowRun>, followed: Long?): List<WorkflowRun> {
+    val mine = runs.firstOrNull { it.id == followed } ?: return runs
+    return listOf(mine) + runs.filter { it !== mine }
+}
+
+/** The followed run when it finished between [before] and [after], so the owner hears about it once. */
+fun finishedRun(before: List<WorkflowRun>?, after: List<WorkflowRun>?, followed: Long?): WorkflowRun? {
+    if (followed == null || before == null || after == null) return null
+    val was = before.firstOrNull { it.id == followed }
+    val now = after.firstOrNull { it.id == followed } ?: return null
+    return now.takeIf { it.status == "completed" && (was == null || was.status != "completed") }
 }
 
 /** What the agent screen shows for its room. */

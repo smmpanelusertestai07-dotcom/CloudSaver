@@ -38,13 +38,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.github.RepoInfo
+import com.pocketide.projects.RepoNotReachableException
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.WorkFormat
+import com.pocketide.ui.screens.project.Trust
 import com.pocketide.ui.screens.project.attempt
+import com.pocketide.ui.screens.project.finish
 import com.pocketide.ui.screens.project.plainReason
 import com.pocketide.ui.screens.project.rememberGraph
+import com.pocketide.ui.screens.project.trustOf
 import kotlinx.coroutines.launch
 
 /** "New project": a new private repository on the owner's GitHub. */
@@ -93,7 +98,7 @@ internal fun NewProjectDialog(onDismiss: () -> Unit, onCreated: (String) -> Unit
                     creating = true
                     problem = null
                     scope.launch {
-                        attempt { graph.projects.create(name.trim(), description.trim()) }
+                        finish { graph.projects.create(name.trim(), description.trim()) }
                             .onSuccess { onCreated(it.id) }
                             .onFailure { problem = "Could not create it: ${plainReason(it)}" }
                         creating = false
@@ -125,9 +130,27 @@ internal fun ImportSheet(
     var query by remember { mutableStateOf("") }
     var importing by remember { mutableStateOf<String?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
+    // Where to add a repository PocketIDE cannot reach yet; the one from the refusal wins.
+    var addUrl by remember { mutableStateOf<String?>(null) }
     val installUrl = remember { runCatching { graph.gitHubAuth.installUrl() }.getOrNull() }
+    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { repos = attempt { graph.gitHub.repos() } }
+
+    fun import(id: String, owner: String, repo: String, label: String) {
+        importing = id
+        problem = null
+        addUrl = null
+        scope.launch {
+            finish { graph.projects.import(owner, repo) }
+                .onSuccess { onImported(it.id) }
+                .onFailure { e ->
+                    problem = "Could not import $label: ${plainReason(e)}"
+                    if (e is RepoNotReachableException) addUrl = e.installUrl
+                }
+            importing = null
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -137,10 +160,25 @@ internal fun ImportSheet(
                 onValueChange = { query = it },
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                placeholder = { Text("Search your repositories") },
+                placeholder = { Text("Search, or paste a GitHub address") },
                 modifier = Modifier.fillMaxWidth(),
             )
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            addUrl?.let { url -> TextButton(onClick = { onAddRepositories(url) }) { Text("Add it to PocketIDE on GitHub") } }
+            pastedRepo(query, repos?.getOrNull().orEmpty())?.let { address ->
+                val label = "${address.owner}/${address.repo}"
+                ListItem(
+                    headlineContent = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = { Text("The address you pasted") },
+                    trailingContent = {
+                        if (importing == label) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            TextButton(enabled = importing == null, onClick = { import(label, query, "", label) }) { Text("Import") }
+                        }
+                    },
+                )
+            }
             val result = repos
             when {
                 result == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -163,7 +201,13 @@ internal fun ImportSheet(
                             ListItem(
                                 headlineContent = { Text(repo.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 supportingContent = {
-                                    Text("${repo.owner} · ${WorkFormat.bytes(repo.sizeKb * 1024)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    val whose = trustOf(repo.owner, account?.login)
+                                    Text(
+                                        "${repo.owner} · ${WorkFormat.bytes(repo.sizeKb * 1024)}" +
+                                            if (whose == Trust.SOMEONE_ELSES) " · ${whose.label}" else "",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 },
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -174,16 +218,7 @@ internal fun ImportSheet(
                                             importing == repoId(repo) -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                                             else -> TextButton(
                                                 enabled = importing == null,
-                                                onClick = {
-                                                    importing = repoId(repo)
-                                                    problem = null
-                                                    scope.launch {
-                                                        attempt { graph.projects.import(repo.owner, repo.name) }
-                                                            .onSuccess { onImported(it.id) }
-                                                            .onFailure { problem = "Could not import ${repo.name}: ${plainReason(it)}" }
-                                                        importing = null
-                                                    }
-                                                },
+                                                onClick = { import(repoId(repo), repo.owner, repo.name, repo.name) },
                                             ) { Text("Import") }
                                         }
                                     }
@@ -193,7 +228,7 @@ internal fun ImportSheet(
                     }
                 }
             }
-            if (installUrl != null) {
+            if (installUrl != null && addUrl == null) {
                 TextButton(onClick = { onAddRepositories(installUrl) }) { Text("Choose which repositories PocketIDE can see") }
             }
             Spacer(Modifier.size(8.dp))

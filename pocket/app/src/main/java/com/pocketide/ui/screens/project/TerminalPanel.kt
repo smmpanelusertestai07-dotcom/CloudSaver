@@ -36,15 +36,15 @@ fun TerminalPanel(sessionId: String, state: TerminalState, nav: PocketNav, snack
     var problem by remember(state) { mutableStateOf<String?>(null) }
     var tries by remember(state) { mutableIntStateOf(0) }
 
-    LaunchedEffect(state, tries) {
-        if (state.url != null) return@LaunchedEffect
+    val url = state.url
+    LaunchedEffect(state, url, tries) {
+        if (url != null) return@LaunchedEffect
         problem = null
         attempt { graph.rooms.terminal(sessionId) }
             .onSuccess { state.url = it.url }
             .onFailure { problem = plainReason(it) }
     }
 
-    val url = state.url
     when {
         url != null -> TerminalView(
             url = url,
@@ -53,6 +53,8 @@ fun TerminalPanel(sessionId: String, state: TerminalState, nav: PocketNav, snack
             onOpenExternal = nav::openExternal,
             onNotice = { message -> scope.launch { snackbar.showSnackbar(message) } },
             modifier = modifier,
+            // The room may have restarted with a new address: ask it for a fresh shell.
+            onNewShell = { state.url = null },
         )
         problem != null -> Column(
             modifier.fillMaxSize().padding(24.dp),

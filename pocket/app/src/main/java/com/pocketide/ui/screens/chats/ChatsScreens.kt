@@ -75,6 +75,7 @@ import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.agentName
 import com.pocketide.ui.screens.project.attempt
+import com.pocketide.ui.screens.project.finish
 import com.pocketide.ui.screens.project.plainReason
 import com.pocketide.ui.screens.project.rememberGraph
 import com.pocketide.ui.screens.project.sessionStatusLabel
@@ -107,6 +108,7 @@ fun ChatsScreen(nav: PocketNav) {
         filterChats(sessions, ChatFilter(query, agentId, projectId, status), nameOf)
     }
     val deletedCount = remember(sessions) { recentlyDeleted(sessions).size }
+    var dialog by remember { mutableStateOf<Pair<ChatDialog, String>?>(null) }
 
     LaunchedEffect(Unit) { attempt { graph.sessions.refresh() } }
 
@@ -179,8 +181,19 @@ fun ChatsScreen(nav: PocketNav) {
                     nav = nav,
                     snackbar = snackbar,
                     scope = scope,
+                    onDialog = { dialog = it to session.id },
                 )
             }
+        }
+    }
+
+    dialog?.let { (which, id) ->
+        // Looked up in every chat, not the filtered list: a chat put on main may leave the filter mid-way.
+        val session = sessions.firstOrNull { it.id == id }
+        if (session == null) {
+            LaunchedEffect(id) { dialog = null }
+        } else {
+            ChatDialogHost(which, session, nav, snackbar, scope, onClose = { dialog = null })
         }
     }
 }
@@ -240,9 +253,8 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
                 actions = {
                     if (session != null && session.canContinue()) {
                         TextButton(onClick = {
-                            scope.act(snackbar, "Could not continue") {
+                            scope.act(snackbar, "Could not continue", then = { nav.agent(sessionId) }) {
                                 graph.sessions.continueSession(sessionId)
-                                nav.agent(sessionId)
                             }
                         }) { Text("Continue") }
                     }
@@ -302,7 +314,7 @@ private fun SessionDetails(session: SessionRecord, agentLabel: String) {
             InfoRow("Tokens", "${grouped(session.tokensIn)} in · ${grouped(session.tokensOut)} out")
         }
         InfoRow("Size", WorkFormat.bytes(sessionBytes(session)))
-        InfoRow("Backup", backupLabel(session) ?: "In your Drive")
+        InfoRow("Backup", backupState(session).first)
     }
 }
 
@@ -432,7 +444,7 @@ fun RecentlyDeletedScreen(nav: PocketNav) {
             onConfirm = {
                 val ids = deleted.map { it.id }
                 scope.launch {
-                    val failures = ids.count { id -> attempt { graph.sessions.deleteForever(id) }.isFailure }
+                    val failures = finish { ids.count { id -> attempt { graph.sessions.deleteForever(id) }.isFailure } }.getOrDefault(ids.size)
                     snackbar.showSnackbar(if (failures == 0) "Deleted forever." else "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again.")
                 }
             },
@@ -456,7 +468,8 @@ fun WaitingUploadsScreen(nav: PocketNav) {
     val sessions by graph.sessions.all.collectAsStateWithLifecycle()
     var chosen by remember { mutableStateOf<Set<String>>(emptySet()) }
     var keepLocal by remember { mutableStateOf(false) }
-    val selected = chosen intersect waiting.map { it.sessionId }.toSet()
+    val waitingIds = remember(waiting) { waiting.map { it.sessionId }.toSet() }
+    val selected = chosen intersect waitingIds
     val phoneOnly = remember(sessions) { sessions.filter { !it.backUp && it.deletedAt == null } }
 
     Scaffold(
@@ -512,9 +525,9 @@ fun WaitingUploadsScreen(nav: PocketNav) {
                 item(key = "empty") { EmptyState(Icons.Filled.CloudUpload, "Nothing waiting", "Every chat that is backed up is safe in your Drive.") }
             } else {
                 item(key = "all") {
-                    val all = selected.size == waiting.size
+                    val all = selected.size == waitingIds.size
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = all, onCheckedChange = { chosen = if (all) emptySet() else waiting.map { it.sessionId }.toSet() })
+                        Checkbox(checked = all, onCheckedChange = { chosen = if (all) emptySet() else waitingIds })
                         Text("Select all · ${WorkFormat.bytes(waiting.sumOf { it.bytes })}", style = MaterialTheme.typography.titleSmall)
                     }
                 }
@@ -560,7 +573,7 @@ fun WaitingUploadsScreen(nav: PocketNav) {
             onConfirm = {
                 val ids = selected.toList()
                 scope.launch {
-                    val failures = ids.count { id -> attempt { graph.sessions.setBackUp(id, false) }.isFailure }
+                    val failures = finish { ids.count { id -> attempt { graph.sessions.setBackUp(id, false) }.isFailure } }.getOrDefault(ids.size)
                     snackbar.showSnackbar(if (failures == 0) "Kept on this phone only. Marked \"Not backed up\"." else "Some chats could not be changed. Try again.")
                 }
                 chosen = emptySet()

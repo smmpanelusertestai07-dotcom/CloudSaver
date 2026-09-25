@@ -1,5 +1,6 @@
 package com.pocketide.ui.work
 
+import com.pocketide.ui.web.ExternalOpen
 import com.pocketide.ui.web.PickerKind
 import com.pocketide.ui.web.WebPolicy
 import org.junit.Assert.assertEquals
@@ -44,6 +45,17 @@ class WebPolicyTest {
         assertFalse(WebPolicy.safeViewerAllows("https://evil.example/", mainFrame = true))
         assertFalse(WebPolicy.safeViewerAllows("file:///sdcard/x", mainFrame = true))
         assertFalse(WebPolicy.safeViewerAllows("data:image/png;base64,AAAA", mainFrame = false))
+    }
+
+    @Test
+    fun onlyATapOpensChromeAtOnce() {
+        assertEquals(ExternalOpen.OPEN, WebPolicy.externalOpen("https://claude.ai/oauth/authorize?x=1", userGesture = true))
+        assertEquals("a script on its own only asks", ExternalOpen.ASK, WebPolicy.externalOpen("https://evil.example/", userGesture = false))
+        assertEquals(ExternalOpen.IGNORE, WebPolicy.externalOpen("intent://x#Intent;end", userGesture = true))
+        assertEquals(ExternalOpen.IGNORE, WebPolicy.externalOpen("javascript:alert(1)", userGesture = true))
+        assertEquals(ExternalOpen.IGNORE, WebPolicy.externalOpen("file:///data/data/com.pocketide/", userGesture = true))
+        assertEquals("github.com", WebPolicy.hostOf("https://GitHub.com/login/device"))
+        assertNull(WebPolicy.hostOf("::not a url::"))
     }
 
     @Test

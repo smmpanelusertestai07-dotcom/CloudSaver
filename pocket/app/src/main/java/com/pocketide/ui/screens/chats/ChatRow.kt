@@ -32,7 +32,6 @@ import com.pocketide.core.Ist
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.ui.components.StatusChip
-import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.DELETE_CHAT_TEXT
@@ -44,9 +43,10 @@ import com.pocketide.ui.screens.project.rememberGraph
 import com.pocketide.ui.screens.project.sessionStatusLabel
 import kotlinx.coroutines.CoroutineScope
 
-private enum class ChatDialog { RENAME, PUT_ON_MAIN, REMOVE_MEDIA, DELETE }
+/** The questions a chat's menu can ask; held by the screen, so they outlive the row. */
+internal enum class ChatDialog { RENAME, PUT_ON_MAIN, REMOVE_MEDIA, DELETE }
 
-/** One chat in the list, with everything the owner can do to it. */
+/** One chat in the list. Actions that need a question go to [onDialog]; the rest run here. */
 @Composable
 internal fun ChatRow(
     session: SessionRecord,
@@ -55,11 +55,12 @@ internal fun ChatRow(
     nav: PocketNav,
     snackbar: SnackbarHostState,
     scope: CoroutineScope,
+    onDialog: (ChatDialog) -> Unit,
 ) {
     val graph = rememberGraph()
     var menu by remember { mutableStateOf(false) }
-    var dialog by remember { mutableStateOf<ChatDialog?>(null) }
     val (status, tone) = sessionStatusLabel(session.status, running)
+    val (backup, backupTone) = backupState(session)
 
     Card(
         onClick = { nav.transcript(session.id) },
@@ -72,7 +73,7 @@ internal fun ChatRow(
                     Text(
                         session.title,
                         style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
@@ -90,24 +91,23 @@ internal fun ChatRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                backupLabel(session)?.let { StatusChip(it, Tone.WARN) }
+                StatusChip(backup, backupTone)
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Chat actions") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Read") }, onClick = { menu = false; nav.transcript(session.id) })
-                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; dialog = ChatDialog.RENAME })
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onDialog(ChatDialog.RENAME) })
                     if (session.canContinue()) {
                         DropdownMenuItem(text = { Text("Continue") }, onClick = {
                             menu = false
-                            scope.act(snackbar, "Could not continue") {
+                            scope.act(snackbar, "Could not continue", then = { nav.agent(session.id) }) {
                                 graph.sessions.continueSession(session.id)
-                                nav.agent(session.id)
                             }
                         })
                     }
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
-                        DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; dialog = ChatDialog.PUT_ON_MAIN })
+                        DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onDialog(ChatDialog.PUT_ON_MAIN) })
                     }
                     DropdownMenuItem(
                         text = { Text("Don't back up this chat") },
@@ -123,22 +123,34 @@ internal fun ChatRow(
                         },
                     )
                     if (session.mediaCount > 0) {
-                        DropdownMenuItem(text = { Text("Remove media") }, onClick = { menu = false; dialog = ChatDialog.REMOVE_MEDIA })
+                        DropdownMenuItem(text = { Text("Remove media") }, onClick = { menu = false; onDialog(ChatDialog.REMOVE_MEDIA) })
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; dialog = ChatDialog.DELETE })
+                    DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDialog(ChatDialog.DELETE) })
                 }
             }
         }
     }
+}
 
+/** The question [dialog] asks about [session]. */
+@Composable
+internal fun ChatDialogHost(
+    dialog: ChatDialog,
+    session: SessionRecord,
+    nav: PocketNav,
+    snackbar: SnackbarHostState,
+    scope: CoroutineScope,
+    onClose: () -> Unit,
+) {
+    val graph = rememberGraph()
     when (dialog) {
         ChatDialog.RENAME -> RenameDialog(
             session,
             onDone = { title -> scope.act(snackbar, "Could not rename") { graph.sessions.rename(session.id, title) } },
-            onDismiss = { dialog = null },
+            onDismiss = onClose,
         )
-        ChatDialog.PUT_ON_MAIN -> PutOnMainFlow(session, onClose = { dialog = null }, onOpenSession = nav::agent)
+        ChatDialog.PUT_ON_MAIN -> PutOnMainFlow(session, onClose = onClose, onOpenSession = nav::agent)
         ChatDialog.REMOVE_MEDIA -> ConfirmDialog(
             title = "Remove media, keep the chat?",
             text = "The ${WorkFormat.count(session.mediaCount, "file", "files")} in this chat's Media (${WorkFormat.bytes(session.mediaBytes)}) " +
@@ -146,7 +158,7 @@ internal fun ChatRow(
             confirmLabel = "Remove media",
             destructive = true,
             onConfirm = { scope.act(snackbar, "Could not remove media", done = "Media removed.") { graph.sessions.removeMedia(session.id) } },
-            onDismiss = { dialog = null },
+            onDismiss = onClose,
         )
         ChatDialog.DELETE -> ConfirmDialog(
             title = "Delete \"${session.title}\"?",
@@ -154,8 +166,7 @@ internal fun ChatRow(
             confirmLabel = "Delete",
             destructive = true,
             onConfirm = { scope.act(snackbar, "Could not delete", done = "Moved to Recently deleted.") { graph.sessions.delete(session.id) } },
-            onDismiss = { dialog = null },
+            onDismiss = onClose,
         )
-        null -> Unit
     }
 }

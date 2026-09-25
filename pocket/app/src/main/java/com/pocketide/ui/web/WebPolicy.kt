@@ -5,6 +5,8 @@ import java.net.URI
 /** The photo picker mode an agent page's file input asks for. */
 enum class PickerKind { IMAGES, VIDEOS, IMAGES_AND_VIDEOS }
 
+enum class ExternalOpen { OPEN, ASK, IGNORE }
+
 /**
  * URL rules shared by the app's WebViews. Pure Kotlin (java.net.URI), so they are tested on the
  * JVM; the WebViews call them from their clients.
@@ -21,6 +23,20 @@ object WebPolicy {
 
     /** Only ordinary web links go to Chrome; intent:, file:, javascript: and the rest go nowhere. */
     fun isWebLink(url: String): Boolean = originOf(url) != null
+
+    /**
+     * What happens to a page's attempt to leave the app for [url]. A tap opens Chrome at once
+     * (sign-in pages must open without extra steps); a page acting on its own only gets to ask,
+     * so a script cannot throw the owner into Chrome again and again.
+     */
+    fun externalOpen(url: String, userGesture: Boolean): ExternalOpen = when {
+        !isWebLink(url) -> ExternalOpen.IGNORE
+        userGesture -> ExternalOpen.OPEN
+        else -> ExternalOpen.ASK
+    }
+
+    /** The host an "open in Chrome?" question names, so the owner sees where it goes. */
+    fun hostOf(url: String): String? = parse(url)?.host?.lowercase()
 
     /** Documents a frame creates for itself (srcdoc, a blank frame) carry no address of their own. */
     fun isFrameLocal(url: String): Boolean {

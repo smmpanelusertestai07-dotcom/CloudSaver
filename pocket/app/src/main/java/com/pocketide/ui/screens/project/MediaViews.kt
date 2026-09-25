@@ -17,11 +17,14 @@ import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Size
 import android.widget.ImageView
 import android.widget.MediaController
 import android.widget.VideoView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,6 +73,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -98,6 +102,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
+import com.pocketide.media.MediaLibrary
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -113,11 +118,26 @@ import java.io.File
  * builds made for the owner. Only safe formats are rendered, each by Android's own decoder.
  */
 @Composable
-fun MediaPanel(sessionId: String, pendingVideos: Int, modifier: Modifier = Modifier) {
+fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
     val graph = rememberGraph()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val flow = remember(sessionId) { graph.media.forSession(sessionId) }
     val items by flow.collectAsStateWithLifecycle(initialValue = null)
     var open by remember(sessionId) { mutableStateOf<MediaItem?>(null) }
+    var adding by remember(sessionId) { mutableStateOf(false) }
+    // The system file picker: no storage permission, and only the file the owner picks.
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            adding = true
+            scope.launch {
+                finish { addDocument(context, graph.media, sessionId, uri) }
+                    .onSuccess { snackbar.showSnackbar("Added ${it.name} to this session's Media.") }
+                    .onFailure { snackbar.showSnackbar("Could not add the file: ${plainReason(it)}") }
+                adding = false
+            }
+        }
+    }
 
     Column(modifier.fillMaxSize()) {
         val list = items
@@ -137,14 +157,19 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, modifier: Modifier = Modif
                 Spacer(Modifier.weight(1f))
             }
             waitingVideosText(pendingVideos)?.let { StatusChip(it, Tone.WARN) }
+            if (adding) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                TextButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text("Add file") }
+            }
         }
         when {
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             list.isEmpty() -> EmptyState(
                 Icons.Filled.PermMedia,
                 "No media yet",
-                "Screenshots, videos, reports and APKs the agent or a GitHub build makes for you appear here. " +
-                    "They sync with this session and come back when you reopen it.",
+                "Screenshots, videos, reports and APKs the agent or a GitHub build makes for you appear here, " +
+                    "with files you add. They sync with this session and come back when you reopen it.",
             )
             else -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(112.dp),
@@ -339,7 +364,7 @@ fun MediaViewer(item: MediaItem, onDismiss: () -> Unit) {
             destructive = true,
             onConfirm = {
                 scope.launch {
-                    attempt { graph.media.delete(item) }
+                    finish { graph.media.delete(item) }
                         .onSuccess { onDismiss() }
                         .onFailure { snackbar.showSnackbar("Could not delete: ${plainReason(it)}") }
                 }
@@ -348,6 +373,29 @@ fun MediaViewer(item: MediaItem, onDismiss: () -> Unit) {
         )
     }
 }
+
+/** Copies a picked document into the session's Media, refusing anything over [MAX_ADDED_BYTES]. */
+private suspend fun addDocument(context: Context, media: MediaLibrary, sessionId: String, uri: Uri): MediaItem =
+    withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        var name: String? = null
+        var size: Long? = null
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                name = cursor.getString(0)
+                size = if (cursor.isNull(1)) null else cursor.getLong(1)
+            }
+        }
+        require((size ?: 0) <= MAX_ADDED_BYTES) { "The file is bigger than ${WorkFormat.bytes(MAX_ADDED_BYTES)}, so it was not added." }
+        val temp = File.createTempFile("added-", ".part", context.cacheDir)
+        try {
+            val input = checkNotNull(resolver.openInputStream(uri)) { "The file could not be opened." }
+            input.use { source -> temp.outputStream().use { copyLimited(source, it, MAX_ADDED_BYTES) } }
+            media.add(sessionId, temp, safeFileName(name), "you")
+        } finally {
+            temp.delete()
+        }
+    }
 
 private fun sourceLabel(source: String): String = when (source) {
     "agent" -> "From the agent"
@@ -598,7 +646,9 @@ private fun FactLine(label: String, value: String) {
 
 private fun readApk(context: Context, file: File): ApkFacts {
     val pm = context.packageManager
-    val flags = PackageManager.GET_SIGNING_CERTIFICATES
+    // Both flags: with the first alone, signingInfo is null on API 29 and on the first Android 13 release.
+    @Suppress("DEPRECATION")
+    val flags = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
     val info: PackageInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         pm.getPackageArchiveInfo(file.path, PackageManager.PackageInfoFlags.of(flags.toLong()))
     } else {
@@ -606,7 +656,11 @@ private fun readApk(context: Context, file: File): ApkFacts {
         pm.getPackageArchiveInfo(file.path, flags)
     }
     requireNotNull(info) { "not an APK" }
-    val signers = info.signingInfo?.apkContentsSigners.orEmpty().map { certificateFingerprint(it.toByteArray()) }
+    @Suppress("DEPRECATION")
+    val signers = signerFingerprints(
+        info.signingInfo?.apkContentsSigners?.map { it.toByteArray() },
+        info.signatures?.map { it.toByteArray() },
+    )
     val label = info.applicationInfo?.let { app ->
         app.sourceDir = file.path
         app.publicSourceDir = file.path

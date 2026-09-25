@@ -5,7 +5,19 @@ import com.pocketide.model.SessionStatus
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.ui.components.Tone
+import com.pocketide.sessions.ChangedFile
+import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.screens.project.COMMON_DEV_PORTS
+import com.pocketide.ui.screens.project.PreviewPort
+import com.pocketide.ui.screens.project.Reach
+import com.pocketide.ui.screens.project.Trust
+import com.pocketide.ui.screens.project.autoOpenPort
+import com.pocketide.ui.screens.project.canPutOnMain
+import com.pocketide.ui.screens.project.changeTotals
+import com.pocketide.ui.screens.project.finishedRun
+import com.pocketide.ui.screens.project.followedFirst
+import com.pocketide.ui.screens.project.needsPolling
+import com.pocketide.ui.screens.project.trustOf
 import com.pocketide.ui.screens.project.LARGE_TRANSCRIPT_BYTES
 import com.pocketide.ui.screens.project.RoomView
 import com.pocketide.ui.screens.project.WorkFormat
@@ -42,13 +54,29 @@ class ProjectLogicTest {
 
     @Test
     fun previewPortsPutTheAgentFirstAndSkipAppPorts() {
-        assertEquals(listOf(5173, 3000, 8000), previewPorts(listOf(5173), setOf(3000, 8000, 5173), emptySet()))
-        assertEquals(listOf(9000, 3000), previewPorts(listOf(9000, 9000, 0, 70000), setOf(3000), emptySet()))
-        assertEquals(listOf(3000), previewPorts(emptyList(), setOf(3000, 8080), excluded = setOf(8080)))
-        assertEquals(emptyList<Int>(), previewPorts(listOf(8080), emptySet(), excluded = setOf(8080)))
-        // Only the common dev ports are probed; a stray open port is not offered.
-        assertEquals(emptyList<Int>(), previewPorts(emptyList(), setOf(22), emptySet()))
+        val found = mapOf(8000 to Reach.WIFI, 3000 to Reach.PHONE_ONLY, 5173 to Reach.PHONE_ONLY)
+        assertEquals(
+            listOf(
+                PreviewPort(5173, fromAgent = true, reach = Reach.PHONE_ONLY),
+                PreviewPort(3000, fromAgent = false, reach = Reach.PHONE_ONLY),
+                PreviewPort(8000, fromAgent = false, reach = Reach.WIFI),
+            ),
+            previewPorts(listOf(5173), found, emptySet()),
+        )
+        // Announced twice, out of range, or not checked yet: listed once, only when valid, reach unknown.
+        assertEquals(
+            listOf(PreviewPort(9000, true, null), PreviewPort(3000, false, Reach.PHONE_ONLY)),
+            previewPorts(listOf(9000, 9000, 0, 70000), mapOf(3000 to Reach.PHONE_ONLY), emptySet()),
+        )
+        assertEquals(listOf(3000), previewPorts(emptyList(), mapOf(3000 to Reach.PHONE_ONLY, 8080 to Reach.WIFI), setOf(8080)).map { it.port })
+        assertEquals(emptyList<PreviewPort>(), previewPorts(listOf(8080), emptyMap(), excluded = setOf(8080)))
         assertEquals(listOf(3000, 3001, 4200, 5000, 5173, 8000, 8080, 8888), COMMON_DEV_PORTS)
+    }
+
+    @Test
+    fun previewOpensOnlyWhatTheAgentAnnounced() {
+        assertEquals(5173, autoOpenPort(previewPorts(listOf(5173, 3000), mapOf(8000 to Reach.PHONE_ONLY), emptySet())))
+        assertNull(autoOpenPort(previewPorts(emptyList(), mapOf(8000 to Reach.PHONE_ONLY), emptySet())))
     }
 
     @Test
@@ -141,8 +169,57 @@ class ProjectLogicTest {
 
     @Test
     fun largeTranscriptThreshold() {
-        assertFalse(isLargeTranscript(session("a", transcriptBytes = LARGE_TRANSCRIPT_BYTES - 1)))
-        assertTrue(isLargeTranscript(session("a", transcriptBytes = LARGE_TRANSCRIPT_BYTES)))
+        assertFalse(isLargeTranscript(session("a", transcriptBytes = LARGE_TRANSCRIPT_BYTES), flagged = false))
+        assertTrue(isLargeTranscript(session("a", transcriptBytes = LARGE_TRANSCRIPT_BYTES + 1), flagged = false))
+        // The sessions module reads the live transcript; its flag wins over a stale record.
+        assertTrue(isLargeTranscript(session("a", transcriptBytes = 0), flagged = true))
+    }
+
+    @Test
+    fun putOnMainSummaryAndWhenItMayGoOn() {
+        val changes = SessionChanges(
+            commits = listOf("Fix login", "Add test", "Tidy"),
+            files = listOf(ChangedFile("a.kt", 100, 4), ChangedFile("b.kt", 20, 10), ChangedFile("c.kt", Int.MAX_VALUE, 0)),
+        )
+        assertEquals("3 commits · 3 files · +${120L + Int.MAX_VALUE} −14", changeTotals(changes))
+        assertEquals("0 commits · 0 files · +0 −0", changeTotals(SessionChanges(emptyList(), emptyList())))
+        assertFalse("still reading", canPutOnMain(null))
+        assertTrue(canPutOnMain(Result.success(changes)))
+        assertFalse("nothing to merge", canPutOnMain(Result.success(SessionChanges(emptyList(), emptyList()))))
+        assertTrue("unreadable changes: the check-post still runs", canPutOnMain(Result.failure(IllegalStateException("git"))))
+    }
+
+    @Test
+    fun buildsFollowTheirOwnRun() {
+        fun run(id: Long, status: String, conclusion: String? = null) = WorkflowRun(id, "Android", "b", status, conclusion, "", "", "")
+        val earlier = run(1, "completed", "success")
+        assertFalse(needsPolling(listOf(earlier), followed = null))
+        assertTrue("an unfinished run", needsPolling(listOf(earlier, run(2, "queued")), followed = null))
+        assertTrue("ours is not listed yet", needsPolling(listOf(earlier), followed = 7))
+        assertFalse(needsPolling(listOf(earlier, run(7, "completed", "failure")), followed = 7))
+
+        val newer = run(9, "in_progress")
+        val mine = run(7, "queued")
+        assertEquals(listOf(7L, 9L, 1L), followedFirst(listOf(newer, mine, earlier), 7).map { it.id })
+        assertEquals(listOf(9L, 1L), followedFirst(listOf(newer, earlier), 7).map { it.id })
+        assertEquals(listOf(9L, 1L), followedFirst(listOf(newer, earlier), null).map { it.id })
+
+        // A red run is reported red, once, and only for the run this phone started.
+        val done = run(7, "completed", "failure")
+        assertEquals(done, finishedRun(listOf(mine), listOf(done), 7))
+        assertEquals("Failed" to Tone.ERROR, runStatus(finishedRun(listOf(mine), listOf(done), 7)!!))
+        assertEquals(done, finishedRun(emptyList(), listOf(done), 7))
+        assertNull("already reported", finishedRun(listOf(done), listOf(done), 7))
+        assertNull("another run finished", finishedRun(listOf(newer), listOf(run(9, "completed", "success")), 7))
+        assertNull("first load", finishedRun(null, listOf(done), 7))
+        assertNull(finishedRun(listOf(mine), null, 7))
+    }
+
+    @Test
+    fun trustComesFromTheOwner() {
+        assertEquals(Trust.YOURS, trustOf("Me", "me"))
+        assertEquals(Trust.SOMEONE_ELSES, trustOf("torvalds", "me"))
+        assertEquals("unknown account: no false alarm", Trust.YOURS, trustOf("torvalds", null))
     }
 
     @Test

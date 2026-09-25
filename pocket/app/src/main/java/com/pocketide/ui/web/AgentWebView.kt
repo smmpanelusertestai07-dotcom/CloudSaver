@@ -26,13 +26,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -72,6 +75,8 @@ class WebViewHolder internal constructor() {
     internal var webView: WebView? = null
     internal var loadedUrl: String? = null
     internal var pendingFiles: ValueCallback<Array<Uri>>? = null
+    /** Windows the page opened that are not yet handed to Chrome or dropped. */
+    internal var popups = 0
     internal val callbacks = WebCallbacks()
 
     /** Bumped when a dead WebView is replaced, so the AndroidView is created afresh. */
@@ -81,10 +86,18 @@ class WebViewHolder internal constructor() {
     /** Why the page is not showing (renderer gone, page did not answer), or null. */
     var problem by mutableStateOf<String?>(null)
         internal set
+    /** An address the page tried to open in Chrome without a tap; the owner decides. */
+    internal var askToOpen by mutableStateOf<String?>(null)
 
-    /** Runs JavaScript in the page; ignored when there is no page. */
-    fun evaluate(script: String) {
-        webView?.evaluateJavascript(script, null)
+    /** Runs JavaScript in the page; ignored when there is no page. [result] gets its JSON value. */
+    fun evaluate(script: String, result: ((String?) -> Unit)? = null) {
+        webView?.evaluateJavascript(script, result?.let { callback -> ValueCallback<String> { value -> callback(value) } })
+    }
+
+    /** Clears the problem so the page is shown again; the next address given is loaded afresh. */
+    internal fun retry() {
+        problem = null
+        loadedUrl = null
     }
 
     /** Loads the page again, rebuilding the WebView when its renderer died. */
@@ -95,6 +108,16 @@ class WebViewHolder internal constructor() {
             generation++
         } else {
             view.reload()
+        }
+    }
+
+    /** The page navigates away from the app's own addresses: Chrome, a question, or nothing. */
+    internal fun leave(url: String, userGesture: Boolean) {
+        if (callbacks.isInternal(url)) return
+        when (WebPolicy.externalOpen(url, userGesture)) {
+            ExternalOpen.OPEN -> callbacks.openExternal(url)
+            ExternalOpen.ASK -> askToOpen = url
+            ExternalOpen.IGNORE -> Unit
         }
     }
 
@@ -115,6 +138,7 @@ class WebViewHolder internal constructor() {
     /** Tears the WebView down; safe to call more than once. */
     fun destroy() {
         deliverFiles(null)
+        askToOpen = null
         val view = webView ?: return
         webView = null
         loadedUrl = null
@@ -150,6 +174,10 @@ fun AgentWebView(
     onOpenExternal: (String) -> Unit,
     onNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Text size in percent (WebSettings.textZoom), for the owner's per-agent choice. */
+    textZoom: Int = 100,
+    /** Replaces Reload when the address itself may be stale (a new one must be asked for). */
+    onRetry: (() -> Unit)? = null,
     onPageFinished: (WebView, String) -> Unit = { _, _ -> },
     onCreated: (WebView) -> Unit = {},
 ) {
@@ -176,7 +204,14 @@ fun AgentWebView(
         val problem = holder.problem
         when {
             !allowed -> PageProblem("This address is not allowed inside the app.", null)
-            problem != null -> PageProblem(problem) { holder.reload() }
+            problem != null -> PageProblem(problem) {
+                if (onRetry == null) {
+                    holder.reload()
+                } else {
+                    holder.retry()
+                    onRetry()
+                }
+            }
             else -> key(holder.generation) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -184,6 +219,7 @@ fun AgentWebView(
                         holder.obtain(context) { ctx -> createAgentWebView(ctx, holder, background).also(onCreated) }
                     },
                     update = { view ->
+                        if (view.settings.textZoom != textZoom) view.settings.textZoom = textZoom
                         if (holder.loadedUrl != url) {
                             holder.loadedUrl = url
                             holder.loading = true
@@ -197,6 +233,33 @@ fun AgentWebView(
         }
         if (allowed && problem == null && holder.loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+        }
+        holder.askToOpen?.let { target ->
+            OpenQuestion(
+                host = WebPolicy.hostOf(target) ?: target,
+                onOpen = {
+                    holder.askToOpen = null
+                    onOpenExternal(target)
+                },
+                onDismiss = { holder.askToOpen = null },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OpenQuestion(host: String, onOpen: () -> Unit, onDismiss: () -> Unit, modifier: Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.fillMaxWidth().padding(12.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("The page wants to open $host in Chrome.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = onDismiss) { Text("Not now", color = MaterialTheme.colorScheme.inversePrimary) }
+            TextButton(onClick = onOpen) { Text("Open", color = MaterialTheme.colorScheme.inversePrimary) }
         }
     }
 }
@@ -245,6 +308,8 @@ private fun createAgentWebView(context: Context, holder: WebViewHolder, backgrou
             // Android's font scale is applied by the pages themselves; doing it here too doubles it.
             textZoom = 100
             mediaPlaybackRequiresUserGesture = true
+            // VS Code turns on touch scrolling only for a mobile user agent.
+            if (!userAgentString.contains("Mobi")) userAgentString = "$userAgentString Mobile"
         }
         // The bridge sets its per-launch token as a first-party cookie; nothing else needs cookies.
         CookieManager.getInstance().setAcceptCookie(true)
@@ -259,7 +324,7 @@ private class AgentClient(private val holder: WebViewHolder) : WebViewClient() {
         val url = request.url.toString()
         if (holder.callbacks.isInternal(url)) return false
         if (!request.isForMainFrame && WebPolicy.isFrameLocal(url)) return false
-        if (request.isForMainFrame && WebPolicy.isWebLink(url)) holder.callbacks.openExternal(url)
+        if (request.isForMainFrame) holder.leave(url, request.hasGesture())
         return true
     }
 
@@ -314,8 +379,11 @@ private class AgentChrome(private val holder: WebViewHolder) : WebChromeClient()
 
     override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
         val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+        // A script opening windows in a loop gets one at a time; each tap still gets its own.
+        if (!isUserGesture && holder.popups > 0) return false
+        holder.popups++
         val popup = WebView(view.context)
-        popup.webViewClient = PopupCatcher(holder, popup)
+        popup.webViewClient = PopupCatcher(holder, popup, isUserGesture)
         transport.webView = popup
         resultMsg.sendToTarget()
         return true
@@ -332,9 +400,14 @@ private class AgentChrome(private val holder: WebViewHolder) : WebChromeClient()
 
 /**
  * A window a page opens (a sign-in page, a docs link) never becomes a WebView of ours: its first
- * address goes to Chrome and the throwaway view is destroyed. JavaScript stays off in it.
+ * address goes to Chrome (after a question when no tap opened it) and the throwaway view is
+ * destroyed before it loads anything. JavaScript stays off in it.
  */
-private class PopupCatcher(private val holder: WebViewHolder, private val popup: WebView) : WebViewClient() {
+private class PopupCatcher(
+    private val holder: WebViewHolder,
+    private val popup: WebView,
+    private val userGesture: Boolean,
+) : WebViewClient() {
     private var handled = false
     private var destroyed = false
     private val main = Handler(Looper.getMainLooper())
@@ -356,7 +429,8 @@ private class PopupCatcher(private val holder: WebViewHolder, private val popup:
     private fun handle(url: String?) {
         if (handled || url.isNullOrEmpty() || WebPolicy.isFrameLocal(url)) return
         handled = true
-        if (WebPolicy.isWebLink(url) && !holder.callbacks.isInternal(url)) holder.callbacks.openExternal(url)
+        popup.stopLoading()
+        holder.leave(url, userGesture)
         // Not from inside the popup's own callback.
         main.post { destroyPopup() }
     }
@@ -364,6 +438,7 @@ private class PopupCatcher(private val holder: WebViewHolder, private val popup:
     private fun destroyPopup() {
         if (destroyed) return
         destroyed = true
+        holder.popups--
         main.removeCallbacksAndMessages(null)
         popup.stopLoading()
         popup.destroy()

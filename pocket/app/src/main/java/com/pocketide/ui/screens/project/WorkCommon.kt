@@ -31,7 +31,11 @@ import com.pocketide.graph
 import com.pocketide.model.AgentInfo
 import com.pocketide.ui.theme.Brand
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The app graph, from the composition's context. */
@@ -58,18 +62,35 @@ fun plainReason(e: Throwable): String {
 }
 
 /**
- * Runs an owner's action in the background and reports it in the snackbar: [done] on success
- * (if any), "[failed]: <reason>" otherwise. Never crashes the screen.
+ * [attempt] for work the owner confirmed (a delete, a merge, a new session): once started it runs
+ * to its end even when the screen that started it goes away, so it never stops half-way. If the
+ * caller was cancelled meanwhile, this then throws, so nothing after it (a navigation, a message)
+ * acts on a screen that is gone.
+ */
+suspend fun <T> finish(block: suspend () -> T): Result<T> {
+    val result = withContext(NonCancellable) { attempt(block) }
+    currentCoroutineContext().ensureActive()
+    return result
+}
+
+/**
+ * Runs an owner's action and reports it in the snackbar: [done] on success (if any),
+ * "[failed]: <reason>" otherwise. The action itself always finishes (see [finish]); [then] runs
+ * after a success only while the screen is still there. Never crashes the screen.
  */
 fun CoroutineScope.act(
     snackbar: SnackbarHostState,
     failed: String,
     done: String? = null,
+    then: () -> Unit = {},
     block: suspend () -> Unit,
 ) {
     launch {
-        attempt { block() }
-            .onSuccess { if (done != null) snackbar.showSnackbar(done) }
+        finish { block() }
+            .onSuccess {
+                then()
+                if (done != null) snackbar.showSnackbar(done)
+            }
             .onFailure { snackbar.showSnackbar("$failed: ${plainReason(it)}") }
     }
 }
