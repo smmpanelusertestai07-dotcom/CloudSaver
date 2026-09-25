@@ -73,6 +73,12 @@ internal interface SyncPorts {
      */
     suspend fun loadLocal() = Unit
 
+    /**
+     * "Delete everything" removed the phone's chat and project lists from the disk: they are
+     * forgotten in memory too, so the next vault never receives the old records.
+     */
+    suspend fun forgetLocal()
+
     fun localSessions(): List<SessionRecord>
 
     fun localProjects(): List<Project>

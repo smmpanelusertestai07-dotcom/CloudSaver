@@ -172,6 +172,11 @@ internal class ProjectRegistry(
         }
     }
 
+    override suspend fun forgetEverything() {
+        state.clear()
+        trustState.clear()
+    }
+
     /** The owner's answer stored on the project, or null when there is none (or it is unreadable). */
     private fun answer(project: Project): ProjectTrust? =
         project.trust?.let { name -> ProjectTrust.entries.firstOrNull { it.name == name } }
@@ -188,11 +193,6 @@ internal class ProjectRegistry(
         return if (login != null && project.owner.equals(login, ignoreCase = true)) ProjectTrust.YOURS else ProjectTrust.SOMEONE_ELSES
     }
 
-    private suspend fun add(info: RepoInfo): Project {
-        val id = "${info.owner}/${info.name}".lowercase(Locale.ROOT)
-        val now = clock.now()
-        val cloned = withContext(io) { isCloned(id) }
-        return state.update { list ->
     /**
      * A keyring added before it was refused: its worktrees and clone leave the phone, and the vault
      * key changes, since Half G was within Linux's reach. It stays listed until the new key is
@@ -211,8 +211,13 @@ internal class ProjectRegistry(
         trustState.update { it - ids to Unit }
     }
 
-            val existing = list.find { it.id == id }
+    private suspend fun add(info: RepoInfo): Project {
         refuseKeyring(info.name)
+        val id = "${info.owner}/${info.name}".lowercase(Locale.ROOT)
+        val now = clock.now()
+        val cloned = withContext(io) { isCloned(id) }
+        return state.update { list ->
+            val existing = list.find { it.id == id }
             val project = existing?.copy(
                 owner = info.owner,
                 repo = info.name,
@@ -272,14 +277,14 @@ internal class ProjectRegistry(
         network { env.git.fetch(dirs.bareRepo(project.id), token) }
     }
 
+    private fun refuseKeyring(repo: String) {
+        if (isVaultKeyring(repo)) throw ProjectException(KEYRING_REFUSED)
+    }
+
     private suspend fun find(projectId: String): Project =
         state.current().find { it.id == projectId } ?: throw ProjectException("This project is not on this phone.")
 
     private fun isCloned(projectId: String) = BareRefs(dirs.bareRepo(projectId)).isCloned()
-
-    private fun refuseKeyring(repo: String) {
-        if (isVaultKeyring(repo)) throw ProjectException(KEYRING_REFUSED)
-    }
 
     /** An unfinished clone (a removal cut short, a clone that failed) is not worth keeping. */
     private fun dropUnfinished(bare: File) {
@@ -315,6 +320,6 @@ internal class ProjectRegistry(
         const val BIG_CLONE_KB = 50L * 1024
         const val DATA_KIND = "clone"
         const val TOUCH_STEP_MS = 60_000L
+        const val KEYRING_REFUSED = "This repository holds half of your chats' key, so it never becomes a project."
     }
 }
-        const val KEYRING_REFUSED = "This repository holds half of your chats' key, so it never becomes a project."

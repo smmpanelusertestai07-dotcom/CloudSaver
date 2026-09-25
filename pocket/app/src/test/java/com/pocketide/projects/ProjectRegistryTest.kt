@@ -129,6 +129,19 @@ class ProjectRegistryTest {
     }
 
     @Test
+    fun `after delete everything no project is written back`() = runBlocking<Unit> {
+        val projects = registry()
+        val project = projects.create("app", "")
+
+        projects.forgetEverything()
+        projects.setTrust(project.id, ProjectTrust.SOMEONE_ELSES)
+        projects.adopt(emptyList())
+
+        assertTrue(projects.all.value.isEmpty())
+        assertTrue("nothing on the disk either", registry(CoroutineScope(Job().apply { cancel() })).loaded().isEmpty())
+    }
+
+    @Test
     fun `import takes any pasted form and says when the app cannot reach the repository`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/tool"] = repoInfo("bob", "tool", isPrivate = false, defaultBranch = "trunk")

@@ -592,6 +592,15 @@ internal class SessionManager(
         }
     }
 
+    override suspend fun forgetEverything() {
+        records.current().forEach { autosaver.forget(it.id) }
+        records.clear()
+        active.clear()
+        erasing.clear()
+        transcripts.clear()
+        large.clear()
+    }
+
     // ProjectWork: what removing a project must not lose.
 
     override suspend fun unsaved(projectId: String): String? {

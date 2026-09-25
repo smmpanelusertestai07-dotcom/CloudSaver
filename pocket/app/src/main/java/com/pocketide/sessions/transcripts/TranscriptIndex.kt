@@ -55,6 +55,11 @@ internal class TranscriptIndex(
         }
     }
 
+    /** Forgets every file ("Delete everything" removed them and this index's own file). */
+    suspend fun clear() = lock.withLock {
+        facts = HashMap()
+    }
+
     private fun loaded(): MutableMap<String, FileFacts> {
         facts?.let { return it }
         val read = try {

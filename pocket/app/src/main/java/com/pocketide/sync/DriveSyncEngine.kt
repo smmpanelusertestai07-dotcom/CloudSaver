@@ -164,6 +164,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
                 dirs.downloads, dirs.share, dirs.apk,
             )
                 .forEach { deleteTree(it) }
+            ports.forgetLocal()
             ports.wipeSecureStore()
             ports.forgetVaultKey()
             ports.settings.update { it.copy(onboardingDone = false) }

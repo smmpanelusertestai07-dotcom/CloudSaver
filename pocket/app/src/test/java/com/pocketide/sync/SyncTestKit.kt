@@ -267,6 +267,11 @@ internal class TestPhone(
     override suspend fun loadLocal() {
         coldStart = false
     }
+    override suspend fun forgetLocal() {
+        sessions.clear()
+        projects.clear()
+        active.clear()
+    }
     override fun localSessions(): List<SessionRecord> = if (coldStart) emptyList() else sessions.toList()
     override fun localProjects(): List<Project> = if (coldStart) emptyList() else projects.toList()
     override fun activeSessionIds(): Set<String> = if (coldStart) emptySet() else active.toSet()

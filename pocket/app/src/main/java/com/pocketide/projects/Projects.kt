@@ -107,6 +107,12 @@ interface Projects {
     suspend fun adopt(projects: List<Project>) = Unit
 
     /**
+     * "Delete everything" removed the phone's data: the projects are forgotten in memory too, so
+     * nothing writes the old list back or sends it to the next vault.
+     */
+    suspend fun forgetEverything() = Unit
+
+    /**
      * Whose code each project is, by project id. Projects made in the app and the owner's own
      * repositories are [ProjectTrust.YOURS]; anything else, and anything unknown, is not.
      */

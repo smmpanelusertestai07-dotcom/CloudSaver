@@ -134,6 +134,12 @@ interface Sessions {
     suspend fun erased(sessionIds: List<String>) = Unit
 
     /**
+     * "Delete everything" removed the phone's data: the chats, the open ones and those waiting to
+     * be erased are forgotten in memory too, so nothing writes them back or sends them to the next vault.
+     */
+    suspend fun forgetEverything() = Unit
+
+    /**
      * "Continue in Codex / Antigravity" when an agent hit its usage limit, or a fork in the same
      * agent: a new session in [toAgentId]'s room whose branch starts at this session's last commit.
      * This session stays as it is.

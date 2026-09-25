@@ -325,6 +325,22 @@ class SessionLifecycleTest {
     }
 
     @Test
+    fun `after delete everything no chat is written back`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        sessions.start(PROJECT_ID, "claude", "One")
+
+        sessions.forgetEverything()
+        sessions.refresh()
+        sessions.adopt(emptyList())
+
+        assertTrue(sessions.all.value.isEmpty())
+        assertNull(sessions.activeSession("claude"))
+        val again = rig.manager(CoroutineScope(Job().apply { cancel() }))
+        assertTrue("nothing on the disk either", again.loaded().isEmpty())
+        assertNull(again.activeSession("claude"))
+    }
+
+    @Test
     fun `refresh measures transcripts, tokens, commits and the large transcript warning`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", null)

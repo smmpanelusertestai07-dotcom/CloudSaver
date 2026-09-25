@@ -37,6 +37,11 @@ internal class JsonFile<T>(private val file: File, private val serializer: KSeri
         }
     }
 
+    /** Removes the stored value; nothing stored reads as null again. */
+    fun delete() {
+        if (file.exists() && !file.delete()) throw IOException("Could not delete ${file.name}")
+    }
+
     fun write(value: T) {
         val dir = file.absoluteFile.parentFile ?: throw IOException("No folder for ${file.name}")
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("Could not create ${dir.name}")
@@ -80,6 +85,16 @@ internal class JsonState<T>(
             state.value = next
         }
         result
+    }
+
+    /**
+     * Forgets the value on the disk and in memory ("Delete everything"): it reads as empty from
+     * now on, so a change made afterwards never writes the old value back.
+     */
+    suspend fun clear() = lock.withLock {
+        withContext(io) { file.delete() }
+        state.value = empty
+        loaded = true
     }
 
     private suspend fun ensureLoaded() {
