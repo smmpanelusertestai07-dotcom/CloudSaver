@@ -4,6 +4,7 @@ import com.pocketide.core.Settings
 import com.pocketide.model.Guard
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.MoveState
+import com.pocketide.sync.Retention
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.Tone
 
@@ -67,4 +68,22 @@ object ManageText {
         "Project caches" to "${s.cacheDays} days unused",
         "Unused computer" to if (s.computerUnusedDays < 0) "Never removed" else "Removed after ${s.computerUnusedDays} days without agent work",
     )
+
+    /**
+     * The note under the retention settings. It follows the owner's choices, so it never says
+     * Drive chats stay when a chosen time or the full-space rule removes them.
+     */
+    fun retentionNote(s: Settings): String {
+        val notice = "move to Recently deleted after a ${Retention.NOTICE_DAYS}-day notice"
+        val old = "chats older than ${Retention.TRIM_MONTHS} months"
+        val full = "when PocketIDE's Drive space is full"
+        val drive = when {
+            s.keepChatsMonths > 0 && s.autoTrimOldChats ->
+                "Drive chats with no new message for ${s.keepChatsMonths} months $notice, and so do $old $full."
+            s.keepChatsMonths > 0 -> "Drive chats with no new message for ${s.keepChatsMonths} months $notice."
+            s.autoTrimOldChats -> "Drive chats are not removed for inactivity, except that $old $notice $full."
+            else -> "Drive chats are never removed for inactivity."
+        }
+        return "$drive Recently deleted is always 30 days. Unmerged branches and unpushed code are never removed automatically."
+    }
 }

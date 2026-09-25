@@ -795,8 +795,20 @@ private fun AgentBar(
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(panelTitle ?: agentName(agent, session.agentId), style = MaterialTheme.typography.titleSmall)
-                Text(session.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // One line each: the bar stays slim above the agent whatever the title or font size.
+                Text(
+                    panelTitle ?: agentName(agent, session.agentId),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    session.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             if (sleepText != null && panelTitle == null) StatusChip(sleepText, Tone.WARN)
             Box {
