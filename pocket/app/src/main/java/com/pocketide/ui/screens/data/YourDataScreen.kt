@@ -1,5 +1,15 @@
 package com.pocketide.ui.screens.data
 
+import android.app.Activity
+import android.app.PendingIntent
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.webkit.CookieManager
+import android.webkit.WebStorage
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,10 +52,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
+import com.pocketide.google.DriveAuthResult
 import com.pocketide.model.AgentInfo
+import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
+import com.pocketide.sync.MoveState
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
@@ -64,6 +79,7 @@ import com.pocketide.ui.manage.MemoryFile
 import com.pocketide.ui.manage.MemoryFiles
 import com.pocketide.ui.manage.NavRow
 import com.pocketide.ui.manage.SectionLabel
+import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.rememberLoad
@@ -87,6 +103,7 @@ private data class PhoneSizes(
 
 private const val DELETE_EVERYTHING = "delete-everything"
 private const val MOVE = "move-account"
+private const val ERASE_OLD = "erase-old-account"
 
 /**
  * Everything PocketIDE keeps, by type and by place (phone, Drive, GitHub), the largest sessions,
@@ -115,11 +132,11 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     val secrets by graph.secrets.values.collectAsStateWithLifecycle()
     val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now = graph.clock::now
     val sizes = rememberLoad(agents, now) { readSizes(graph, agents) }
     val drive = rememberLoad("drive", now) { graph.usage.google() }
     var removeMediaOf by remember { mutableStateOf<SessionRecord?>(null) }
-    var confirmMove by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val largest = remember(sessions) { DataMath.largestSessions(sessions) }
 
@@ -132,7 +149,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
                     "Google Drive (hidden, encrypted)",
                     drive.value?.let { ManageFormat.bytes(it.appDataBytes) } ?: if (drive.loading) "…" else "Unknown",
                 )
-                InfoRow("GitHub", ManageFormat.count(projects.size, "private repository", "private repositories") + " + keyring")
+                InfoRow("GitHub", ManageFormat.count(projects.size, "repository", "repositories") + " + keyring")
                 drive.error?.let { ErrorNote(it) }
                 AsOfLine(drive.at, drive.loading || sizes.loading) {
                     drive.refresh()
@@ -141,7 +158,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             }
         }
         item { SectionLabel("By type") }
-        item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value) }
+        item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
         item { SectionLabel("Largest sessions") }
         item { LargestCard(largest, nav) { removeMediaOf = it } }
         item { SectionLabel("Memory and instructions") }
@@ -160,15 +177,16 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             }
         }
         item { SectionLabel("Move to another Google account") }
-        item { MoveCard(runner) { confirmMove = true } }
+        item { MoveCard(graph, runner) }
         item { SectionLabel("Without the app") }
         item { WithoutAppCard(nav) }
         item { SectionLabel("Delete everything") }
         item {
             SectionCard(null) {
                 Hint(
-                    "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, and the " +
-                        "key halves. Your code stays in your GitHub repositories. This cannot be undone.",
+                    "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, " +
+                        "and the agents' sign-ins on this phone. Your code and the pocketide-keyring repository stay in GitHub. " +
+                        "This cannot be undone.",
                 )
                 Button(
                     onClick = { confirmDelete = true },
@@ -197,21 +215,11 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             onDismiss = { removeMediaOf = null },
         )
     }
-    if (confirmMove) {
-        ConfirmDialog(
-            title = "Move to another Google account?",
-            text = "You choose the new account in Google's own screen. Keep the app open on Wi-Fi until it finishes; " +
-                "your old account's copy is erased only after you agree at the end.",
-            confirmLabel = "Start",
-            destructive = false,
-            onConfirm = {
-                runner.run(MOVE, done = "Everything is in the new Google account.", outlivesScreen = true) { graph.sync.moveToAnotherAccount() }
-            },
-            onDismiss = { confirmMove = false },
-        )
-    }
     if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
-        runner.run(DELETE_EVERYTHING, done = "Everything was deleted.", outlivesScreen = true) { graph.sync.deleteEverything() }
+        runner.run(DELETE_EVERYTHING, done = "Everything was deleted.", outlivesScreen = true) {
+            graph.sync.deleteEverything()
+            clearAppTraces(graph.context)
+        }
     }
 }
 
@@ -245,27 +253,33 @@ private fun TypeRow(title: String, value: String, places: List<Place>, note: Str
 }
 
 @Composable
-private fun ByTypeCard(sessions: List<SessionRecord>, projectCount: Int, secretCount: Int, sizes: PhoneSizes?) {
+private fun ByTypeCard(
+    sessions: List<SessionRecord>,
+    projectCount: Int,
+    secretCount: Int,
+    sizes: PhoneSizes?,
+    drive: Map<ObjectKind, Long>,
+) {
     val live = DataMath.liveSessions(sessions)
     val pending = "…"
     SectionCard(null) {
         TypeRow(
             "Chats",
-            "${ManageFormat.count(live.size, "session")} · ${ManageFormat.bytes(DataMath.chatBytes(sessions))}",
+            "${ManageFormat.count(live.size, "session")} · ${DataMath.places(DataMath.chatBytes(sessions), drive[ObjectKind.CHAT_PIECE])}",
             listOf(Place.PHONE, Place.DRIVE),
             "All in Drive; the phone keeps recent ones. Never in GitHub.",
         )
         HorizontalDivider()
         TypeRow(
             "Media",
-            "${ManageFormat.count(DataMath.mediaCount(sessions), "file")} · ${ManageFormat.bytes(DataMath.mediaBytes(sessions))}",
+            "${ManageFormat.count(DataMath.mediaCount(sessions), "file")} · ${DataMath.places(DataMath.mediaBytes(sessions), drive[ObjectKind.MEDIA])}",
             listOf(Place.PHONE, Place.DRIVE),
             "Screenshots, videos and files in your chats.",
         )
         HorizontalDivider()
         TypeRow(
             "Memory and instructions",
-            sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${ManageFormat.bytes(it.memoryBytes)}" } ?: pending,
+            sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${DataMath.places(it.memoryBytes, drive[ObjectKind.MEMORY])}" } ?: pending,
             listOf(Place.PHONE, Place.DRIVE),
         )
         HorizontalDivider()
@@ -282,7 +296,7 @@ private fun ByTypeCard(sessions: List<SessionRecord>, projectCount: Int, secretC
         HorizontalDivider()
         TypeRow("The computer", sizes?.let { ManageFormat.bytes(it.computer) } ?: pending, listOf(Place.PHONE), "Rebuildable any time; nothing in it is the only copy.")
         HorizontalDivider()
-        TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. After a new phone or a reset you sign in to each agent again.")
+        TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. On a new phone you sign in to each agent again.")
     }
 }
 
@@ -341,18 +355,113 @@ private fun MemoryCard(agents: List<AgentInfo>, memory: Map<String, List<MemoryF
     }
 }
 
+/**
+ * "Move to another Google account" (§5.5): Google's own window picks the account, the sync
+ * engine copies one file at a time, then the owner decides when the old copy is erased.
+ */
 @Composable
-private fun MoveCard(runner: ActionRunner, onStart: () -> Unit) {
+private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
+    val move by graph.sync.move.collectAsStateWithLifecycle()
+    var confirmStart by rememberSaveable { mutableStateOf(false) }
+    var confirmErase by rememberSaveable { mutableStateOf(false) }
+    var launchedFor by remember { mutableStateOf<PendingIntent?>(null) }
+    val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            runner.say("Google's window was closed. Nothing moved.")
+            return@rememberLauncherForActivityResult
+        }
+        runner.run(MOVE, outlivesScreen = true) { continueMove(graph, result.data) }
+    }
+    fun openConsent(intent: PendingIntent) {
+        launchedFor = intent
+        try {
+            consent.launch(IntentSenderRequest.Builder(intent.intentSender).build())
+        } catch (_: ActivityNotFoundException) {
+            runner.say("Google's window could not open. Update Google Play services and try again.")
+        }
+    }
+    val current = move
+    // Google's window opens once by itself after "Start"; the button below reopens it.
+    LaunchedEffect(current) {
+        if (current is MoveState.NeedsConsent && launchedFor != current.intent) openConsent(current.intent)
+    }
+    val busy = runner.isBusy(MOVE) || runner.isBusy(ERASE_OLD) || current is MoveState.Copying
+
     SectionCard(null) {
         Text("1. Sign in to the new Google account.", style = MaterialTheme.typography.bodyMedium)
         Text("2. The app copies every file of your vault, one at a time, so the phone never needs double space.", style = MaterialTheme.typography.bodyMedium)
         Text("3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.", style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = onStart, enabled = !runner.isBusy(MOVE)) {
-            Icon(Icons.Outlined.SwapHoriz, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(if (runner.isBusy(MOVE)) "Moving…" else "Move to another account")
+        ManageText.move(current)?.let { ToneLine(it) }
+        ManageText.moveProgress(current)?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+        if (busy && current !is MoveState.Copying) LinearProgressIndicator(Modifier.fillMaxWidth())
+        when (current) {
+            is MoveState.NeedsConsent -> OutlinedButton(onClick = { openConsent(current.intent) }, enabled = !busy) {
+                Text("Open Google's window")
+            }
+            is MoveState.ReadyToEraseOld -> Button(onClick = { confirmErase = true }, enabled = !busy) {
+                Text("Erase the copy in ${current.from}")
+            }
+            is MoveState.Copying -> Hint("Keep the app open on Wi-Fi. If it stops, it continues where it left off.")
+            else -> OutlinedButton(onClick = { confirmStart = true }, enabled = !busy) {
+                Icon(Icons.Outlined.SwapHoriz, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (current is MoveState.Failed) "Try again" else "Move to another account")
+            }
         }
-        if (runner.isBusy(MOVE)) LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+
+    if (confirmStart) {
+        ConfirmDialog(
+            title = "Move to another Google account?",
+            text = "You choose the new account in Google's own window. Keep the app open on Wi-Fi until it finishes; " +
+                "your old account's copy is erased only after you agree at the end.",
+            confirmLabel = "Start",
+            destructive = false,
+            onConfirm = { runner.run(MOVE, outlivesScreen = true) { graph.sync.moveToAnotherAccount() } },
+            onDismiss = { confirmStart = false },
+        )
+    }
+    val ready = current as? MoveState.ReadyToEraseOld
+    if (confirmErase && ready != null) {
+        ConfirmDialog(
+            title = "Erase the copy in ${ready.from}?",
+            text = "Everything is already in ${ready.to} and was checked. PocketIDE's hidden folder in ${ready.from} is " +
+                "erased for good. Nothing else in that account is touched.",
+            confirmLabel = "Erase",
+            destructive = true,
+            onConfirm = { runner.run(ERASE_OLD, outlivesScreen = true) { graph.sync.eraseOldAccountCopy() } },
+            onDismiss = { confirmErase = false },
+        )
+    }
+}
+
+/** Google approved the new account: finish its consent, then copy everything there. */
+private suspend fun continueMove(graph: AppGraph, data: Intent?) {
+    when (val result = graph.driveAuth.completeConsent(data)) {
+        is DriveAuthResult.Authorized -> {
+            val email = result.email ?: throw IllegalStateException("Google did not say which account was chosen. Try again.")
+            graph.sync.moveToAccount(email)
+        }
+        is DriveAuthResult.NeedsConsent -> throw IllegalStateException("Google asks again. Tap Open Google's window.")
+        is DriveAuthResult.Failed -> throw IllegalStateException(result.why)
+    }
+}
+
+/**
+ * After "Delete everything": the agents' screens keep cookies and site storage in Android's
+ * WebView, and home-screen shortcuts would point at projects that are gone. Each step is
+ * independent; a phone without a working WebView still gets the others.
+ */
+private suspend fun clearAppTraces(context: Context) = withContext(Dispatchers.Main) {
+    runCatching {
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+    }
+    runCatching { WebStorage.getInstance().deleteAllData() }
+    runCatching {
+        ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+        val pinned = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).map { it.id }
+        if (pinned.isNotEmpty()) ShortcutManagerCompat.disableShortcuts(context, pinned, "Removed with the rest of your data.")
     }
 }
 
@@ -372,11 +481,24 @@ private fun WithoutAppCard(nav: PocketNav) {
         LinkRow("Drive settings → Manage apps", "https://drive.google.com/drive/settings", nav)
         LinkRow("What uses your Google storage", "https://one.google.com/storage", nav)
         HorizontalDivider()
-        Text("Remove GitHub access: GitHub → Settings → Applications → revoke PocketIDE. Delete pocketide-keyring too if you want.", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Remove GitHub access: GitHub → Settings → Applications. PocketIDE is on two tabs there: Installed GitHub Apps " +
+                "(Uninstall) and Authorized GitHub Apps (Revoke). Delete pocketide-keyring too if you want.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
         LinkRow("GitHub applications", "https://github.com/settings/applications", nav)
+        LinkRow("Installed GitHub Apps", "https://github.com/settings/installations", nav)
+        LinkRow("Authorized GitHub Apps", "https://github.com/settings/apps/authorizations", nav)
         Text("Remove Google access: your Google Account → Security → third-party connections → PocketIDE.", style = MaterialTheme.typography.bodyMedium)
         LinkRow("Google third-party connections", "https://myaccount.google.com/connections", nav)
         Hint("The Drive phone app does not have Manage apps; the website does.")
+        HorizontalDivider()
+        Text(
+            "Agent sign-ins: deleting here removes them from this phone. To end them on the company's side too, sign out " +
+                "of other devices in your Claude, ChatGPT and Google account settings.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        LinkRow("Google: your devices", "https://myaccount.google.com/device-activity", nav)
     }
 }
 
@@ -385,8 +507,8 @@ private fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit)
     var typed by rememberSaveable { mutableStateOf("") }
     ConfirmDialog(
         title = "Delete everything?",
-        text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive. Your GitHub " +
-            "repositories are not touched. Type DELETE to confirm.",
+        text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive, with the " +
+            "agents' sign-ins on this phone. Your GitHub repositories are not touched. Type DELETE to confirm.",
         confirmLabel = "Delete everything",
         destructive = true,
         confirmEnabled = DataMath.deleteConfirmed(typed),

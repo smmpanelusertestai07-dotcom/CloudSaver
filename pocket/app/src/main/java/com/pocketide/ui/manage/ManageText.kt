@@ -3,6 +3,7 @@ package com.pocketide.ui.manage
 import com.pocketide.core.Settings
 import com.pocketide.model.Guard
 import com.pocketide.rooms.RoomState
+import com.pocketide.sync.MoveState
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.Tone
 
@@ -36,6 +37,26 @@ object ManageText {
         is RoomState.Running -> Told(if (state.memoryBytes > 0) "Running · ${bytes(state.memoryBytes)}" else "Running", Tone.OK)
         is RoomState.Failed -> Told(state.why, Tone.ERROR)
     }
+
+    /** Where "Move to another Google account" stands; null when no move is going on. */
+    fun move(state: MoveState): Told? = when (state) {
+        MoveState.Idle -> null
+        is MoveState.NeedsConsent -> Told("Choose the new account in Google's window.", Tone.WARN)
+        is MoveState.Copying -> Told(
+            if (state.total == 0) "Getting ready to copy to ${state.to}…" else "Copying to ${state.to}: ${state.done} of ${state.total} files.",
+            Tone.WARN,
+        )
+        is MoveState.ReadyToEraseOld -> Told(
+            "Everything is in ${state.to} and checked. The copy in ${state.from} is still there until you erase it.",
+            Tone.OK,
+        )
+        is MoveState.Done -> Told("Everything is in ${state.to}.", Tone.OK)
+        is MoveState.Failed -> Told(state.why.ifBlank { PlainError.GENERIC }, Tone.ERROR)
+    }
+
+    /** 0..1 while files are copied, else null. */
+    fun moveProgress(state: MoveState): Float? =
+        (state as? MoveState.Copying)?.takeIf { it.total > 0 }?.let { (it.done.toFloat() / it.total).coerceIn(0f, 1f) }
 
     /** The retention choices of §6.8, one line each. */
     fun retention(s: Settings): List<Pair<String, String>> = listOf(

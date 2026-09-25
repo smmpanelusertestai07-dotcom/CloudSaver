@@ -74,9 +74,28 @@ fun <T> rememberLoad(key: Any?, now: () -> Long, block: suspend () -> T): LoadSt
 }
 
 /**
+ * Keys of work that outlives its screen (moving or deleting everything, a reset). Shared by every
+ * runner, so leaving the screen and coming back can never start the same work twice.
+ */
+internal object OutlivingWork {
+    var keys by mutableStateOf(emptySet<String>())
+        private set
+
+    /** Adds [key] unless it is already running; false when it was. */
+    fun claim(key: String): Boolean = synchronized(this) {
+        if (key in keys) return false
+        keys = keys + key
+        true
+    }
+
+    fun release(key: String) = synchronized(this) { keys = keys - key }
+}
+
+/**
  * Runs the owner's taps: one at a time per key, the result as a short message. Work that must
  * finish even when the owner leaves the screen (moving or deleting everything) runs in the
- * app's scope instead of the screen's.
+ * app's scope instead of the screen's. Keys change from the app's threads too, so every change
+ * goes through one lock.
  */
 @Stable
 class ActionRunner internal constructor(private val screenScope: CoroutineScope, private val appScope: CoroutineScope) {
@@ -84,7 +103,7 @@ class ActionRunner internal constructor(private val screenScope: CoroutineScope,
     var busy by mutableStateOf(emptySet<String>())
         private set
 
-    fun isBusy(key: String) = key in busy
+    fun isBusy(key: String) = key in busy || key in OutlivingWork.keys
 
     fun <T> run(
         key: String,
@@ -94,25 +113,37 @@ class ActionRunner internal constructor(private val screenScope: CoroutineScope,
         onSuccess: (T) -> Unit = {},
         block: suspend () -> T,
     ) {
-        if (key in busy) return
-        busy = busy + key
-        (if (outlivesScreen) appScope else screenScope).launch {
-            try {
-                attempt { block() }
-                    .onSuccess {
-                        onSuccess(it)
-                        if (done != null) say(done)
-                    }
-                    .onFailure(onFailure)
-            } finally {
-                busy = busy - key
-            }
+        if (!claim(key)) return
+        if (outlivesScreen && !OutlivingWork.claim(key)) {
+            release(key)
+            return
+        }
+        val job = (if (outlivesScreen) appScope else screenScope).launch {
+            attempt { block() }
+                .onSuccess {
+                    onSuccess(it)
+                    if (done != null) say(done)
+                }
+                .onFailure(onFailure)
+        }
+        // Runs even when the scope was already cancelled and the block never started.
+        job.invokeOnCompletion {
+            if (outlivesScreen) OutlivingWork.release(key)
+            release(key)
         }
     }
 
     fun say(text: String) {
         screenScope.launch { snackbar.showSnackbar(text) }
     }
+
+    private fun claim(key: String): Boolean = synchronized(this) {
+        if (key in busy) return false
+        busy = busy + key
+        true
+    }
+
+    private fun release(key: String) = synchronized(this) { busy = busy - key }
 }
 
 @Composable

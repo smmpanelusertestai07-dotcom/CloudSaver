@@ -40,6 +40,7 @@ import com.pocketide.ui.manage.MemoryDocument
 import com.pocketide.ui.manage.MemoryFile
 import com.pocketide.ui.manage.MemoryFiles
 import com.pocketide.ui.manage.PlainError
+import com.pocketide.ui.manage.SavePlan
 import com.pocketide.ui.manage.attempt
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.nav.PocketNav
@@ -62,6 +63,7 @@ fun MemoryEditor(graph: AppGraph, home: File, file: MemoryFile, agentName: Strin
     var before by remember(file.file) { mutableStateOf("") }
     var after by remember(file.file) { mutableStateOf("") }
     var confirmDiscard by remember { mutableStateOf(false) }
+    var changedOnDisk by remember { mutableStateOf(false) }
 
     LaunchedEffect(file.file) {
         attempt { withContext(Dispatchers.IO) { MemoryFiles.read(home, file.file) } }
@@ -79,11 +81,37 @@ fun MemoryEditor(graph: AppGraph, home: File, file: MemoryFile, agentName: Strin
     val close = { if (changed) confirmDiscard = true else onClose() }
     BackHandler(onBack = close)
 
+    fun save(overwrite: Boolean) {
+        val opened = document ?: return
+        runner.run(
+            key = "save",
+            onFailure = { runner.say(localError(it)) },
+            onSuccess = { outcome: SaveOutcome ->
+                when (outcome) {
+                    is SaveOutcome.Saved -> {
+                        loaded = Loaded(outcome.document)
+                        before = outcome.document.before
+                        after = outcome.document.after
+                        runner.say("Saved.")
+                    }
+                    SaveOutcome.ChangedOnDisk -> changedOnDisk = true
+                    is SaveOutcome.Refused -> runner.say(outcome.why)
+                }
+            },
+        ) { save(graph, home, file.file, opened, before, after, overwrite) }
+    }
+
     ManagePage(file.label, nav, runner, onBack = close) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(agentName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Hint("Saved here and synced, encrypted, to your Drive. The agent reads it at the start of each session.")
+                Hint(
+                    if (file.synced) {
+                        "Saved here and synced, encrypted, to your Drive. The agent reads it at the start of each session."
+                    } else {
+                        "Saved on this phone only. The agent reads it at the start of each session."
+                    },
+                )
             }
         }
         when {
@@ -97,18 +125,7 @@ fun MemoryEditor(graph: AppGraph, home: File, file: MemoryFile, agentName: Strin
                 }
                 item {
                     Button(
-                        onClick = {
-                            runner.run(
-                                key = "save",
-                                done = "Saved.",
-                                onFailure = { runner.say(localError(it)) },
-                                onSuccess = { saved: MemoryDocument ->
-                                    loaded = Loaded(saved)
-                                    before = saved.before
-                                    after = saved.after
-                                },
-                            ) { save(graph, home, file.file, before, document.managed, after) }
-                        },
+                        onClick = { save(overwrite = false) },
                         enabled = changed && !runner.isBusy("save"),
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (runner.isBusy("save")) "Saving…" else "Save") }
@@ -127,24 +144,49 @@ fun MemoryEditor(graph: AppGraph, home: File, file: MemoryFile, agentName: Strin
             onDismiss = { confirmDiscard = false },
         )
     }
+    if (changedOnDisk) {
+        ConfirmDialog(
+            title = "This file changed",
+            text = "$agentName wrote to it after you opened it. Replace it with your text, or cancel, copy what you " +
+                "typed, and open the file again to see the new version.",
+            confirmLabel = "Replace",
+            destructive = true,
+            onConfirm = { save(overwrite = true) },
+            onDismiss = { changedOnDisk = false },
+        )
+    }
 }
 
-/**
- * Writes the owner's parts around the app's block as it is on disk now: if the room rewrote
- * its block while the editor was open, that newer block is kept.
- */
-private suspend fun save(graph: AppGraph, home: File, file: File, before: String, loadedBlock: String?, after: String): MemoryDocument =
-    withContext(Dispatchers.IO) {
-        val current = MemoryDocument.parse(MemoryFiles.read(home, file))
-        val block = current.managed ?: loadedBlock
-        val text = MemoryDocument.rebuild(before, block, after)
-        MemoryFiles.save(home, file, text)
-        attempt { graph.sync.requestSync("instructions edited") }
-        MemoryDocument.parse(text)
+private sealed interface SaveOutcome {
+    data class Saved(val document: MemoryDocument) : SaveOutcome
+    data object ChangedOnDisk : SaveOutcome
+    data class Refused(val why: String) : SaveOutcome
+}
+
+/** Reads the file as it is now and writes the owner's parts around the app's current block. */
+private suspend fun save(
+    graph: AppGraph,
+    home: File,
+    file: File,
+    loaded: MemoryDocument,
+    before: String,
+    after: String,
+    overwrite: Boolean,
+): SaveOutcome = withContext(Dispatchers.IO) {
+    val now = MemoryDocument.parse(MemoryFiles.read(home, file))
+    when (val plan = MemoryDocument.plan(loaded, now, before, after, overwrite)) {
+        SavePlan.ChangedOnDisk -> SaveOutcome.ChangedOnDisk
+        is SavePlan.Refused -> SaveOutcome.Refused(plan.why)
+        is SavePlan.Write -> {
+            MemoryFiles.save(home, file, plan.text)
+            attempt { graph.sync.requestSync("instructions edited") }
+            SaveOutcome.Saved(MemoryDocument.parse(plan.text))
+        }
     }
+}
 
 /** Local file errors carry their own plain sentence; anything else gets the general one. */
-private fun localError(error: Throwable): String = PlainError.readable(error.message) ?: "Could not open or save this file."
+private fun localError(error: Throwable): String = PlainError.local(error, "Could not open or save this file.")
 
 @Composable
 private fun EditorField(label: String, value: String, onChange: (String) -> Unit) {

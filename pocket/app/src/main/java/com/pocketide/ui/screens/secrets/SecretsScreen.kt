@@ -48,6 +48,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.secrets.ProjectValue
@@ -177,6 +179,11 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
             onDismiss = { editing = null },
             onSave = { name, kind, value ->
                 editing = null
+                if (runner.isBusy("save:$name")) {
+                    value.fill('\u0000')
+                    runner.say("$name is still being saved. Try again in a moment.")
+                    return@ValueEditor
+                }
                 runner.run("save:$name", done = "$name saved.") {
                     try {
                         graph.secrets.set(projectId, name, kind, value)
@@ -215,6 +222,8 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
             onDismiss = { pushing = null },
         )
     }
+    // A shown value is hidden as soon as the app leaves the screen (recent apps, another app).
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { revealed = null }
     revealed?.let { shown ->
         DisposableEffect(shown) { onDispose { shown.chars.fill('\u0000') } }
         AlertDialog(
@@ -315,6 +324,13 @@ private fun ValueEditor(
                 )
                 KindChoice(SecretKind.VARIABLE, kind, "Variable", "The agent sees it in its room.") { kind = it }
                 KindChoice(SecretKind.SECRET, kind, "Secret", "Never the agent. Set-up steps and GitHub builds only.") { kind = it }
+                if (existing?.kind == SecretKind.SECRET && kind == SecretKind.VARIABLE) {
+                    Text(
+                        "As a Variable, the agent will see this value in its room.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 OutlinedTextField(
                     value = value,
                     onValueChange = { value = it },

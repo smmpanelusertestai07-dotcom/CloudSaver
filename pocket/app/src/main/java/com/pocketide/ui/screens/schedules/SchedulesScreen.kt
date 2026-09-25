@@ -73,7 +73,9 @@ fun SchedulesScreen(projectId: String?, nav: PocketNav) {
     val runner = rememberActionRunner()
     val all by graph.schedules.tasks.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
-    val agents by graph.agents.installed.collectAsStateWithLifecycle()
+    val installed by graph.agents.installed.collectAsStateWithLifecycle()
+    // Only the built-in three have a command-line mode a task can run through.
+    val agents = remember(installed) { installed.filter { it.official } }
     val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
     val tasks = remember(all, projectId) { all.filter { projectId == null || it.projectId == projectId }.sortedBy { it.title.lowercase() } }
     var editing by remember { mutableStateOf<ScheduledTask?>(null) }
@@ -112,7 +114,7 @@ fun SchedulesScreen(projectId: String?, nav: PocketNav) {
             TaskCard(
                 task = task,
                 project = projects.firstOrNull { it.id == task.projectId },
-                agent = agents.firstOrNull { it.id == task.agentId },
+                agent = installed.firstOrNull { it.id == task.agentId },
                 now = graph.clock.now(),
                 runner = runner,
                 onToggle = { on -> runner.run("save:${task.id}") { graph.schedules.save(task.copy(enabled = on)) } },
@@ -224,7 +226,7 @@ private fun TaskEditor(
     onSave: (ScheduledTask) -> Unit,
 ) {
     var projectId by remember { mutableStateOf(existing?.projectId ?: fixedProjectId ?: projects.singleOrNull()?.id) }
-    var agentId by remember { mutableStateOf(existing?.agentId ?: agents.firstOrNull { it.official }?.id) }
+    var agentId by remember { mutableStateOf(existing?.agentId?.takeIf { id -> agents.any { it.id == id } } ?: agents.firstOrNull()?.id) }
     var title by remember { mutableStateOf(existing?.title.orEmpty()) }
     var prompt by remember { mutableStateOf(existing?.prompt.orEmpty()) }
     var hours by remember { mutableStateOf((existing?.everyHours ?: 24).toString()) }

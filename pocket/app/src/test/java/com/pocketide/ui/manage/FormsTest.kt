@@ -93,5 +93,14 @@ class FormsTest {
         assertTrue(DataMath.deleteConfirmed(" DELETE "))
         assertFalse(DataMath.deleteConfirmed("delete"))
         assertFalse(DataMath.deleteConfirmed("DELET"))
+        assertFalse(DataMath.deleteConfirmed("DELETE​"))
+        assertFalse(DataMath.deleteConfirmed("ＤＥＬＥＴＥ"))
+    }
+
+    @Test
+    fun `sizes by place leave Drive out until it is counted`() {
+        assertEquals("12 MB here", DataMath.places(12_000_000, null))
+        assertEquals("12 MB here · 0 B in Drive", DataMath.places(12_000_000, 0))
+        assertEquals("0 B here · 4 MB in Drive", DataMath.places(0, 4_000_000))
     }
 }

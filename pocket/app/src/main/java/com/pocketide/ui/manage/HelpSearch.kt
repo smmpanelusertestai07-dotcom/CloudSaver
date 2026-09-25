@@ -83,10 +83,13 @@ object HelpSearch {
     fun snippet(text: String, words: List<String>, radius: Int = SNIPPET_RADIUS): String {
         val flat = text.replace(Regex("\\s+"), " ").trim()
         if (flat.isEmpty()) return ""
-        val lower = flat.lowercase(Locale.ROOT)
-        val hit = words.map { lower.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: 0
-        val start = (hit - radius).coerceAtLeast(0).let { wordStart(flat, it) }
-        val end = (hit + radius).coerceAtMost(flat.length).let { wordEnd(flat, it) }
+        // Searched in the text itself: lower-casing can change a string's length ("İ").
+        val match = words.map { it to flat.indexOf(it, ignoreCase = true) }.filter { it.second >= 0 }.minByOrNull { it.second }
+        val hit = match?.second ?: 0
+        val hitEnd = (hit + (match?.first?.length ?: 0)).coerceAtMost(flat.length)
+        val reach = radius.coerceAtLeast(0)
+        val start = wordStart(flat, (hit - reach).coerceAtLeast(0), hit)
+        val end = wordEnd(flat, (hit + reach).coerceIn(hitEnd, flat.length), hitEnd)
         val prefix = if (start > 0) "…" else ""
         val suffix = if (end < flat.length) "…" else ""
         return prefix + flat.substring(start, end).trim() + suffix
@@ -95,15 +98,82 @@ object HelpSearch {
     private fun bodyOf(section: DocSection): String =
         listOf(section.summary, DocText.of(section.blocks)).filter { it.isNotBlank() }.joinToString("\n")
 
-    private fun wordStart(text: String, index: Int): Int {
+    /** Moves [index] forward to the next word, never past [hit]. */
+    private fun wordStart(text: String, index: Int, hit: Int): Int {
         if (index == 0) return 0
         val space = text.indexOf(' ', index)
-        return if (space in index until index + 15) space + 1 else index
+        return if (space >= 0 && space < minOf(index + 15, hit)) space + 1 else index
     }
 
-    private fun wordEnd(text: String, index: Int): Int {
+    /** Moves [index] back to the end of the previous word, never before [matchEnd]. */
+    private fun wordEnd(text: String, index: Int, matchEnd: Int): Int {
         if (index >= text.length) return text.length
         val space = text.lastIndexOf(' ', index)
-        return if (space > index - 15 && space > 0) space else index
+        return if (space > maxOf(index - 15, matchEnd - 1)) space else index
     }
+}
+
+/** Where a Help deep link goes. */
+sealed interface HelpRoute {
+    data object Index : HelpRoute
+    data object AllQuestions : HelpRoute
+    data object Glossary : HelpRoute
+    data class Page(val section: DocSection) : HelpRoute
+    data class Question(val entry: FaqEntry) : HelpRoute
+    data object Missing : HelpRoute
+
+    companion object {
+        const val FAQ = "faq"
+        const val GLOSSARY = "glossary"
+
+        /**
+         * A page wins over a question with the same id, so a question can never hide a page; a
+         * stale or unknown id shows "Page not found" rather than the wrong page.
+         */
+        fun resolve(id: String?, sections: List<DocSection>, agentPages: List<DocSection>, faq: List<FaqEntry>): HelpRoute {
+            val key = id?.trim()?.takeIf { it.isNotEmpty() } ?: return Index
+            if (key == FAQ) return AllQuestions
+            if (key == GLOSSARY) return Glossary
+            (sections.firstOrNull { it.id == key } ?: agentPages.firstOrNull { it.id == key })?.let { return Page(it) }
+            faq.firstOrNull { it.id == key }?.let { return Question(it) }
+            return Missing
+        }
+    }
+}
+
+/**
+ * The groups of the Help index and the list position each starts at, for the chips above it.
+ * It mirrors the index exactly: the search field, then Guide (or its empty note), Agents when
+ * there are any, More (label and card) and Your pages.
+ */
+object HelpIndexLayout {
+    data class Group(val label: String, val start: Int)
+
+    fun groups(sectionCount: Int, agentCount: Int): List<Group> {
+        val out = mutableListOf<Group>()
+        var at = 1
+        out += Group("Guide", at)
+        at += if (sectionCount > 0) 1 + sectionCount else 1
+        if (agentCount > 0) {
+            out += Group("Agents", at)
+            at += 1 + agentCount
+        }
+        out += Group("More", at)
+        at += 2
+        out += Group("Your pages", at)
+        return out
+    }
+
+    /** The group the first visible row belongs to. */
+    fun active(groups: List<Group>, firstVisible: Int): Int =
+        groups.indexOfLast { it.start <= firstVisible }.coerceAtLeast(0)
+}
+
+/** Links to the owner's own pages, built from their account name as plain strings. */
+object PersonalLinks {
+    private val login = Regex("[A-Za-z0-9][A-Za-z0-9-]{0,38}")
+
+    /** The private keyring repository, or null when [githubLogin] is not a GitHub user name. */
+    fun keyring(githubLogin: String?, repo: String): String? =
+        githubLogin?.takeIf { login.matches(it) }?.let { "https://github.com/$it/$repo" }
 }

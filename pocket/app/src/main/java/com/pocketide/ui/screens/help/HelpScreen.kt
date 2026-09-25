@@ -1,17 +1,23 @@
 package com.pocketide.ui.screens.help
 
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -25,20 +31,27 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -49,23 +62,27 @@ import com.pocketide.docs.DocSection
 import com.pocketide.docs.DocsContent
 import com.pocketide.docs.FaqEntry
 import com.pocketide.docs.GlossaryEntry
+import com.pocketide.docs.Legal
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.manage.EmptyNote
 import com.pocketide.ui.manage.HelpHit
+import com.pocketide.ui.manage.HelpIndexLayout
+import com.pocketide.ui.manage.HelpRoute
 import com.pocketide.ui.manage.HelpSearch
 import com.pocketide.ui.manage.Hint
+import com.pocketide.ui.manage.LinkRow
 import com.pocketide.ui.manage.ManagePage
 import com.pocketide.ui.manage.NavRow
+import com.pocketide.ui.manage.PersonalLinks
 import com.pocketide.ui.manage.SectionLabel
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.nav.PocketNav
-
-/** Ids of the Help pages that are not doc sections. */
-object HelpPages {
-    const val FAQ = "faq"
-    const val GLOSSARY = "glossary"
-}
+import com.pocketide.vault.VaultKeyFiles
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 
 /**
  * The in-app docs: a searchable index, one page per section (every text natively selectable),
@@ -76,27 +93,38 @@ fun HelpScreen(sectionId: String?, nav: PocketNav) {
     val graph = rememberGraph()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
     val agentPages = remember(agents) { agents.map { DocsContent.agentPage(it) } }
-    val id = sectionId?.trim()?.takeIf { it.isNotEmpty() }
-    when {
-        id == null -> HelpIndex(agentPages, nav)
-        id == HelpPages.FAQ -> FaqPage(openId = null, nav = nav)
-        id == HelpPages.GLOSSARY -> GlossaryPage(nav)
-        DocsContent.faq.any { it.id == id } -> FaqPage(openId = id, nav = nav)
-        else -> {
-            val section = DocsContent.sections.firstOrNull { it.id == id } ?: agentPages.firstOrNull { it.id == id }
-            if (section != null) SectionPage(section, nav) else MissingPage(nav)
-        }
+    val route = remember(sectionId, agentPages) {
+        HelpRoute.resolve(sectionId, DocsContent.sections, agentPages, DocsContent.faq)
+    }
+    when (route) {
+        HelpRoute.Index -> HelpIndex(agentPages, nav)
+        HelpRoute.AllQuestions -> FaqPage(nav)
+        HelpRoute.Glossary -> GlossaryPage(nav)
+        is HelpRoute.Page -> SectionPage(route.section, nav)
+        is HelpRoute.Question -> QuestionPage(route.entry, nav)
+        HelpRoute.Missing -> MissingPage(nav)
     }
 }
 
 @Composable
 private fun HelpIndex(agentPages: List<DocSection>, nav: PocketNav) {
+    val graph = rememberGraph()
+    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val sections = DocsContent.sections
     val hits = remember(query, agentPages) {
         HelpSearch.search(query, sections + agentPages, DocsContent.faq, DocsContent.glossary)
     }
-    ManagePage("Help", nav) {
+    val keyring = PersonalLinks.keyring(account?.login, VaultKeyFiles.KEYRING_REPO)
+    val installation = remember(graph) { runCatching { graph.gitHubAuth.installUrl() }.getOrNull() }
+    val listState = rememberLazyListState()
+    val groups = remember(sections.size, agentPages.size) { HelpIndexLayout.groups(sections.size, agentPages.size) }
+    ManagePage(
+        "Help",
+        nav,
+        state = listState,
+        header = if (query.isBlank()) ({ GroupChips(groups, listState) }) else null,
+    ) {
         item {
             OutlinedTextField(
                 value = query,
@@ -113,7 +141,51 @@ private fun HelpIndex(agentPages: List<DocSection>, nav: PocketNav) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
         }
-        if (query.isNotBlank()) searchResults(hits, nav) else contents(sections, agentPages, nav)
+        if (query.isNotBlank()) {
+            searchResults(hits, nav)
+        } else {
+            contents(sections, agentPages, nav)
+            item { SectionLabel("Your pages") }
+            item {
+                SectionCard(null) {
+                    if (keyring != null) LinkRow("Your keyring repository", keyring, nav)
+                    if (installation != null) LinkRow("PocketIDE's access to your repositories", installation, nav)
+                    LinkRow("Drive settings → Manage apps", DRIVE_SETTINGS, nav)
+                }
+            }
+            item {
+                Hint(
+                    "Press and hold any text in Help to copy, share or translate it.",
+                    Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+private const val DRIVE_SETTINGS = "https://drive.google.com/drive/settings"
+
+/** Chips above the index: the group in view is selected; a tap scrolls to its group. */
+@Composable
+private fun GroupChips(groups: List<HelpIndexLayout.Group>, listState: LazyListState) {
+    val scope = rememberCoroutineScope()
+    val active by remember(groups) {
+        derivedStateOf {
+            if (!listState.canScrollForward && listState.firstVisibleItemIndex > 0) groups.lastIndex
+            else HelpIndexLayout.active(groups, listState.firstVisibleItemIndex)
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        groups.forEachIndexed { index, group ->
+            FilterChip(
+                selected = index == active,
+                onClick = { scope.launch { listState.animateScrollToItem(group.start) } },
+                label = { Text(group.label) },
+            )
+        }
     }
 }
 
@@ -126,7 +198,7 @@ private fun LazyListScope.searchResults(hits: List<HelpHit>, nav: PocketNav) {
         val (title, kind, target) = when (hit) {
             is HelpHit.Section -> Triple(hit.section.title, "Page", hit.section.id)
             is HelpHit.Faq -> Triple(hit.entry.question, "Question", hit.entry.id)
-            is HelpHit.Term -> Triple(hit.entry.term, "Glossary", HelpPages.GLOSSARY)
+            is HelpHit.Term -> Triple(hit.entry.term, "Glossary", HelpRoute.GLOSSARY)
         }
         HelpCard(title = title, overline = kind, body = hit.snippet) { nav.help(target) }
     }
@@ -163,18 +235,12 @@ private fun LazyListScope.contents(sections: List<DocSection>, agentPages: List<
     item {
         SectionCard(null) {
             NavRow(Icons.Outlined.QuestionAnswer, "Questions and answers", countOrNone(DocsContent.faq.size, "question")) {
-                nav.help(HelpPages.FAQ)
+                nav.help(HelpRoute.FAQ)
             }
             NavRow(Icons.Outlined.Translate, "Glossary", countOrNone(DocsContent.glossary.size, "word")) {
-                nav.help(HelpPages.GLOSSARY)
+                nav.help(HelpRoute.GLOSSARY)
             }
         }
-    }
-    item {
-        Hint(
-            "Press and hold any text in Help to copy, share or translate it.",
-            Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-        )
     }
 }
 
@@ -203,17 +269,21 @@ private fun HelpCard(title: String, overline: String?, body: String?, icon: Bool
 }
 
 @Composable
+private fun PageTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 4.dp).semantics { heading() },
+    )
+}
+
+@Composable
 private fun SectionPage(section: DocSection, nav: PocketNav) {
-    val related = remember(section.id) { DocsContent.faq.filter { it.sectionId == section.id } }
+    val related = remember(section.id) { DocsContent.faqFor(section.id) }
+    val notices = if (section.id == Legal.openSource.id) rememberNotices() else null
     ManagePage(section.title, nav) {
-        item {
-            Text(
-                section.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 4.dp).semantics { heading() },
-            )
-        }
+        item { PageTitle(section.title) }
         if (section.summary.isNotBlank()) {
             item { SelectableText(section.summary, Modifier.fillMaxWidth(), sizeSp = 16f) }
         }
@@ -221,6 +291,7 @@ private fun SectionPage(section: DocSection, nav: PocketNav) {
             item { EmptyNote(Icons.AutoMirrored.Outlined.MenuBook, "Nothing here yet", "This page has no text in this version.") }
         }
         items(section.blocks.size) { index -> DocBlockView(section.blocks[index], nav) }
+        if (notices != null) item { NoticesText(notices) }
         if (related.isNotEmpty()) {
             item { SectionLabel("Questions") }
             items(related, key = { it.id }) { entry ->
@@ -230,17 +301,76 @@ private fun SectionPage(section: DocSection, nav: PocketNav) {
     }
 }
 
+/** The open-source notices text shipped in the APK's assets; null while it is read. */
+private sealed interface Notices {
+    data object Loading : Notices
+    data class Text(val text: String) : Notices
+    data object Unreadable : Notices
+}
+
 @Composable
-private fun FaqPage(openId: String?, nav: PocketNav) {
+private fun rememberNotices(): Notices {
+    val context = LocalContext.current
+    val notices by produceState<Notices>(Notices.Loading, context) {
+        value = withContext(Dispatchers.IO) { readNotices(context) }
+    }
+    return notices
+}
+
+private fun readNotices(context: Context): Notices = try {
+    Notices.Text(context.assets.open(DocsContent.NOTICES_ASSET).bufferedReader().use { it.readText() })
+} catch (_: IOException) {
+    Notices.Unreadable
+}
+
+@Composable
+private fun NoticesText(notices: Notices) {
+    when (notices) {
+        Notices.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+        Notices.Unreadable -> Hint("The notices could not be read from the app. They are published with each release.")
+        is Notices.Text -> SelectableText(notices.text, Modifier.fillMaxWidth(), sizeSp = 13f)
+    }
+}
+
+@Composable
+private fun FaqPage(nav: PocketNav) {
     val faq = DocsContent.faq
-    var open by rememberSaveable(openId) { mutableStateOf(listOfNotNull(openId)) }
-    ManagePage("Questions and answers", nav) {
+    var open by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val allOpen = faq.isNotEmpty() && open.size == faq.size
+    ManagePage(
+        "Questions and answers",
+        nav,
+        actions = {
+            if (faq.isNotEmpty()) {
+                TextButton(onClick = { open = if (allOpen) emptyList() else faq.map { it.id } }) {
+                    Text(if (allOpen) "Collapse all" else "Expand all")
+                }
+            }
+        },
+    ) {
         if (faq.isEmpty()) {
             item { EmptyNote(Icons.Outlined.QuestionAnswer, "No questions yet", "Questions and answers are not in this version.") }
         }
         items(faq, key = { it.id }) { entry ->
             val expanded = entry.id in open
             FaqItem(entry, expanded, nav) { open = if (expanded) open - entry.id else open + entry.id }
+        }
+    }
+}
+
+@Composable
+private fun QuestionPage(entry: FaqEntry, nav: PocketNav) {
+    val section = entry.sectionId?.let(DocsContent::section)
+    ManagePage("Question", nav) {
+        item { PageTitle(entry.question) }
+        items(entry.answer.size) { index -> DocBlockView(entry.answer[index], nav) }
+        item {
+            SectionCard(null) {
+                if (section != null) {
+                    NavRow(Icons.AutoMirrored.Outlined.MenuBook, "More in \"${section.title}\"", null) { nav.help(section.id) }
+                }
+                NavRow(Icons.Outlined.QuestionAnswer, "All questions", null) { nav.help(HelpRoute.FAQ) }
+            }
         }
     }
 }
@@ -253,7 +383,7 @@ private fun FaqItem(entry: FaqEntry, expanded: Boolean, nav: PocketNav, onToggle
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Row(
-            Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(16.dp),
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onToggle).padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(entry.question, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -267,8 +397,7 @@ private fun FaqItem(entry: FaqEntry, expanded: Boolean, nav: PocketNav, onToggle
         AnimatedVisibility(expanded) {
             Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 entry.answer.forEach { DocBlockView(it, nav) }
-                val sectionId = entry.sectionId
-                val section = sectionId?.let { id -> DocsContent.sections.firstOrNull { it.id == id } }
+                val section = entry.sectionId?.let(DocsContent::section)
                 if (section != null) {
                     NavRow(Icons.AutoMirrored.Outlined.MenuBook, "More in \"${section.title}\"", null) { nav.help(section.id) }
                 }
@@ -279,7 +408,7 @@ private fun FaqItem(entry: FaqEntry, expanded: Boolean, nav: PocketNav, onToggle
 
 @Composable
 private fun GlossaryPage(nav: PocketNav) {
-    val terms = remember { DocsContent.glossary.sortedBy { it.term.lowercase() } }
+    val terms = DocsContent.glossary
     ManagePage("Glossary", nav) {
         if (terms.isEmpty()) {
             item { EmptyNote(Icons.Outlined.Translate, "No glossary yet", "The glossary is not in this version.") }

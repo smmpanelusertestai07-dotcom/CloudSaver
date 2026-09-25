@@ -33,11 +33,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.DoctorReport
 import com.pocketide.core.Ist
+import com.pocketide.docs.DocLinks
 import com.pocketide.docs.DocsContent
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.AgentInfo
@@ -46,20 +49,25 @@ import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.manage.ActionRunner
+import com.pocketide.ui.manage.AgentTrust
 import com.pocketide.ui.manage.ConfirmDialog
 import com.pocketide.ui.manage.EmptyNote
 import com.pocketide.ui.manage.Hint
+import com.pocketide.ui.manage.LinkRow
 import com.pocketide.ui.manage.ManageFormat
 import com.pocketide.ui.manage.ManagePage
 import com.pocketide.ui.manage.NavRow
 import com.pocketide.ui.manage.SectionLabel
+import com.pocketide.ui.manage.ToneLine
+import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.nav.PocketNav
 
 private const val COMMUNITY_NOTE =
-    "Open VSX checks who owns a publisher name, not who makes the AI model. If this company is not the model maker, " +
-        "your code goes to them and to the model service they use."
+    "\"Verified\" on Open VSX means the publisher proved it owns this name. It is not a review of the code, and it does " +
+        "not say who makes the AI model. If this company is not the model maker, your code goes to them and to the model " +
+        "service they use."
 private const val DATA_NOTE = "Your prompts and code will go to this publisher's service."
 
 /**
@@ -114,7 +122,7 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 }
             }
             items(fresh, key = { it.extensionId }) { candidate ->
-                CandidateCard(candidate, runner) {
+                CandidateCard(candidate, runner, nav) {
                     runner.run(
                         key = "add:${candidate.extensionId}",
                         onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
@@ -200,28 +208,43 @@ private fun NewHeader(runner: ActionRunner, onCheck: () -> Unit) {
 }
 
 @Composable
-private fun CandidateCard(candidate: AgentCandidate, runner: ActionRunner, onAdd: () -> Unit) {
+private fun CandidateCard(candidate: AgentCandidate, runner: ActionRunner, nav: PocketNav, onAdd: () -> Unit) {
     val busy = runner.isBusy("add:${candidate.extensionId}")
+    val problem = AgentTrust.problem(candidate.extensionId)
     SectionCard(null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(candidate.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    candidate.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Hint(candidate.publisher)
             }
             StatusChip("Verified publisher", Tone.NEUTRAL)
         }
-        if (candidate.description.isNotBlank()) Text(candidate.description, style = MaterialTheme.typography.bodyMedium)
+        Text(candidate.extensionId, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
+        if (candidate.description.isNotBlank()) {
+            Text(candidate.description, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        }
         Hint(
             "${ManageFormat.downloads(candidate.downloads)} downloads · version ${candidate.version} · " +
                 "first published ${Ist.date(candidate.firstPublishedAt)}",
         )
         Text(DATA_NOTE, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-        Text(COMMUNITY_NOTE, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN))
-        Hint("Adding tests it on this phone and gives it its own room. It uses memory and storage; you can remove it any time.")
-        Button(onClick = onAdd, enabled = !busy) {
-            Icon(Icons.Outlined.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(if (busy) "Adding and testing…" else "Add ${candidate.displayName}")
+        Text(COMMUNITY_NOTE, style = MaterialTheme.typography.bodyMedium, color = toneColor(Tone.WARN))
+        DocLinks.openVsxPage(candidate.extensionId)?.let { LinkRow("Its page on Open VSX", it, nav, note = "Licence, source and reviews") }
+        if (problem != null) {
+            ToneLine(Told("Not offered: $problem", Tone.ERROR))
+        } else {
+            Hint("Adding tests it on this phone and gives it its own room. It uses memory and storage; you can remove it any time.")
+            Button(onClick = onAdd, enabled = !busy) {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (busy) "Adding and testing…" else "Add", maxLines = 1)
+            }
         }
     }
 }

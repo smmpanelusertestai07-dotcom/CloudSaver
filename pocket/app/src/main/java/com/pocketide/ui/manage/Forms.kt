@@ -60,6 +60,35 @@ object ScheduleForm {
     }
 }
 
+/**
+ * The "unused computer" rule (§6.8) as the Computer screen shows it: the daily job removes the
+ * computer after the chosen days without agent work, after a notice. Nothing of the owner's is
+ * in it, and it is rebuilt on the next use.
+ */
+object ComputerExpiry {
+    /** Shown on the Computer card once this few days are left. */
+    const val SHOW_WITHIN_DAYS = 14
+    private const val DAY_MS = 24 * 60 * 60 * 1000L
+
+    /** The newest agent work: the latest session or project activity; null when there was none. */
+    fun lastWork(sessionTimes: List<Long>, projectTimes: List<Long>): Long? =
+        (sessionTimes + projectTimes).filter { it > 0 }.maxOrNull()
+
+    /** Whole days until the computer counts as unused, or null when the rule is off or not near. */
+    fun daysLeft(lastWorkAt: Long?, unusedDays: Int, nowMs: Long): Int? {
+        if (unusedDays <= 0 || lastWorkAt == null) return null
+        val idleDays = ((nowMs - lastWorkAt).coerceAtLeast(0) / DAY_MS).toInt()
+        val left = (unusedDays - idleDays).coerceAtLeast(0)
+        return left.takeIf { it <= SHOW_WITHIN_DAYS }
+    }
+
+    fun chip(daysLeft: Int): String = when (daysLeft) {
+        0 -> "Unused: removal notice due"
+        1 -> "1 day left before it counts as unused"
+        else -> "$daysLeft days left before it counts as unused"
+    }
+}
+
 /** Numbers for the Your data screen. */
 object DataMath {
     fun sizeOf(session: SessionRecord): Long = session.transcriptBytes + session.mediaBytes
@@ -79,6 +108,12 @@ object DataMath {
     fun mediaBytes(sessions: List<SessionRecord>): Long = liveSessions(sessions).sumOf { it.mediaBytes }
 
     fun mediaCount(sessions: List<SessionRecord>): Int = liveSessions(sessions).sumOf { it.mediaCount }
+
+    /** "12 MB here · 4 MB in Drive"; Drive's part is left out until the sync engine has counted it. */
+    fun places(phoneBytes: Long, driveBytes: Long?): String {
+        val here = "${ManageFormat.bytes(phoneBytes)} here"
+        return if (driveBytes == null) here else "$here · ${ManageFormat.bytes(driveBytes)} in Drive"
+    }
 
     /** "Delete everything" runs only when the owner typed the word exactly. */
     fun deleteConfirmed(typed: String) = typed.trim() == "DELETE"
