@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
@@ -55,6 +56,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,8 +94,10 @@ import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.shell.External
+import com.pocketide.ui.screens.onboarding.RestorePlanPanel
 import com.pocketide.ui.screens.onboarding.SetUpComputerCard
 import com.pocketide.ui.screens.onboarding.SetUpOffer
+import com.pocketide.ui.screens.onboarding.rememberRestoreOffer
 import com.pocketide.ui.screens.project.AgentMark
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -128,6 +132,8 @@ fun HomeScreen(nav: PocketNav) {
     val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
     val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
+    val restorePending by rememberRestoreOffer().pending.collectAsStateWithLifecycle()
+    var restorePlanOpen by rememberSaveable { mutableStateOf(false) }
 
     var newProject by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
@@ -186,6 +192,20 @@ fun HomeScreen(nav: PocketNav) {
                         onLargest = nav::yourData,
                         say = { text -> scope.launch { snackbar.showSnackbar(text) } },
                     )
+                }
+            }
+            if (restorePlanOpen) {
+                item(key = "restore-plan") {
+                    Column {
+                        RestorePlanPanel()
+                        TextButton(onClick = { restorePlanOpen = false }, modifier = Modifier.align(Alignment.End)) { Text("Hide") }
+                    }
+                }
+            } else if (restorePending) {
+                item(key = "restore-offer") {
+                    Banner(Icons.Filled.CloudDownload, "Your chats, memory and Secrets from before are still in your Drive.", Tone.NEUTRAL) {
+                        TextButton(onClick = { restorePlanOpen = true }) { Text("Bring your chats back") }
+                    }
                 }
             }
             if (SetUpOffer.shows(computer)) item(key = "computer-setup") { SetUpComputerCard() }
