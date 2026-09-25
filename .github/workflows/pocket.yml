@@ -381,7 +381,17 @@ jobs:
           image="system-images;android-30;google_apis;x86_64"
           (yes || true) | "$tools/sdkmanager" --licenses > /dev/null
           "$tools/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" platform-tools emulator "$image" > /dev/null
+          # The runner sets XDG_CONFIG_HOME, so avdmanager and the emulator would otherwise look for
+          # AVDs in different folders and the emulator quits with "no file pocket.ini". Both honour
+          # ANDROID_AVD_HOME, so one folder is named for both.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo no | "$tools/avdmanager" create avd --force --name pocket --package "$image" --device pixel_5 > /dev/null
+          if [ ! -f "$ANDROID_AVD_HOME/pocket.ini" ]; then
+            echo "::error::avdmanager did not create the AVD in $ANDROID_AVD_HOME"
+            find "$HOME" -maxdepth 5 -name pocket.ini 2> /dev/null
+            exit 1
+          fi
           log="$RUNNER_TEMP/emulator.log"
           # 2 GB of data is plenty for the tests and leaves the runner room to spare.
           nohup "$sdk/emulator/emulator" -avd pocket -no-window -no-audio -no-boot-anim -no-snapshot \
