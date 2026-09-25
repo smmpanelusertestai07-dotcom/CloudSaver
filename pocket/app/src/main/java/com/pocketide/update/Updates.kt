@@ -3,7 +3,16 @@ package com.pocketide.update
 import android.app.Activity
 import kotlinx.coroutines.flow.StateFlow
 
-data class AppRelease(val version: String, val tag: String, val apkUrl: String, val apkBytes: Long, val notes: String, val publishedAt: String)
+data class AppRelease(
+    val version: String,
+    val tag: String,
+    val apkUrl: String,
+    val apkBytes: Long,
+    val notes: String,
+    val publishedAt: String,
+    /** The APK's SHA-256 as GitHub lists it for the asset, when it does. */
+    val sha256: String? = null,
+)
 
 sealed interface UpdateState {
     data object UpToDate : UpdateState
