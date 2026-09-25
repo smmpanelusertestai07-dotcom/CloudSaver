@@ -217,6 +217,36 @@ class RoomLauncherTest(unittest.TestCase):
         with open(hub) as source:
             self.assertEqual("hub-token", source.read())
 
+    def test_the_cli_gets_the_hubs_sign_in_only_when_it_has_none(self):
+        gemini = os.path.join(self.home, ".gemini")
+        os.makedirs(gemini)
+        hub = os.path.join(gemini, "jetski-standalone-oauth-token")
+        with open(hub, "w") as out:
+            out.write("hub-token")
+        result = run("room.py", ["antigravity", "--", "/bin/true"], self.home)
+        cli = os.path.join(gemini, "antigravity", "antigravity-oauth-token")
+        with open(cli) as source:
+            self.assertEqual("hub-token", source.read())
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(cli).st_mode))
+        self.assertIn(b"hub's sign-in was copied", result.stdout)
+        with open(cli, "w") as out:
+            out.write("cli-token")
+        run("room.py", ["antigravity", "--", "/bin/true"], self.home)
+        with open(cli) as source:
+            self.assertEqual("cli-token", source.read())
+        with open(hub) as source:
+            self.assertEqual("hub-token", source.read())
+
+    def test_a_linked_sign_in_is_never_copied(self):
+        gemini = os.path.join(self.home, ".gemini")
+        os.makedirs(gemini)
+        elsewhere = os.path.join(self.home, "elsewhere")
+        with open(elsewhere, "w") as out:
+            out.write("not a token")
+        os.symlink(elsewhere, os.path.join(gemini, "jetski-standalone-oauth-token"))
+        run("room.py", ["antigravity", "--", "/bin/true"], self.home)
+        self.assertFalse(os.path.lexists(os.path.join(gemini, "antigravity", "antigravity-oauth-token")))
+
     def test_a_missing_program_is_reported(self):
         result = run("room.py", ["codex", "--", "/nonexistent/engine"], self.home)
         self.assertEqual(127, result.returncode)
