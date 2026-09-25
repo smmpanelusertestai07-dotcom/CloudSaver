@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap
  * terminals, and no use of its screen ([touch]). What a room is busy with is passed on to the
  * limiter, which never closes a busy room and holds the phone awake only while one works.
  */
-internal class RoomManager(private val env: RoomsEnv) : Rooms {
+internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long = SAMPLE_MS) : Rooms {
     private val dirs = env.dirs
     private val random = SecureRandom()
     private val procs = ProcFacts()
@@ -749,7 +749,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     private suspend fun watchActivity() {
         while (true) {
-            delay(SAMPLE_MS)
+            delay(sampleMs)
             synchronized(monitorLock) {
                 if (live.isEmpty() && terminals.isEmpty()) {
                     holds.holding(WorkHolds.COMMAND).forEach { holds.set(it, WorkHolds.COMMAND, false) }
@@ -777,13 +777,16 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         }
     }
 
-    /** [otherWork]: a terminal command or a scheduled task ran in the room since the last sample. */
+    /**
+     * [otherWork]: a terminal command or a scheduled task ran in the room since the last sample.
+     * A build the agent waits on, or a write in progress, uses no CPU here but is work all the same.
+     */
     private suspend fun sample(agentId: String, room: LiveRoom, now: Long, otherWork: Boolean) {
         val pid = room.pid ?: return
         val tree = procs.tree(pid)
         val working = room.activity.sample(now, procs.cpuTicks(tree))
         holds.set(agentId, WorkHolds.TURN, working)
-        if (working || otherWork) {
+        if (working || otherWork || holds.waits(agentId)) {
             room.activity.touch(now)
             env.used(agentId)
         }

@@ -67,12 +67,12 @@ object AgentWorkers {
             .setConstraints(unmetered())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.HOURS)
             .build()
-        manager.enqueueUniquePeriodicWork(DISCOVERY, ExistingPeriodicWorkPolicy.KEEP, discovery)
+        manager.enqueueUniquePeriodicWork(DISCOVERY, ExistingPeriodicWorkPolicy.UPDATE, discovery)
         val updates = PeriodicWorkRequestBuilder<AgentUpdateWorker>(1, TimeUnit.DAYS)
             .setConstraints(unmetered(storage = true))
             .setBackoffCriteria(BackoffPolicy.LINEAR, 1, TimeUnit.HOURS)
             .build()
-        manager.enqueueUniquePeriodicWork(UPDATES, ExistingPeriodicWorkPolicy.KEEP, updates)
+        manager.enqueueUniquePeriodicWork(UPDATES, ExistingPeriodicWorkPolicy.UPDATE, updates)
     }
 
     /**

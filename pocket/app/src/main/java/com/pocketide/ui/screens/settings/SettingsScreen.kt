@@ -18,9 +18,11 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +39,7 @@ import com.pocketide.BuildConfig
 import com.pocketide.core.Redact
 import com.pocketide.core.Settings
 import com.pocketide.sync.DataUsage
+import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.manage.ManageText
@@ -398,6 +401,7 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
     var busy by remember { mutableStateOf(false) }
     var checked by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var askMobileData by remember { mutableStateOf<NeedsMobileData?>(null) }
 
     fun run(block: suspend () -> Unit) {
         busy = true
@@ -407,6 +411,8 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
                 block()
             } catch (e: CancellationException) {
                 throw e
+            } catch (ask: NeedsMobileData) {
+                askMobileData = ask
             } catch (e: Exception) {
                 error = Redact.text(e.message ?: "That didn't work. Try again.").take(200)
             } finally {
@@ -464,5 +470,22 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
     error?.let {
         Gap(8.dp)
         NoticeCard(it, Tone.ERROR)
+    }
+    askMobileData?.let { ask ->
+        AlertDialog(
+            onDismissRequest = { askMobileData = null },
+            title = { Text("Download ${ask.size} on mobile data?") },
+            text = { Text("The update waits for Wi-Fi. It can download now on mobile data instead. Your data settings do not change.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        askMobileData = null
+                        graph.dataBudget.allowOnce(ask.kind, ask.bytes)
+                        run { graph.updater.download() }
+                    },
+                ) { Text("Use mobile data") }
+            },
+            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+        )
     }
 }

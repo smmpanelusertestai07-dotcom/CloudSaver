@@ -3,6 +3,7 @@ package com.pocketide.update
 import android.app.Activity
 import com.pocketide.agents.SemVer
 import com.pocketide.github.ReleasesMovedException
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -94,6 +95,9 @@ internal class SelfUpdater(
         } catch (waiting: UpdateWaits) {
             mutable.value = UpdateState.Available(release)
             throw waiting
+        } catch (ask: NeedsMobileData) {
+            mutable.value = UpdateState.Available(release)
+            throw ask
         } catch (failed: IOException) {
             mutable.value = UpdateState.Failed(failed.message ?: "The update could not be downloaded. Try again.")
         }

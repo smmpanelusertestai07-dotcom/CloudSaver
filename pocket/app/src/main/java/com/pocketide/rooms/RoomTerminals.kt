@@ -98,47 +98,45 @@ internal class RoomTerminals(
             configurator.installTools()
         }
         rebuildSettings(session)
-        withContext(Dispatchers.IO) { bridgeFiles.write(secretFile, secret) }
-        env.phoneBridge.start(agentId)
-        val command = RoomEngines.terminal(
-            dirs, agentId, AppDirs.guestWorktree(session.projectId, session.id), port, environment(agentId, session.projectId),
-        )
-        val process = try {
-            withContext(Dispatchers.IO) { env.computer.start(command) }
-        } catch (failed: IllegalStateException) {
-            withContext(Dispatchers.IO) { bridgeFiles.delete(secretFile) }
-            throw failed
-        } catch (failed: IOException) {
-            withContext(Dispatchers.IO) { bridgeFiles.delete(secretFile) }
-            throw IllegalStateException("The terminal could not start: ${failed.message}")
-        }
-        env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
+        // Set inside the start itself: a cancelled open (the owner left the tab) still knows the
+        // process it started, and stops it, rather than leaving term.py running untracked.
+        var started: Process? = null
         var ready = false
         try {
+            withContext(Dispatchers.IO) { bridgeFiles.write(secretFile, secret) }
+            env.phoneBridge.start(agentId)
+            val command = RoomEngines.terminal(
+                dirs, agentId, AppDirs.guestWorktree(session.projectId, session.id), port, environment(agentId, session.projectId),
+            )
+            withContext(Dispatchers.IO) { started = env.computer.start(command) }
+            val process = checkNotNull(started) { "The terminal could not start." }
+            env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
             awaitGuarded(process, port)
+            val bridge = env.portBridge.expose(port, RoomTraffic.terminalPurpose(session.id), mapOf(SECRET_HEADER to secret))
+            val terminal = Terminal(
+                sessionId = session.id,
+                agentId = agentId,
+                process = process,
+                pid = ProcFacts.pidOf(process),
+                port = port,
+                handle = TerminalHandle(bridge.entryUrl, session.id),
+                activity = ActivityClock(env.now(), IDLE_MS),
+            )
+            terminal.watcher = env.scope.launch {
+                runInterruptible(Dispatchers.IO) { process.waitFor() }
+                if (live.remove(terminal.sessionId, terminal)) env.portBridge.revoke(terminal.port)
+            }
+            live[session.id] = terminal
             ready = true
+            return terminal.handle
+        } catch (failed: IOException) {
+            throw IllegalStateException("The terminal could not start: ${failed.message}", failed)
         } finally {
             if (!ready) {
-                env.computer.stop(process)
+                started?.let(env.computer::stop)
                 withContext(NonCancellable + Dispatchers.IO) { bridgeFiles.delete(secretFile) }
             }
         }
-        val bridge = env.portBridge.expose(port, RoomTraffic.terminalPurpose(session.id), mapOf(SECRET_HEADER to secret))
-        val terminal = Terminal(
-            sessionId = session.id,
-            agentId = agentId,
-            process = process,
-            pid = ProcFacts.pidOf(process),
-            port = port,
-            handle = TerminalHandle(bridge.entryUrl, session.id),
-            activity = ActivityClock(env.now(), IDLE_MS),
-        )
-        terminal.watcher = env.scope.launch {
-            runInterruptible(Dispatchers.IO) { process.waitFor() }
-            if (live.remove(terminal.sessionId, terminal)) env.portBridge.revoke(terminal.port)
-        }
-        live[session.id] = terminal
-        return terminal.handle
     }
 
     /**

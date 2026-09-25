@@ -7,6 +7,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.pocketide.graph
@@ -26,8 +27,8 @@ import kotlinx.coroutines.launch
  * computer itself is being set up, reset, repaired or updated, and only then: it stops itself
  * once none of that is left. Its notification lists the running agents and the computer's work,
  * and holds "Stop everything". A partial wake lock is held only while an agent or the computer
- * is working, and always with a timeout, so a stuck "working" can never keep the phone awake
- * for long.
+ * is working, always with a timeout, and for at most [WAKE_MAX_MS] per stretch of work
+ * ([WakeBudget]), so a stuck "working" can never keep the phone awake for long.
  *
  * specialUse, not dataSync: dataSync is limited to 6 hours a day from Android 15 and cannot
  * start after a reboot; specialUse has neither limit.
@@ -36,6 +37,7 @@ class EngineService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var watching = false
     private var wakeLock: PowerManager.WakeLock? = null
+    private val wakeBudget = WakeBudget(WAKE_MAX_MS, WAKE_QUIET_MS)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -73,6 +75,7 @@ class EngineService : Service() {
                 }
                 EngineLoad(lines, EngineLoad.computerWork(computer))
             }.distinctUntilChanged().collectLatest { load ->
+                wakeBudget.update(SystemClock.elapsedRealtime(), load.working)
                 if (load.idle) {
                     releaseWakeLock()
                     // A room between stop and start (a restart), or set-up about to begin, should not take the service down with it.
@@ -97,8 +100,9 @@ class EngineService : Service() {
     }
 
     /**
-     * Holds the CPU while an agent works, refreshed every few minutes and never for longer than
-     * [WAKE_MAX_MS] in one stretch. Runs inside collectLatest, so any change of state ends it.
+     * Holds the CPU while an agent works, refreshed every few minutes, for what is left of this
+     * stretch's [wakeBudget]. Runs inside collectLatest, so any change of state ends it; the
+     * budget lives outside it, so starting again does not start the stretch again.
      */
     private suspend fun keepAwake() {
         val lock = wakeLock ?: getSystemService(PowerManager::class.java)
@@ -106,11 +110,12 @@ class EngineService : Service() {
             ?.apply { setReferenceCounted(false) }
             ?.also { wakeLock = it }
             ?: return
-        var held = 0L
-        while (held < WAKE_MAX_MS) {
-            lock.acquire(WAKE_STEP_MS + WAKE_OVERLAP_MS)
-            delay(WAKE_STEP_MS)
-            held += WAKE_STEP_MS
+        while (true) {
+            val left = wakeBudget.remainingMs(SystemClock.elapsedRealtime())
+            if (left <= 0) break
+            val step = minOf(WAKE_STEP_MS, left)
+            lock.acquire(minOf(step + WAKE_OVERLAP_MS, left))
+            delay(step)
         }
         releaseWakeLock()
     }
@@ -135,6 +140,9 @@ class EngineService : Service() {
         private const val WAKE_STEP_MS = 5 * 60_000L
         private const val WAKE_OVERLAP_MS = 60_000L
         private const val WAKE_MAX_MS = 2 * 60 * 60_000L
+
+        /** Nothing worked for this long: the next work is a new stretch with a new budget. */
+        private const val WAKE_QUIET_MS = 15 * 60_000L
         private const val EMPTY_GRACE_MS = 15_000L
 
         /**

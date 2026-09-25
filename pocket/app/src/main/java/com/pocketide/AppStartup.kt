@@ -26,8 +26,9 @@ object AppStartup {
     }
 
     /**
-     * Every job is unique work with KEEP, so a second process start changes nothing. The limiter
-     * and the access checks come first: they are what keeps the owner safe.
+     * Every job is unique work with UPDATE: a second process start changes nothing, and an app
+     * update's new constraints or interval reach phones that already have the job, which keeps its
+     * timing. The limiter and the access checks come first: they are what keeps the owner safe.
      */
     private fun steps(graph: AppGraph): List<Step> = listOf(
         Step("limiter") { graph.limiter.start() },

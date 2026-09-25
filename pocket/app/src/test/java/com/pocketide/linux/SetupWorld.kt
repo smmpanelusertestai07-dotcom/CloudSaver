@@ -148,13 +148,16 @@ internal class SetupWorld(base: File) {
         return CodeServerPin(version, url, Downloader.sha256(archive), archive.size.toLong())
     }
 
+    /** The set-up's clock, fixed unless a test moves it. */
+    var now = NOW
+
     fun setup() = ComputerSetup(
         places = SetupPlaces(rootfs, downloads, record),
         host = host,
         fetcher = fetcher,
         runner = guest,
         assets = assets,
-        clock = Clock { NOW },
+        clock = Clock { now },
         publish = { published += it },
         ubuntu = ubuntu,
         ubuntuVersion = "24.04.5",

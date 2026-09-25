@@ -12,6 +12,13 @@ data class PinnedDownload(val url: String, val sha256: String, val bytes: Long) 
 object LinuxPins {
     const val UBUNTU_VERSION = "24.04.5"
 
+    /**
+     * When Canonical's standard security fixes for Ubuntu 24.04 end: after May 2029 (UTC epoch
+     * ms of 1 June 2029). From then on the computer says so, and an app update that pins the
+     * next LTS rebuilds it with Reset.
+     */
+    const val UBUNTU_SUPPORT_ENDS = 1_874_966_400_000L
+
     /** Canonical's base image; SHA256SUMS beside it is signed by the Ubuntu CD image key. */
     val ubuntuBase = PinnedDownload(
         url = "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz",

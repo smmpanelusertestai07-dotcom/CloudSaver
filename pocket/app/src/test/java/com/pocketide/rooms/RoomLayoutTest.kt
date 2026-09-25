@@ -4,6 +4,7 @@ import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.LinuxCommand
 import com.pocketide.linux.ProotCommand
+import com.pocketide.linux.ProotHost
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -21,6 +22,7 @@ class RoomLayoutTest {
             listOf(
                 "${dirs.base}/rooms/claude/home" to "/root",
                 "${dirs.base}/rooms/claude/tmp" to "/tmp",
+                "${dirs.base}/rooms/claude/shm" to "/dev/shm",
                 "${dirs.base}/bridge/claude" to "/run/pocketide",
                 "${dirs.base}/repos" to "/repos",
                 "${dirs.base}/work/claude" to "/work",
@@ -32,8 +34,23 @@ class RoomLayoutTest {
         }
         assertTrue(binds.none { it.readOnly })
         // Nothing of the app's own storage beyond these: no vault, no queue, no secure store.
-        val allowed = setOf(dirs.roomHome("claude"), dirs.roomTmp("claude"), dirs.roomBridge("claude"), dirs.repos, dirs.roomWork("claude"))
+        val allowed = setOf(
+            dirs.roomHome("claude"), dirs.roomTmp("claude"), RoomLayout.shm(dirs, "claude"), dirs.roomBridge("claude"), dirs.repos, dirs.roomWork("claude"),
+        )
         assertEquals(allowed.map { it.absolutePath }.toSet(), binds.map { it.hostPath }.toSet())
+    }
+
+    @Test fun `each room has a writable shared-memory folder of its own, created with the room`() {
+        val shm = RoomLayout.binds(dirs, "claude").single { it.guestPath == "/dev/shm" }
+        assertFalse(shm.readOnly)
+        assertTrue(File(shm.hostPath) in RoomLayout.hostFolders(dirs, "claude"))
+        assertTrue(RoomLayout.binds(dirs, "codex").none { it.hostPath == shm.hostPath })
+        val argv = ProotCommand.build(
+            ProotHost(File("/lib"), File("/tmp")), File("/rootfs"), emptyMap(), "UTC",
+            LinuxCommand(listOf("python3"), binds = RoomLayout.binds(dirs, "claude")), sharedMemory = File("/rootfs/tmp"),
+        ).argv
+        // The room's own folder, never the computer's shared /tmp that set-up uses.
+        assertTrue(argv.none { it.endsWith(":/dev/shm") && it != "${shm.hostPath}:/dev/shm" })
     }
 
     @Test fun `every engine command uses exactly the room's binds`() {
