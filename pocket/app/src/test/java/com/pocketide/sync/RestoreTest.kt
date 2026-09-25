@@ -140,6 +140,28 @@ class RestoreTest {
     }
 
     @Test
+    fun removingAPhonesOwnCopyNeverRemovesDrivesVersionItNeverHad() = runBlocking {
+        val rules = ".claude/rules/house.md"
+        val old = TestPhone(accounts, clock)
+        old.homeFile("claude", rules).writeText("The old phone's rules.")
+        old.engine.syncNow()
+
+        // A second phone has its own copy while the first holds the lease, and then deletes it.
+        val other = TestPhone(accounts, clock, deviceId = "other", deviceName = "Other")
+        val mine = other.homeFile("claude", rules).apply { writeText("Another phone's rules.") }
+        other.engine.syncNow()
+        mine.delete()
+        clock.advance(LeasePolicy.TTL_MS + 1)
+        other.engine.syncNow()
+        clock.advance(2 * Durations.HOUR)
+        other.engine.syncNow()
+
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.restore(RestoreChoice.WIFI_ONLY)
+        assertEquals("The old phone's rules.", reader.homeFile("claude", rules).readText())
+    }
+
+    @Test
     fun aWifiOnlyRestorePausesOnMobileDataAndContinuesLater() = runBlocking {
         val old = TestPhone(accounts, clock).apply { sessions += session("s", at = clock.now, ref = "cccc3333") }
         val path = claudeTranscript("owner/app", "s", "cccc3333")

@@ -180,10 +180,11 @@ internal class SyncPass(
 
     /**
      * Only a file that could be removed on purpose, from a room that is still there: when the
-     * whole room went (its agent was removed), its chats and memory stay in Drive.
+     * whole room went (its agent was removed), its chats and memory stay in Drive. Nor is Drive's
+     * version of a file this phone never had removed because the phone's own copy went.
      */
     private fun removedOnPurpose(t: FileTrack, book: SessionBook): Boolean = when {
-        t.kind.appendOnly -> false
+        t.kind.appendOnly || t.behindDrive -> false
         !kit.scanner.roomExists(t.kind, t.agentId, t.path) -> false
         t.sessionId == null -> true
         t.kind == ObjectKind.MEDIA || t.kind == ObjectKind.MEMORY -> book.alive(t.sessionId)
