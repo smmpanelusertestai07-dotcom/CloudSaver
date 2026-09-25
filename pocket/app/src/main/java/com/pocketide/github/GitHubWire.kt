@@ -50,6 +50,7 @@ internal data class RepoJson(
     @SerialName("clone_url") val cloneUrl: String,
     @SerialName("html_url") val htmlUrl: String,
     @SerialName("pushed_at") val pushedAt: String? = null,
+    val fork: Boolean = false,
 ) {
     fun info() = RepoInfo(
         owner = owner.login,
@@ -60,6 +61,7 @@ internal data class RepoJson(
         cloneUrl = cloneUrl,
         htmlUrl = htmlUrl,
         pushedAt = pushedAt,
+        fork = fork,
     )
 }
 
