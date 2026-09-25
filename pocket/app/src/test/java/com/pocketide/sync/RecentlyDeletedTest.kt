@@ -107,7 +107,8 @@ class RecentlyDeletedTest {
 
     @Test
     fun aChatRestoredJustBeforeItsThirtiethDayIsKeptWhenTheDailyJobRunsFirst() = runBlocking {
-        val phone = phone()
+        // Phone copies are kept, so only an erase could take the chat off the phone.
+        val phone = phone(settings = Settings(onboardingDone = true, phoneChatDays = -1, phoneMediaDays = -1))
         phone.sessions += session("s", at = clock.now, ref = "agent-s")
         phone.chat("s", "keep me\n")
         phone.engine.syncNow()
@@ -125,6 +126,7 @@ class RecentlyDeletedTest {
         assertEquals(null, index.sessions.single { it.id == "s" }.deletedAt)
         assertTrue("its files stay in Drive", files.all { it in phone.drive.objectNames() })
         assertTrue(phone.homeFile("claude", claudeTranscript("owner/app", "s", "agent-s")).exists())
+        assertTrue(phone.state().tracks.values.any { it.sessionId == "s" })
         assertTrue(phone.erasedSessions.isEmpty())
         assertTrue(phone.sessions.any { it.id == "s" })
     }
