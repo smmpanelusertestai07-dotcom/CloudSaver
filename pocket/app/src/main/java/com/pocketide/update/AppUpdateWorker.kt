@@ -44,7 +44,7 @@ class AppUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 UpdateNotices.readyOnce(applicationContext, state.release)
                 Result.success()
             }
-            is UpdateState.Failed -> retry()
+            is UpdateState.Failed -> if (state.retry) retry() else Result.success()
             else -> Result.success()
         }
     }

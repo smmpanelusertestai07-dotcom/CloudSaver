@@ -179,6 +179,18 @@ class UpdaterTest {
     }
 
     @Test
+    fun aReleasePageThatMovedSaysWhatToDoAndIsNotRetried() = runBlocking<Unit> {
+        listStatus = 404
+        val updater = updater()
+
+        updater.check()
+
+        val failed = updater.state.value as UpdateState.Failed
+        assertEquals("PocketIDE's release page moved. Install the newest PocketIDE APK once by hand.", failed.why)
+        assertFalse(failed.retry)
+    }
+
+    @Test
     fun githubRefusingSaysSoPlainly() {
         listStatus = 429
 

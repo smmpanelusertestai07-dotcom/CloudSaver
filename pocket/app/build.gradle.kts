@@ -55,6 +55,9 @@ android {
         buildConfigField("String", "GITHUB_APP_CLIENT_ID", quoted(config("POCKETIDE_GITHUB_APP_CLIENT_ID")))
         buildConfigField("String", "GITHUB_APP_SLUG", quoted(config("POCKETIDE_GITHUB_APP_SLUG")))
         buildConfigField("String", "SIGNING_CERT_SHA256", quoted(config("POCKETIDE_SIGNING_CERT_SHA256").lowercase()))
+        // Where the app looks for its updates. CI passes the repository its release job publishes to
+        // (tools/gates/workflow.py checks it), so a moved project moves its phones with it; the
+        // fallback serves local builds only.
         buildConfigField("String", "RELEASES_REPO", quoted(config("POCKETIDE_RELEASES_REPO").ifEmpty { "smmpanelusertestai07-dotcom/CloudSaver" }))
         buildConfigField("String", "RELEASE_TAG_PREFIX", quoted("pocketide-v"))
     }

@@ -7,7 +7,10 @@
     release job;
   - every checkout sets persist-credentials: false;
   - no pull_request_target, and no ${{ github.event.* }} or head_ref pasted into a run: script,
-    where a crafted branch name or commit message would become shell code (pass it through env).
+    where a crafted branch name or commit message would become shell code (pass it through env);
+  - the release build tells the app where its updates come from: the repository this workflow
+    runs in and publishes to (-PPOCKETIDE_RELEASES_REPO="$GITHUB_REPOSITORY"), so a phone never
+    keeps reading a place the project has moved away from.
 """
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ import yaml_lite
 
 WORKFLOW = ".github/workflows/pocket.yml"
 ALLOWED = Path(__file__).with_name("allowed-actions.txt")
+RELEASES_REPO = re.compile(r'-PPOCKETIDE_RELEASES_REPO=\$\{?GITHUB_REPOSITORY\}?\b')
 UNTRUSTED = re.compile(r"\$\{\{[^}]*\b(github\.event\.|github\.head_ref|inputs\.)[^}]*\}\}")
 
 
@@ -71,6 +75,10 @@ def check_text(text: str, allowed: set[str]) -> list[str]:
             if isinstance(run, str) and UNTRUSTED.search(run):
                 problems.append(f"{WORKFLOW}: {label}: '{UNTRUSTED.search(run).group(0)}' is pasted into the "
                                 "script; pass it through env: instead")
+            if isinstance(run, str) and "assembleRelease" in run and not RELEASES_REPO.search(run):
+                problems.append(f"{WORKFLOW}: {label}: the release build must pass "
+                                '-PPOCKETIDE_RELEASES_REPO="$GITHUB_REPOSITORY", or the app looks for its updates '
+                                "somewhere this workflow does not publish them")
     return problems
 
 

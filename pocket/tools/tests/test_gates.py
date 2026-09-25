@@ -394,6 +394,10 @@ class WorkflowGate(unittest.TestCase):
         text = self.TEXT.replace("permissions:\n  contents: read\n", "permissions: write-all\n", 1)
         self.assertTrue(any("exactly 'contents: read'" in p for p in self.problems(text)))
 
+    def test_a_release_build_that_does_not_say_where_it_publishes_fails(self):
+        text = self.TEXT.replace('"-PPOCKETIDE_RELEASES_REPO=$GITHUB_REPOSITORY"', "", 1)
+        self.assertTrue(any("POCKETIDE_RELEASES_REPO" in p for p in self.problems(text)))
+
     def test_event_text_in_a_script_fails(self):
         text = self.TEXT.replace('[ -n "$message" ] || message=', 'echo "${{ github.event.head_commit.message }}"\n          [ -n "$message" ] || message=', 1)
         self.assertTrue(any("pass it through env" in p for p in self.problems(text)))

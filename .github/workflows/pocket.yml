@@ -146,6 +146,7 @@ jobs:
           "-PPOCKETIDE_SIGNING_CERT_SHA256=$CERT_SHA256"
           "-PPOCKETIDE_GITHUB_APP_CLIENT_ID=$CLIENT_ID"
           "-PPOCKETIDE_GITHUB_APP_SLUG=$APP_SLUG"
+          "-PPOCKETIDE_RELEASES_REPO=$GITHUB_REPOSITORY"
 
       - name: Upload the lint and test reports
         if: failure()

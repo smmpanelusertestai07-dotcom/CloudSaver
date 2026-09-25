@@ -2,6 +2,7 @@ package com.pocketide.update
 
 import android.app.Activity
 import com.pocketide.agents.SemVer
+import com.pocketide.github.ReleasesMovedException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -138,7 +139,10 @@ internal class SelfUpdater(
         val release = try {
             withContext(Dispatchers.IO) { releases.newest(current) }
         } catch (failed: IOException) {
-            mutable.value = UpdateState.Failed(failed.message ?: "PocketIDE could not check for updates. Try again later.")
+            mutable.value = UpdateState.Failed(
+                failed.message ?: "PocketIDE could not check for updates. Try again later.",
+                retry = failed !is ReleasesMovedException,
+            )
             return
         }
         val offered = release?.takeUnless { it.tag == env.passedOver }

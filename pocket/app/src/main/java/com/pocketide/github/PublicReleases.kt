@@ -13,6 +13,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 
+/**
+ * GitHub has no such repository: the project moved to another repository or account, so asking
+ * again will not find it. Only an APK installed by hand learns the new place.
+ */
+class ReleasesMovedException : IOException("PocketIDE's release page moved. Install the newest PocketIDE APK once by hand.")
+
 /** A file attached to a release: its name, size and public download address. */
 data class ReleaseAsset(val name: String, val bytes: Long, val downloadUrl: String)
 
@@ -65,7 +71,7 @@ class PublicReleases internal constructor(
             .build()
         return client.newCall(request).await().use { response ->
             when {
-                response.code == 404 -> throw IOException("The releases were not found on GitHub.")
+                response.code == 404 -> throw ReleasesMovedException()
                 response.code == 403 || response.code == 429 -> throw IOException("GitHub is limiting requests. Try again in an hour.")
                 !response.isSuccessful -> throw IOException("GitHub answered ${response.code}. Try again later.")
             }

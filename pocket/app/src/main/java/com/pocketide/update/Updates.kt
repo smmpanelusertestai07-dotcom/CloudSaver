@@ -20,7 +20,8 @@ sealed interface UpdateState {
     data class Downloading(val fraction: Float) : UpdateState
     /** Downloaded and its signer matches this app's: ready for Android's installer. */
     data class Ready(val release: AppRelease) : UpdateState
-    data class Failed(val why: String) : UpdateState
+    /** [retry] is false when trying again later cannot help, so the daily check does not. */
+    data class Failed(val why: String, val retry: Boolean = true) : UpdateState
 }
 
 /**
