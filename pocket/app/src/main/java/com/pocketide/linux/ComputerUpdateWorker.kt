@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.pocketide.agents.runInForeground
 import com.pocketide.graph
 import java.util.concurrent.TimeUnit
 
@@ -24,6 +25,8 @@ class ComputerUpdateWorker(context: Context, params: WorkerParameters) : Corouti
         val computer = graph.computer
         if (computer.state.value !is ComputerState.Ready) return Result.success()
         if (!graph.limiter.canStartHeavyWork("Computer updates").allowed) return Result.retry()
+        // Past ten minutes a job needs the foreground; refused, the next run continues the download.
+        runInForeground("Updating the computer", "Installing Ubuntu's security fixes and PocketIDE's code-server.")
         val outcomes = listOf(computer.updateBase(), computer.updateCodeServer(LinuxPins.codeServer))
         val again = outcomes.any { it is UpdateOutcome.Failed || it is UpdateOutcome.Waiting }
         return if (again && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.success()

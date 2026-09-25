@@ -6,10 +6,12 @@ import com.pocketide.model.Decision
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -17,6 +19,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
@@ -156,5 +159,71 @@ class VerifiedDownloadTest {
 
         assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }
         assertEquals(0L, recorded)
+    }
+
+    private fun get(expected: Expected): File = runBlocking { download.fetch(server.url("/pkg.vsix"), File(temp.root, "pkg.vsix"), expected) }
+
+    private val complete get() = Expected(sha256 = OpenVsxFixture.sha256(payload), sha512 = OpenVsxFixture.sha512(payload), signature = signature)
+
+    @Test
+    fun aDownloadThatIsCutOffContinuesWhereItStopped() {
+        val half = payload.size / 2
+        // The connection drops halfway: what arrived stays for the next try.
+        server.enqueue(
+            MockResponse.Builder()
+                .body(Buffer().write(payload, 0, half))
+                .setHeader("Content-Length", payload.size)
+                .onResponseEnd(SocketEffect.ShutdownConnection)
+                .build(),
+        )
+        assertThrows(IOException::class.java) { get(complete) }
+        val kept = File(temp.root, "pkg.vsix.part")
+        assertEquals(half.toLong(), kept.length())
+
+        server.enqueue(
+            MockResponse.Builder()
+                .code(206)
+                .setHeader("Content-Range", "bytes $half-${payload.size - 1}/${payload.size}")
+                .body(Buffer().write(payload, half, payload.size - half))
+                .build(),
+        )
+        val file = get(complete)
+
+        server.takeRequest()
+        assertEquals("bytes=$half-", server.takeRequest().headers["Range"])
+        assertTrue(file.readBytes().contentEquals(payload))
+        assertFalse(kept.exists())
+        assertEquals("each byte is counted once", payload.size.toLong(), recorded)
+    }
+
+    @Test
+    fun keptBytesThatDoNotBelongToThePackageAreNotKept() {
+        File(temp.root, "pkg.vsix.part").writeBytes(ByteArray(1000) { 7 })
+        server.enqueue(
+            MockResponse.Builder()
+                .code(206)
+                .setHeader("Content-Range", "bytes 1000-${payload.size - 1}/${payload.size}")
+                .body(Buffer().write(payload, 1000, payload.size - 1000))
+                .build(),
+        )
+
+        assertThrows(PackageRejected::class.java) { get(complete) }
+        assertTrue(temp.root.list().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun aServerThatSendsTheWholeFileAgainStartsItOver() {
+        File(temp.root, "pkg.vsix.part").writeBytes(payload.copyOf(1000))
+        server.enqueue(MockResponse.Builder().body(Buffer().write(payload)).build())
+
+        assertTrue(get(complete).readBytes().contentEquals(payload))
+    }
+
+    @Test
+    fun aPackageAlreadyInPlaceIsCheckedAndUsed() {
+        File(temp.root, "pkg.vsix").writeBytes(payload)
+
+        assertTrue(get(complete).readBytes().contentEquals(payload))
+        assertEquals("nothing downloaded", 0, server.requestCount)
     }
 }

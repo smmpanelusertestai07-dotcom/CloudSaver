@@ -1,16 +1,22 @@
 package com.pocketide.agents
 
 import android.content.Context
+import android.content.pm.ServiceInfo
+import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.pocketide.R
+import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.graph
 import com.pocketide.linux.ComputerState
 import kotlinx.coroutines.CancellationException
@@ -40,6 +46,9 @@ class AgentUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
         val graph = applicationContext.graph
         if (graph.computer.state.value != ComputerState.Ready) return Result.success()
         if (!graph.limiter.canStartHeavyWork("Agent updates").allowed) return Result.retry()
+        // Refused from the background, the job keeps Android's ten minutes: a download cut
+        // off there is continued by the next run, not started over.
+        runInForeground("Updating agents", "Downloading and checking the newest agent versions.")
         return try {
             graph.agents.updateAll()
             Result.success()
@@ -50,6 +59,30 @@ class AgentUpdateWorker(context: Context, params: WorkerParameters) : CoroutineW
         } catch (failed: IllegalStateException) {
             Result.success()
         }
+    }
+}
+
+/**
+ * Moves a long update job (hundreds of MB, then minutes of install) into the foreground, where
+ * Android does not stop it after ten minutes. False when Android refuses (a start from the
+ * background on Android 12+ while PocketIDE has battery restrictions).
+ */
+internal suspend fun CoroutineWorker.runInForeground(title: String, text: String): Boolean {
+    val notification = NotificationCompat.Builder(applicationContext, Channels.AGENTS)
+        .setSmallIcon(R.drawable.ic_stat_pocketide)
+        .setContentTitle(title)
+        .setContentText(text)
+        .setOngoing(true)
+        .setSilent(true)
+        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
+        .build()
+    return try {
+        setForeground(ForegroundInfo(NotificationIds.UPDATE_RUNNING, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC))
+        true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: IllegalStateException) {
+        false
     }
 }
 
