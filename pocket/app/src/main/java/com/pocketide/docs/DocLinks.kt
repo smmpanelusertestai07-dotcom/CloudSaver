@@ -28,6 +28,7 @@ internal object DocLinks {
     const val OPENAI_DATA_FAQ = "https://help.openai.com/en/articles/7730893-data-controls-faq"
     const val ANTIGRAVITY_SETTINGS = "https://antigravity.google/docs/settings"
     const val ANTIGRAVITY_TERMS = "https://antigravity.google/terms"
+    const val ANTIGRAVITY_REMOTE_CONTROL = "https://antigravity.google/docs/remote-control"
 
     const val REALME_STEPS = "https://dontkillmyapp.com/realme"
     const val ANDROID_POWER = "https://developer.android.com/topic/performance/power/power-details"

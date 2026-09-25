@@ -42,6 +42,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -207,6 +208,20 @@ class RoomManagerTest {
         assertTrue("its port is never handed to the bridge", env.ports.exposed.isEmpty())
         assertEquals(state, rooms.open("antigravity", "a1"))
         assertEquals("not started again only to be refused", 1, env.computer.commands.size)
+    }
+
+    @Test fun `Remote Control that opens a port any app can use is stopped again, and only Antigravity has it`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "open"
+
+        val refused = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("antigravity") } }
+
+        assertEquals(RemoteControl.OPEN_TO_OTHER_APPS, refused.message)
+        val daemon = env.computer.processes.single()
+        assertTrue(env.computer.stopped.contains(daemon))
+        assertTrue("no port of it goes to the bridge", env.ports.exposed.isEmpty())
+        val claude = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("claude") } }
+        assertEquals(RemoteControl.ONLY_ANTIGRAVITY, claude.message)
     }
 
     /** The room's agy, as the room sees it. */
@@ -449,6 +464,9 @@ class RoomManagerTest {
          */
         @Volatile var hubMode = "guarded"
 
+        /** How the stand-in Remote Control daemon's own loopback port treats a caller without a key. */
+        @Volatile var remoteControlMode = "open"
+
         /** Runs the real room.py's steps before Claude's stand-in engine, on the room's folders here. */
         @Volatile var runsRoomSteps = false
 
@@ -467,6 +485,7 @@ class RoomManagerTest {
                     hubMode,
                     argv.firstOrNull { it.startsWith("--csrf_token=") }?.substringAfter('=').orEmpty(),
                 )
+                "pocketide-remote-control" in argv -> engine(Loopback.freePort().toString(), remoteControlMode, "a-key")
                 RoomLayout.TERMINAL_SERVER in argv -> listOf(
                     "python3", File(ASSETS, "rooms/term.py").absolutePath,
                     "--port", argv[argv.indexOf("--port") + 1],
