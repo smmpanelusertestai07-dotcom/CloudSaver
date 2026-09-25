@@ -53,7 +53,15 @@ internal class GitWorld(val root: File) {
     fun bare(name: String) = File(repos, "$name.git")
 
     fun git(dir: File, vararg args: String): String {
-        val process = ProcessBuilder(listOf("git") + args).directory(dir).redirectErrorStream(true).apply {
+        val process = command(dir, *args).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        check(process.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$output" }
+        return output.trim()
+    }
+
+    /** The system git in [dir], with no user or system config. */
+    fun command(dir: File, vararg args: String): ProcessBuilder =
+        ProcessBuilder(listOf("git") + args).directory(dir).apply {
             val env = environment()
             env.keys.filter { it.startsWith("GIT_") }.forEach { env.remove(it) }
             env["HOME"] = home.path
@@ -65,11 +73,7 @@ internal class GitWorld(val root: File) {
             env["GIT_AUTHOR_EMAIL"] = "test@example.com"
             env["GIT_COMMITTER_NAME"] = "Test"
             env["GIT_COMMITTER_EMAIL"] = "test@example.com"
-        }.start()
-        val output = process.inputStream.bufferedReader().readText()
-        check(process.waitFor() == 0) { "git ${args.joinToString(" ")} failed:\n$output" }
-        return output.trim()
-    }
+        }
 
     /** The object a revision names, or null when there is none. */
     fun revParse(dir: File, revision: String): String? =
