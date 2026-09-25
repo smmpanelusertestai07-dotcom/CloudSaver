@@ -62,7 +62,7 @@ internal class RoomConfigurator(
             }
             RoomProfiles.ANTIGRAVITY -> {
                 generate(agentId, home, ".gemini/config/mcp_config.json") { text, kept -> ConfigFiles.antigravityMcp(text, servers, kept) }
-                generate(agentId, home, ".gemini/antigravity-cli/settings.json") { text, kept -> ConfigFiles.antigravitySettings(text, kept) }
+                generate(agentId, home, ".gemini/antigravity-cli/settings.json") { text, kept -> ConfigFiles.antigravitySettings(text, kept, careful) }
                 generate(agentId, home, ".gemini/config/hooks.json") { text, kept -> ConfigFiles.antigravityHooks(text, kept) }
             }
         }

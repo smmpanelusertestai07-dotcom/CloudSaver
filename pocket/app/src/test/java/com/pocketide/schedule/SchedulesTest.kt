@@ -61,6 +61,16 @@ class HeadlessCommandTest {
         assertFalse(HeadlessCommand.succeeded("antigravity", 0, listOf("""{"status": "WAITING","response":""}""")))
         assertFalse("a soft-denied permission exits 0", HeadlessCommand.succeeded("antigravity", 0, listOf("permission denied: write_file")))
     }
+
+    @Test
+    fun agyRefusedAToolItReportsAsNeedingALook() {
+        val output = listOf(
+            "Tool run_command(npm install) was soft-denied: add \"command(npm)\" under permissions.allow in ~/.gemini/antigravity-cli/settings.json",
+            """{"conversation_id":"c","status":"SUCCESS","response":"I could not run npm install."}""",
+        )
+        assertFalse("status SUCCESS, but a tool was refused", HeadlessCommand.succeeded("antigravity", 0, output))
+        assertTrue(HeadlessCommand.succeeded("antigravity", 0, output.drop(1)))
+    }
 }
 
 class ScheduleConstraintsTest {

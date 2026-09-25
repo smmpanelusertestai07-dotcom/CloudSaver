@@ -244,6 +244,7 @@ class ConfigFilesTest {
     @Test fun `agy's CLI settings turn telemetry off, keep the rest, and rebuild allow rules and hooks`() {
         val rebuilt = ConfigFiles.antigravitySettings(
             """{"permissions": {"deny": ["read_file(/x)"], "allow": ["command(*)"]}, "hooks": {"x": {"Stop": []}}, "enableTelemetry": true}""",
+            careful = true,
         )!!
         val written = obj(rebuilt.text)
         assertEquals(JsonPrimitive(false), written["enableTelemetry"])
@@ -251,6 +252,17 @@ class ConfigFilesTest {
         assertFalse(written["permissions"]!!.jsonObject.containsKey("allow"))
         assertFalse(written.containsKey("hooks"))
         assertEquals(listOf("permissions.allow", "hooks"), rebuilt.added.map { it.place })
+    }
+
+    @Test fun `agy's CLI may run git and the usual tests on the owner's own code, and asks on someone else's`() {
+        val own = ConfigFiles.antigravitySettings("""{"permissions": {"allow": ["command(*)"]}}""")!!
+        val allowed = obj(own.text)["permissions"]!!.jsonObject["allow"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(ConfigFiles.AGY_ALLOW_RULES, allowed)
+        assertEquals("the agent's own rule is still taken out", listOf("\"command(*)\""), own.added.map { it.value })
+
+        val careful = ConfigFiles.antigravitySettings(own.text, careful = true)!!
+        assertFalse(obj(careful.text)["permissions"]!!.jsonObject.containsKey("allow"))
+        assertTrue("PocketIDE's own rules go without a card", careful.added.isEmpty())
     }
 
     @Test fun `hooks files hold only the hooks the owner kept, and go when none is left`() {
