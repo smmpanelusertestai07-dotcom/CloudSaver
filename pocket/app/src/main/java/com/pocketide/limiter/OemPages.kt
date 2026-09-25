@@ -3,8 +3,8 @@ package com.pocketide.limiter
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
+import androidx.core.net.toUri
 
 /**
  * Opens the page that holds the fix for a condition. The phone maker's own page comes first,
@@ -73,7 +73,7 @@ internal class OemPages(private val context: Context, private val vendor: Vendor
 
     private fun action(action: String, forThisApp: Boolean = false): Boolean {
         val intent = Intent(action)
-        if (forThisApp) intent.data = Uri.parse("package:${context.packageName}")
+        if (forThisApp) intent.data = "package:${context.packageName}".toUri()
         return launch(intent)
     }
 

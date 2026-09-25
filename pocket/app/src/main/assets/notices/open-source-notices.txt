@@ -15,21 +15,27 @@ INSIDE THE APK
 PocketIDE
   Apache License 2.0. The app icon is PocketIDE's own mark, under the same licence.
 
-PRoot (libproot.so, libproot-loader.so)
+PRoot 5.1.107.92 (libproot.so, libproot-loader.so)
   GNU General Public License, version 2 (GPL-2.0).
   PRoot lets the Ubuntu computer run on the phone's own kernel without root and without a
-  virtual machine. Upstream: https://github.com/proot-me/proot. The arm64 build follows
-  Termux's packaging: https://github.com/termux/proot. The GPL source for each release is
-  published beside it, and a copy of the GPL-2.0 text accompanies that source.
+  virtual machine. Upstream: https://github.com/proot-me/proot. This is Termux's arm64 build of
+  https://github.com/termux/proot tag v5.1.107.92. PocketIDE changed three names inside
+  libproot.so, each to one of the same length, so Android can run it from the app: the install
+  prefix com.termux became com.ndockx, its library search path became $ORIGIN, and its
+  libtalloc.so.2 dependency became libtallocxx.so. The GPL source for each release is published
+  beside it: GPL-SOURCE.txt, the exact source archive and Termux's build recipe. A copy of the
+  GPL-2.0 text accompanies that source.
 
-talloc (libtallocxx.so)
+talloc 2.4.3 (libtallocxx.so)
   GNU Lesser General Public License, version 3 or later (LGPL-3.0-or-later).
-  Part of the Samba project: https://talloc.samba.org. Used by PRoot as a separate shared
-  library, loaded at run time, which you may replace.
+  Part of the Samba project: https://talloc.samba.org. Termux's build of talloc 2.4.3, unchanged
+  apart from its file name. Used by PRoot as a separate shared library, loaded at run time,
+  which you may replace. Each release publishes talloc-2.4.3.tar.gz and Termux's build recipe
+  beside it.
 
-libandroid-shmem (libandroid-shmem.so)
+libandroid-shmem 0.7 (libandroid-shmem.so)
   BSD 3-Clause licence. Copyright (c) 2013 Sergii Pylypenko, (c) 2017 Fredrik Fornwall.
-  https://github.com/termux/libandroid-shmem
+  https://github.com/termux/libandroid-shmem. Termux's build of version 0.7, unchanged.
 
 AndroidX and Jetpack (Compose, Material 3, Activity, Lifecycle, Navigation, WorkManager,
 Biometric, WebKit, Core)

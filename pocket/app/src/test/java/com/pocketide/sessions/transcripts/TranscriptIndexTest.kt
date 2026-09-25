@@ -146,7 +146,7 @@ class TranscriptIndexTest {
         val again = index().scan(sessions).getValue(SESSION_A)
         assertEquals(file.length(), again.conversations.single().facts.offset)
 
-        index().forget(listOf(file.parentFile))
+        index().forget(listOf(checkNotNull(file.parentFile)))
         assertFalse(store.readText().contains(file.absolutePath))
     }
 }

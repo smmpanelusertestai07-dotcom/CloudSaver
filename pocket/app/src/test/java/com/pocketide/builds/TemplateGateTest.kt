@@ -72,6 +72,22 @@ class TemplateGateTest {
         for ((action, shas) in pins) assertEquals("$action pins", 1, shas.toSet().size)
     }
 
+    /**
+     * Dependabot keeps PocketIDE's own workflow current, but it cannot see these files inside
+     * the app. An action both use must carry the same pin, so its update reaches the templates.
+     */
+    @Test
+    fun actionsSharedWithPocketIdesWorkflowFollowItsPins() {
+        fun pins(lines: List<String>) = lines.filter { it.contains("uses:") }
+            .map { it.substringAfter("uses: ").substringBefore(" #").trim() }
+            .associate { it.substringBefore('@') to it.substringAfter('@') }
+        val own = pins(File("../../.github/workflows/pocket.yml").readLines())
+        val templates = pins(files.flatMap { it.readLines() })
+        val shared = templates.keys.intersect(own.keys)
+        assertTrue("the templates share checkout with the workflow", "actions/checkout" in shared)
+        for (action in shared) assertEquals("$action pin", own[action], templates[action])
+    }
+
     @Test
     fun everyJobHasATimeLimitAndArtifactsExpire() {
         for (file in files) {

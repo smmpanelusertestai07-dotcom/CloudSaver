@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Android Lint fails the build on any warning (warningsAsErrors). These are the findings that
+     were reviewed and are not problems, each scoped to where it was reviewed, with the reason. -->
+<lint>
+    <!-- Inside JGit's jar: JGit uses that trust manager only for http.sslVerify=false. The app
+         never sets it, and reads each repository's config from a private copy Linux cannot
+         change (git/GuardedFs.kt). -->
+    <issue id="TrustAllX509TrustManager">
+        <ignore regexp="org\.eclipse\.jgit" />
+    </issue>
+
+    <!-- EngineRecord keeps only the application context, which lives as long as the process. -->
+    <issue id="StaticFieldLeak">
+        <ignore path="src/main/java/com/pocketide/limiter/Exits.kt" />
+    </issue>
+
+    <!-- The stream is handed to Sessions.addFile, which closes it. -->
+    <issue id="Recycle">
+        <ignore path="src/main/java/com/pocketide/ui/screens/project/SessionTools.kt" />
+    </issue>
+
+    <!-- Every Android 11 constant here is read behind SDK_INT >= R. -->
+    <issue id="InlinedApi">
+        <ignore path="src/main/java/com/pocketide/ui/screens/settings/SettingsAdvanced.kt" />
+    </issue>
+
+    <!-- PocketIDE ships arm64 only: its Linux computer runs arm64 binaries. -->
+    <issue id="ChromeOsAbiSupport" severity="ignore" />
+
+    <!-- Free space is shown and checked against what a download or restore needs; cached data
+         Android could clear is not counted on, so usableSpace is the right figure. -->
+    <issue id="UsableSpace" severity="ignore" />
+
+    <!-- Every brand token is mirrored in colors.xml and checked by the brand gate
+         (tools/gates/brand_tokens.py), whether or not a resource uses it yet. -->
+    <issue id="UnusedResources">
+        <ignore regexp="R\.color\.brand_" />
+    </issue>
+
+    <!-- PocketIDE is not distributed through the Play Store. The action is only listed among the
+         settings pages that take a package: address. -->
+    <issue id="BatteryLife">
+        <ignore path="src/main/java/com/pocketide/ui/screens/home/HomeLogic.kt" />
+    </issue>
+
+    <!-- Created in code with its holder, never inflated from a layout. -->
+    <issue id="ViewConstructor">
+        <ignore path="src/main/java/com/pocketide/ui/web/AgentWebView.kt" />
+    </issue>
+
+    <!-- NoticeCard's tone is its usual second positional argument at every call site. -->
+    <issue id="ModifierParameter">
+        <ignore path="src/main/java/com/pocketide/ui/shell/ShellComponents.kt" />
+    </issue>
+</lint>

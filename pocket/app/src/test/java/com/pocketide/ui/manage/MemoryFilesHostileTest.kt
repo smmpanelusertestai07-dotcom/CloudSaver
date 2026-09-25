@@ -19,7 +19,7 @@ class MemoryFilesHostileTest {
 
     private fun write(home: File, relative: String, text: String): File =
         File(home, relative).apply {
-            parentFile.mkdirs()
+            parentFile?.mkdirs()
             writeText(text)
         }
 
@@ -63,7 +63,7 @@ class MemoryFilesHostileTest {
     fun `a binary file is not opened as text`() {
         val home = temp.newFolder("home")
         val file = File(home, ".codex/AGENTS.md").apply {
-            parentFile.mkdirs()
+            parentFile?.mkdirs()
             writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0x00, 0x00))
         }
         assertRefused { MemoryFiles.read(home, file) }
@@ -147,7 +147,7 @@ class MemoryFilesHostileTest {
     fun `invalid UTF-8 is shown with replacement characters, not a crash`() {
         val home = temp.newFolder("home")
         val file = File(home, ".codex/AGENTS.md").apply {
-            parentFile.mkdirs()
+            parentFile?.mkdirs()
             writeBytes(byteArrayOf(0x61, 0xC3.toByte(), 0x28, 0x62))
         }
         val text = MemoryFiles.read(home, file)

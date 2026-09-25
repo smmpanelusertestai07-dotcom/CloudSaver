@@ -168,7 +168,7 @@ class LocalRemoteGitGate(private val origin: File) : FakeGitGate() {
     var blockNextPush: Verdict? = null
 
     override suspend fun clone(cloneUrl: String, bareRepo: File, token: String) {
-        hostGit(bareRepo.parentFile, "clone", "--quiet", "--bare", origin.absolutePath, bareRepo.absolutePath)
+        hostGit(checkNotNull(bareRepo.parentFile), "clone", "--quiet", "--bare", origin.absolutePath, bareRepo.absolutePath)
         hostGit(bareRepo, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
         hostGit(bareRepo, "fetch", "--quiet", "origin")
     }

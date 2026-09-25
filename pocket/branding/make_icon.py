@@ -77,14 +77,12 @@ MARK_H = BRACKET_H                          # 400
 #              bounding circle then lands at 512 px against a 626 px safe circle, clear of it.
 #   play       0.44 of the square. A square shows more of its own area than a circle does, so
 #              the same apparent weight needs a slightly larger number here.
-#   legacy     0.50 of a tile that already drew its own corners -- no bleed to reserve.
 #   splash     0.42. The Android 12+ splash masks the icon to a circle too.
 #   notify     0.78. A status bar icon is 24 dp of which the glyph is meant to fill nearly all;
 #              held to the launcher's fraction it would vanish next to the network and battery.
 MARK_FILL = {
     "adaptive": 0.40,
     "play": 0.44,
-    "legacy": 0.50,
     "splash": 0.42,
     "notify": 0.78,
 }
@@ -204,19 +202,8 @@ def main():
                                                        fill_scale(n, "adaptive")))
         made.append(write(mono, f"mipmap-{density}", "ic_launcher_monochrome.png"))
 
-    # ---- 3. Legacy launcher icons, for launchers that ignore adaptive icons.
-    legacy = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
-    for density, px in legacy.items():
-        t = gradient_tile(px).convert("RGBA")
-        # A legacy icon draws its own corners; adaptive ones must not.
-        mask = supersampled(px, lambda d, n: d.rounded_rectangle(
-            [0, 0, n - 1, n - 1], radius=n * 0.22, fill=(255, 255, 255, 255)))
-        m = supersampled(px, lambda d, n: draw_mark(d, n / 2, n / 2, MARK,
-                                                    fill_scale(n, "legacy")))
-        t.paste(m, (0, 0), m)
-        rounded = Image.new("RGBA", (px, px), (0, 0, 0, 0))
-        rounded.paste(t, (0, 0), mask)
-        made.append(write(rounded, f"mipmap-{density}", "ic_launcher.png"))
+    # ---- 3. No legacy launcher bitmaps: minSdk 29 always takes the adaptive icon in
+    #         mipmap-anydpi, so a density PNG of the same name would never be shown.
 
     # ---- 4. Notification icon: white silhouette on transparent. Android tints it, so any
     #         colour here would be thrown away, and any gradient would turn to noise.

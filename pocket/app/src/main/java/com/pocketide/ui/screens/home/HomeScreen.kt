@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.limiter.Condition
@@ -280,14 +281,14 @@ private fun syncBanner(status: SyncStatus): Pair<String, Tone>? = when (status) 
 /** Opens a condition's fix; returns a message when the phone has no such page. */
 private fun openSettings(context: Context, action: String): String? {
     val intent = Intent(action)
-    if (needsPackageUri(action)) intent.data = Uri.parse("package:${context.packageName}")
+    if (needsPackageUri(action)) intent.data = "package:${context.packageName}".toUri()
     External.leaving(context)
     return try {
         context.startActivity(intent)
         null
     } catch (_: ActivityNotFoundException) {
         try {
-            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri()))
             null
         } catch (_: ActivityNotFoundException) {
             "This phone has no settings page for that."
