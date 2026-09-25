@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.DialogProperties
 import com.pocketide.ui.theme.LocalStatusColors
 import kotlin.math.max
 
@@ -61,6 +62,12 @@ fun SectionCard(title: String?, modifier: Modifier = Modifier, content: @Composa
 fun DialogBody(modifier: Modifier = Modifier, spacing: Dp = 12.dp, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(spacing), content = content)
 }
+
+/**
+ * For a dialog that holds typed input: a tap beside it, often meant to hide the keyboard, does
+ * not close it and throw the text away. Back and its Cancel button still close it.
+ */
+val KeepTypedInput = DialogProperties(dismissOnClickOutside = false)
 
 /**
  * A group of buttons side by side that wraps: a button that does not fit moves to the next line

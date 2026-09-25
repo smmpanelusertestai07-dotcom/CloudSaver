@@ -45,6 +45,7 @@ import com.pocketide.github.RepoInfo
 import com.pocketide.projects.RepoAddress
 import com.pocketide.projects.RepoNotReachableException
 import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.WorkFormat
@@ -69,6 +70,7 @@ internal fun NewProjectDialog(onDismiss: () -> Unit, onCreated: (String) -> Unit
 
     AlertDialog(
         onDismissRequest = { if (!creating) onDismiss() },
+        properties = KeepTypedInput,
         title = { Text("New project") },
         text = {
             DialogBody(spacing = 10.dp) {

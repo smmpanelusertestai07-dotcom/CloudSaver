@@ -98,6 +98,7 @@ import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.NeedsMobileData
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
@@ -538,6 +539,7 @@ fun NewSessionDialog(
 
     AlertDialog(
         onDismissRequest = { if (!starting) onDismiss() },
+        properties = KeepTypedInput,
         title = { Text("New session") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
