@@ -64,6 +64,12 @@ internal data class FileTrack(
     /** Size and time of the local version already kept as a conflict copy, so it is copied once. */
     val preservedSize: Long = -1,
     val preservedModifiedAt: Long = -1,
+    /**
+     * Drive has a newer version that is written here only once the file's room stops (its agent
+     * may hold the file open). Meanwhile nothing of the file is queued, so no piece is sent
+     * against the version Drive already replaced.
+     */
+    val waitsForRoom: Boolean = false,
 )
 
 /** The last version of a session record this phone pushed, to push only real changes. */

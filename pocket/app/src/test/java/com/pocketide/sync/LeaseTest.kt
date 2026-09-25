@@ -155,6 +155,44 @@ class LeaseTest {
     }
 
     @Test
+    fun aRunningRoomsChatIsRewrittenOnlyOnceTheRoomStops() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("start\n")
+        a.engine.syncNow()
+
+        val b = phoneB()
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+        b.homeFile("claude", path).appendText("continued on B\n")
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+
+        // Phone A's agent still runs when A takes the lease back, and it keeps writing the chat.
+        a.runningRooms += "claude"
+        clock.advance(Durations.MINUTE)
+        a.engine.takeOver()
+        assertEquals("start\n", file.readText())
+        file.appendText("continued on A\n")
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+        assertEquals("start\ncontinued on A\n", file.readText())
+        assertTrue("nothing is sent against the version Drive replaced", a.queued().none { it.path == path })
+        assertEquals(listOf("start\n".length.toLong()), a.remoteIndex()!!.objects.filter { it.path == path && it.offset > 0 }.map { it.offset })
+
+        a.runningRooms.clear()
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+        assertEquals("start\ncontinued on B\n", file.readText())
+        val index = a.remoteIndex()!!
+        val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.fetchSession(copy.id)
+        val copied = index.objects.single { it.sessionId == copy.id }
+        assertEquals("start\ncontinued on A\n", reader.homeFile("claude", copied.path).readText())
+    }
+
+    @Test
     fun aPhoneThatTakesTheLeaseBackContinuesFromDrive() = runBlocking {
         val a = phoneA()
         val file = a.homeFile("claude", path)

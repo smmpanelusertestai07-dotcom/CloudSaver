@@ -100,10 +100,14 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
 
     /** Drops queued entries; anything already in Drive but never recorded is deleted later. */
     fun discard(entries: Collection<QueueEntry>) {
-        val uploaded = entries.filter { it.blob && it.driveId != null }.associate { it.name to it.driveId.orEmpty() }
+        val uploaded = unrecorded(entries)
         entries.forEach { kit.queue.remove(it.id) }
         if (uploaded.isNotEmpty()) state = state.copy(driveDeletes = state.driveDeletes + uploaded)
     }
+
+    /** Drive files [entries] uploaded (name → id), to delete once the entries leave the queue unrecorded. */
+    fun unrecorded(entries: Collection<QueueEntry>): Map<String, String> =
+        entries.filter { it.blob && it.driveId != null }.associate { it.name to it.driveId.orEmpty() }
 }
 
 /** Every session this phone knows: its own records first, then the index's. */

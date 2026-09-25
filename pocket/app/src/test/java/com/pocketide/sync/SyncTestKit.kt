@@ -13,6 +13,8 @@ import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.model.VaultIndex
+import com.pocketide.model.VaultObject
 import com.pocketide.vault.VaultCipher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -330,6 +332,26 @@ internal class TestPhone(
 
     /** The index as it is in Drive now. */
     fun remoteIndex() = drive.named(RemoteIndex.NAME).singleOrNull()?.let { RemoteIndex().decode(cipher, it.bytes) }
+
+    /** Replaces the index in Drive the way another phone's write would. */
+    fun rewriteRemoteIndex(change: (VaultIndex) -> VaultIndex) {
+        val stored = drive.named(RemoteIndex.NAME).single()
+        val remote = RemoteIndex()
+        stored.bytes = remote.encode(cipher, change(remote.decode(cipher, stored.bytes)))
+        stored.modified = clock.now
+    }
+
+    /** Sends [text] to Drive as another phone would, returning [like] turned into its index entry at [offset]. */
+    suspend fun sendAsAnotherPhone(like: VaultObject, text: String, offset: Long): VaultObject {
+        val plain = text.toByteArray()
+        val sealed = cipher.encryptBytes(Codec.gzip(plain))
+        val name = Codec.objectName()
+        val file = drive.uploadBytes(name, sealed)
+        return like.copy(
+            name = name, driveId = file.id, offset = offset, length = plain.size.toLong(),
+            storedBytes = sealed.size.toLong(), sha256 = Codec.sha256(plain), createdAt = clock.now,
+        )
+    }
 
     companion object {
         const val OWNER = "owner@example.com"

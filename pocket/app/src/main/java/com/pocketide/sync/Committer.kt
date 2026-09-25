@@ -161,10 +161,10 @@ internal class Committer(private val kit: SyncKit) {
     ) {
         val after = result.index ?: return
         val now = run.now
+        val entries = run.entries()
         val tracks = run.state.tracks.toMutableMap()
         val (erasedNow, recorded) = ready.partition { it.sessionId in erased }
         for (e in recorded) {
-            kit.queue.remove(e.id)
             if (!e.conflict) tracks[e.trackKey] = Tracks.after(tracks[e.trackKey], e)
         }
         removeFiles.forEach(tracks::remove)
@@ -173,12 +173,13 @@ internal class Committer(private val kit: SyncKit) {
             .forEach { t -> kit.scanner.locate(t.kind, t.agentId, t.path)?.let(::deleteTree) }
         tracks.entries.removeAll { it.value.sessionId in erased }
         // Uploaded for a session that is erased in this same write: its files go from Drive too.
-        run.discard(erasedNow + run.entries().filter { it.sessionId in erased })
-        val remaining = run.entries()
-        val keep = after.objects.map { it.name }.toSet() + remaining.map { it.name }
+        val dropped = (erasedNow + entries.filter { it.sessionId in erased }).distinctBy { it.id }
+        val leaving = recorded + dropped
+        val leavingIds = leaving.map { it.id }.toSet()
+        val keep = after.objects.map { it.name }.toSet() + entries.filter { it.id !in leavingIds }.map { it.name }
         val gone = before?.objects.orEmpty()
             .filter { it.name.startsWith(OBJECT_PREFIX) && it.name !in keep }
-            .associate { it.name to it.driveId.orEmpty() }
+            .associate { it.name to it.driveId.orEmpty() } + run.unrecorded(dropped)
         val state = run.state
         run.state = state.copy(
             tracks = tracks,
@@ -196,7 +197,10 @@ internal class Committer(private val kit: SyncKit) {
             backedUpAt = state.backedUpAt + recorded.mapNotNull { it.sessionId }.associateWith { now } - erased,
         )
         run.keepIndex(result)
+        // Saved before any queue file goes: a kill in between leaves entries the index already
+        // names, which are recognized as done, never a queue emptied under a track that lags behind.
         run.save()
+        leaving.forEach { kit.queue.remove(it.id) }
     }
 
     companion object {
@@ -207,6 +211,8 @@ internal class Committer(private val kit: SyncKit) {
 /** How a file's track moves forward once an entry is in the index. */
 internal object Tracks {
     fun after(track: FileTrack?, e: QueueEntry): FileTrack {
+        // Recorded before (its queue file outlived the saved state): the track has it already.
+        if (track != null && e.name in track.objects) return track
         val base = track ?: FileTrack(kind = e.kind, agentId = e.agentId, path = e.path, sessionId = e.sessionId)
         val moved = if (e.kind.appendOnly) {
             base.copy(
@@ -241,6 +247,7 @@ internal object Tracks {
             sessionId = base.sessionId ?: first.sessionId,
             onPhone = true,
             missingSince = -1,
+            waitsForRoom = false,
         )
     }
 }

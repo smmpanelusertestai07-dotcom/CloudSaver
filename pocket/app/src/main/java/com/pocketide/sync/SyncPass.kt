@@ -114,6 +114,8 @@ internal class SyncPass(
             if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) continue
             val waiting = queued[c.key].orEmpty()
             var track = tracks[c.key]
+            // Drive's newer version waits for the room to stop; nothing is sent against the old one.
+            if (track?.waitsForRoom == true) continue
             if (track == null && waiting.isEmpty()) track = reconciler.adopt(index, c)?.also { tracks[c.key] = it }
             if (track != null && track.sessionId == null && c.sessionId != null) track = track.copy(sessionId = c.sessionId)
             val known = Known.of(track, waiting)

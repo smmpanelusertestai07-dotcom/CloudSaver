@@ -5,6 +5,7 @@ import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.model.VaultIndex
+import com.pocketide.model.VaultObject
 import java.io.File
 
 /**
@@ -125,57 +126,123 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         val erasedElsewhere = known - index.sessions.map { it.id }.toSet()
         val batch = conflicts.Batch(run, book)
         val tracks = run.state.tracks.toMutableMap()
+        val finished = ArrayList<QueueEntry>()
         var erased = run.state.erased
-        for ((key, track) in run.state.tracks) {
+        for ((key, recorded) in run.state.tracks) {
             if (key == SECRETS_KEY) continue
-            if (track.sessionId != null && track.sessionId in erasedElsewhere) {
+            val waiting = queued[key].orEmpty()
+            if (recorded.sessionId != null && recorded.sessionId in erasedElsewhere) {
                 tracks.remove(key)
-                erased = erased + (track.sessionId to run.now)
-                run.discard(queued[key].orEmpty())
+                erased = erased + (recorded.sessionId to run.now)
+                run.discard(waiting)
                 continue
             }
             val chain = files[key].orEmpty()
-            if (chain.map { it.name } == track.objects) continue
-            val next = align(run, drive, track, chain, queued[key].orEmpty(), batch)
+            val names = chain.map { it.name }
+            val inDrive = names.toSet()
+            // This phone's own entries that Drive already records (the answer to their write was
+            // lost, or the app was killed while settling it) are finished work, not another phone's.
+            val done = waiting.takeWhile { it.name in inDrive }
+            val track = done.fold(recorded) { t, e -> Tracks.after(t, e) }
+            finished += done
+            if (names == track.objects) {
+                tracks[key] = track.copy(waitsForRoom = false)
+                continue
+            }
+            val next = align(run, drive, track, chain, waiting.drop(done.size), batch)
             if (next == null) tracks.remove(key) else tracks[key] = next
         }
         batch.finish()
-        run.state = run.state.copy(tracks = tracks, erased = erased, alignedRevision = index.revision)
+        // A file that waits for its room keeps this phone behind Drive, so the next pass comes back to it.
+        val aligned = if (tracks.values.any { it.waitsForRoom }) run.state.alignedRevision else index.revision
+        run.state = run.state.copy(tracks = tracks, erased = erased, alignedRevision = aligned)
         run.save()
+        finished.forEach { kit.queue.remove(it.id) }
     }
 
     /** The track after aligning one file with [chain]; null when the file left Drive and the phone. */
-    private suspend fun align(run: Run, drive: DriveStore, track: FileTrack, chain: List<com.pocketide.model.VaultObject>, queued: List<QueueEntry>, batch: Conflicts.Batch): FileTrack? {
-        val place = kit.scanner.roomFile(track.kind, track.agentId, track.path) ?: return track
+    private suspend fun align(run: Run, drive: DriveStore, track: FileTrack, chain: List<VaultObject>, queued: List<QueueEntry>, batch: Conflicts.Batch): FileTrack? {
+        // Nothing could be done this time; the next change in Drive tries again.
+        val asItWas = track.copy(waitsForRoom = false)
+        val place = kit.scanner.roomFile(track.kind, track.agentId, track.path) ?: return asItWas
         val file = place.file
         val facts = factsOf(file)
         if (facts == null) {
             // Not on the phone: opening the session later brings Drive's version.
-            return track.copy(onPhone = false, objects = chain.map { it.name }, syncedLength = Chains.length(chain), prefixSha256 = null)
+            return asItWas.copy(onPhone = false, objects = chain.map { it.name }, syncedLength = Chains.length(chain), prefixSha256 = null)
         }
         val committedHere = facts.size == track.syncedLength && facts.modifiedAt == track.modifiedAt
         if (chain.isEmpty()) {
-            run.discard(queued)
-            if (committedHere) {
-                file.delete()
-                return null
+            // A transcript leaves Drive only with its session (handled above), so it was lost there: it goes up again.
+            if (track.kind.appendOnly || !committedHere) {
+                run.discard(queued)
+                return asItWas.copy(objects = emptyList(), syncedLength = 0, prefixSha256 = null, size = -1, modifiedAt = -1)
             }
-            return track.copy(objects = emptyList(), syncedLength = 0, prefixSha256 = null, size = -1, modifiedAt = -1)
+            if (waitsForRoom(track)) return waiting(run, track, queued)
+            run.discard(queued)
+            file.delete()
+            return null
         }
         val continues = track.kind.appendOnly && track.objects.isNotEmpty() && chain.map { it.name }.take(track.objects.size) == track.objects
         if (continues && committedHere) {
+            if (waitsForRoom(track)) return waiting(run, track, queued)
             val assembled = kit.materializer.assemble(drive, run.cipher, place, chain.drop(track.objects.size), keep = track.syncedLength, keepSha = track.prefixSha256)
-                ?: return track
+                ?: return asItWas
             return Tracks.materialized(track, chain, assembled, factsOf(file))
         }
+        val lost = lostHere(track, chain)
+        // Everything Drive holds is already at the start of the phone's copy (Drive lost pieces this
+        // phone recorded, or the other phone only compacted them): the copy stays, the rest goes up.
+        val kept = if (track.kind.appendOnly) ChainCheck.prefixOf(file, chain)?.let { rebased(track, chain, it) } else if (lost) rebased(track, chain, null) else null
+        if (kept != null) {
+            run.discard(queued)
+            return kept
+        }
+        if (waitsForRoom(track)) return waiting(run, track, queued)
+        // Drive's version replaces the phone's, which is kept as a conflict copy first unless Drive
+        // already had all of it.
         val alreadyKept = facts.size == track.preservedSize && facts.modifiedAt == track.preservedModifiedAt
-        if (!committedHere && !alreadyKept) {
-            val agent = track.agentId ?: return track
-            if (!batch.copy(Candidate(track.kind, agent, track.path, file, facts, track.sessionId, TrackRules.isVideo(file.name)))) return track
+        if ((lost || !committedHere) && !alreadyKept) {
+            val agent = track.agentId ?: return asItWas
+            if (!batch.copy(Candidate(track.kind, agent, track.path, file, facts, track.sessionId, TrackRules.isVideo(file.name)))) return asItWas
         }
         run.discard(queued)
-        val assembled = kit.materializer.assemble(drive, run.cipher, place, chain) ?: return track
+        val assembled = kit.materializer.assemble(drive, run.cipher, place, chain) ?: return asItWas
         return Tracks.materialized(track, chain, assembled, factsOf(file))
+    }
+
+    /**
+     * Drive lost what this phone recorded of the file (a racing write dropped it): a transcript
+     * whose chain still starts from this phone's pieces but lacks some of them, or a whole file
+     * older than the version this phone recorded. A newer version made on another phone always
+     * has a later time, because each version is timed after the one it replaces.
+     */
+    private fun lostHere(track: FileTrack, chain: List<VaultObject>): Boolean {
+        if (track.objects.isEmpty()) return false
+        if (!track.kind.appendOnly) return chain.first().createdAt < track.lastCreatedAt
+        val names = chain.map { it.name }.toSet()
+        return chain.first().name in track.objects && track.objects.any { it !in names }
+    }
+
+    /** The phone's copy stays; the track follows Drive's chain, so what Drive lacks is queued again. */
+    private fun rebased(track: FileTrack, chain: List<VaultObject>, match: Assembled?): FileTrack = track.copy(
+        objects = chain.map { it.name },
+        syncedLength = match?.length ?: chain.first().length,
+        prefixSha256 = match?.sha256 ?: chain.first().sha256,
+        size = -1,
+        modifiedAt = -1,
+        lastCreatedAt = maxOf(track.lastCreatedAt, chain.maxOf { it.createdAt }),
+        waitsForRoom = false,
+    )
+
+    /** A room's own files may be open in its agent: they are rewritten only while the room is stopped. */
+    private fun waitsForRoom(track: FileTrack): Boolean =
+        track.kind.root == Root.HOME && track.agentId?.let(kit.ports::roomRunning) == true
+
+    /** Nothing queued against the version Drive replaced may be sent meanwhile. */
+    private fun waiting(run: Run, track: FileTrack, queued: List<QueueEntry>): FileTrack {
+        run.discard(queued)
+        return track.copy(waitsForRoom = true)
     }
 
     /**
@@ -198,7 +265,7 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
 
 /** Checks a local file against a chain, piece by piece, by SHA-256. */
 internal object ChainCheck {
-    fun prefixOf(file: File, chain: List<com.pocketide.model.VaultObject>): Assembled? = try {
+    fun prefixOf(file: File, chain: List<VaultObject>): Assembled? = try {
         java.io.FileInputStream(file).use { input ->
             val whole = Codec.newDigest()
             val buffer = ByteArray(64 * 1024)
