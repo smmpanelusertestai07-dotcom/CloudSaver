@@ -17,6 +17,15 @@ class PiecesTest {
 
     private fun phone() = TestPhone(accounts, clock).apply { sessions += session("s1", at = clock.now, ref = "c0ffee00-1111") }
 
+    private fun TestPhone.pieces() = remoteIndex()!!.objects.filter { it.kind == ObjectKind.CHAT_PIECE && it.path == path }.sortedBy { it.offset }
+
+    /** The chat as a new phone rebuilds it from Drive alone. */
+    private suspend fun rebuilt(): String {
+        val other = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        other.engine.fetchSession("s1")
+        return other.homeFile("claude", path).readText()
+    }
+
     @Test
     fun newBytesBecomeSmallPiecesAtTheirOffsets() = runBlocking {
         val phone = phone()
@@ -42,6 +51,43 @@ class PiecesTest {
         assertEquals(pieces.map { it.name }, track.objects)
         assertTrue(phone.queued().isEmpty())
         assertTrue(phone.engine.status.value is SyncStatus.UpToDate)
+    }
+
+    @Test
+    fun aNewBaseMadeAfterTheClockWentBackStillWins() = runBlocking {
+        val phone = phone()
+        val file = phone.homeFile("claude", path)
+        file.writeText("the first version of the chat\n")
+        phone.engine.syncNow()
+        val oldBase = phone.pieces().single()
+
+        // The phone's time goes back an hour (set by hand, or corrected by the network).
+        clock.now -= Durations.HOUR
+        file.writeText("rewritten\n")
+        file.setLastModified(file.lastModified() + 5_000)
+        phone.engine.syncNow()
+
+        val base = phone.pieces().single()
+        assertEquals(0L, base.offset)
+        assertTrue("ordered after the base it replaces", base.createdAt > oldBase.createdAt)
+        assertEquals("rewritten\n", rebuilt())
+    }
+
+    @Test
+    fun aPieceAddedAfterTheClockWentBackStaysInTheChat() = runBlocking {
+        val phone = phone()
+        val file = phone.homeFile("claude", path)
+        file.writeText("line 1\n")
+        phone.engine.syncNow()
+
+        clock.now -= Durations.HOUR
+        file.appendText("line 2\n")
+        phone.engine.syncNow()
+
+        val pieces = phone.pieces()
+        assertEquals(listOf(0L, 7L), pieces.map { it.offset })
+        assertTrue(pieces.last().createdAt > pieces.first().createdAt)
+        assertEquals("line 1\nline 2\n", rebuilt())
     }
 
     @Test
