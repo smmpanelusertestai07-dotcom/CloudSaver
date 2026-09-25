@@ -197,8 +197,11 @@ internal class PieceMaker(
                     val digest = Codec.newDigest()
                     val bounded = BoundedInputStream(raw, facts.size)
                     encrypt(DigestInputStream(bounded, digest), out)
-                    if (bounded.count != facts.size) null
-                    else draft(c, known, id, offset = 0, length = bounded.count).copy(sha256 = Codec.hex(digest.digest()))
+                    if (bounded.count != facts.size) {
+                        null
+                    } else {
+                        draft(c, known, id, offset = 0, length = bounded.count).copy(sha256 = Codec.hex(digest.digest()))
+                    }
                 }
             }
         } catch (_: IOException) {
@@ -267,9 +270,6 @@ internal class PieceMaker(
         fileModifiedAt = c.facts.modifiedAt,
     )
 
-    private fun masked(input: InputStream, path: String): InputStream =
-        if (TrackRules.needsSecretScan(path)) SecretMaskingInputStream(input) else input
-
     /** gzip, then age: what every object in Drive is. */
     private fun encrypt(plain: InputStream, out: OutputStream) {
         GzipCompressingInputStream(plain).use { cipher.encrypt(it, out) }
@@ -280,3 +280,7 @@ internal class PieceMaker(
         const val NEWLINE = '\n'.code.toByte()
     }
 }
+
+/** A history file's pasted secrets are masked on the way out; every other file goes as it is. */
+private fun masked(input: InputStream, path: String): InputStream =
+    if (TrackRules.needsSecretScan(path)) SecretMaskingInputStream(input) else input

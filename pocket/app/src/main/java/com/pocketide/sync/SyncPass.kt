@@ -16,7 +16,7 @@ internal data class PassOptions(
     val onLargeUpload: suspend () -> Unit = {},
     /** No new upload starts after this time; the rest waits for the next run. */
     val deadline: Long = Long.MAX_VALUE,
-    /** A periodic run: it stops before the network when there is nothing to do ([SyncPass.idle]). */
+    /** A periodic run: it stops before the network when there is nothing to do ([SyncPass.stopIfIdle]). */
     val quietWhenIdle: Boolean = false,
 )
 
@@ -46,18 +46,13 @@ internal class SyncPass(
 
     suspend fun run(run: Run, opts: PassOptions): PassOutcome {
         kit.queue.recover()
-        run.account()
-        return if (opts.quietWhenIdle && idle(run)) quiet(run) else sync(run, opts)
-    }
-
-    private suspend fun sync(run: Run, opts: PassOptions): PassOutcome {
         val online = ports.network.online()
         if (online) checkKeyring()
+        run.account()
         val book = book(run)
         val drive = run.drive()
         val snapshot = if (online) fetchOrNull(run, drive) else null
-        // A database still being written is copied once it has been still for a while: a sync then takes it.
-        if (collect(run, book, snapshot?.index ?: run.index).isNotEmpty()) ports.scheduler.requestAfter(QUIET_MS)
+        collect(run, book, snapshot?.index ?: run.index)
         queueSecrets(run, snapshot?.index ?: run.index)
         run.save()
         Views.publishWaiting(run, book)
@@ -78,13 +73,25 @@ internal class SyncPass(
     }
 
     /**
+     * A periodic run with nothing to do ([idle]) stops here, before the keyring check and the
+     * network, so an idle phone wakes cheaply; the status says when Drive was last asked. False
+     * when there is work to do.
+     */
+    suspend fun stopIfIdle(run: Run): Boolean {
+        kit.queue.recover()
+        run.account()
+        if (!idle(run)) return false
+        kit.flows.status.value = SyncStatus.UpToDate(run.state.lastSyncAt)
+        return true
+    }
+
+    /**
      * Nothing to send, record or bring in, and Drive was asked a short while ago: nothing is queued
      * or waiting, no file on the phone changed size or time since it was recorded, and this phone's
-     * records, settings, Variables and Secrets are as it last sent them. A periodic run stops here,
-     * before the keyring check and the network, so an idle phone wakes cheaply. After a failed run
-     * it goes on until a sync succeeds, so it neither says all is well nor stops trying.
+     * records, settings, Variables and Secrets are as it last sent them. After a failed run this is
+     * false until a sync succeeds, so a periodic run neither says all is well nor stops trying.
      */
-    suspend fun idle(run: Run): Boolean {
+    private suspend fun idle(run: Run): Boolean {
         val state = run.state
         val book = book(run)
         val nothingWaits = run.entries().isEmpty() && state.pendingConflicts.isEmpty() && state.eraseQueue.isEmpty() &&
@@ -126,12 +133,6 @@ internal class SyncPass(
         }
     }
 
-    /** An idle periodic run: the status says when Drive was last asked. */
-    private fun quiet(run: Run): PassOutcome {
-        kit.flows.status.value = SyncStatus.UpToDate(run.state.lastSyncAt)
-        return PassOutcome.DONE
-    }
-
     /**
      * The keyring's visibility and collaborators are checked on every sync (§5.1), before anything
      * is sealed, so a key the check replaces is not used for this pass's new pieces. Without
@@ -169,14 +170,14 @@ internal class SyncPass(
         val deferred = collect(run, book, run.index)
         run.save()
         Views.publishWaiting(run, book)
-        return (deferred.mapNotNull { it.sessionId } + run.entries().filter { !it.conflict }.mapNotNull { it.sessionId }).toSet()
+        return deferred + run.entries().filter { !it.conflict }.mapNotNull { it.sessionId }
     }
 
     /**
      * Queues every new byte and changed file, and notes files that disappeared. Returns the
-     * databases left for a later run because they changed within [QUIET_MS].
+     * sessions whose databases were left for a later run because they changed within [QUIET_MS].
      */
-    fun collect(run: Run, book: SessionBook, index: VaultIndex?): List<Candidate> {
+    fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
         val maker = run.maker()
         val entries = dropStranded(run, index).filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
@@ -187,12 +188,12 @@ internal class SyncPass(
         val compactAllowed = !ports.network.metered()
         val tracks = run.state.tracks.toMutableMap()
         val seen = HashSet<String>()
-        val deferred = ArrayList<Candidate>()
+        val deferred = HashSet<String>()
         for (c in kit.scanner.scan(book.matcher, tracks, ports::roomRunning)) {
             seen += c.key
             if (!book.uploadable(c.sessionId)) continue
-            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) {
-                deferred += c
+            if (leftForLater(c, run.now)) {
+                c.sessionId?.let(deferred::add)
                 continue
             }
             val waiting = queued[c.key].orEmpty()
@@ -240,6 +241,16 @@ internal class SyncPass(
         noteMissing(run, tracks, seen, book)
         run.state = run.state.copy(tracks = tracks)
         return deferred
+    }
+
+    /**
+     * A database written within [QUIET_MS] may be mid-write, so it is copied only once it has been
+     * still that long. A sync is asked for then, rather than leaving it to the hourly run.
+     */
+    private fun leftForLater(c: Candidate, now: Long): Boolean {
+        if (!TrackRules.isDatabase(c.path) || now - c.facts.modifiedAt >= QUIET_MS) return false
+        ports.scheduler.requestAfter(QUIET_MS)
+        return true
     }
 
     /**
@@ -368,7 +379,9 @@ internal class SyncPass(
         // Queued without Drive's copy: never sent. The merged set is queued again below.
         run.discard(queued)
         if (!broughtIn) return
-        val synced = FileTrack(kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name))
+        val synced = FileTrack(
+            kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name),
+        )
         run.state = run.state.copy(tracks = run.state.tracks + (SECRETS_KEY to synced))
         queueSecrets(run, index)
         run.save()

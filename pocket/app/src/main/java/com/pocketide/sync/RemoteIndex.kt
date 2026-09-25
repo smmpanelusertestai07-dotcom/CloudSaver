@@ -102,7 +102,7 @@ internal class RemoteIndex(private val budget: MeteredDataBudget? = null) {
     private suspend fun check(drive: DriveStore, cipher: VaultCipher, written: DriveFile, bytes: ByteArray, read: RemoteSnapshot): Check {
         val readMark = read.mark
         val sameFile = readMark != null && written.id == readMark.id
-        val revisions = drive as? DriveRevisions
+        val revisions = drive.revisions
         val versions = if (sameFile) revisions?.revisionsOf(written.id).orEmpty() else emptyList()
         val before = versions.getOrNull(versions.indexOfLast { it.md5 != null && it.md5 == written.md5 } - 1)
         return when {
@@ -154,16 +154,6 @@ internal class RemoteIndex(private val budget: MeteredDataBudget? = null) {
         budget?.record(bytes.toLong(), MeteredDataBudget.KIND_SYNC)
     }
 
-    private fun sameContent(file: DriveFile, mark: RemoteMark): Boolean = when {
-        file.id != mark.id -> false
-        file.md5 != null && mark.md5 != null -> file.md5 == mark.md5
-        file.modifiedTime != null && mark.modifiedTime != null -> file.modifiedTime == mark.modifiedTime && file.size == mark.bytes
-        else -> false
-    }
-
-    private fun mark(file: DriveFile, index: VaultIndex, bytes: Long) =
-        RemoteMark(file.id, file.md5, file.modifiedTime, index.revision, bytes, index.updatedAt)
-
     /** This phone's write [ours] replaced another phone's; [asIf] is the index as if this phone had not written. */
     private class Undo(val asIf: VaultIndex, val ours: VaultIndex) {
         /** [asIf], with whatever was written after [ours], up to [head]. */
@@ -189,6 +179,18 @@ internal class RemoteIndex(private val budget: MeteredDataBudget? = null) {
         const val NEWER_APP = "Your data in Drive was saved by a newer PocketIDE. Update the app to keep syncing."
     }
 }
+
+/** Whether [file] still holds the index [mark] describes: by checksum, or by time and size without one. */
+private fun sameContent(file: DriveFile, mark: RemoteMark): Boolean = when {
+    file.id != mark.id -> false
+    file.md5 != null && mark.md5 != null -> file.md5 == mark.md5
+    file.modifiedTime != null && mark.modifiedTime != null -> file.modifiedTime == mark.modifiedTime && file.size == mark.bytes
+    else -> false
+}
+
+/** How this phone recognises [index], stored in [file], the next time it reads Drive. */
+private fun mark(file: DriveFile, index: VaultIndex, bytes: Long) =
+    RemoteMark(file.id, file.md5, file.modifiedTime, index.revision, bytes, index.updatedAt)
 
 /** [delta] made on this index, dated and keyed like [from]. */
 private fun VaultIndex.changedBy(delta: IndexDelta, from: VaultIndex): VaultIndex = IndexMerge.apply(this, delta, from.updatedAt, from.keyGeneration)

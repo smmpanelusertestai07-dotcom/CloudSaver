@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.google.DriveRevisions
 import com.pocketide.google.DriveStore
 import com.pocketide.model.Lease
 import com.pocketide.model.VaultIndex
@@ -30,7 +31,14 @@ class RemoteIndexTest {
     /** This phone's write: one session record added to the newest index. */
     private suspend fun write(store: DriveStore, id: String, lease: (VaultIndex?) -> Lease? = { null }): RemoteSnapshot {
         val delta = IndexDelta(sessions = listOf(SessionChange.Upsert(session(id, at = clock.now))))
-        return remote.commit(store, cipher, RemoteSnapshot(null, null), lease, { IndexMerge.apply(it, delta, clock.now, 1) }) { VaultIndex(updatedAt = clock.now) }
+        return remote.commit(
+            drive = store,
+            cipher = cipher,
+            start = RemoteSnapshot(null, null),
+            requireLease = lease,
+            change = { IndexMerge.apply(it, delta, clock.now, 1) },
+            emptyIndex = { VaultIndex(updatedAt = clock.now) },
+        )
     }
 
     private fun sessionIds() = stored().sessions.map { it.id }.toSet()
@@ -88,7 +96,9 @@ class RemoteIndexTest {
 
     @Test
     fun aStoreThatCannotListVersionsWritesAgainWhenDriveHoldsAnotherIndex() = runBlocking {
-        val plain = object : DriveStore by drive {}
+        val plain = object : DriveStore by drive {
+            override val revisions: DriveRevisions? = null
+        }
         write(plain, "first")
         drive.afterIndexWrite = {
             drive.afterIndexWrite = null

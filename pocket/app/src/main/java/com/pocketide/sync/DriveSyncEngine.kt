@@ -186,7 +186,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
 
     /**
      * A background sync; runs again at once when more was requested meanwhile. A [periodic] run
-     * stops before the network when there is nothing to do (see [SyncPass.idle]).
+     * stops before the network when there is nothing to do (see [SyncPass.stopIfIdle]).
      */
     suspend fun runScheduled(periodic: Boolean = false, onLargeUpload: suspend () -> Unit): WorkResult {
         var result = WorkResult.OK
@@ -233,7 +233,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         if (!ports.settings.settings.value.onboardingDone) return null
         if (flows.status.value !is SyncStatus.Waiting) flows.status.value = SyncStatus.Running(Plain.SYNCING)
-        val outcome = pass.run(run, options)
+        val outcome = passOrStop(run, options)
         // Kept safely on the phone while offline: it goes up as soon as a network is back.
         if (outcome == PassOutcome.OFFLINE && run.entries().isNotEmpty()) ports.scheduler.requestWhenOnline()
         if (flows.storage.value.phone == PhoneSpace.FULL && run.now - run.state.lastMaintenanceAt > MAINTENANCE_GAP_MS) {
@@ -241,6 +241,10 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         return outcome
     }
+
+    /** The pass; a periodic run with nothing to do stops before the network instead ([SyncPass.stopIfIdle]). */
+    private suspend fun passOrStop(run: Run, options: PassOptions): PassOutcome =
+        if (options.quietWhenIdle && pass.stopIfIdle(run)) PassOutcome.DONE else pass.run(run, options)
 
     private fun requireReady() {
         if (!ports.settings.settings.value.onboardingDone) throw SyncException("Finish setting up PocketIDE first.")

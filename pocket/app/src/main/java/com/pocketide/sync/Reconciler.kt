@@ -195,7 +195,11 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         val lost = lostHere(track, chain)
         // Everything Drive holds is already at the start of the phone's copy (Drive lost pieces this
         // phone recorded, or the other phone only compacted them): the copy stays, the rest goes up.
-        val kept = if (track.kind.appendOnly) ChainCheck.prefixOf(place, chain)?.let { rebased(track, chain, it) } else if (lost) rebased(track, chain, null) else null
+        val kept = when {
+            track.kind.appendOnly -> ChainCheck.prefixOf(place, chain)?.let { rebased(track, chain, it) }
+            lost -> rebased(track, chain, null)
+            else -> null
+        }
         if (kept != null) {
             run.discard(queued)
             return kept

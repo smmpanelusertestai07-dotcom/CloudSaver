@@ -188,24 +188,29 @@ internal class Scanner(private val dirs: AppDirs) {
         if (!Files.exists(startPath)) return
         val basePath = base.canonicalFile.toPath()
         try {
-            Files.walkFileTree(startPath, EnumSet.noneOf(java.nio.file.FileVisitOption::class.java), MAX_DEPTH, object : FileVisitor<Path> {
-                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    val rel = basePath.relativize(dir).toString().replace(File.separatorChar, '/')
-                    return if (attrs.isSymbolicLink || TrackRules.skipFolder(rel)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
-                }
-
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    if (attrs.isRegularFile) {
-                        val rel = basePath.relativize(file).toString().replace(File.separatorChar, '/')
-                        if (!rel.startsWith("..")) visit(rel, file.toFile(), FileFacts(attrs.size(), attrs.lastModifiedTime().toMillis()))
+            Files.walkFileTree(
+                startPath,
+                EnumSet.noneOf(java.nio.file.FileVisitOption::class.java),
+                MAX_DEPTH,
+                object : FileVisitor<Path> {
+                    override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        val rel = basePath.relativize(dir).toString().replace(File.separatorChar, '/')
+                        return if (attrs.isSymbolicLink || TrackRules.skipFolder(rel)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
                     }
-                    return FileVisitResult.CONTINUE
-                }
 
-                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        if (attrs.isRegularFile) {
+                            val rel = basePath.relativize(file).toString().replace(File.separatorChar, '/')
+                            if (!rel.startsWith("..")) visit(rel, file.toFile(), FileFacts(attrs.size(), attrs.lastModifiedTime().toMillis()))
+                        }
+                        return FileVisitResult.CONTINUE
+                    }
 
-                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult = FileVisitResult.CONTINUE
-            })
+                    override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+
+                    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult = FileVisitResult.CONTINUE
+                },
+            )
         } catch (_: IOException) {
             // A folder vanished while it was walked; the next run sees the new state.
         }

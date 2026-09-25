@@ -46,7 +46,7 @@ internal class DriveRestStore(
     private val tokens: TokenSource,
     private val clock: Clock,
     private val ofAccount: (String) -> DriveStore,
-) : DriveStore, DriveRevisions {
+) : DriveStore {
     private val calls = DriveCalls(http, tokens)
     private val api: HttpUrl get() = http.endpoints.api
     @Volatile private var usage: Pair<Long, Long>? = null
@@ -75,12 +75,14 @@ internal class DriveRestStore(
 
     override suspend fun download(id: String, sink: OutputStream): Unit = downloadFrom(media(id), sink)
 
-    override suspend fun revisionsOf(id: String): List<DriveRevision> = withContext(Dispatchers.IO) {
-        listRevisions(id, "id,md5Checksum").filter { it.id.isNotEmpty() }.map { DriveRevision(it.id, it.md5Checksum) }
-    }
+    override val revisions: DriveRevisions = object : DriveRevisions {
+        override suspend fun revisionsOf(id: String): List<DriveRevision> = withContext(Dispatchers.IO) {
+            listRevisions(id, "id,md5Checksum").filter { it.id.isNotEmpty() }.map { DriveRevision(it.id, it.md5Checksum) }
+        }
 
-    override suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream): Unit =
-        downloadFrom(revisionsUrl(id).addPathSegment(revisionId).addQueryParameter("alt", "media").build(), sink)
+        override suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream) =
+            downloadFrom(revisionsUrl(id).addPathSegment(revisionId).addQueryParameter("alt", "media").build(), sink)
+    }
 
     private suspend fun downloadFrom(content: HttpUrl, sink: OutputStream): Unit = withContext(Dispatchers.IO) {
         var written = 0L

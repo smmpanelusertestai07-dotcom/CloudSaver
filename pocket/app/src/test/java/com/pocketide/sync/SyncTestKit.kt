@@ -77,7 +77,7 @@ class FakeAccounts(private val clock: FakeClock) {
 }
 
 /** The Drive hidden folder in memory, with the failures the engine must survive. */
-class FakeDrive(private val accounts: FakeAccounts, val email: String, private val clock: FakeClock) : DriveStore, DriveRevisions {
+class FakeDrive(private val accounts: FakeAccounts, val email: String, private val clock: FakeClock) : DriveStore {
     /** One file. Each new content is kept as a version, as Drive keeps revisions; [bytes] is the newest. */
     class Stored(val name: String, bytes: ByteArray, var modified: Long) {
         val versions = mutableListOf(bytes)
@@ -93,16 +93,22 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
     private var nextId = 1
     var offline = false
     var quotaBytes = Long.MAX_VALUE
+
     /** The next N uploads reach Drive but the answer is lost, as when the phone dies mid-request. */
     var loseUploadAnswers = 0
+
     /** The next N index writes fail before reaching Drive (the phone dies between upload and record). */
     var failIndexWrites = 0
+
     /** The next N index writes reach Drive but their answer is lost (a timeout on mobile data). */
     var loseIndexAnswers = 0
+
     /** Runs before each upload with the file's name; may throw to fail it. */
     var beforeUpload: ((String) -> Unit)? = null
+
     /** Runs before each download with the file's name (a program in a room acting meanwhile). */
     var beforeDownload: ((String) -> Unit)? = null
+
     /** Runs after each index write, before the engine reads it back (another phone writing at once). */
     var afterIndexWrite: (() -> Unit)? = null
     var uploads = 0
@@ -154,13 +160,16 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
         Unit
     }
 
-    override suspend fun revisionsOf(id: String): List<DriveRevision> = online {
-        files[id]?.versions?.mapIndexed { i, bytes -> DriveRevision("r${i + 1}", md5(bytes)) }.orEmpty()
-    }
+    /** Every version this Drive kept of a file, oldest first, as Drive's revisions. */
+    override val revisions: DriveRevisions = object : DriveRevisions {
+        override suspend fun revisionsOf(id: String): List<DriveRevision> = online {
+            files[id]?.versions?.mapIndexed { i, bytes -> DriveRevision("r${i + 1}", md5(bytes)) }.orEmpty()
+        }
 
-    override suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream) = online {
-        val versions = (files[id] ?: throw DriveException.NotFound()).versions
-        sink.write(versions.getOrNull(revisionId.removePrefix("r").toInt() - 1) ?: throw DriveException.NotFound())
+        override suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream) = online {
+            val versions = (files[id] ?: throw DriveException.NotFound()).versions
+            sink.write(versions.getOrNull(revisionId.removePrefix("r").toInt() - 1) ?: throw DriveException.NotFound())
+        }
     }
 
     override suspend fun quota(): DriveQuota = online { DriveQuota(quotaBytes, usedBytes(), usedBytes(), usedBytes(), email) }
@@ -436,7 +445,15 @@ fun mockPendingIntent(): android.app.PendingIntent {
     return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, android.app.PendingIntent::class.java) as android.app.PendingIntent
 }
 
-fun session(id: String, projectId: String = "owner/app", agent: String = "claude", at: Long, deletedAt: Long? = null, backUp: Boolean = true, ref: String? = null) =
+fun session(
+    id: String,
+    projectId: String = "owner/app",
+    agent: String = "claude",
+    at: Long,
+    deletedAt: Long? = null,
+    backUp: Boolean = true,
+    ref: String? = null,
+) =
     SessionRecord(
         id = id, agentId = agent, projectId = projectId, title = "Chat $id", branch = "pocket/$agent/$id",
         startedAt = at, lastActivityAt = at, deletedAt = deletedAt, backUp = backUp, deviceId = "phone-a", agentSessionRef = ref,
