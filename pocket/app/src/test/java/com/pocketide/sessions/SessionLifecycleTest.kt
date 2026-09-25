@@ -474,4 +474,25 @@ class SessionLifecycleTest {
         assertFalse(rig.worktree(session).exists())
         assertTrue("the media folder stays with the chat", rig.dirs.sessionMedia("claude", PROJECT_ID, session.id).isDirectory)
     }
+
+    @Test
+    fun `before everything is deleted the code is saved to github and what cannot be is named`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val saved = sessions.start(PROJECT_ID, "claude", "Saved")
+        rig.agentCommits(saved, "a.txt", "a\n")
+        File(rig.worktree(saved), "b.txt").writeText("half done\n")
+
+        assertEquals(emptyList<String>(), sessions.codeOnlyOnPhone())
+        assertTrue("committed and pushed first", rig.originHas(saved.branch))
+        assertEquals("", hostGit(rig.worktree(saved), "status", "--porcelain"))
+
+        val blocked = sessions.start(PROJECT_ID, "codex", "Blocked")
+        rig.agentCommits(blocked, "c.txt", "c\n")
+        rig.gate.blockNextPush = com.pocketide.git.Verdict(false, emptyList(), 1)
+
+        val left = sessions.codeOnlyOnPhone()
+        assertEquals(1, left.size)
+        assertTrue(left.single(), left.single().startsWith("alice/demo: The branch ${blocked.branch} has commits that are not on GitHub yet"))
+        assertFalse(rig.originHas(blocked.branch))
+    }
 }

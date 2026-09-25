@@ -105,6 +105,7 @@ private data class PhoneSizes(
 }
 
 private const val DELETE_EVERYTHING = "delete-everything"
+private const val CHECK_CODE = "check-code-before-delete"
 private const val MOVE = "move-account"
 private const val ERASE_OLD = "erase-old-account"
 
@@ -141,6 +142,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     val drive = rememberLoad("drive", now) { graph.usage.google() }
     var removeMediaOf by remember { mutableStateOf<SessionRecord?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var codeAtRisk by remember { mutableStateOf<List<String>?>(null) }
     val largest = remember(sessions) { DataMath.largestSessions(sessions) }
 
     ManagePage("Your data", nav, runner) {
@@ -188,12 +190,14 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             SectionCard(null) {
                 Hint(
                     "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, " +
-                        "and the agents' sign-ins on this phone. Your code and the pocketide-keyring repository stay in GitHub. " +
+                        "and the agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first; " +
+                        "code that cannot be pushed is named before it goes. Your GitHub repositories and pocketide-keyring stay. " +
                         "This cannot be undone.",
                 )
+                val checking = runner.isBusy(CHECK_CODE)
                 Button(
                     onClick = { confirmDelete = true },
-                    enabled = !runner.isBusy(DELETE_EVERYTHING),
+                    enabled = !runner.isBusy(DELETE_EVERYTHING) && !checking,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError,
@@ -201,7 +205,13 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
                 ) {
                     Icon(Icons.Outlined.DeleteForever, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (runner.isBusy(DELETE_EVERYTHING)) "Deleting…" else "Delete everything")
+                    Text(
+                        when {
+                            checking -> "Saving your code…"
+                            runner.isBusy(DELETE_EVERYTHING) -> "Deleting…"
+                            else -> "Delete everything"
+                        },
+                    )
                 }
             }
         }
@@ -218,7 +228,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             onDismiss = { removeMediaOf = null },
         )
     }
-    if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
+    fun deleteEverything() {
         runner.run(
             DELETE_EVERYTHING,
             outlivesScreen = true,
@@ -232,6 +242,28 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             clearAppTraces(graph.context, shortcuts)
             signOuts
         }
+    }
+    // The phone's clones and worktrees go too: code GitHub does not have yet is pushed first,
+    // and what still cannot be is named, so it is never lost without the owner saying so.
+    if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
+        runner.run(
+            CHECK_CODE,
+            onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
+        ) {
+            graph.rooms.stopAll()
+            graph.sessions.codeOnlyOnPhone()
+        }
+    }
+    codeAtRisk?.let { left ->
+        ConfirmDialog(
+            title = "Some code is only on this phone",
+            text = "It could not be pushed to GitHub, so deleting everything erases it for good:\n" +
+                left.joinToString("\n") { "• $it" } + "\n\nCancel to keep everything, then save it from its chat.",
+            confirmLabel = "Delete unpushed code too",
+            destructive = true,
+            onConfirm = ::deleteEverything,
+            onDismiss = { codeAtRisk = null },
+        )
     }
 }
 
@@ -523,7 +555,8 @@ private fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit)
     ConfirmDialog(
         title = "Delete everything?",
         text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive, with the " +
-            "agents' sign-ins on this phone. Your GitHub repositories are not touched. Type DELETE to confirm.",
+            "agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first. Your GitHub " +
+            "repositories are not touched. Type DELETE to confirm.",
         confirmLabel = "Delete everything",
         destructive = true,
         confirmEnabled = DataMath.deleteConfirmed(typed),

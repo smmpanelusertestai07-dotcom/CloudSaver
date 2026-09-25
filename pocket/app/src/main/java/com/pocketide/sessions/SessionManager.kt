@@ -446,6 +446,15 @@ internal class SessionManager(
         return autosaver.saveNow(sessionId)
     }
 
+    override suspend fun codeOnlyOnPhone(): List<String> {
+        for (session in records.current()) {
+            if (session.status == SessionStatus.OPEN && session.deletedAt == null) quietly { saveNow(session.id) }
+        }
+        return env.projects.all.value.mapNotNull { project ->
+            unsaved(project.id)?.let { "${project.owner}/${project.repo}: $it" }
+        }
+    }
+
     override suspend fun refresh() {
         refreshLock.withLock {
             active.current()

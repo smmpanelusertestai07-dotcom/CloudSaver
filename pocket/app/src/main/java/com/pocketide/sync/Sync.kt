@@ -198,7 +198,11 @@ interface SyncEngine {
     /** "Delete forever": erases these sessions' files from Drive now (or at the next connection). */
     suspend fun eraseForever(sessionIds: List<String>)
 
-    /** Erases everything in Drive and on the phone ("Delete everything"). */
+    /**
+     * Erases everything in Drive and on the phone ("Delete everything"), the project clones and
+     * session worktrees too: code GitHub does not have is lost, so the caller has it pushed first
+     * ([com.pocketide.sessions.Sessions.codeOnlyOnPhone]) and names what could not be.
+     */
     suspend fun deleteEverything()
 
     /** Starts the periodic sync and the daily maintenance job. */
