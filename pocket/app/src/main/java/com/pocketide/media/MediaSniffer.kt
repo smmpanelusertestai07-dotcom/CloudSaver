@@ -95,7 +95,7 @@ object MediaSniffer {
         head.startsWith(EBML) && !String(head, Charsets.ISO_8859_1).contains("matroska")
 
     private fun isHtml(head: ByteArray): Boolean {
-        val text = String(head, Charsets.ISO_8859_1).trimStart('﻿', 'ï', '»', '¿', ' ', '\t', '\r', '\n')
+        val text = String(head, Charsets.ISO_8859_1).trimStart('\uFEFF', 'ï', '»', '¿', ' ', '\t', '\r', '\n')
             .lowercase(Locale.ROOT)
         return text.startsWith("<!doctype html") || text.take(HTML_WINDOW).contains("<html")
     }

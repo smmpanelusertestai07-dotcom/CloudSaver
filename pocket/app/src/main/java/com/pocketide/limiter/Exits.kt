@@ -5,6 +5,7 @@ import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 
 /** What the engine was doing when this process last ended, written while it runs. */
 internal data class EngineTrace(val agentIds: List<String>, val bootCount: Int?)
@@ -80,17 +81,19 @@ internal class EngineRecord private constructor(private val context: Context) {
     }
 
     private fun explain(trace: EngineTrace): RoomStop? {
-        val record = if (Build.VERSION.SDK_INT >= 30) {
-            runCatching {
-                context.getSystemService(ActivityManager::class.java)
-                    ?.getHistoricalProcessExitReasons(context.packageName, 0, 1)?.firstOrNull()
-            }.getOrNull()
-        } else {
-            null
-        }
-        val at = record?.timestamp ?: System.currentTimeMillis()
-        return ExitReasons.explain(trace, bootCount(), record?.reason, record?.description, at)
+        val exit = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) lastExit() else null
+        return ExitReasons.explain(trace, bootCount(), exit?.reason, exit?.description, exit?.at ?: System.currentTimeMillis())
     }
+
+    private class LastExit(val reason: Int, val description: String?, val at: Long)
+
+    /** Android's own record of how the app's last process ended (Android 11 and later). */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun lastExit(): LastExit? = runCatching {
+        context.getSystemService(ActivityManager::class.java)
+            ?.getHistoricalProcessExitReasons(context.packageName, 0, 1)?.firstOrNull()
+            ?.let { LastExit(it.reason, it.description, it.timestamp) }
+    }.getOrNull()
 
     private fun store(stop: RoomStop) {
         prefs.edit()
