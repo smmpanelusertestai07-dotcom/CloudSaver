@@ -3,9 +3,11 @@
 
 It reads the version string inside the APK's lib/arm64-v8a/libproot.so, finds that release in
 sources.json, and writes where its exact source is: PRoot (GPL-2.0), talloc (LGPL-3.0-or-later)
-and libandroid-shmem (BSD-3-Clause). An APK whose PRoot is not in sources.json fails, because
-publishing a GPL binary without its source is not an option. With --sources DIR it also
-downloads the archives that have a pinned SHA-256 into DIR, verified, to attach to the release.
+and libandroid-shmem (BSD-3-Clause). Publishing a GPL binary without its exact source is not an
+option, so it fails when the APK's PRoot is not in sources.json, when the APK's native libraries
+differ from the binaries that release records, or when a GPL or LGPL part lacks a pinned archive
+(url and sha256). With --sources DIR it downloads every pinned archive and build recipe into DIR,
+verified, to attach to the release.
 
 Usage: gpl_notice.py APK --app-version X.Y.Z [--out FILE] [--sources DIR]
 """
@@ -21,8 +23,10 @@ import zipfile
 from pathlib import Path
 
 SOURCES_JSON = Path(__file__).with_name("sources.json")
-LIBPROOT = "lib/arm64-v8a/libproot.so"
+LIB_DIR = "lib/arm64-v8a/"
+PARTS = ("proot", "talloc", "libandroid_shmem")
 VERSION = re.compile(rb"(?<![\d.])(\d+\.\d+\.\d+\.\d+)(?![\d.])")
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class NoticeError(Exception):
@@ -43,6 +47,41 @@ def shipped_release(libproot: bytes, known: list[dict]) -> dict:
     return matches[0]
 
 
+def _pinned(entry: dict | None) -> bool:
+    return bool(entry and entry.get("url") and SHA256.fullmatch(entry.get("sha256") or ""))
+
+
+def check_pinned(release: dict) -> None:
+    """Every GPL or LGPL part, and every build recipe listed, has a url and a SHA-256 to fetch it by."""
+    missing = []
+    for key in PARTS:
+        part = release[key]
+        if "GPL" in part["license"] and not _pinned(part):
+            missing.append(f"{key} ({part['license']}) has no pinned source archive")
+        if "recipe" in part and not _pinned(part["recipe"]):
+            missing.append(f"{key}'s build recipe has no pinned url and sha256")
+    if missing:
+        raise NoticeError(f"PRoot {release['version']}: {'; '.join(missing)}. Pin them in sources.json before releasing")
+
+
+def check_binaries(libraries: dict[str, bytes], release: dict) -> None:
+    """The APK carries exactly the native libraries the release records, when it records them."""
+    expected = release.get("binaries")
+    if not expected:
+        return
+    problems = []
+    for name, sha256 in sorted(expected.items()):
+        data = libraries.get(name)
+        if data is None:
+            problems.append(f"{name} is missing")
+        elif hashlib.sha256(data).hexdigest() != sha256:
+            problems.append(f"{name} is not the recorded build")
+    problems += [f"{name} is not recorded" for name in sorted(set(libraries) - set(expected))]
+    if problems:
+        raise NoticeError(f"the APK's native libraries are not PRoot {release['version']} as sources.json "
+                          f"records it: {'; '.join(problems)}")
+
+
 def notice(release: dict, app_version: str) -> str:
     proot, talloc, shmem = release["proot"], release["talloc"], release["libandroid_shmem"]
     lines = [
@@ -56,12 +95,10 @@ def notice(release: dict, app_version: str) -> str:
         "  https://github.com/termux/proot",
         f"  {proot['url']}",
     ]
-    if proot.get("sha256"):
-        lines.append(f"  SHA-256 of that archive: {proot['sha256']}")
+    lines += _archive_lines(proot)
     for title, part in (("talloc", talloc), ("libandroid-shmem", shmem)):
         lines += ["", f"{title}, {part['license']}", f"  Version: {part['version']}", f"  {part['url']}"]
-        if part.get("sha256"):
-            lines.append(f"  SHA-256 of that archive: {part['sha256']}")
+        lines += _archive_lines(part)
     lines += [
         "",
         f"How this PRoot was made: {release['origin']}",
@@ -69,15 +106,29 @@ def notice(release: dict, app_version: str) -> str:
     if release.get("build"):
         lines += [
             "The build script is pocket/tools/proot/build-proot.sh in this repository, at the commit",
-            "this release was built from, and the archives above are attached to this release.",
+            "this release was built from.",
         ]
+    if release.get("binaries"):
+        lines += ["", "SHA-256 of the files inside the APK (lib/arm64-v8a/):"]
+        lines += [f"  {sha256}  {name}" for name, sha256 in sorted(release["binaries"].items())]
     lines += [
+        "",
+        "Every archive and build recipe above is attached to this release, checked against its SHA-256.",
         "",
         "The GNU General Public License, version 2: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt",
         "The GNU Lesser General Public License, version 3: https://www.gnu.org/licenses/lgpl-3.0.txt",
         "",
     ]
     return "\n".join(lines)
+
+
+def _archive_lines(part: dict) -> list[str]:
+    lines = []
+    if part.get("sha256"):
+        lines.append(f"  SHA-256 of that archive: {part['sha256']}")
+    if part.get("recipe"):
+        lines += [f"  Build recipe: {part['recipe']['url']}", f"  SHA-256 of that recipe: {part['recipe']['sha256']}"]
+    return lines
 
 
 def download_verified(url: str, sha256: str, destination: Path) -> None:
@@ -93,14 +144,23 @@ def download_verified(url: str, sha256: str, destination: Path) -> None:
 def fetch_sources(release: dict, directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     saved = []
-    for key in ("proot", "talloc", "libandroid_shmem"):
+    for key in PARTS:
         part = release[key]
+        stem = f"{key.replace('_', '-')}-{part.get('version') or release['version']}"
         if part.get("sha256"):
-            name = f"{key.replace('_', '-')}-{part.get('version') or release['version']}-source{_suffix(part['url'])}"
-            path = directory / name
-            download_verified(part["url"], part["sha256"], path)
-            saved.append(path)
+            saved.append(directory / f"{stem}-source{_suffix(part['url'])}")
+            download_verified(part["url"], part["sha256"], saved[-1])
+        if part.get("recipe"):
+            saved.append(directory / f"{stem}-termux-build.sh")
+            download_verified(part["recipe"]["url"], part["recipe"]["sha256"], saved[-1])
     return saved
+
+
+def native_libraries(apk: Path) -> dict[str, bytes]:
+    """The APK's arm64 native libraries by file name."""
+    with zipfile.ZipFile(apk) as archive:
+        names = [n for n in archive.namelist() if n.startswith(LIB_DIR) and n.endswith(".so")]
+        return {name[len(LIB_DIR):]: archive.read(name) for name in names if "/" not in name[len(LIB_DIR):]}
 
 
 def _suffix(url: str) -> str:
@@ -118,9 +178,12 @@ def main() -> int:
     parser.add_argument("--sources", type=Path, help="download the pinned source archives into this folder")
     args = parser.parse_args()
     try:
-        with zipfile.ZipFile(args.apk) as apk:
-            libproot = apk.read(LIBPROOT)
-        release = shipped_release(libproot, releases())
+        libraries = native_libraries(args.apk)
+        if "libproot.so" not in libraries:
+            raise NoticeError(f"{args.apk} has no {LIB_DIR}libproot.so")
+        release = shipped_release(libraries["libproot.so"], releases())
+        check_binaries(libraries, release)
+        check_pinned(release)
         text = notice(release, args.app_version)
         if args.out:
             args.out.write_text(text, encoding="utf-8")
