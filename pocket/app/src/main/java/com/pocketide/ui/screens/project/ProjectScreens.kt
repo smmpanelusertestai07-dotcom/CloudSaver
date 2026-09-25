@@ -890,9 +890,7 @@ private fun AgentBar(
                             DropdownMenuItem(text = { Text("Continue in ${other.displayName}") }, onClick = { menu = false; onHandOff(other) })
                         }
                     }
-                    if (onChatPlace != null) {
-                        DropdownMenuItem(text = { Text("Where this chat is saved") }, onClick = { menu = false; onChatPlace() })
-                    }
+                    ChatPlaceItem(onChatPlace) { menu = false }
                     if (panelTitle == null) {
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -908,6 +906,13 @@ private fun AgentBar(
             }
         }
     }
+}
+
+/** "Where this chat is saved", for the official agents that have an answer. */
+@Composable
+private fun ChatPlaceItem(onChatPlace: (() -> Unit)?, close: () -> Unit) {
+    if (onChatPlace == null) return
+    DropdownMenuItem(text = { Text("Where this chat is saved") }, onClick = { close(); onChatPlace() })
 }
 
 @Composable
