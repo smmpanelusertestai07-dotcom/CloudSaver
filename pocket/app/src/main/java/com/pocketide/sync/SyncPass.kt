@@ -116,7 +116,7 @@ internal class SyncPass(
      */
     fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
         val maker = run.maker()
-        val entries = run.entries().filter { !it.conflict }
+        val entries = dropStranded(run, index).filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
         val pendingBySha = entries.filter { it.blob && !it.kind.appendOnly }
             .associate { it.sha256 to SameContent(it.name, null, it.storedBytes, it.keyGeneration) }.toMutableMap()
@@ -167,7 +167,7 @@ internal class SyncPass(
                 is MakeResult.Queued -> {
                     val entry = result.entry
                     if (entry.base || !entry.kind.appendOnly) {
-                        run.discard(waiting)
+                        forget(waiting + run.discard(waiting), queued, pendingBySha)
                         queued[c.key] = listOf(entry)
                     }
                     if (entry.blob && !entry.kind.appendOnly) pendingBySha[entry.sha256] = SameContent(entry.name, null, entry.storedBytes, entry.keyGeneration)
@@ -178,6 +178,27 @@ internal class SyncPass(
         noteMissing(run, tracks, seen, book)
         run.state = run.state.copy(tracks = tracks)
         return deferred
+    }
+
+    /**
+     * The queue, less entries that reuse content no queued blob and no index entry holds any more
+     * (its blob left the queue unrecorded, as when its session was erased): such an entry could
+     * never be recorded, so it goes, and its file is read and queued again.
+     */
+    private fun dropStranded(run: Run, index: VaultIndex?): List<QueueEntry> {
+        val entries = run.entries()
+        val held = entries.filter { it.blob }.map { it.name }.toSet() + index?.objects.orEmpty().map { it.name }
+        val stranded = entries.filter { !it.blob && it.driveId == null && it.name !in held }
+        run.discard(stranded)
+        return entries - stranded.toSet()
+    }
+
+    /** Entries that left the queue no longer wait, and content only they held can no longer be reused. */
+    private fun forget(gone: List<QueueEntry>, queued: MutableMap<String, List<QueueEntry>>, pendingBySha: MutableMap<String, SameContent>) {
+        val ids = gone.map { it.id }.toSet()
+        for (key in gone.map { it.trackKey }.toSet()) queued[key] = queued[key].orEmpty().filter { it.id !in ids }
+        val blobs = gone.filter { it.blob }.map { it.name }.toSet()
+        pendingBySha.values.removeAll { it.name in blobs }
     }
 
     /**

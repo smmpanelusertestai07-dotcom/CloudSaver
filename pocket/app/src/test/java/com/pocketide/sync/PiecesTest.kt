@@ -1,7 +1,10 @@
 package com.pocketide.sync
 
 import com.pocketide.model.ObjectKind
+import com.pocketide.model.SessionStatus
+import com.pocketide.sessions.Sessions
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -88,6 +91,62 @@ class PiecesTest {
         assertEquals(file.readText(), second.homeFile("claude", path).readText())
         val track = second.state().tracks.values.single { it.path == path }
         assertEquals(file.length(), track.syncedLength)
+    }
+
+    @Test
+    fun aFileQueuedAsTheSameContentAsAnotherStillReachesDriveWhenTheOtherChangesFirst() = runBlocking {
+        val phone = phone()
+        val rules = "Write tests first.\n"
+        val claude = phone.homeFile("claude", ".claude/CLAUDE.md").apply { writeText(rules) }
+        val codex = phone.homeFile("codex", ".codex/AGENTS.md").apply { writeText(rules) }
+        phone.drive.offline = true
+        phone.engine.syncNow()
+        assertEquals("the same text waits once", 1, phone.queued().count { it.blob })
+
+        claude.writeText("Write tests first. Keep them fast.\n")
+        claude.setLastModified(claude.lastModified() + 5_000)
+        phone.drive.offline = false
+        repeat(3) {
+            clock.advance(60_000)
+            phone.engine.syncNow()
+        }
+
+        val memory = phone.remoteIndex()!!.objects.filter { it.kind == ObjectKind.MEMORY }.associateBy { it.path }
+        assertEquals(Codec.sha256(claude.readBytes()), memory.getValue(".claude/CLAUDE.md").sha256)
+        assertEquals(Codec.sha256(codex.readBytes()), memory.getValue(".codex/AGENTS.md").sha256)
+        assertTrue(phone.queued().isEmpty())
+        val newPhone = TestPhone(accounts, clock, deviceId = "phone-b", deviceName = "Phone B")
+        newPhone.engine.restore(RestoreChoice.WIFI_ONLY)
+        assertEquals(rules, newPhone.homeFile("codex", ".codex/AGENTS.md").readText())
+    }
+
+    @Test
+    fun anImageSharedIntoTwoChatsReachesDriveWhenOneIsErasedBeforeUpload() = runBlocking {
+        val phone = phone()
+        phone.sessions += session("s2", at = clock.now)
+        val shot = ByteArray(4096) { (it % 251).toByte() }
+        phone.mediaFile("claude", "owner/app", "s1", "shot.png").writeBytes(shot)
+        phone.mediaFile("claude", "owner/app", "s2", "shot.png").writeBytes(shot)
+        phone.drive.offline = true
+        phone.engine.syncNow()
+        val erased = phone.queued().single { it.blob }.sessionId
+        val kept = listOf("s1", "s2").single { it != erased }
+
+        // "Delete forever" on the chat whose copy of the image was the one waiting to upload.
+        val i = phone.sessions.indexOfFirst { it.id == erased }
+        phone.sessions[i] = phone.sessions[i].copy(status = SessionStatus.DELETED, deletedAt = Sessions.ERASE_NOW)
+        phone.drive.offline = false
+        repeat(3) {
+            clock.advance(60_000)
+            phone.engine.syncNow()
+        }
+
+        val media = phone.remoteIndex()!!.objects.single { it.kind == ObjectKind.MEDIA }
+        assertEquals(kept, media.sessionId)
+        assertTrue(phone.queued().isEmpty())
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.fetchSession(kept)
+        assertArrayEquals(shot, reader.mediaFile("claude", "owner/app", kept, "shot.png").readBytes())
     }
 
     @Test
