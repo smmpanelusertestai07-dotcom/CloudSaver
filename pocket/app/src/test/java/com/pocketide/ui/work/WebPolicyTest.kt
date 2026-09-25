@@ -60,6 +60,43 @@ class WebPolicyTest {
     }
 
     @Test
+    fun codeServersPortAddressGoesToThePortItself() {
+        assertEquals(
+            "http://localhost:1455/auth/callback?code=a%2Fb&state=s#done",
+            WebPolicy.withoutEngineProxy("http://127.0.0.1:41234/proxy/1455/auth/callback?code=a%2Fb&state=s#done"),
+        )
+        assertEquals("http://localhost:3000/", WebPolicy.withoutEngineProxy("http://localhost:41234/proxy/3000/"))
+        assertEquals("http://localhost:3000/", WebPolicy.withoutEngineProxy("http://LOCALHOST:41234/proxy/3000"))
+        assertEquals("http://localhost:65535/x", WebPolicy.withoutEngineProxy("http://127.0.0.1:41234/proxy/65535/x"))
+        assertEquals("http://localhost:1/a%20b/c", WebPolicy.withoutEngineProxy("http://127.0.0.1:41234/proxy/1/a%20b/c"))
+    }
+
+    @Test
+    fun everyOtherAddressIsLeftAsItWas() {
+        val unchanged = listOf(
+            "http://127.0.0.1:41234/proxy/0/",
+            "http://127.0.0.1:41234/proxy/65536/",
+            "http://127.0.0.1:41234/proxy/123456/",
+            "http://127.0.0.1:41234/proxy/12a/",
+            "http://127.0.0.1:41234/proxy/-1/",
+            "http://127.0.0.1:41234/proxy//x",
+            "http://127.0.0.1:41234/proxy/",
+            "http://127.0.0.1:41234/proxyx/1455/",
+            "http://127.0.0.1:41234/app/proxy/1455/",
+            "http://127.0.0.1:41234/?folder=/proxy/1455/",
+            "https://127.0.0.1:41234/proxy/1455/",
+            "http://example.com/proxy/1455/",
+            "http://localhost.example.com:41234/proxy/1455/",
+            "http://user@127.0.0.1:41234/proxy/1455/",
+            "http://[::1]:41234/proxy/1455/",
+            "https://claude.ai/oauth/authorize?x=1",
+            "intent://x#Intent;end",
+            "::not a url::",
+        )
+        for (url in unchanged) assertEquals(url, url, WebPolicy.withoutEngineProxy(url))
+    }
+
+    @Test
     fun pickerFollowsAcceptTypes() {
         assertEquals(PickerKind.IMAGES_AND_VIDEOS, WebPolicy.pickerKind(emptyList()))
         assertEquals(PickerKind.IMAGES_AND_VIDEOS, WebPolicy.pickerKind(listOf("")))

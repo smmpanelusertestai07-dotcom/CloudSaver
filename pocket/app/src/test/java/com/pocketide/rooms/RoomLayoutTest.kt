@@ -144,7 +144,10 @@ class RoomLayoutTest {
         assertEquals("/work/octo__app/s1", command.workDir)
         assertEquals("claude-vscode.primaryEditor.open", command.env["POCKETIDE_OPEN_COMMAND"])
         assertEquals("editor", command.env["POCKETIDE_OPEN_PLACE"])
-        assertEquals("http://localhost:{{port}}/", command.env["VSCODE_PROXY_URI"])
+        // A template with {{port}} where a port number goes stops code-server 4.138's workbench on every connect.
+        assertFalse("VSCODE_PROXY_URI" in command.env)
+        val inherited = RoomEngines.codeServer(dirs, RoomProfiles.of("claude", null)!!, "/work/octo__app/s1", 40001, mapOf("VSCODE_PROXY_URI" to "x"))
+        assertFalse("VSCODE_PROXY_URI" in inherited.env)
     }
 
     @Test fun `the hub runs as its extension starts it, without its self-updater`() {

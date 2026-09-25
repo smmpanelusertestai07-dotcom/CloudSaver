@@ -56,10 +56,12 @@ internal object RoomEngines {
                 guestWorktree,
             ),
             binds = RoomLayout.binds(dirs, profile.agentId),
-            env = environment + mapOf(
-                // A sign-in callback on localhost must stay on localhost: the phone's browser reaches it
-                // directly, while code-server's default /proxy/<port>/ address would need the bridge.
-                "VSCODE_PROXY_URI" to "http://localhost:{{port}}/",
+            // Never a VSCODE_PROXY_URI, not even an inherited one: code-server 4.138's workbench
+            // parses it as a URL on every connect, and one with {{port}} where a port number goes
+            // stops the workbench, so no agent screen opens. Its own default, <base>/proxy/{{port}}/,
+            // parses; that route is off here, and the agent screen sends such an address to Chrome
+            // as http://localhost:<port>/ instead (WebPolicy.withoutEngineProxy).
+            env = (environment - PROXY_URI_VARIABLE) + mapOf(
                 "POCKETIDE_OPEN_COMMAND" to profile.openCommand.orEmpty(),
                 "POCKETIDE_OPEN_PLACE" to profile.place.word,
                 "POCKETIDE_VIEW_TYPES" to profile.viewTypes.joinToString(","),
@@ -187,6 +189,7 @@ internal object RoomEngines {
 
     const val CODE_SERVER_KIND = "code-server"
     const val TERMINAL_KIND = "terminal"
+    const val PROXY_URI_VARIABLE = "VSCODE_PROXY_URI"
 }
 
 /** What a started hub does with its token, checked before its port is handed to the bridge. */

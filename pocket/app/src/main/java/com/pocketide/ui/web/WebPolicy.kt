@@ -39,6 +39,24 @@ object WebPolicy {
         else -> ExternalOpen.ASK
     }
 
+    /**
+     * code-server's address for a port on this phone, "http://127.0.0.1:<any>/proxy/<n>/<rest>"
+     * (or localhost), as VS Code's asExternalUri makes it, turned into "http://localhost:<n>/<rest>"
+     * with its query and fragment. The rooms run code-server with --disable-proxy, so that route
+     * does not exist, while Chrome reaches the port itself. Any other address comes back as it was.
+     */
+    fun withoutEngineProxy(url: String): String {
+        val uri = parse(url)?.takeIf { it.scheme.equals("http", ignoreCase = true) && it.rawUserInfo == null } ?: return url
+        if (uri.host?.lowercase() !in LOOPBACK_NAMES) return url
+        val proxied = ENGINE_PROXY.matchEntire(uri.rawPath.orEmpty()) ?: return url
+        val port = proxied.groupValues[1].toInt().takeIf { it in 1..MAX_PORT } ?: return url
+        return buildString {
+            append("http://localhost:").append(port).append('/').append(proxied.groupValues[2])
+            uri.rawQuery?.let { append('?').append(it) }
+            uri.rawFragment?.let { append('#').append(it) }
+        }
+    }
+
     /** The host an "open in Chrome?" question names, so the owner sees where it goes. */
     fun hostOf(url: String): String? = parse(url)?.host?.lowercase()
 
@@ -87,6 +105,12 @@ object WebPolicy {
         count == 1 -> "The video could not be read, so it was not sent."
         else -> "$count videos could not be read, so they were not sent."
     }
+
+    private const val MAX_PORT = 65535
+    private val LOOPBACK_NAMES = setOf("127.0.0.1", "localhost")
+
+    /** "/proxy/<n>" alone or followed by "/<rest>"; n is one to five ASCII digits. */
+    private val ENGINE_PROXY = Regex("/proxy/([0-9]{1,5})(?:/(.*))?", RegexOption.DOT_MATCHES_ALL)
 
     private val IMAGE_EXTENSIONS = setOf(".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif", ".bmp")
     private val VIDEO_EXTENSIONS = setOf(".mp4", ".webm", ".mov", ".3gp", ".mkv")
