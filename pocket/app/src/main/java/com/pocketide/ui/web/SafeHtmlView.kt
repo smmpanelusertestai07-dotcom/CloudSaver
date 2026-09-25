@@ -1,5 +1,6 @@
 package com.pocketide.ui.web
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
@@ -84,6 +85,9 @@ private fun createSafeWebView(context: Context, onClosed: () -> Unit): WebView =
     webViewClient = SafeClient(onClosed)
 }
 
+// Lint flags the super-constructor call of every Kotlin WebViewClient, even one that overrides
+// onRenderProcessGone as this one does; WebViewClientsTest holds every client to it instead.
+@SuppressLint("MissingOnRenderProcessGone")
 private class SafeClient(private val onClosed: () -> Unit) : WebViewClient() {
     var gone = false
         private set
