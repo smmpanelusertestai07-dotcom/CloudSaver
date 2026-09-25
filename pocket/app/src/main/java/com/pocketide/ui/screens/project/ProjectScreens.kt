@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -269,7 +270,12 @@ private fun ProjectHeader(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusChip(if (project.isPrivate) "Private" else "Public", if (project.isPrivate) Tone.OK else Tone.WARN)
             val (whose, tone) = trustText(trust)
-            Box(Modifier.clickable(onClickLabel = "Change whose code this is") { asking = true }) { StatusChip(whose, tone) }
+            // The only control for careful mode: a full touch target around the small chip.
+            Box(
+                Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(onClickLabel = "Change whose code this is", role = Role.Button) { asking = true },
+                contentAlignment = Alignment.Center,
+            ) { StatusChip(whose, tone) }
             Text(
                 "Last activity ${Ist.dateTime(project.lastActivityAt)} · ${WorkFormat.count(sessionCount, "session", "sessions")}",
                 style = MaterialTheme.typography.bodySmall,
