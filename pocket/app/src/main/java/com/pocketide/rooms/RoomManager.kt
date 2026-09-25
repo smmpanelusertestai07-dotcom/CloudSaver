@@ -48,7 +48,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val rings = ConcurrentHashMap<String, OutputRing>()
     private val configBook = ConfigChangeBook(dirs.rooms)
     private val configurator = RoomConfigurator(dirs, env.assets, env::now, configBook) { agentId, line -> ring(agentId).add("[PocketIDE] $line") }
-    private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret)
+    private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret, ::settingsForTerminal)
     private val browser = BrowserInstaller(env, configurator, ::afterBrowserInstall)
     private val tools = McpTools(dirs, Ports())
     private val holds = WorkHolds(env::setBusy)
@@ -221,6 +221,26 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     override suspend fun stopKeepingConfigChange(change: ConfigChange) {
         if (withContext(Dispatchers.IO) { configBook.stopKeeping(change) }) writeConfigNow(change.agentId)
+    }
+
+    /**
+     * A terminal's programs (the agents' command-line tools among them) read the room's settings
+     * too, so a terminal start rebuilds them as an engine start does. A room whose settings cannot
+     * be written still gets its terminal: it is where the owner can repair the room.
+     */
+    private suspend fun settingsForTerminal(session: SessionRecord) {
+        val agentId = session.agentId
+        val profile = profile(agentId) ?: return
+        val careful = live[agentId]?.careful ?: careful(session)
+        try {
+            withContext(Dispatchers.IO) { configurator.configure(profile, otherAgents(agentId), env.fontSize(), careful) }
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written for the terminal: ${failed.message}")
+        } catch (failed: IllegalStateException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written for the terminal: ${failed.message}")
+        } catch (failed: IllegalArgumentException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written for the terminal: ${failed.message}")
+        }
     }
 
     /** The room's settings written again now, so the owner's choice holds before its next start too. */
@@ -396,9 +416,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             if (!folder.isDirectory && !folder.mkdirs()) throw IOException("Could not create ${folder.name}.")
         }
         configurator.installTools()
-        val others = (env.agents() + RoomProfiles.OFFICIAL).distinct().filter { it != profile.agentId && RoomProfiles.isAgentId(it) }
-        configurator.configure(profile, others, env.fontSize(), careful)
+        configurator.configure(profile, otherAgents(profile.agentId), env.fontSize(), careful)
     }
+
+    private fun otherAgents(agentId: String) =
+        (env.agents() + RoomProfiles.OFFICIAL).distinct().filter { it != agentId && RoomProfiles.isAgentId(it) }
 
     private fun careful(session: SessionRecord) = env.trust(session.projectId) == ProjectTrust.SOMEONE_ELSES
 
