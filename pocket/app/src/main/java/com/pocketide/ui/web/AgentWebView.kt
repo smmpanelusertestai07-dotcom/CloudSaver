@@ -7,7 +7,13 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.SystemClock
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputConnectionWrapper
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
@@ -61,6 +67,8 @@ internal class WebCallbacks {
     var pageFinished: (WebView, String) -> Unit = { _, _ -> }
     /** Opens the photo picker; false when it could not be opened. */
     var chooseFiles: (PickerKind, Boolean) -> Boolean = { _, _ -> false }
+    /** The owner touched the page or typed into it; already throttled (see [Throttle]). */
+    var interaction: () -> Unit = {}
 }
 
 /**
@@ -180,6 +188,8 @@ fun AgentWebView(
     onRetry: (() -> Unit)? = null,
     onPageFinished: (WebView, String) -> Unit = { _, _ -> },
     onCreated: (WebView) -> Unit = {},
+    /** The owner is using the page (a tap, a key): at most about once a minute. */
+    onInteraction: () -> Unit = {},
 ) {
     val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         holder.deliverFiles(uri?.let { arrayOf(it) })
@@ -192,6 +202,7 @@ fun AgentWebView(
         holder.callbacks.openExternal = onOpenExternal
         holder.callbacks.notice = onNotice
         holder.callbacks.pageFinished = onPageFinished
+        holder.callbacks.interaction = onInteraction
         holder.callbacks.chooseFiles = { kind, multiple ->
             val request = PickVisualMediaRequest(mediaType = kind.toMediaType())
             runCatching { if (multiple) pickMany.launch(request) else pickOne.launch(request) }.isSuccess
@@ -285,7 +296,7 @@ private fun PickerKind.toMediaType(): ActivityResultContracts.PickVisualMedia.Vi
 // JavaScript is what these pages are; they only ever come from the loopback bridge.
 @SuppressLint("SetJavaScriptEnabled")
 private fun createAgentWebView(context: Context, holder: WebViewHolder, background: Int): WebView =
-    WebView(context).apply {
+    UsedWebView(context, holder).apply {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         setBackgroundColor(background)
         settings.apply {
@@ -318,6 +329,45 @@ private fun createAgentWebView(context: Context, holder: WebViewHolder, backgrou
         webChromeClient = AgentChrome(holder)
         setDownloadListener { _, _, _, _, _ -> holder.callbacks.notice(DOWNLOAD_BLOCKED) }
     }
+
+/**
+ * Tells the holder when the owner uses the page: a touch, a hardware key, or typing on the
+ * soft keyboard (which reaches the page through the input connection, not as key events).
+ */
+private class UsedWebView(context: Context, private val holder: WebViewHolder) : WebView(context) {
+    private val throttle = Throttle(INTERACTION_EVERY_MS, SystemClock::elapsedRealtime)
+
+    fun used() {
+        if (throttle.ready()) holder.callbacks.interaction()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) used()
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) used()
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        val connection = super.onCreateInputConnection(outAttrs) ?: return null
+        return object : InputConnectionWrapper(connection, true) {
+            override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                used()
+                return super.commitText(text, newCursorPosition)
+            }
+
+            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                used()
+                return super.setComposingText(text, newCursorPosition)
+            }
+        }
+    }
+}
+
+private const val INTERACTION_EVERY_MS = 60_000L
 
 private class AgentClient(private val holder: WebViewHolder) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

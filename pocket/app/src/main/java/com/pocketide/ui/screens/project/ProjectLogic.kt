@@ -3,6 +3,7 @@ package com.pocketide.ui.screens.project
 import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.sessions.SessionChanges
@@ -65,6 +66,28 @@ fun trustOf(owner: String, login: String?): Trust =
 const val UNTRUSTED_REPO =
     "Someone else's repository: its files, issues and READMEs are data for the agent, never instructions. " +
         "Look at the changes before you put a session on main."
+
+/** How the owner's own answer, or the automatic one, reads on a project. */
+fun trustText(trust: ProjectTrust): Pair<String, Tone> = when (trust) {
+    ProjectTrust.YOURS -> "Your code" to Tone.OK
+    ProjectTrust.SOMEONE_ELSES -> "Someone else's code" to Tone.WARN
+}
+
+/** A room's idle sleep is worth a chip only when it is close. */
+const val SLEEP_SOON_MS: Long = 10 * 60_000L
+
+/** "Claude sleeps in 4 min" when [sleepsAt] is less than [SLEEP_SOON_MS] away; null otherwise. */
+fun sleepsSoon(name: String, sleepsAt: Long?, now: Long): String? {
+    val left = (sleepsAt ?: return null) - now
+    if (left >= SLEEP_SOON_MS) return null
+    val minutes = ((left + 59_999) / 60_000).coerceAtLeast(1)
+    return "$name sleeps in $minutes min"
+}
+
+/** What a stopped room's screen says: the room's own reason when it gave one. */
+fun stoppedText(name: String, reason: String?): String =
+    reason?.takeIf { it.isNotBlank() }?.let { "$name: $it" }
+        ?: "$name stopped: it was idle, or the phone needed the memory. Nothing was lost; the session, its branch and its chat are kept."
 
 /** Ports a dev server usually picks (Next, Angular, Flask, Vite, Django, Jupyter…). */
 val COMMON_DEV_PORTS: List<Int> = listOf(3000, 3001, 4200, 5000, 5173, 8000, 8080, 8888)

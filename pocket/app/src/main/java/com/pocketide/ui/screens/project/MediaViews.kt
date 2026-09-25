@@ -17,7 +17,6 @@ import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Size
 import android.widget.ImageView
@@ -102,7 +101,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
-import com.pocketide.media.MediaLibrary
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -131,7 +129,7 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostStat
         if (uri != null) {
             adding = true
             scope.launch {
-                finish { addDocument(context, graph.media, sessionId, uri) }
+                finish { graph.media.addFromPhone(sessionId, uri) }
                     .onSuccess { snackbar.showSnackbar("Added ${it.name} to this session's Media.") }
                     .onFailure { snackbar.showSnackbar("Could not add the file: ${plainReason(it)}") }
                 adding = false
@@ -373,29 +371,6 @@ fun MediaViewer(item: MediaItem, onDismiss: () -> Unit) {
         )
     }
 }
-
-/** Copies a picked document into the session's Media, refusing anything over [MAX_ADDED_BYTES]. */
-private suspend fun addDocument(context: Context, media: MediaLibrary, sessionId: String, uri: Uri): MediaItem =
-    withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        var name: String? = null
-        var size: Long? = null
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                name = cursor.getString(0)
-                size = if (cursor.isNull(1)) null else cursor.getLong(1)
-            }
-        }
-        require((size ?: 0) <= MAX_ADDED_BYTES) { "The file is bigger than ${WorkFormat.bytes(MAX_ADDED_BYTES)}, so it was not added." }
-        val temp = File.createTempFile("added-", ".part", context.cacheDir)
-        try {
-            val input = checkNotNull(resolver.openInputStream(uri)) { "The file could not be opened." }
-            input.use { source -> temp.outputStream().use { copyLimited(source, it, MAX_ADDED_BYTES) } }
-            media.add(sessionId, temp, safeFileName(name), "you")
-        } finally {
-            temp.delete()
-        }
-    }
 
 private fun sourceLabel(source: String): String = when (source) {
     "agent" -> "From the agent"
