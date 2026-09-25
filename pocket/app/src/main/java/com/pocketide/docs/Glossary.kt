@@ -104,7 +104,7 @@ internal object Glossary {
         term("Included minutes", "The build minutes your GitHub plan gives each month for private repos."),
         term("Minute multiplier", "How much more a Windows or macOS minute costs than a Linux one."),
         term("Artifact", "A file a workflow saves, such as an APK or a test report."),
-        term("MCP", "Model Context Protocol: the way PocketIDE gives agents tools such as run_build and show_media."),
+        term("MCP", "Model Context Protocol: the way PocketIDE gives agents tools such as run_build and save_media."),
         term(
             "Limiter",
             "The part of PocketIDE that queues or pauses work when memory, heat, battery or storage run short.",

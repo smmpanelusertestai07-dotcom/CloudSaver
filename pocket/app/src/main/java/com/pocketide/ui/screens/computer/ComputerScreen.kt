@@ -36,6 +36,7 @@ import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.pocketide.AppGraph
 import com.pocketide.core.Ist
+import com.pocketide.docs.FixLadder
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
 import com.pocketide.linux.RepairItem
@@ -123,7 +124,7 @@ fun ComputerScreen(nav: PocketNav) {
         }
         item { NetworkPanel(runner) }
         item {
-            FixLadder(
+            FixItLadder(
                 working = working,
                 onRestart = { confirmRestart = true },
                 repair = repair,
@@ -174,22 +175,9 @@ private const val RESTART = "restart"
 /** The guide section on fixing problems (docs/GuidePhone.kt). */
 private const val IF_SOMETHING_BREAKS = "if-something-breaks"
 
-private enum class Fix { RESTART, REPAIR, RESET }
-
-/** One level of the fix-it ladder: what it fixes, what it costs, and the button this screen has for it. */
-private data class Rung(val title: String, val text: String, val fix: Fix? = null)
-
-private val ladder = listOf(
-    Rung("1. Reload the agent screen", "In the agent's menu. Takes seconds; nothing stops."),
-    Rung("2. Restart the agent", "In the agent's menu. Its engine starts again; the chat is kept."),
-    Rung("3. Restart the computer", "Every room closes. Files, sign-ins and history stay.", Fix.RESTART),
-    Rung("4. Repair", "Installs what is missing and updates what is there. Safe to run again; your files are not touched.", Fix.REPAIR),
-    Rung("5. Reset computer", "Builds the computer again from scratch. Nothing of yours is lost, but it is a big download.", Fix.RESET),
-)
-
-/** Try each level only if the one above did not help. */
+/** Try each level only if the one above did not help. Help lists the same levels ([FixLadder]). */
 @Composable
-private fun FixLadder(
+private fun FixItLadder(
     working: Boolean,
     repair: List<RepairItem>?,
     onRestart: () -> Unit,
@@ -200,18 +188,18 @@ private fun FixLadder(
     SectionCard("If something is wrong") {
         Hint("Start at the top. Go down a level only if the one above did not help.")
         TextButton(onClick = onGuide) { Text("What to try when something breaks") }
-        ladder.forEach { rung ->
+        FixLadder.rungs.forEachIndexed { index, rung ->
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(rung.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                Hint(rung.text)
-                when (rung.fix) {
-                    Fix.RESTART -> TextButton(onClick = onRestart, enabled = !working) { Text("Restart computer") }
-                    Fix.REPAIR -> {
+                Text(FixLadder.heading(index), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Hint(FixLadder.text(rung))
+                when (rung.action) {
+                    FixLadder.Action.RESTART_COMPUTER -> TextButton(onClick = onRestart, enabled = !working) { Text("Restart computer") }
+                    FixLadder.Action.REPAIR -> {
                         TextButton(onClick = onRepair, enabled = !working) { Text("Repair") }
                         repair?.let { RepairReport(it) }
                     }
-                    Fix.RESET -> OutlinedButton(onClick = onReset, enabled = !working) {
+                    FixLadder.Action.RESET_COMPUTER -> OutlinedButton(onClick = onReset, enabled = !working) {
                         Icon(Icons.Outlined.RestartAlt, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("Reset computer")

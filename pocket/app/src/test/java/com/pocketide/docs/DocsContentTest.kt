@@ -176,6 +176,25 @@ class DocsContentTest {
     }
 
     @Test
+    fun `every agent tool the docs name is one the MCP server really offers`() {
+        val tools = mcpToolNames()
+        assertTrue("no tools read from mcp.py", tools.contains("run_build"))
+        val named = everyLine().flatMap { line -> SNAKE_CASE.findAll(line).map { it.value } }.toSet() - NOT_TOOLS
+        val unknown = named - tools
+        assertTrue("docs name tools agents cannot call: $unknown", unknown.isEmpty())
+    }
+
+    @Test
+    fun `a file from the phone goes in through the app, not through GitHub`() {
+        val menuItem = "Add file to this session"
+        assertTrue("the agent menu no longer says \"$menuItem\"", agentMenuSource().contains("Text(\"$menuItem\")"))
+        val answer = DocsContent.faq.single { it.id == "file-from-phone" }.answer.flatMap(::blockLines).joinToString(" ")
+        assertTrue(answer, answer.contains(menuItem) && answer.contains("share it to PocketIDE"))
+        assertFalse(answer, answer.contains("GitHub"))
+        assertTrue(sectionText(requireSection("how-it-works")).contains(menuItem))
+    }
+
+    @Test
     fun `terms and privacy policy are dated`() {
         for (id in listOf("terms", "privacy-policy")) {
             assertTrue(sectionText(requireSection(id)).contains("24 Sep 2026"))
@@ -214,6 +233,22 @@ class DocsContentTest {
             .filterNot { it.value.contains("tools:node=\"remove\"") }
             .map { it.groupValues[1].substringAfterLast('.') }
             .toSet()
+    }
+
+    /** The tool names the rooms' MCP server lists, read from the script agents really run. */
+    private fun mcpToolNames(): Set<String> {
+        val script = listOf(File("src/main/assets/rooms/mcp.py"), File("app/src/main/assets/rooms/mcp.py"))
+            .firstOrNull { it.isFile }
+        val tools = checkNotNull(script) { "mcp.py not found" }.readText()
+            .substringAfter("\nTOOLS = [").substringBefore("\nTOOL_NAMES")
+        return TOOL_NAME.findAll(tools).map { it.groupValues[1] }.toSet()
+    }
+
+    /** The agent screen's source, whose menu labels the docs quote. */
+    private fun agentMenuSource(): String {
+        val path = "src/main/java/com/pocketide/ui/screens/project/ProjectScreens.kt"
+        val source = listOf(File(path), File("app/$path")).firstOrNull { it.isFile }
+        return checkNotNull(source) { "ProjectScreens.kt not found" }.readText()
     }
 
     private fun sectionText(section: DocSection) =
@@ -260,6 +295,12 @@ class DocsContentTest {
 
         /** Pages Help shows that are not doc sections. */
         val HELP_PAGE_IDS = setOf("faq", "glossary")
+
+        val SNAKE_CASE = Regex("\\b[a-z]+(_[a-z0-9]+)+\\b")
+        val TOOL_NAME = Regex(""""name":\s*"([a-z_]+)"""")
+
+        /** Snake-case words the docs quote that are not tools: error codes sign-in pages show. */
+        val NOT_TOOLS = setOf("invalid_request", "invalid_client")
 
         val USES_PERMISSION = Regex("""<uses-permission[^>]*android:name="([^"]+)"[^>]*>""")
         val LEGAL_IDS = listOf("terms", "privacy-policy", "open-source")
