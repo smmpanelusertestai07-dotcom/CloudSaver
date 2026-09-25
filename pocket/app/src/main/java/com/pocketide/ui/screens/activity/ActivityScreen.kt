@@ -173,15 +173,23 @@ fun ActivityScreen(nav: PocketNav) {
             item {
                 SectionCard(null) {
                     val limitMb = settings.mobileDailyLimitMb
-                    InfoRow("Today", ManageFormat.bytes(usage.todayMeteredBytes) + if (limitMb > 0) " of $limitMb MB" else "")
-                    if (limitMb > 0) UsageMeter(usage.todayMeteredBytes.toDouble() / (limitMb * 1_000_000.0))
+                    InfoRow("Today", ManageFormat.bytes(usage.todayMeteredBytes))
+                    if (limitMb > 0) {
+                        InfoRow("Daily limit", "${ManageFormat.bytes(usage.todayLimitedBytes)} of $limitMb MB")
+                        UsageMeter(usage.todayLimitedBytes.toDouble() / (limitMb * 1_000_000.0))
+                    }
                     InfoRow("This month", ManageFormat.bytes(usage.monthMeteredBytes))
                     usage.byType.entries.sortedByDescending { it.value }.filter { it.value > 0 }.take(5).forEach { (type, bytes) ->
                         InfoRow(Formats.dataKind(type), ManageFormat.bytes(bytes))
                     }
                     Hint(
-                        if (limitMb > 0) "Only mobile data counts; Wi-Fi is free. Big downloads wait for Wi-Fi."
-                        else "PocketIDE uses no mobile data for its own transfers. Agents' own traffic is never blocked.",
+                        if (limitMb > 0) {
+                            "Only mobile data counts; Wi-Fi is free. The daily limit is for PocketIDE's own transfers; " +
+                                "the agents' own traffic is counted but never blocked. " +
+                                if (settings.wifiOnlyBigDownloads) "Big downloads wait for Wi-Fi." else "Big downloads ask first and show their size."
+                        } else {
+                            "PocketIDE uses no mobile data for its own transfers. The agents' own traffic is counted but never blocked."
+                        },
                     )
                 }
             }

@@ -33,8 +33,14 @@ fun createSyncEngine(graph: AppGraph): SyncEngine {
     val engine = DriveSyncEngine(GraphPorts(graph))
     graph.scope.launch(Dispatchers.IO) { engine.warmUp() }
     graph.scope.launch { syncWhileAgentsRun(graph, engine) }
+    (graph.dataBudget as? MeteredDataBudget)?.let { budget ->
+        graph.scope.launch { meterWhileAgentsRun(graph, AgentTrafficMeter(budget, AndroidNetworkProbe(graph.context))) }
+    }
     return engine
 }
+
+private fun agentsRunning(graph: AppGraph) =
+    graph.rooms.states.map { states -> states.values.any { it !is RoomState.Stopped && it !is RoomState.Failed } }.distinctUntilChanged()
 
 /**
  * While any agent runs, new transcript bytes are batched into a sync every few minutes (never per
@@ -42,18 +48,31 @@ fun createSyncEngine(graph: AppGraph): SyncEngine {
  * service, so this process is alive for as long as it matters.
  */
 private suspend fun syncWhileAgentsRun(graph: AppGraph, engine: SyncEngine) {
-    graph.rooms.states
-        .map { states -> states.values.any { it !is RoomState.Stopped && it !is RoomState.Failed } }
-        .distinctUntilChanged()
-        .collectLatest { running ->
-            while (running) {
-                delay(AGENT_SYNC_EVERY_MS)
-                engine.requestSync("agents running")
-            }
+    agentsRunning(graph).collectLatest { running ->
+        while (running) {
+            delay(AGENT_SYNC_EVERY_MS)
+            engine.requestSync("agents running")
         }
+    }
+}
+
+/** The agents' own mobile data is sampled every minute while rooms run, and once more when they stop. */
+private suspend fun meterWhileAgentsRun(graph: AppGraph, meter: AgentTrafficMeter) {
+    agentsRunning(graph).collectLatest { running ->
+        meter.sample()
+        if (!running) {
+            meter.stop()
+            return@collectLatest
+        }
+        while (true) {
+            delay(AGENT_TRAFFIC_EVERY_MS)
+            meter.sample()
+        }
+    }
 }
 
 private const val AGENT_SYNC_EVERY_MS = 5 * Durations.MINUTE
+private const val AGENT_TRAFFIC_EVERY_MS = Durations.MINUTE
 
 fun createDataBudget(graph: AppGraph): DataBudget = meteredBudget(graph)
 

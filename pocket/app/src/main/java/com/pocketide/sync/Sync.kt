@@ -72,8 +72,16 @@ data class RestorePlan(
 
 enum class RestoreChoice { WIFI_ONLY, MOBILE_UP_TO_LIMIT }
 
-/** Monthly data usage by type, metered networks only (Wi-Fi is free). */
-data class DataUsage(val todayMeteredBytes: Long, val monthMeteredBytes: Long, val byType: Map<String, Long>)
+/**
+ * Monthly data usage by type, metered networks only (Wi-Fi is free). [todayLimitedBytes] is the
+ * part of today's bytes the daily limit applies to: PocketIDE's own transfers, not the agents' traffic.
+ */
+data class DataUsage(
+    val todayMeteredBytes: Long,
+    val monthMeteredBytes: Long,
+    val byType: Map<String, Long>,
+    val todayLimitedBytes: Long = todayMeteredBytes,
+)
 
 /** How full PocketIDE's share of the phone is (§6.5): a notice at 80 %, caches cleaned at 90 %. */
 enum class PhoneSpace { OK, NEARLY_FULL, FULL }
