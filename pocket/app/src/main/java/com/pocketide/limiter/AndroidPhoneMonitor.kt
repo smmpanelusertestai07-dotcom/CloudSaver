@@ -1,11 +1,13 @@
 package com.pocketide.limiter
 
 import android.app.ActivityManager
+import android.app.usage.StorageStatsManager
 import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -14,6 +16,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.Process
 import android.os.StatFs
+import android.os.storage.StorageManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -31,6 +34,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -54,6 +58,7 @@ internal class AndroidPhoneMonitor(
     private val power = context.getSystemService(PowerManager::class.java)
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
     private val usage = context.getSystemService(UsageStatsManager::class.java)
+    private val storage = context.getSystemService(StorageStatsManager::class.java)
     private val processes = ProcessReader(uid = Process.myUid(), selfPid = Process.myPid())
 
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
@@ -125,10 +130,7 @@ internal class AndroidPhoneMonitor(
         ).also { flow.value = it }
     }
 
-    private fun interval(): Long {
-        val visible = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-        return if (visible || roomsActive()) FAST_MS else SLOW_MS
-    }
+    private fun interval(): Long = if (visible() || roomsActive()) FAST_MS else SLOW_MS
 
     private fun wake() {
         wakeups.trySend(Unit)
@@ -157,20 +159,45 @@ internal class AndroidPhoneMonitor(
         network.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) ||
             (Build.VERSION.SDK_INT >= 30 && network.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED))
 
-    /** Walking the whole computer costs seconds, so it runs at most every 10 minutes, apart from the tick. */
+    /**
+     * The app's size on disk, from Android's own storage accounting, which answers at once and
+     * needs no permission. Only where Android has no answer is the computer walked file by file,
+     * which costs seconds: then at most every 10 minutes, and only while someone looks at the app,
+     * never in a process woken for a background job.
+     */
     private fun measureDataIfDue() {
-        if (clock.now() - dataMeasuredAt.get() < DATA_EVERY_MS && dataMeasuredAt.get() > 0) return
+        val measuredAt = dataMeasuredAt.get()
+        val age = clock.now() - measuredAt
+        if (measuredAt > 0 && age < DATA_EVERY_MS) return
         if (!measuring.compareAndSet(false, true)) return
         scope.launch(Dispatchers.IO) {
             try {
-                dataBytes.set(DirectorySize.of(listOf(dirs.base, dirs.cacheBase)))
-                dataMeasuredAt.set(clock.now())
-                flow.value = flow.value.let { if (it.at > 0) it.copy(appDataBytes = dataBytes.get()) else it }
+                val bytes = ownStorageBytes()
+                    ?: DirectorySize.of(listOf(dirs.base, dirs.cacheBase)).takeIf { visible() && (measuredAt == 0L || age >= WALK_EVERY_MS) }
+                if (bytes != null) {
+                    dataBytes.set(bytes)
+                    dataMeasuredAt.set(clock.now())
+                    flow.value = flow.value.let { if (it.at > 0) it.copy(appDataBytes = bytes) else it }
+                }
             } finally {
                 measuring.set(false)
             }
         }
     }
+
+    /** The app, its data and its cache as Android counts them for this app; null when Android cannot say. */
+    private fun ownStorageBytes(): Long? = try {
+        storage?.queryStatsForPackage(StorageManager.UUID_DEFAULT, context.packageName, Process.myUserHandle())
+            ?.let { it.appBytes + it.dataBytes }
+    } catch (_: IOException) {
+        null
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
+
+    private fun visible(): Boolean = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
 
     private fun listen() {
         if (!listening.compareAndSet(false, true)) return
@@ -196,6 +223,7 @@ internal class AndroidPhoneMonitor(
     private companion object {
         const val FAST_MS = 5_000L
         const val SLOW_MS = 30_000L
-        const val DATA_EVERY_MS = 10 * 60_000L
+        const val DATA_EVERY_MS = 60_000L
+        const val WALK_EVERY_MS = 10 * 60_000L
     }
 }
