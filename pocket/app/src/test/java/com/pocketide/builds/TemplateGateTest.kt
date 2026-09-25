@@ -138,6 +138,15 @@ class TemplateGateTest {
         assertTrue("the release template still signs", release.contains("secrets.ANDROID_KEYSTORE_BASE64"))
     }
 
+    /** A template that reads Secrets is one only the owner may start, never an agent's run_build. */
+    @Test
+    fun onlyTheTemplatesThatReadSecretsAreMarkedSo() {
+        for (template in TemplateCatalog.all) {
+            val readsSecrets = File(folder, "${template.id}.yml").readText().contains("secrets.")
+            assertEquals(template.id, readsSecrets, template.usesSecrets)
+        }
+    }
+
     @Test
     fun workflowNamesMatchTheCatalog() {
         for (template in TemplateCatalog.all) {

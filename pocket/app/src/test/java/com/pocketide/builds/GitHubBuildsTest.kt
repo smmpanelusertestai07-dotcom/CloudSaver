@@ -248,6 +248,29 @@ class GitHubBuildsTest {
     }
 
     @Test
+    fun anAgentCannotStartABuildThatUsesTheProjectsSecrets() = runTest {
+        val builds = GitHubBuilds(ports)
+        builds.addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
+        try {
+            builds.runForAgent("alice/demo", TemplateCatalog.ANDROID_RELEASE, session.branch)
+            fail("only the owner starts a build that signs with the project's key")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("only the owner starts it"))
+        }
+        assertEquals(0, ports.autosaves)
+        assertTrue(ports.gitHub.dispatched.isEmpty())
+
+        // The owner's tap starts it, and an agent may start a build without Secrets.
+        builds.run("alice/demo", TemplateCatalog.ANDROID_RELEASE, session.branch)
+        builds.addTemplate("alice/demo", "s1", TemplateCatalog.DOCKER)
+        builds.runForAgent("alice/demo", TemplateCatalog.DOCKER, session.branch)
+        assertEquals(
+            listOf("pocketide-android-release.yml@${session.branch}", "pocketide-docker-build.yml@${session.branch}"),
+            ports.gitHub.dispatched,
+        )
+    }
+
+    @Test
     fun progressShowsStepsAndWhyARunFailed() = runTest {
         val builds = GitHubBuilds(ports)
         ports.gitHub.runList = listOf(run(5, "PocketIDE Android release", "2026-09-24T10:00:00Z"))
