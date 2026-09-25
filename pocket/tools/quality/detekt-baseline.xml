@@ -1,0 +1,1133 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:ApkFetcher.kt$ApkFetcher$(total &gt;= 0 &amp;&amp; done != total) || (expected != null &amp;&amp; done != expected)</ID>
+    <ID>ComplexCondition:ApkFetcher.kt$ApkFetcher$total &gt; MAX_APK_BYTES || (expected != null &amp;&amp; total &gt;= 0 &amp;&amp; total != expected)</ID>
+    <ID>ComplexCondition:Avatar.kt$AvatarSize$width &lt;= 0 || height &lt;= 0 || width &gt; MAX_SIDE || height &gt; MAX_SIDE</ID>
+    <ID>ComplexCondition:BridgeAccess.kt$BridgeAccess$text.isEmpty() || text.length &gt; 5 || text[0] == '0' || !text.all(Char::isDigit)</ID>
+    <ID>ComplexCondition:BridgeConnection.kt$BridgeConnection.Companion$rest.isEmpty() || rest[0] == '/' || rest[0] == '?' || rest[0] == '#'</ID>
+    <ID>ComplexCondition:Codec.kt$relative.isEmpty() || relative.startsWith("/") || relative.contains('\\') || relative.contains('\u0000')</ID>
+    <ID>ComplexCondition:DriveSyncEngine.kt$DriveSyncEngine$job != null &amp;&amp; job.to.isNotEmpty() &amp;&amp; (job.stage == MoveStage.COPYING || job.stage == MoveStage.REKEY)</ID>
+    <ID>ComplexCondition:Http1.kt$!parts[0].startsWith("HTTP/1.") || status == null || status &lt; 100 || !isFieldValue(statusLine)</ID>
+    <ID>ComplexCondition:Http1.kt$requestMethod == "HEAD" || status in 100..199 || status == 204 || status == 304</ID>
+    <ID>ComplexCondition:Http1.kt$values.any { it != first } || first.isEmpty() || first.length &gt; MAX_LENGTH_DIGITS || !first.all(Char::isDigit)</ID>
+    <ID>ComplexCondition:Maintenance.kt$Maintenance$!t.onPhone || t.sessionId in active || !session.backUp || t.objects.isEmpty()</ID>
+    <ID>ComplexCondition:PieceMaker.kt$PieceMaker$end &lt; known.end || compact || (known.end &gt; 0 &amp;&amp; known.sha == null)</ID>
+    <ID>ComplexCondition:ProjectScreens.kt$isLargeTranscript(session, graph.sessions.largeTranscript(sessionId)) &amp;&amp; !bigDismissed &amp;&amp; panel == null &amp;&amp; !barHidden</ID>
+    <ID>ComplexCondition:ProjectScreens.kt$publicRepo &amp;&amp; session.status == SessionStatus.OPEN &amp;&amp; panel == null &amp;&amp; !barHidden</ID>
+    <ID>ComplexCondition:Projects.kt$RepoAddress.Companion$!OWNER.matches(owner) || !REPO.matches(repo) || repo == "." || repo == ".."</ID>
+    <ID>ComplexCondition:RemoteIndex.kt$RemoteIndex$known != null &amp;&amp; cached != null &amp;&amp; cached.revision == known.revision &amp;&amp; sameContent(file, known)</ID>
+    <ID>ComplexCondition:ResumableUpload.kt$ResumableUpload$url == null || url.scheme != upload.scheme || url.host != upload.host || url.port != upload.port</ID>
+    <ID>ComplexCondition:SafeUnzip.kt$SafeUnzip$clean.isEmpty() || clean.startsWith("/") || DRIVE.containsMatchIn(clean) || clean.split('/').any { it == ".." }</ID>
+    <ID>ComplexCondition:SchedulesScreen.kt$problem == null &amp;&amp; project != null &amp;&amp; agent != null &amp;&amp; every != null</ID>
+    <ID>ComplexCondition:SessionManager.kt$SessionManager$files.isEmpty() &amp;&amp; session.backUp &amp;&amp; (session.transcriptBytes &gt; 0 || session.status == SessionStatus.CONFLICT_COPY)</ID>
+    <ID>ComplexCondition:SyncPass.kt$SyncPass$e.video &amp;&amp; metered &amp;&amp; !settings.videosOnMobileData &amp;&amp; !chosen</ID>
+    <ID>ComplexCondition:VaultKeysImpl.kt$VaultKeysImpl$halfG != null &amp;&amp; halfD != null &amp;&amp; halfG.generation == active.generation &amp;&amp; pairHolds(active, halfD, halfG, tidy = !driveAhead)</ID>
+    <ID>ComplexCondition:VaultKeysImpl.kt$VaultKeysImpl$overtaken || (change.kind != ChangeKind.NEW &amp;&amp; check != null &amp;&amp; opensWithNone(check, identity))</ID>
+    <ID>CyclomaticComplexMethod:ActivityScreen.kt$@Composable fun ActivityScreen(nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:ApkFetcher.kt$ApkFetcher$private suspend fun receive(url: String, part: File, release: AppRelease, onProgress: (Float) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:BuildsPanel.kt$@Composable fun BuildsPanel( projectId: String, sessions: List&lt;SessionRecord&gt;, session: SessionRecord?, nav: PocketNav, snackbar: SnackbarHostState, modifier: Modifier = Modifier, publicRepo: Boolean = false, )</ID>
+    <ID>CyclomaticComplexMethod:CheckPostRules.kt$PathRules$private fun aiData(parts: List&lt;String&gt;): String?</ID>
+    <ID>CyclomaticComplexMethod:CodexFormat.kt$CodexFormat$override fun count(raw: String, line: JsonObject?, tally: Tally)</ID>
+    <ID>CyclomaticComplexMethod:ComputerScreen.kt$@Composable private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?, removalAt: Long?)</ID>
+    <ID>CyclomaticComplexMethod:ComputerSetup.kt$ComputerSetup$private suspend fun build(start: SetupRecord)</ID>
+    <ID>CyclomaticComplexMethod:ComputerSetup.kt$ComputerSetup$suspend fun updateBase(): UpdateOutcome</ID>
+    <ID>CyclomaticComplexMethod:ComputerStep.kt$@Composable fun ComputerStepScreen(onDone: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:ComputerStep.kt$@Composable private fun RestorePlanSection(graph: AppGraph, network: Network)</ID>
+    <ID>CyclomaticComplexMethod:Discovery.kt$Discovery$suspend fun examine(entry: SearchEntry, known: Set&lt;String&gt;): Verdict</ID>
+    <ID>CyclomaticComplexMethod:DriveConnect.kt$@Composable fun DriveConnectPanel( auth: DriveAuth, onAuthorized: (email: String?) -&gt; Unit, label: String = "Continue with Google", enabled: Boolean = true, )</ID>
+    <ID>CyclomaticComplexMethod:DriveStep.kt$@Composable private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -&gt; Unit, onReady: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:EngineRange.kt$EngineRange.Companion$private fun comparator(token: String): List&lt;Bound&gt;?</ID>
+    <ID>CyclomaticComplexMethod:Exits.kt$ExitReasons$fun explain(trace: EngineTrace?, bootCount: Int?, reason: Int?, description: String?, at: Long): RoomStop?</ID>
+    <ID>CyclomaticComplexMethod:FakeAgentsEnv.kt$FakeAgentsEnv$private fun codeServer(agentId: String, home: File, args: List&lt;String&gt;, onLine: (String) -&gt; Unit): Int</ID>
+    <ID>CyclomaticComplexMethod:GitMessages.kt$internal fun plainReason(error: Throwable): String</ID>
+    <ID>CyclomaticComplexMethod:GuardPolicy.kt$GuardPolicy$fun evaluate(snapshot: PhoneSnapshot, nextRoom: RoomKind?): GuardVerdict</ID>
+    <ID>CyclomaticComplexMethod:HomeDialogs.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun ImportSheet( addedIds: Set&lt;String&gt;, onDismiss: () -&gt; Unit, onImported: (String) -&gt; Unit, onAddRepositories: (String) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HomeScreen(nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:Jsonc.kt$Jsonc$fun strip(text: String): String</ID>
+    <ID>CyclomaticComplexMethod:Maintenance.kt$Maintenance$private fun phoneCopies(run: Run, index: VaultIndex, settings: Settings, book: SessionBook)</ID>
+    <ID>CyclomaticComplexMethod:MediaSniffer.kt$MediaSniffer$fun extensionFor(kind: MediaKind, head: ByteArray, name: String): String</ID>
+    <ID>CyclomaticComplexMethod:MemoryEditor.kt$@Composable fun MemoryEditor(graph: AppGraph, home: File, file: MemoryFile, agentName: String, nav: PocketNav, onClose: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:MemoryFiles.kt$MemoryFiles$fun find(home: File, agentId: String, instructionsFile: String): List&lt;MemoryFile&gt;</ID>
+    <ID>CyclomaticComplexMethod:NetworkDoctor.kt$NetworkBlockers$fun describe(phone: PhoneNetwork, hosts: List&lt;HostCheck&gt;, linuxDns: HostCheck?): List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:PhoneRequirements.kt$PhoneRequirements$fun check(f: PhoneFacts): List&lt;RequirementCheck&gt;</ID>
+    <ID>CyclomaticComplexMethod:ProjectScreens.kt$@Composable fun AgentScreen(sessionId: String, nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:ProjectScreens.kt$@Composable fun NewSessionDialog( projects: List&lt;Project&gt;, agents: List&lt;AgentInfo&gt;, initialProjectId: String?, initialAgentId: String?, onDismiss: () -&gt; Unit, onStarted: (String) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:ProjectScreens.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ProjectScreen(projectId: String, nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:PutOnMain.kt$MainMerger$suspend fun run(session: SessionRecord, project: Project): Outcome</ID>
+    <ID>CyclomaticComplexMethod:Reconciler.kt$Reconciler$private suspend fun align(run: Run, drive: DriveStore, track: FileTrack, chain: List&lt;com.pocketide.model.VaultObject&gt;, queued: List&lt;QueueEntry&gt;, batch: Conflicts.Batch): FileTrack?</ID>
+    <ID>CyclomaticComplexMethod:RoomManager.kt$RoomManager$private suspend fun start(profile: RoomProfile, session: SessionRecord, port: Int? = null, admitted: Boolean = false): RoomState</ID>
+    <ID>CyclomaticComplexMethod:SafeUnzip.kt$SafeUnzip$fun unzip(zip: InputStream, dest: File): List&lt;File&gt;</ID>
+    <ID>CyclomaticComplexMethod:SchedulesScreen.kt$@Composable fun SchedulesScreen(projectId: String?, nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:SchedulesScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun TaskEditor( existing: ScheduledTask?, fixedProjectId: String?, projects: List&lt;Project&gt;, agents: List&lt;AgentInfo&gt;, onDismiss: () -&gt; Unit, onSave: (ScheduledTask) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:SecretsScreen.kt$@Composable fun SecretsScreen(projectId: String?, nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:SecretsScreen.kt$@Composable private fun ValueEditor( existing: ProjectValue?, taken: List&lt;String&gt;, onDismiss: () -&gt; Unit, onSave: (String, SecretKind, CharArray) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:SessionManager.kt$SessionManager$private suspend fun pushBranch(sessionId: String): String?</ID>
+    <ID>CyclomaticComplexMethod:SettingsAdvanced.kt$@Composable internal fun AdvancedSection(graph: AppGraph, settings: Settings)</ID>
+    <ID>CyclomaticComplexMethod:SettingsScreen.kt$@Composable private fun AboutSection(graph: AppGraph, nav: PocketNav)</ID>
+    <ID>CyclomaticComplexMethod:SyncPass.kt$SyncPass$fun collect(run: Run, book: SessionBook, index: VaultIndex?)</ID>
+    <ID>CyclomaticComplexMethod:SyncPass.kt$SyncPass$private fun settle(run: Run, book: SessionBook, snapshot: RemoteSnapshot, report: UploadReport): PassOutcome</ID>
+    <ID>CyclomaticComplexMethod:SyncPass.kt$SyncPass$suspend fun upload(run: Run, drive: DriveStore, opts: PassOptions, book: SessionBook, onlyConflicts: Boolean): UploadReport</ID>
+    <ID>CyclomaticComplexMethod:TemplateCatalog.kt$TemplateCatalog$fun suggestedFor(root: File): List&lt;BuildTemplate&gt;</ID>
+    <ID>CyclomaticComplexMethod:TerminalKeys.kt$TerminalKeys$fun sequence(key: TermKey, mods: Modifiers = Modifiers.NONE): String</ID>
+    <ID>CyclomaticComplexMethod:Toml.kt$TomlDocument$fun set(table: List&lt;String&gt;, key: String, value: String)</ID>
+    <ID>CyclomaticComplexMethod:Toml.kt$TomlDocument$private fun valueEnd(start: Int, firstValue: String): Int</ID>
+    <ID>CyclomaticComplexMethod:UsageScreen.kt$@Composable private fun ActionsBlock(usage: AccountUsage, publicRepos: Set&lt;String&gt;, nowMs: Long)</ID>
+    <ID>CyclomaticComplexMethod:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun apply(change: KeyChange): Boolean</ID>
+    <ID>CyclomaticComplexMethod:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun pairHolds(active: VaultKey, halfD: HalfDFile, halfG: HalfGFile, tidy: Boolean): Boolean</ID>
+    <ID>CyclomaticComplexMethod:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun reconcile(login: String, remade: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:VerifiedDownload.kt$VerifiedDownload$private suspend fun receive(url: HttpUrl, part: File, expected: Expected, onProgress: (Long, Long) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:YourDataScreen.kt$@Composable private fun MoveCard(graph: AppGraph, runner: ActionRunner)</ID>
+    <ID>ForEachOnRange:Toml.kt$TomlDocument$statement.first..end</ID>
+    <ID>InstanceOfCheckForException:BridgeConnection.kt$BridgeConnection$e is SocketTimeoutException</ID>
+    <ID>InstanceOfCheckForException:Catalog.kt$OpenVsxCatalog$notNow is PackageRejected</ID>
+    <ID>LargeClass:SessionManager.kt$SessionManager : SessionsProjectWork</ID>
+    <ID>LongMethod:RoomManager.kt$RoomManager$private suspend fun start(profile: RoomProfile, session: SessionRecord, port: Int? = null, admitted: Boolean = false): RoomState</ID>
+    <ID>LongParameterList:AgentPages.kt$AgentPages.Details$( val id: String, val name: String, val publisher: String?, val extensionId: String?, val version: String?, val downloads: Long?, val surface: AgentSurface, val official: Boolean, val verified: Boolean, val dataGoesTo: String, val signIn: String, val instructionsFile: String?, val communityNote: String?, )</ID>
+    <ID>LongParameterList:BridgeConnection.kt$BridgeConnection$( request: RequestHead, clientIn: HttpInput, framing: Framing, upIn: HttpInput, upOut: OutputStream, plan: Decision.Forward, )</ID>
+    <ID>LongParameterList:BuildMinutes.kt$BuildMinutes$(androidRuns: Int, androidEach: Int?, iosRuns: Int, iosEach: Int?, left: Int, included: Int)</ID>
+    <ID>LongParameterList:Catalog.kt$OpenVsxCatalog$( private val env: AgentsEnv, private val vsx: OpenVsx, private val extensions: ExtensionInstaller, private val agy: AgyInstaller, private val doctor: AgentDoctor, private val discovery: Discovery, private val store: AgentStore, /** One folder per agent, holding its current package and the one before. */ private val packages: File, )</ID>
+    <ID>LongParameterList:Catalog.kt$OpenVsxCatalog$(agent: AgentInfo, extensionId: String, namespace: String, vscode: SemVer, version: String, folder: File)</ID>
+    <ID>LongParameterList:Committer.kt$Committer$(run: Run, before: VaultIndex?, result: RemoteSnapshot, ready: List&lt;QueueEntry&gt;, pushed: Pushed, extras: CommitExtras, mode: CommitMode)</ID>
+    <ID>LongParameterList:ComputerSetup.kt$ComputerSetup$( private val places: SetupPlaces, private val host: SetupHost, private val fetcher: Fetcher, runner: GuestRunner, assets: LinuxAssets, private val clock: Clock, private val publish: (ComputerState) -&gt; Unit, private val ubuntu: PinnedDownload = LinuxPins.ubuntuBase, private val ubuntuVersion: String = LinuxPins.UBUNTU_VERSION, private val codeServer: CodeServerPin = LinuxPins.codeServer, private val extractor: TarGzExtractor = TarGzExtractor(), )</ID>
+    <ID>LongParameterList:ConfigFiles.kt$ConfigFiles$(existing: String, id: String, version: String, folder: String, guestFolder: String, now: Long)</ID>
+    <ID>LongParameterList:DeviceFlowAuth.kt$DeviceFlowAuth$( private val clientId: String, private val appSlug: String, private val tokenStore: TokenStore, private val http: OkHttpClient, private val oauthBase: HttpUrl, private val apiBase: HttpUrl, private val clock: Clock, private val io: CoroutineDispatcher = Dispatchers.IO, private val pause: suspend (Long) -&gt; Unit = { delay(it) }, )</ID>
+    <ID>LongParameterList:Downloader.kt$Downloader$( response: Response, pin: PinnedDownload, part: File, append: Boolean, start: Long, kind: String, onProgress: (Long) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ExtensionInstaller.kt$ExtensionInstaller$( extensionId: String, overview: ExtensionVersion, target: String, version: String, namespace: String, vscode: SemVer, )</ID>
+    <ID>LongParameterList:GitHub.kt$GitHubApi$(owner: String, name: String, head: String, base: String, title: String, body: String)</ID>
+    <ID>LongParameterList:GitHub.kt$GitHubApi$(owner: String, name: String, path: String, bytes: ByteArray, message: String, sha: String?)</ID>
+    <ID>LongParameterList:GuardPolicy.kt$GuardPolicy$( agentId: String, kind: RoomKind, running: Map&lt;String, RoomKind&gt;, idleFirst: List&lt;String&gt;, snapshot: PhoneSnapshot, maxAgents: Int, measured: Map&lt;String, Int&gt; = emptyMap(), )</ID>
+    <ID>LongParameterList:GuardPolicy.kt$GuardPolicy$( agentId: String, kind: RoomKind, running: Map&lt;String, RoomKind&gt;, verdict: GuardVerdict, snapshot: PhoneSnapshot, maxAgents: Int, names: (String) -&gt; String, )</ID>
+    <ID>LongParameterList:LimiterImpl.kt$LimiterImpl$( private val phone: PhoneMonitor, private val settings: SettingsStore, private val rooms: () -&gt; Rooms, /** Asks the sync engine for a pass soon; never blocks. */ private val sync: (reason: String) -&gt; Unit, private val agents: AgentKinds, private val host: LimiterHost, private val scope: CoroutineScope, private val clock: Clock, private val idleSleepMinutes: () -&gt; Int = { IDLE_SLEEP_DEFAULT_MINUTES }, )</ID>
+    <ID>LongParameterList:Materializer.kt$Materializer$(drive: DriveStore, cipher: VaultCipher, o: VaultObject, scratch: File, sink: OutputStream, kind: String)</ID>
+    <ID>LongParameterList:MemoryEditor.kt$( graph: AppGraph, home: File, file: File, loaded: MemoryDocument, before: String, after: String, overwrite: Boolean, )</ID>
+    <ID>LongParameterList:PreviewPanel.kt$(scope: CoroutineScope, bridge: PortBridge, sessionId: String, state: PreviewState, port: Int, snackbar: SnackbarHostState)</ID>
+    <ID>LongParameterList:ProjectRegistry.kt$ProjectRegistry$( private val env: ProjectEnv, private val dirs: AppDirs, file: JsonFile&lt;List&lt;Project&gt;&gt;, trustFile: JsonFile&lt;Map&lt;String, ProjectTrust&gt;&gt;, private val clock: Clock, private val scope: CoroutineScope, private val io: CoroutineDispatcher, )</ID>
+    <ID>LongParameterList:Reconciler.kt$Reconciler$(run: Run, drive: DriveStore, track: FileTrack, chain: List&lt;com.pocketide.model.VaultObject&gt;, queued: List&lt;QueueEntry&gt;, batch: Conflicts.Batch)</ID>
+    <ID>LongParameterList:RemoteIndex.kt$RemoteIndex$( drive: DriveStore, cipher: VaultCipher, start: RemoteSnapshot, requireLease: (VaultIndex?) -&gt; Lease?, change: (VaultIndex) -&gt; VaultIndex, emptyIndex: () -&gt; VaultIndex, )</ID>
+    <ID>LongParameterList:RestClient.kt$RestClient$( verb: Verb, url: HttpUrl, body: JsonElement?, accept: String, http: OkHttpClient, read: (Response) -&gt; T, )</ID>
+    <ID>LongParameterList:Restorer.kt$RestorePlanner$(index: VaultIndex, indexBytes: Long, now: Long, onWifi: Boolean, freeBytes: Long, videosNow: Boolean)</ID>
+    <ID>LongParameterList:RoomManager.kt$RoomManager.LiveRoom$( val profile: RoomProfile, val process: Process, val port: Int, val variables: Map&lt;String, String&gt;, /** Someone else's code: the agent asks before running anything and has no browser tools. */ val careful: Boolean, val activity: ActivityClock, @Volatile var sessionId: String, )</ID>
+    <ID>LongParameterList:RoomTerminals.kt$RoomTerminals.Terminal$( val sessionId: String, val agentId: String, val process: Process, val pid: Int?, val port: Int, val handle: TerminalHandle, val activity: ActivityClock, )</ID>
+    <ID>LongParameterList:ScheduledRun.kt$ScheduledRun$(task: ScheduledTask, startedAt: Long, sessionId: String, output: List&lt;String&gt;, ended: String, cut: Boolean)</ID>
+    <ID>LongParameterList:SessionMediaLibrary.kt$SessionMediaLibrary$( private val dirs: AppDirs, private val sessions: () -&gt; List&lt;SessionRecord&gt;, private val backup: () -&gt; BackupFacts, private val shrinker: ImageShrinker, private val clock: Clock, private val io: CoroutineDispatcher, /** Private folder for "where it came from" records, one file per session. */ private val metaDir: File, /** Private scratch folder (not visible inside Linux) where files are checked before they are stored. */ private val stagingDir: File, /** Hands a file in the share folder to other apps (a FileProvider URI on the phone). */ private val uriFor: (File) -&gt; Uri, /** Files the owner picks on the phone (content:// URIs); null where there is no phone. */ private val phoneFiles: PhoneFiles? = null, private val pollMs: Long = POLL_MS, )</ID>
+    <ID>LongParameterList:TemplateCatalog.kt$TemplateCatalog$(id: String, title: String, workflowName: String, runner: String, multiplier: Int, description: String)</ID>
+    <ID>LoopWithTooManyJumpStatements:AgeTest.kt$AgeTest$while</ID>
+    <ID>LoopWithTooManyJumpStatements:AntigravityFormat.kt$AntigravityFormat$for</ID>
+    <ID>LoopWithTooManyJumpStatements:CheckPost.kt$CheckPost$while</ID>
+    <ID>LoopWithTooManyJumpStatements:CheckPost.kt$CheckPost.Scan$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Committer.kt$Committer$for</ID>
+    <ID>LoopWithTooManyJumpStatements:DeviceFacts.kt$KernelFacts$for</ID>
+    <ID>LoopWithTooManyJumpStatements:GitHubBuilds.kt$GitHubBuilds$for</ID>
+    <ID>LoopWithTooManyJumpStatements:LocalCleaner.kt$GitIgnore$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Loopback.kt$Loopback$while</ID>
+    <ID>LoopWithTooManyJumpStatements:Maintenance.kt$Maintenance$for</ID>
+    <ID>LoopWithTooManyJumpStatements:MemoryFiles.kt$MemoryFiles$for</ID>
+    <ID>LoopWithTooManyJumpStatements:OpenVsxSignature.kt$OpenVsxSignature$while</ID>
+    <ID>LoopWithTooManyJumpStatements:PhoneProtocol.kt$PhoneSession$while</ID>
+    <ID>LoopWithTooManyJumpStatements:ProcessStats.kt$ProcessReader$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Reconciler.kt$Conflicts$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Reconciler.kt$Reconciler$for</ID>
+    <ID>LoopWithTooManyJumpStatements:RoomProcesses.kt$ProcFacts$for</ID>
+    <ID>LoopWithTooManyJumpStatements:RoomProcessesTest.kt$RoomProcessesTest$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SafeUnzip.kt$SafeUnzip$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SecretMask.kt$SecretMaskingInputStream$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SessionManager.kt$SessionManager$for</ID>
+    <ID>LoopWithTooManyJumpStatements:SyncPass.kt$SyncPass$for</ID>
+    <ID>LoopWithTooManyJumpStatements:TarGzExtractor.kt$TarGzExtractor.TarStream$for</ID>
+    <ID>LoopWithTooManyJumpStatements:TarGzExtractor.kt$TarGzExtractor.TarStream$while</ID>
+    <ID>LoopWithTooManyJumpStatements:TranscriptView.kt$TranscriptView$while</ID>
+    <ID>LoopWithTooManyJumpStatements:WorkflowChanges.kt$WorkflowChanges$for</ID>
+    <ID>MagicNumber:AccessCheckWorker.kt$AccessCheckWorker.Companion$15</ID>
+    <ID>MagicNumber:ActionsUsage.kt$ActionsUsage$24</ID>
+    <ID>MagicNumber:ActionsUsage.kt$ActionsUsage$2_000</ID>
+    <ID>MagicNumber:ActionsUsage.kt$ActionsUsage$3_000</ID>
+    <ID>MagicNumber:ActionsUsage.kt$ActionsUsage$50</ID>
+    <ID>MagicNumber:ActionsUsage.kt$ActionsUsage$50_000</ID>
+    <ID>MagicNumber:ActionsUsage.kt$RepoSize$1024</ID>
+    <ID>MagicNumber:ActionsUsage.kt$RunnerOs.MACOS$10</ID>
+    <ID>MagicNumber:Age.kt$Age$256</ID>
+    <ID>MagicNumber:Age.kt$AgeInputStream$0xff</ID>
+    <ID>MagicNumber:Age.kt$PayloadStream$8</ID>
+    <ID>MagicNumber:AgeHeader.kt$32</ID>
+    <ID>MagicNumber:AgeHeader.kt$AgeBase64$4</ID>
+    <ID>MagicNumber:AgeHeader.kt$AgeHeader.Companion$0x20</ID>
+    <ID>MagicNumber:AgeHeader.kt$AgeHeader.Companion$0x7e</ID>
+    <ID>MagicNumber:AgeHeader.kt$AgeHeader.Companion$3</ID>
+    <ID>MagicNumber:AgeHeader.kt$ChaChaPoly$8</ID>
+    <ID>MagicNumber:AgentTrust.kt$AgentTrust$0x7F</ID>
+    <ID>MagicNumber:AgentWebView.kt$100</ID>
+    <ID>MagicNumber:AgentWebView.kt$PopupCatcher$30_000</ID>
+    <ID>MagicNumber:AgentWorkers.kt$AgentWorkers$15</ID>
+    <ID>MagicNumber:AgentWorkers.kt$AgentWorkers$7</ID>
+    <ID>MagicNumber:AgyInstaller.kt$AgyInstaller$429</ID>
+    <ID>MagicNumber:AndroidPhoneMonitor.kt$AndroidPhoneMonitor$100</ID>
+    <ID>MagicNumber:AndroidPhoneMonitor.kt$AndroidPhoneMonitor$30</ID>
+    <ID>MagicNumber:Attempt.kt$PlainError$5</ID>
+    <ID>MagicNumber:Avatar.kt$8192</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$0x1ffffff</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$0xff</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$126</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$25</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$31</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$33</ID>
+    <ID>MagicNumber:Bech32.kt$Bech32$5</ID>
+    <ID>MagicNumber:BridgeAccess.kt$BridgeAccess$5</ID>
+    <ID>MagicNumber:BridgeAccess.kt$BridgeAccess$65535</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$101</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$200</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$400</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$403</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$405</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$408</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$421</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$431</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$502</ID>
+    <ID>MagicNumber:BridgeConnection.kt$BridgeConnection$504</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$302</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$400</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$403</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$405</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$408</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$421</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$431</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$502</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$503</ID>
+    <ID>MagicNumber:BridgeReplies.kt$BridgeReplies$504</ID>
+    <ID>MagicNumber:BrowserInstaller.kt$BrowserInstaller$1_000_000</ID>
+    <ID>MagicNumber:BrowserInstaller.kt$BrowserInstaller$60_000</ID>
+    <ID>MagicNumber:BuildMinutes.kt$ActionsPlans$10</ID>
+    <ID>MagicNumber:BuildMinutes.kt$BuildMinutes$60_000.0</ID>
+    <ID>MagicNumber:CheckPost.kt$CheckPost.Companion$1024.0</ID>
+    <ID>MagicNumber:CheckPost.kt$CheckPostLimits$10</ID>
+    <ID>MagicNumber:CheckPost.kt$CheckPostLimits$100L</ID>
+    <ID>MagicNumber:CheckPost.kt$CheckPostLimits$1024</ID>
+    <ID>MagicNumber:Checks.kt$SafetyCheck$3</ID>
+    <ID>MagicNumber:ClaudeFormat.kt$ClaudeFormat$36</ID>
+    <ID>MagicNumber:Codec.kt$1024</ID>
+    <ID>MagicNumber:Codec.kt$64</ID>
+    <ID>MagicNumber:Codec.kt$Codec$0xff</ID>
+    <ID>MagicNumber:Codec.kt$Codec$26</ID>
+    <ID>MagicNumber:Codec.kt$Codec$3</ID>
+    <ID>MagicNumber:Codec.kt$Codec$4</ID>
+    <ID>MagicNumber:Codec.kt$Codec$64</ID>
+    <ID>MagicNumber:Codec.kt$GzipCompressingInputStream$0xff</ID>
+    <ID>MagicNumber:Codec.kt$GzipCompressingInputStream$0xffffffffL</ID>
+    <ID>MagicNumber:Codec.kt$GzipCompressingInputStream$4</ID>
+    <ID>MagicNumber:Codec.kt$GzipCompressingInputStream$8</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.CHECK$4</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.DOWNLOAD_CODE_SERVER$22</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.DOWNLOAD_UBUNTU$6</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.TOOLS$44</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.UNPACK_CODE_SERVER$16</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.UNPACK_UBUNTU$8</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$10</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$100f</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$20</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$25</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$30</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$35</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$55</ID>
+    <ID>MagicNumber:DeviceFacts.kt$CpuFacts$16</ID>
+    <ID>MagicNumber:DeviceFacts.kt$KernelFacts$16</ID>
+    <ID>MagicNumber:DeviceFacts.kt$KernelFacts$39</ID>
+    <ID>MagicNumber:DeviceFacts.kt$KernelFacts$48</ID>
+    <ID>MagicNumber:DeviceFlowAuth.kt$DeviceFlowAuth$1000</ID>
+    <ID>MagicNumber:DeviceFlowAuth.kt$DeviceFlowAuth$200</ID>
+    <ID>MagicNumber:DeviceFlowAuth.kt$DeviceFlowAuth$500</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader$15_000</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader$200</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader$206</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader$2_000</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader$416</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader$5_000</ID>
+    <ID>MagicNumber:Downloader.kt$Downloader.Companion$1024</ID>
+    <ID>MagicNumber:DriveCalls.kt$Backoff$16</ID>
+    <ID>MagicNumber:DriveCalls.kt$DriveCalls.Companion$1_000</ID>
+    <ID>MagicNumber:Ed25519Stream.kt$Ed25519Stream.Companion$255</ID>
+    <ID>MagicNumber:Ed25519Stream.kt$Ed25519Stream.Companion$3</ID>
+    <ID>MagicNumber:Ed25519Stream.kt$Ed25519Stream.Companion$4</ID>
+    <ID>MagicNumber:Ed25519Stream.kt$Ed25519Stream.Companion$5</ID>
+    <ID>MagicNumber:EngineNotices.kt$EngineNotices$33</ID>
+    <ID>MagicNumber:EngineRange.kt$EngineRange.Companion$3</ID>
+    <ID>MagicNumber:EngineService.kt$EngineService$34</ID>
+    <ID>MagicNumber:Formats.kt$Formats$0.5</ID>
+    <ID>MagicNumber:Formats.kt$Formats$10</ID>
+    <ID>MagicNumber:Formats.kt$Formats$10.0</ID>
+    <ID>MagicNumber:Formats.kt$Formats$100</ID>
+    <ID>MagicNumber:Formats.kt$Formats$1000</ID>
+    <ID>MagicNumber:Formats.kt$Formats$60</ID>
+    <ID>MagicNumber:Formats.kt$Formats$999</ID>
+    <ID>MagicNumber:Forms.kt$ScheduleForm$3_600_000L</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$200</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$204</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$403</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$404</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$405</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$409</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$410</ID>
+    <ID>MagicNumber:GitHubRestApi.kt$GitHubRestApi$422</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$400</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$403</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$404</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$409</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$410</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$422</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubErrors$500</ID>
+    <ID>MagicNumber:GitHubText.kt$GitHubText$60_000.0</ID>
+    <ID>MagicNumber:GitHubWire.kt$200</ID>
+    <ID>MagicNumber:GitMessages.kt$8</ID>
+    <ID>MagicNumber:GitMessages.kt$GitMessages$200</ID>
+    <ID>MagicNumber:GuardPolicy.kt$GuardPolicy$10</ID>
+    <ID>MagicNumber:GuardPolicy.kt$GuardPolicy$20</ID>
+    <ID>MagicNumber:GuardPolicy.kt$GuardPolicy$3</ID>
+    <ID>MagicNumber:GuardPolicy.kt$GuardPolicy$5</ID>
+    <ID>MagicNumber:GuardPolicy.kt$RoomKind.CODE_SERVER$8</ID>
+    <ID>MagicNumber:GuardPolicy.kt$RoomKind.CODE_SERVER$800L</ID>
+    <ID>MagicNumber:GuardPolicy.kt$RoomKind.HUB$200L</ID>
+    <ID>MagicNumber:GuardPolicy.kt$RoomKind.HUB$4</ID>
+    <ID>MagicNumber:GuestLines.kt$1024</ID>
+    <ID>MagicNumber:GuestLines.kt$16</ID>
+    <ID>MagicNumber:GuestLines.kt$8</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$100</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$100f</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$1e12</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$1e3</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$1e6</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$1e9</ID>
+    <ID>MagicNumber:GuestLines.kt$GuestLines$3</ID>
+    <ID>MagicNumber:GuestRoot.kt$GuestRoot$1024</ID>
+    <ID>MagicNumber:GuestRoot.kt$GuestRoot$64</ID>
+    <ID>MagicNumber:HelpSearch.kt$HelpSearch$15</ID>
+    <ID>MagicNumber:HomeLogic.kt$10</ID>
+    <ID>MagicNumber:HomeLogic.kt$20</ID>
+    <ID>MagicNumber:Http1.kt$100</ID>
+    <ID>MagicNumber:Http1.kt$16</ID>
+    <ID>MagicNumber:Http1.kt$199</ID>
+    <ID>MagicNumber:Http1.kt$204</ID>
+    <ID>MagicNumber:Http1.kt$3</ID>
+    <ID>MagicNumber:Http1.kt$304</ID>
+    <ID>MagicNumber:Http1.kt$400</ID>
+    <ID>MagicNumber:Http1.kt$502</ID>
+    <ID>MagicNumber:Http1.kt$HttpInput$0xff</ID>
+    <ID>MagicNumber:Http1.kt$HttpInput$400</ID>
+    <ID>MagicNumber:Http1.kt$HttpInput$431</ID>
+    <ID>MagicNumber:Http1.kt$RequestHead$256</ID>
+    <ID>MagicNumber:Http1.kt$ResponseHead$256</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$0x80</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$0xC0</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$0xE0</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$0xF0</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$0xFF</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$3</ID>
+    <ID>MagicNumber:JsonLines.kt$JsonLineReader$4</ID>
+    <ID>MagicNumber:LimiterImpl.kt$LimiterImpl$60_000L</ID>
+    <ID>MagicNumber:LinuxProcesses.kt$ProcessKeeper$2_000</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan$65535</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan.Companion$16</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan.Companion$3</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan.Companion$4</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan.Companion$65535</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan.Companion$7</ID>
+    <ID>MagicNumber:Listeners.kt$ListenerScan.Companion$8</ID>
+    <ID>MagicNumber:LoopbackPortBridge.kt$BridgeLimits$1024</ID>
+    <ID>MagicNumber:LoopbackPortBridge.kt$BridgeLimits$64</ID>
+    <ID>MagicNumber:LoopbackPortBridge.kt$LoopbackPortBridge$503</ID>
+    <ID>MagicNumber:LoopbackPortBridge.kt$LoopbackPortBridge$65535</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$0.5</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$10</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$10.0</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$100</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$12</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$168</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$1_000</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$1_000.0</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$1_000_000</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$1_000_000.0</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$1e-9</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$24</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$30</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$48</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$60</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$60_000</ID>
+    <ID>MagicNumber:ManageFormat.kt$ManageFormat$999</ID>
+    <ID>MagicNumber:McpTools.kt$ListenerTable$16</ID>
+    <ID>MagicNumber:McpTools.kt$ListenerTable$3</ID>
+    <ID>MagicNumber:McpTools.kt$ListenerTable$4</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools$1024</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools$1_000_000</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools$1e9</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools$3</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools$65535</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools.Companion$8</ID>
+    <ID>MagicNumber:McpTools.kt$McpTools.Companion$80</ID>
+    <ID>MagicNumber:MediaLogic.kt$0xff</ID>
+    <ID>MagicNumber:MediaSniffer.kt$MediaSniffer$12</ID>
+    <ID>MagicNumber:MediaSniffer.kt$MediaSniffer$3</ID>
+    <ID>MagicNumber:MediaSniffer.kt$MediaSniffer$4</ID>
+    <ID>MagicNumber:MediaSniffer.kt$MediaSniffer$8</ID>
+    <ID>MagicNumber:MemoryFiles.kt$MemoryFiles$8192</ID>
+    <ID>MagicNumber:MeteredDataBudget.kt$MeteredDataBudget$7</ID>
+    <ID>MagicNumber:OpenUrl.kt$WebAddress$0x80</ID>
+    <ID>MagicNumber:OpenUrl.kt$WebAddress$0xff</ID>
+    <ID>MagicNumber:OpenUrl.kt$WebAddress$16</ID>
+    <ID>MagicNumber:OpenUrl.kt$WebAddress$4</ID>
+    <ID>MagicNumber:OpenVsx.kt$OpenVsx$404</ID>
+    <ID>MagicNumber:OpenVsx.kt$OpenVsx$429</ID>
+    <ID>MagicNumber:OpenVsxSignature.kt$OpenVsxSignature$4096</ID>
+    <ID>MagicNumber:PhoneProtocol.kt$PhoneLimits$1024</ID>
+    <ID>MagicNumber:ProcessStats.kt$ProcessReader$1024</ID>
+    <ID>MagicNumber:ProjectLogic.kt$59_999</ID>
+    <ID>MagicNumber:ProjectLogic.kt$60_000</ID>
+    <ID>MagicNumber:ProjectLogic.kt$65535</ID>
+    <ID>MagicNumber:ProjectLogic.kt$WorkFormat$10</ID>
+    <ID>MagicNumber:ProjectLogic.kt$WorkFormat$1024</ID>
+    <ID>MagicNumber:ProjectLogic.kt$WorkFormat$1024.0</ID>
+    <ID>MagicNumber:ProjectRegistry.kt$ProjectRegistry$1024</ID>
+    <ID>MagicNumber:ProotComputer.kt$ProotComputer$1_000_000</ID>
+    <ID>MagicNumber:ProotComputer.kt$ProotComputer$1_000_000_000</ID>
+    <ID>MagicNumber:PublicReleases.kt$PublicReleases$403</ID>
+    <ID>MagicNumber:PublicReleases.kt$PublicReleases$404</ID>
+    <ID>MagicNumber:PublicReleases.kt$PublicReleases$429</ID>
+    <ID>MagicNumber:Reconciler.kt$ChainCheck$1024</ID>
+    <ID>MagicNumber:Reconciler.kt$ChainCheck$64</ID>
+    <ID>MagicNumber:Reconciler.kt$Conflicts.Batch$6</ID>
+    <ID>MagicNumber:Reconciler.kt$Conflicts.Companion$3</ID>
+    <ID>MagicNumber:Remotes.kt$GitHubRemotes$443</ID>
+    <ID>MagicNumber:RepairText.kt$RepairText$3</ID>
+    <ID>MagicNumber:RestClient.kt$RestClient$1000</ID>
+    <ID>MagicNumber:RestClient.kt$RestClient$401</ID>
+    <ID>MagicNumber:RestClient.kt$RestClient$403</ID>
+    <ID>MagicNumber:RestClient.kt$RestClient$404</ID>
+    <ID>MagicNumber:RestClient.kt$RestClient$429</ID>
+    <ID>MagicNumber:RestClient.kt$RestClient$500</ID>
+    <ID>MagicNumber:Restorer.kt$RestorePlanner$3</ID>
+    <ID>MagicNumber:Restorer.kt$RestorePlanner$4</ID>
+    <ID>MagicNumber:RoomEngines.kt$RoomEngines$200</ID>
+    <ID>MagicNumber:RoomEngines.kt$RoomEngines$499</ID>
+    <ID>MagicNumber:RoomManager.kt$RoomManager$1000</ID>
+    <ID>MagicNumber:RoomManager.kt$RoomManager$60_000L</ID>
+    <ID>MagicNumber:RoomProcesses.kt$ProcFacts$1024</ID>
+    <ID>MagicNumber:RoomTerminals.kt$RoomTerminals$1000</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$1024</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$11.5</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$1536</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$1_000_000_000.0</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$5.5</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$512</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$7.5</ID>
+    <ID>MagicNumber:RoomsModule.kt$GraphRoomsEnv$768</ID>
+    <ID>MagicNumber:Routes.kt$Routes$0xFF</ID>
+    <ID>MagicNumber:Routes.kt$Routes$4</ID>
+    <ID>MagicNumber:SafeHtmlView.kt$SafeClient$403</ID>
+    <ID>MagicNumber:SafeUnzip.kt$SafeUnzip$1024</ID>
+    <ID>MagicNumber:SafeUnzip.kt$SafeUnzip$1024L</ID>
+    <ID>MagicNumber:SafeUnzip.kt$SafeUnzip$500L</ID>
+    <ID>MagicNumber:ScheduledRun.kt$ScheduledRun$1024</ID>
+    <ID>MagicNumber:ScheduledRun.kt$ScheduledRun$60_000L</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$0xff</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$10</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$11</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$12</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$13</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$14</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$15</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$16</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$18</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$24</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$3</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$32</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$4</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$5</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$6</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$7</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$8</ID>
+    <ID>MagicNumber:SealedBox.kt$HSalsa20$9</ID>
+    <ID>MagicNumber:SealedBox.kt$SealedBox$16</ID>
+    <ID>MagicNumber:SealedBox.kt$SealedBox$32</ID>
+    <ID>MagicNumber:SealedBox.kt$SealedBox$8</ID>
+    <ID>MagicNumber:SecretMask.kt$SecretMask$3</ID>
+    <ID>MagicNumber:SecretMask.kt$SecretMaskingInputStream$0xff</ID>
+    <ID>MagicNumber:SecureStore.kt$KeystoreBox$128</ID>
+    <ID>MagicNumber:SecureStore.kt$KeystoreBox$256</ID>
+    <ID>MagicNumber:SemVer.kt$SemVer.Companion$3</ID>
+    <ID>MagicNumber:SessionManager.kt$SessionManager$3</ID>
+    <ID>MagicNumber:SessionMediaLibrary.kt$SessionMediaLibrary.Companion$1024</ID>
+    <ID>MagicNumber:SessionMediaLibrary.kt$SessionMediaLibrary.Companion$64</ID>
+    <ID>MagicNumber:SettingsAdvanced.kt$10</ID>
+    <ID>MagicNumber:SettingsAdvanced.kt$5</ID>
+    <ID>MagicNumber:ShellLogic.kt$DeviceFlowTiming$1000L</ID>
+    <ID>MagicNumber:ShellLogic.kt$OnboardingStep.COMPUTER$3</ID>
+    <ID>MagicNumber:ShellLogic.kt$OnboardingStep.PRIVACY$4</ID>
+    <ID>MagicNumber:Sync.kt$RecentlyDeleted$1000</ID>
+    <ID>MagicNumber:Sync.kt$RecentlyDeleted$24L</ID>
+    <ID>MagicNumber:Sync.kt$RecentlyDeleted$60</ID>
+    <ID>MagicNumber:SyncWorkers.kt$AndroidSyncNotifier$33</ID>
+    <ID>MagicNumber:SyncWorkers.kt$WorkScheduler$15</ID>
+    <ID>MagicNumber:SyncWorkers.kt$WorkScheduler$30</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$0x7f</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$0x80</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$0xff</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$100</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$12</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$124</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$148</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$155</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$156</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$157</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$257</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$263</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$3</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$32</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$345</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.TarStream$8</ID>
+    <ID>MagicNumber:TarGzExtractor.kt$TarGzExtractor.Unpacker$64</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$0x20</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$0x7f</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$16</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$4</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$5</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$6</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeys$64</ID>
+    <ID>MagicNumber:Toml.kt$TomlDocument$3</ID>
+    <ID>MagicNumber:Toml.kt$TomlDocument.Companion$0x20</ID>
+    <ID>MagicNumber:Toml.kt$TomlDocument.Companion$0x7f</ID>
+    <ID>MagicNumber:Toml.kt$TomlDocument.Companion$16</ID>
+    <ID>MagicNumber:Toml.kt$TomlDocument.Companion$4</ID>
+    <ID>MagicNumber:ToolSummary.kt$ToolSummary$3</ID>
+    <ID>MagicNumber:TrackedFiles.kt$Scanner$3</ID>
+    <ID>MagicNumber:TranscriptIndex.kt$TranscriptIndex.Source$0x100</ID>
+    <ID>MagicNumber:TranscriptIndex.kt$TranscriptIndex.Source$0xff</ID>
+    <ID>MagicNumber:TranscriptIndex.kt$TranscriptIndex.Source$16</ID>
+    <ID>MagicNumber:Trees.kt$FileModes$0b111_111_111_111</ID>
+    <ID>MagicNumber:UploadQueue.kt$UploadQueue$20</ID>
+    <ID>MagicNumber:UploadQueue.kt$UploadQueue$8</ID>
+    <ID>MagicNumber:Views.kt$Notices$7</ID>
+    <ID>MagicNumber:Views.kt$Sizes$10</ID>
+    <ID>MagicNumber:Views.kt$Sizes$20</ID>
+    <ID>MagicNumber:WorkCommon.kt$0xFF111418</ID>
+    <ID>MagicNumber:WorkCommon.kt$0xFF3A1606</ID>
+    <ID>MagicNumber:WorkCommon.kt$0xFF7C8CF8</ID>
+    <ID>MagicNumber:WorkCommon.kt$0xFFDDE1E7</ID>
+    <ID>MagicNumber:WorkCommon.kt$0xFFE8A07E</ID>
+    <ID>MagicNumber:WorkCommon.kt$240</ID>
+    <ID>MagicNumber:WorkText.kt$WorkText$59_999</ID>
+    <ID>MagicNumber:WorkText.kt$WorkText$60_000</ID>
+    <ID>MatchingDeclarationName:Catalog.kt$OpenVsxCatalog : AgentCatalog</ID>
+    <ID>MatchingDeclarationName:ChatRow.kt$ChatDialog</ID>
+    <ID>MatchingDeclarationName:Components.kt$Tone</ID>
+    <ID>MatchingDeclarationName:JsonLines.kt$JsonLineReader : Closeable</ID>
+    <ID>MatchingDeclarationName:Listeners.kt$ListenerScan</ID>
+    <ID>MatchingDeclarationName:MediaLogic.kt$MediaLimits</ID>
+    <ID>MatchingDeclarationName:PreviewPanel.kt$PreviewState</ID>
+    <ID>MatchingDeclarationName:PutOnMain.kt$MainMerger</ID>
+    <ID>MatchingDeclarationName:TerminalView.kt$TerminalState</ID>
+    <ID>MatchingDeclarationName:Toml.kt$TomlDocument</ID>
+    <ID>MaxLineLength:ActivityScreen.kt$FilledTonalButton</ID>
+    <ID>MaxLineLength:BridgeWebSocketTest.kt$BridgeWebSocketTest$exchange.output.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $accept\r\n\r\n".toByteArray())</ID>
+    <ID>MaxLineLength:BuildsPanel.kt$AssistChip(onClick = { nav.schedules(projectId) }, label = { Text("Scheduled tasks") }, leadingIcon = { Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)) })</ID>
+    <ID>MaxLineLength:BuildsPanel.kt$AssistChip(onClick = { nav.secrets(projectId) }, label = { Text("Variables &amp; Secrets") }, leadingIcon = { Icon(Icons.Filled.Key, null, Modifier.size(18.dp)) })</ID>
+    <ID>MaxLineLength:BuildsPanel.kt$Text("Runs on ${template.runner} · ${template.fileName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:BuildsPanel.kt$Text(run.branch, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
+    <ID>MaxLineLength:BuildsPanel.kt$if (count == 0) "This run has no files to bring." else "${WorkFormat.count(count, "file", "files")} added to Media of \"${target.title}\"."</ID>
+    <ID>MaxLineLength:Catalog.kt$OpenVsxCatalog$keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), present?.let { ExtensionInstaller.packageFile(folder, it.version) }))</ID>
+    <ID>MaxLineLength:Catalog.kt$OpenVsxCatalog$val after = if (restored) "Version ${present.version} is back in place." else "Version ${present.version} could not be put back; repair it from the Computer screen."</ID>
+    <ID>MaxLineLength:CatalogTest.kt$CatalogTest$codex.versions += FakeVersion("26.5908.31748", engine = "^1.96.2", preRelease = true, packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", "26.5908.31748", "^1.96.2", listOf("chatgpt.openSidebar")))</ID>
+    <ID>MaxLineLength:CatalogTest.kt$CatalogTest$codex.versions += FakeVersion("26.908.40401", engine = "^1.96.2", packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", "26.908.40401", "^1.96.2", listOf("chatgpt.openSidebar")))</ID>
+    <ID>MaxLineLength:CatalogTest.kt$CatalogTest$private</ID>
+    <ID>MaxLineLength:ChatsScreens.kt$scope.act(snackbar, "Could not change it", done = "It will be backed up to your Drive.") { graph.sessions.setBackUp(session.id, true) }</ID>
+    <ID>MaxLineLength:ChatsScreens.kt$snackbar.showSnackbar(if (failures == 0) "Deleted forever." else "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again.")</ID>
+    <ID>MaxLineLength:ChatsScreens.kt$snackbar.showSnackbar(if (failures == 0) "Kept on this phone only. Marked \"Not backed up\"." else "Some chats could not be changed. Try again.")</ID>
+    <ID>MaxLineLength:CodexConfigTest.kt$CodexConfigTest$assertTrue(text.contains("# the GitHub server\n[mcp_servers.github]\ncommand = \"npx\"\nargs = [\n \"-y\",\n \"@modelcontextprotocol/server-github\",\n]\n"))</ID>
+    <ID>MaxLineLength:CodexConfigTest.kt$ManagedBlockTest$for</ID>
+    <ID>MaxLineLength:ComputerSetup.kt$ComputerSetup$return RepairItem(CODE_SERVER, RepairStatus.WARN, "It does not start. It is downloaded again when allowed. ${decision.reason ?: WAITING_FOR_WIFI}")</ID>
+    <ID>MaxLineLength:ComputerSetupTest.kt$ComputerSetupTest$for</ID>
+    <ID>MaxLineLength:ConfigFilesTest.kt$ConfigFilesTest$val</ID>
+    <ID>MaxLineLength:ConfigFilesTest.kt$ConfigFilesTest$val written = ConfigFiles.extensionsRegistry(existing, "pocketide.pocketide-companion", "3.0.0", "pocketide.pocketide-companion-3.0.0", "/root/.local/share/code-server/extensions/pocketide.pocketide-companion-3.0.0", 42)!!</ID>
+    <ID>MaxLineLength:DeviceFlowAuthTest.kt$DeviceFlowAuthTest$json("""{"access_token":"$access","expires_in":28800,"refresh_token":"$refresh","refresh_token_expires_in":15897600,"scope":"","token_type":"bearer"}""")</ID>
+    <ID>MaxLineLength:DeviceFlowAuthTest.kt$DeviceFlowAuthTest$json("""{"device_code":"3584d83530557fdd1f46af8289938c8ef79f9dc5","user_code":"WDJB-MJHT","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}""")</ID>
+    <ID>MaxLineLength:DiscoveryTest.kt$DiscoveryTest$private</ID>
+    <ID>MaxLineLength:DiscoveryTest.kt$VerifiedDownloadTest$fetch(Expected(sha256 = OpenVsxFixture.sha256(payload), signature = otherKeys.public.encoded.copyOfRange(12, 44) to OpenVsxFixture.sign(payload, otherKeys).also { it[0] = (it[0] + 1).toByte() }))</ID>
+    <ID>MaxLineLength:DriveRestStoreTest.kt$DriveRestStoreTest$drive.enqueue(200, """{"storageQuota":{"limit":"16106127360","usage":"5000","usageInDrive":"4000","usageInDriveTrash":"0"},"user":{"emailAddress":"owner@example.com"}}""")</ID>
+    <ID>MaxLineLength:EngineParts.kt$Plain$"Android limits PocketIDE's background work because the app was not opened for a while, so backup and clean-up run about once a day. Opening PocketIDE lifts the limit."</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$""""usage":{"input_tokens":$input,"cache_creation_input_tokens":$created,"cache_read_input_tokens":$read,"output_tokens":$output,"service_tier":"standard"}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"id":"msg_01A","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"text","text":"I'll check the login code."}],${usage(10, 1000, 2000, 40)}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"id":"msg_01A","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"thinking","thinking":"Look at the login code first.","signature":"sig"}],${usage(10, 1000, 2000, 5)}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"id":"msg_01A","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"$WORKTREE_A/app/Login.kt"}}],${usage(10, 1000, 2000, 60)}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"id":"msg_01B","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"./gradlew test","description":"Run the tests"}}],${usage(5, 0, 3000, 20)}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"id":"msg_01C","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"text","text":"Fixed: the token was not refreshed."}],${usage(7, 0, 0, 12)}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"isSidechain":true,"sessionId":"$CLAUDE_SESSION","type":"assistant","message":{"id":"msg_side","role":"assistant","content":[{"type":"text","text":"Subagent notes"}],${usage(1, 0, 0, 1)}},"uuid":"s1","timestamp":"2026-09-24T05:02:30.000Z"}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"role":"user","content":"&lt;command-name&gt;/model&lt;/command-name&gt;\n&lt;command-message&gt;model&lt;/command-message&gt;\n&lt;command-args&gt;sonnet&lt;/command-args&gt;"}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"role":"user","content":"&lt;local-command-caveat&gt;Caveat: the messages below were generated by the user while running local commands.&lt;/local-command-caveat&gt;"}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"role":"user","content":[{"type":"text","text":"Here is a screenshot of the bug"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"$SCREENSHOT"}}]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"session_id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b","id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b","timestamp":"2026-09-24T06:00:00.000Z","cwd":"$WORKTREE_B","originator":"codex_vscode","cli_version":"0.154.0","source":"vscode","model_provider":"openai","base_instructions":{"text":"You are Codex, a coding agent."},"git":{"commit_hash":"abc123","branch":"pocket/codex/2026-09-24-dark-theme"}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-09-24T08:00:00Z","content":"Make the header sticky","media":[{"mime_type":"image/png","uri":"file:///root/.gemini/antigravity/brain/conv/media/shot.png"},{"mime_type":"text/plain","uri":"file:///root/notes.txt"}]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-24T08:00:05Z","content":"I'll update the header styles.","thinking":"Sticky positioning.","tool_calls":[{"name":"view_file","args":{"AbsolutePath":"$worktree/src/Header.css"}},{"name":"run_command","args":{"CommandLine":"npm test","Cwd":"$worktree"}}]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"step_index":2,"source":"SYSTEM","type":"VIEW_FILE","status":"DONE","created_at":"2026-09-24T08:00:06Z","content":"header { top: 0 } in $worktree/src/Header.css","truncated_fields":["content"]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-24T08:01:00Z","content":"Done. The header now stays on top."}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"thread_id":"t1","turn_id":"x","session_id":"t1","root_turn_id":"x","response_id":"r1","usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110},"turn_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110},"thread_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"thread_id":"t1","turn_id":"y","session_id":"t1","root_turn_id":"y","response_id":"r2","usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":220},"turn_token_usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":220},"thread_token_usage":{"input_tokens":300,"cached_input_tokens":0,"output_tokens":30,"reasoning_output_tokens":0,"total_tokens":330}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"custom_tool_call","status":"completed","call_id":"call_2","name":"apply_patch","input":"*** Begin Patch\n*** Update File: app/src/Theme.kt\n@@\n-val dark = false\n+val dark = true\n*** Add File: app/src/Toggle.kt\n+class Toggle\n*** End Patch\n"}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"rg -n theme app/src\"],\"workdir\":\"$WORKTREE_B\"}","call_id":"call_1"}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"local_shell_call","call_id":"c3","status":"completed","action":{"type":"exec","command":["bash","-lc","./gradlew assembleDebug"],"timeout_ms":null,"working_directory":null}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"message","role":"developer","content":[{"type":"input_text","text":"&lt;permissions instructions&gt;Ask before running commands.&lt;/permissions instructions&gt;"}]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for $WORKTREE_B\n\n&lt;INSTRUCTIONS&gt;\nUse Kotlin.\n&lt;/INSTRUCTIONS&gt;"},{"type":"input_text","text":"&lt;environment_context&gt;\n &lt;cwd&gt;$WORKTREE_B&lt;/cwd&gt;\n &lt;shell&gt;bash&lt;/shell&gt;\n&lt;/environment_context&gt;"}]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"message","role":"user","content":[{"type":"input_text","text":"Add a dark theme toggle"},{"type":"input_text","text":"&lt;image&gt;"},{"type":"input_image","image_url":"data:image/png;base64,$SCREENSHOT"},{"type":"input_text","text":"&lt;/image&gt;"}]}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"token_count","info":{"total_token_usage":{"input_tokens":1200,"cached_input_tokens":800,"output_tokens":90,"reasoning_output_tokens":40,"total_tokens":1290},"last_token_usage":{"input_tokens":1200,"cached_input_tokens":800,"output_tokens":90,"reasoning_output_tokens":40,"total_tokens":1290},"model_context_window":272000},"rate_limits":null}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"token_count","info":{"total_token_usage":{"input_tokens":2500,"cached_input_tokens":1600,"output_tokens":150,"reasoning_output_tokens":60,"total_tokens":2650},"last_token_usage":{"input_tokens":1300,"cached_input_tokens":800,"output_tokens":60,"reasoning_output_tokens":20,"total_tokens":1360},"model_context_window":272000},"rate_limits":null}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"token_count","info":{"total_token_usage":{"input_tokens":300,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":320},"last_token_usage":{"input_tokens":300,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":320},"model_context_window":272000},"rate_limits":null}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$"""{"type":"token_count","info":{"total_token_usage":{"input_tokens":999,"cached_input_tokens":0,"output_tokens":99,"reasoning_output_tokens":0,"total_tokens":1098},"last_token_usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":2},"model_context_window":1}}"""</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T06:00:00.000Z", "session_meta", """{"id":"t1","timestamp":"2026-09-24T06:00:00.000Z","cwd":"$WORKTREE_B","originator":"codex_vscode","cli_version":"0.160.0"}""")</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T06:00:00.500Z", "turn_context", """{"cwd":"$WORKTREE_B","approval_policy":"on-request","sandbox_policy":{"type":"danger-full-access"},"model":"gpt-5-codex"}""")</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T06:00:02.000Z", "event_msg", """{"type":"user_message","message":"Add a dark theme toggle","images":["data:image/png;base64,AAAA"]}""")</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T06:00:05.000Z", "response_item", """{"type":"reasoning","summary":[{"type":"summary_text","text":"Planning the toggle"}],"content":null,"encrypted_content":"gAAAAB"}""")</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T06:00:07.000Z", "response_item", """{"type":"function_call_output","call_id":"call_1","output":"app/src/Theme.kt:3: val dark = false"}""")</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T06:00:10.000Z", "response_item", """{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Added the toggle in Settings."}],"phase":"final_answer"}""")</ID>
+    <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T07:00:01.000Z", "response_item", """{"type":"web_search_call","status":"completed","action":{"type":"search","query":"material 3 dark theme"}}""")</ID>
+    <ID>MaxLineLength:FormatTest.kt$FormatTest$assertEquals("/clear", ClaudeFormat.typed("&lt;command-name&gt;/clear&lt;/command-name&gt;\n&lt;command-message&gt;clear&lt;/command-message&gt;\n&lt;command-args&gt;&lt;/command-args&gt;"))</ID>
+    <ID>MaxLineLength:FormatTest.kt$FormatTest$val meta = """{"timestamp":"2026-09-24T06:00:00Z","type":"session_meta","payload":{"id":"t2","parent_thread_id":"t1","cwd":"$WORKTREE_B","timestamp":"x","originator":"o","cli_version":"1"}}""" + "\n"</ID>
+    <ID>MaxLineLength:GitHubRestApiTest.kt$GitHubRestApiTest$server.enqueue(json("""{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}]}""", 422))</ID>
+    <ID>MaxLineLength:GitHubRestApiTest.kt$GitHubRestApiTest$server.enqueue(json("""{"type":"file","encoding":"base64","size":13,"name":"half-g.json","path":"keys/half-g.json","content":"${content.replace("\r\n", "\\n")}","sha":"abc123"}"""))</ID>
+    <ID>MaxLineLength:GitHubRestApiTest.kt$GitHubRestApiTest$server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"https://api.github.com/repos/octo/demo/actions/runs/30433642","html_url":"https://github.com/octo/demo/actions/runs/30433642"}"""))</ID>
+    <ID>MaxLineLength:GuardPolicy.kt$GuardPolicy$battery != null &amp;&amp; battery &lt;= 10 -&gt; GuardVerdict(Guard.PAUSE, "The battery is at $battery %. Agents pause after their current step until the phone charges.")</ID>
+    <ID>MaxLineLength:GuardPolicy.kt$GuardPolicy$battery != null &amp;&amp; battery &lt;= 20 -&gt; GuardVerdict(Guard.NO_NEW_HEAVY, "The battery is at $battery %. New agents and heavy work wait until the phone charges.")</ID>
+    <ID>MaxLineLength:GuestFactsTest.kt$GuestFactsTest$assertEquals("Snapdragon · 4× Kryo 4xx Gold", CpuFacts.describe("model name : Snapdragon\n" + "CPU implementer : 0x51\nCPU part : 0x804\n".repeat(4), null))</ID>
+    <ID>MaxLineLength:HomeScreen.kt$Text(agent.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))</ID>
+    <ID>MaxLineLength:HomeScreen.kt$Text(project.repo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))</ID>
+    <ID>MaxLineLength:HomeScreen.kt$Text(summary, style = MaterialTheme.typography.bodySmall, color = if (running &gt; 0) toneColor(Tone.OK) else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:LinuxScriptsTest.kt$LinuxScriptsTest$assertEquals(setOf("HOME=/root", "MULTI=a", "b", "PASSWORD=per-launch", "PATH=/usr/bin:/bin", "UID=7"), output.lines().filter { it.isNotEmpty() }.toSet())</ID>
+    <ID>MaxLineLength:LinuxScriptsTest.kt$LinuxScriptsTest$val (code, output) = run(perl!!, File(folder, "launch.pl").absolutePath, variables.absolutePath, "env", environment = mapOf("HOME" to "/root", "PATH" to "/nowhere"))</ID>
+    <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 0: 00000000000000000000000000000000:1F90 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 4 1 0 100 0 0 10 0"</ID>
+    <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 0: 00000000000000000000000001000000:1F41 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 5 1 0 100 0 0 10 0"</ID>
+    <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 1: 00000000000000000000000000000000:0BB9 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 6 1 0 100 0 0 10 0"</ID>
+    <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 2: 0000000000000000FFFF00000100007F:1F42 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 7 1 0 100 0 0 10 0"</ID>
+    <ID>MaxLineLength:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$for</ID>
+    <ID>MaxLineLength:ManageUi.kt$colors = if (destructive) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors()</ID>
+    <ID>MaxLineLength:McpTools.kt$McpTools$?:</ID>
+    <ID>MaxLineLength:McpToolsTest.kt$McpToolsTest$ports.snapshot = PhoneSnapshot.UNKNOWN.copy(at = 1, batteryPercent = 18, charging = false, totalRamBytes = 4_000_000_000, availRamBytes = 900_000_000, metered = true)</ID>
+    <ID>MaxLineLength:NetworkDoctorTest.kt$NetworkDoctorTest$for</ID>
+    <ID>MaxLineLength:OpenVsxFixture.kt$OpenVsxFixture$"${vsixName(extension, version)}.sigzip" -&gt; MockResponse.Builder().body(Buffer().write(sigzip(sign(vsix, if (version.wrongSignature) otherKey else key)))).build()</ID>
+    <ID>MaxLineLength:OpenVsxFixture.kt$OpenVsxFixture.Companion$fun sigzip(signature: ByteArray): ByteArray</ID>
+    <ID>MaxLineLength:ProjectScreens.kt$Icon(if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back")</ID>
+    <ID>MaxLineLength:ProjectScreens.kt$Text(WorkFormat.count(list.size, "session", "sessions"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:ProjectScreens.kt$Text(decision.reason ?: "The phone cannot start another agent right now.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:ProjectScreens.kt$Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
+    <ID>MaxLineLength:Reconciler.kt$Reconciler$private suspend</ID>
+    <ID>MaxLineLength:Reconciler.kt$Reconciler$val assembled = kit.materializer.assemble(drive, run.cipher, file, chain.drop(track.objects.size), keep = track.syncedLength, keepSha = track.prefixSha256)</ID>
+    <ID>MaxLineLength:RoomConfiguratorTest.kt$RoomConfiguratorTest$File(extensions, "extensions.json").writeText("""[{"identifier":{"id":"openai.chatgpt"},"version":"26.908.40401","relativeLocation":"openai.chatgpt-26.908.40401-linux-arm64"}]""")</ID>
+    <ID>MaxLineLength:RoomConfiguratorTest.kt$RoomConfiguratorTest$assertEquals(listOf("openai.chatgpt", "pocketide.pocketide-companion"), listed.map { it.jsonObject["identifier"]!!.jsonObject["id"]!!.jsonPrimitive.content })</ID>
+    <ID>MaxLineLength:RoomConfiguratorTest.kt$RoomConfiguratorTest$for</ID>
+    <ID>MaxLineLength:RoomFilesTest.kt$RoomFilesTest$assertEquals(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(File(home, ".claude/CLAUDE.md").toPath()))</ID>
+    <ID>MaxLineLength:RoomManagerTest.kt$RoomManagerTest$assertTrue("the password file is gone once code-server has started", dirs.roomBridge("claude").listFiles().orEmpty().none { it.name.endsWith(".secret") })</ID>
+    <ID>MaxLineLength:ScheduledRun.kt$ScheduledRun$ports.notify(task.id, if (ok) "Scheduled task finished" else "Scheduled task needs a look", "${task.title}: $ended Open the session to review it.")</ID>
+    <ID>MaxLineLength:SchedulesModule.kt$GraphRunPorts$if (state !is ComputerState.Ready &amp;&amp; state !is ComputerState.Updating) throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")</ID>
+    <ID>MaxLineLength:SealedBoxTest.kt$SealedBoxTest$val words = { bytes: ByteArray -&gt; ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().let { b -&gt; IntArray(b.remaining()) { b.get(it) } } }</ID>
+    <ID>MaxLineLength:SecretsScreen.kt$else</ID>
+    <ID>MaxLineLength:ShellLogicTest.kt$ShellLogicTest$val realme = PhoneFacts(33, "13", arm64 = true, playServices = true, totalRamBytes = (3.7 * gib).toLong(), freeStorageBytes = 40 * gb, screenLock = true)</ID>
+    <ID>MaxLineLength:SyncModule.kt$GraphPorts$return if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.R &amp;&amp; bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED) Plain.BACKGROUND_RESTRICTED else null</ID>
+    <ID>MaxLineLength:SyncTestKit.kt$fun</ID>
+    <ID>MaxLineLength:TestSupport.kt$Project(id = PROJECT_ID, owner = "alice", repo = "demo", defaultBranch = defaultBranch, isPrivate = isPrivate, addedAt = 0, lastActivityAt = 0, cloned = true)</ID>
+    <ID>MaxLineLength:TranscriptIndexTest.kt$TranscriptIndexTest$val file = write(File(dirs.roomHome("antigravity"), ".gemini/antigravity/brain/c/.system_generated/logs/transcript.jsonl"), Fixtures.antigravity(WORKTREE_A))</ID>
+    <ID>MaxLineLength:TranscriptIndexTest.kt$TranscriptIndexTest$write(File(dirs.roomHome("antigravity"), ".gemini/antigravity-cli/brain/conv-b/.system_generated/logs/transcript.jsonl"), Fixtures.antigravity(WORKTREE_B))</ID>
+    <ID>MaxLineLength:UpdateRules.kt$UpdateRules$!pinned.isNullOrBlank() &amp;&amp; pinned.lowercase() !in candidate.signers -&gt; "The downloaded file is not signed with PocketIDE's release key, so it was deleted."</ID>
+    <ID>MaxLineLength:UsageScreen.kt$Hint("This month's usage is worth ${ManageFormat.usd(summary.grossUsd)}; ${ManageFormat.usd(summary.discountUsd)} of it is covered by your plan and free public repositories.")</ID>
+    <ID>MaxLineLength:UsageScreen.kt$if (usage.repo.isPrivate) "Private: builds use your included minutes." else "Public: builds on standard runners are free, and anyone can see the code."</ID>
+    <ID>MaxLineLength:VerifiedDownload.kt$VerifiedDownload$expected.sha256?.let { if (!hex(sha256.digest()).equals(it, ignoreCase = true)) throw PackageRejected("The download did not match its published SHA-256") }</ID>
+    <ID>MaxLineLength:VerifiedDownload.kt$VerifiedDownload$expected.sha512?.let { if (!hex(sha512.digest()).equals(it, ignoreCase = true)) throw PackageRejected("The download did not match its published SHA-512") }</ID>
+    <ID>MaxLineLength:Views.kt$Notices$Notice("computer", "The computer is removed tomorrow", "It goes on ${Ist.date(due)} unless an agent runs before then. Your projects and chats are safe either way.")</ID>
+    <ID>MaxLineLength:Views.kt$Notices$Notice("computer", "The computer will be removed", "No agent has run for $days days. The computer is removed on ${Ist.date(due)} to free space and is rebuilt the next time you use it.")</ID>
+    <ID>MaxLineLength:Views.kt$Notices$Notice("drive", "Reconnect Google Drive", "PocketIDE can no longer reach your Drive, so new chats wait safely on this phone. Open PocketIDE to reconnect.")</ID>
+    <ID>MaxLineLength:YourDataScreen.kt$Text("3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.", style = MaterialTheme.typography.bodyMedium)</ID>
+    <ID>MaxLineLength:YourDataScreen.kt$TypeRow("Build outputs", sizes?.let { ManageFormat.bytes(it.builds) } ?: pending, listOf(Place.PHONE, Place.GITHUB), "The last 3 per project here; GitHub keeps artifacts for 7 days.")</ID>
+    <ID>MaxLineLength:YourDataScreen.kt$TypeRow("Projects", "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here", listOf(Place.GITHUB, Place.PHONE), "GitHub holds the main copy; the phone holds a working copy.")</ID>
+    <ID>MaxLineLength:YourDataScreen.kt$TypeRow("The computer", sizes?.let { ManageFormat.bytes(it.computer) } ?: pending, listOf(Place.PHONE), "Rebuildable any time; nothing in it is the only copy.")</ID>
+    <ID>NestedBlockDepth:AddedFiles.kt$AddedFiles$fun copyInto(dir: File, name: String, source: InputStream, maxBytes: Long = MAX_BYTES): File</ID>
+    <ID>NestedBlockDepth:ApkFetcher.kt$ApkFetcher$private suspend fun receive(url: String, part: File, release: AppRelease, onProgress: (Float) -&gt; Unit)</ID>
+    <ID>NestedBlockDepth:BridgeTestKit.kt$TestUpstream$private fun serve(socket: Socket)</ID>
+    <ID>NestedBlockDepth:CheckPost.kt$CheckPost$fun check( repo: Repository, tip: ObjectId, onGitHub: Collection&lt;ObjectId&gt;, knownValues: List&lt;String&gt;, approvedWorkflows: Collection&lt;String&gt; = emptyList(), checkActive: () -&gt; Unit, ): Verdict</ID>
+    <ID>NestedBlockDepth:ClaudeFormat.kt$ClaudeFormat$private fun assistantEntries(message: JsonObject, at: Long?): List&lt;TranscriptEntry&gt;</ID>
+    <ID>NestedBlockDepth:Committer.kt$Committer$suspend fun deleteUnused(run: Run, drive: DriveStore)</ID>
+    <ID>NestedBlockDepth:Downloader.kt$Downloader$private suspend fun receive( response: Response, pin: PinnedDownload, part: File, append: Boolean, start: Long, kind: String, onProgress: (Long) -&gt; Unit, )</ID>
+    <ID>NestedBlockDepth:GuestLines.kt$internal fun InputStream.forEachLine(maxChars: Int = 16 * 1024, onLine: (String) -&gt; Unit)</ID>
+    <ID>NestedBlockDepth:JsonLines.kt$JsonLineReader$fun next(partialLast: Boolean = false): String?</ID>
+    <ID>NestedBlockDepth:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$private fun assertRefused(port: Int, address: InetAddress = InetAddress.getByName("127.0.0.1"))</ID>
+    <ID>NestedBlockDepth:PhoneProtocol.kt$LineReader$fun next(): Line</ID>
+    <ID>NestedBlockDepth:Reconciler.kt$ChainCheck$fun prefixOf(file: File, chain: List&lt;com.pocketide.model.VaultObject&gt;): Assembled?</ID>
+    <ID>NestedBlockDepth:RoomFiles.kt$RoomFiles$fun directory(relative: String, create: Boolean): Path?</ID>
+    <ID>NestedBlockDepth:RoomManager.kt$RoomManager$private suspend fun afterBrowserInstall()</ID>
+    <ID>NestedBlockDepth:SafeUnzip.kt$SafeUnzip$fun unzip(zip: InputStream, dest: File): List&lt;File&gt;</ID>
+    <ID>NestedBlockDepth:SessionManager.kt$SessionManager$override suspend fun addFile(sessionId: String, name: String, source: InputStream, intoProject: Boolean): AddedFile</ID>
+    <ID>NestedBlockDepth:Toml.kt$TomlDocument$private fun valueEnd(start: Int, firstValue: String): Int</ID>
+    <ID>NestedBlockDepth:Toml.kt$TomlDocument.Companion$private fun closingBracket(line: String): Int</ID>
+    <ID>NestedBlockDepth:Toml.kt$TomlDocument.Companion$private fun dotted(text: String): List&lt;String&gt;?</ID>
+    <ID>NestedBlockDepth:Toml.kt$TomlDocument.Companion$private fun keyPath(line: String): List&lt;String&gt;?</ID>
+    <ID>NestedBlockDepth:TranscriptView.kt$TranscriptView$private fun readFile(format: TranscriptFormat, file: File): List&lt;TranscriptEntry&gt;</ID>
+    <ID>NestedBlockDepth:VerifiedDownload.kt$VerifiedDownload$private suspend fun receive(url: HttpUrl, part: File, expected: Expected, onProgress: (Long, Long) -&gt; Unit)</ID>
+    <ID>ReturnCount:AddedFiles.kt$AddedFiles$fun safeName(name: String): String?</ID>
+    <ID>ReturnCount:Age.kt$AgeInputStream$override fun read(b: ByteArray, off: Int, len: Int): Int</ID>
+    <ID>ReturnCount:AgeTestkitTest.kt$AgeTestkitTest$private fun check(vector: Vector): String?</ID>
+    <ID>ReturnCount:AgentFiles.kt$AgentFiles$fun classify(relativePath: String): FileClass</ID>
+    <ID>ReturnCount:AgentFiles.kt$AgentFiles$fun isSecret(relativePath: String): Boolean</ID>
+    <ID>ReturnCount:AgentPages.kt$AgentPages$private fun dataLinks(agent: Details): List&lt;DocBlock&gt;</ID>
+    <ID>ReturnCount:AgentScreens.kt$AgentScreens$fun commandExists(packageJson: JsonObject, command: String): Boolean</ID>
+    <ID>ReturnCount:AgentTrust.kt$AgentTrust$fun problem(extensionId: String): String?</ID>
+    <ID>ReturnCount:AgentWebView.kt$AgentClient$override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean</ID>
+    <ID>ReturnCount:AgentWorkers.kt$AgentUpdateWorker$override suspend fun doWork(): Result</ID>
+    <ID>ReturnCount:AgentsModule.kt$GraphAgentsEnv$override fun vscodeVersion(): SemVer?</ID>
+    <ID>ReturnCount:Bech32.kt$Bech32$fun decode(text: String): Decoded?</ID>
+    <ID>ReturnCount:Bech32.kt$Bech32$private fun convertBits(data: List&lt;Int&gt;, from: Int, to: Int, pad: Boolean): List&lt;Int&gt;?</ID>
+    <ID>ReturnCount:BridgeAccess.kt$BridgeAccess$fun sameOriginOnly(headers: HeaderList, hostField: String): Boolean</ID>
+    <ID>ReturnCount:BridgeConnection.kt$BridgeConnection$private fun decide(request: RequestHead): Decision</ID>
+    <ID>ReturnCount:BridgeConnection.kt$BridgeConnection$private fun enter(request: RequestHead): Decision</ID>
+    <ID>ReturnCount:BridgeConnection.kt$BridgeConnection$private suspend fun exchange()</ID>
+    <ID>ReturnCount:BridgeConnection.kt$BridgeConnection$private suspend fun forward(request: RequestHead, clientIn: HttpInput, plan: Decision.Forward)</ID>
+    <ID>ReturnCount:BridgeConnection.kt$BridgeConnection$private suspend fun relayUpgrade(clientIn: HttpInput, upIn: HttpInput, upOut: OutputStream, plan: Decision.Forward)</ID>
+    <ID>ReturnCount:Catalog.kt$OpenVsxCatalog$private suspend fun bringAgyUpToDate(agent: AgentInfo): DoctorReport?</ID>
+    <ID>ReturnCount:Catalog.kt$OpenVsxCatalog$private suspend fun bringExtensionUpToDate(agent: AgentInfo): DoctorReport?</ID>
+    <ID>ReturnCount:CheckPost.kt$CheckPost.Scan$private fun content(reader: ObjectReader, sha: String, change: Change, fileName: String)</ID>
+    <ID>ReturnCount:CheckPost.kt$CheckPost.Scan$private fun file(reader: ObjectReader, sha: String, change: Change)</ID>
+    <ID>ReturnCount:CheckPostRules.kt$PathRules$fun check(path: String): Hit?</ID>
+    <ID>ReturnCount:CheckPostRules.kt$PathRules$private fun aiData(parts: List&lt;String&gt;): String?</ID>
+    <ID>ReturnCount:ClaudeFormat.kt$ClaudeFormat$fun typed(raw: String): String?</ID>
+    <ID>ReturnCount:ClaudeFormat.kt$ClaudeFormat$private fun userEntry(message: JsonObject, at: Long?): TranscriptEntry?</ID>
+    <ID>ReturnCount:Codec.kt$GzipCompressingInputStream$override fun read(b: ByteArray, off: Int, len: Int): Int</ID>
+    <ID>ReturnCount:Codec.kt$internal fun safeChild(base: File, relative: String): File?</ID>
+    <ID>ReturnCount:CodexFormat.kt$CodexFormat$fun isContext(text: String): Boolean</ID>
+    <ID>ReturnCount:CodexFormat.kt$CodexFormat$private fun userMessage(parts: JsonArray, at: Long?): TranscriptEntry?</ID>
+    <ID>ReturnCount:ComputerSetup.kt$ComputerSetup$private suspend fun codeServerItem(record: SetupRecord): RepairItem</ID>
+    <ID>ReturnCount:ComputerSetup.kt$ComputerSetup$private suspend fun switchCodeServer( record: SetupRecord, pin: CodeServerPin, staged: Boolean, hold: () -&gt; Boolean, release: () -&gt; Unit, ): UpdateOutcome</ID>
+    <ID>ReturnCount:ComputerSetup.kt$ComputerSetup$private suspend fun tools(): RepairItem</ID>
+    <ID>ReturnCount:ComputerUpdateWorker.kt$ComputerUpdateWorker$override suspend fun doWork(): Result</ID>
+    <ID>ReturnCount:DeviceFacts.kt$CpuFacts$fun cores(possible: String?): Int?</ID>
+    <ID>ReturnCount:DeviceFlowAuth.kt$DeviceFlowAuth$private suspend fun connect(reply: OAuthReply, access: String): DevicePoll</ID>
+    <ID>ReturnCount:DeviceFlowAuth.kt$DeviceFlowAuth$private suspend fun refresh(latest: StoredTokens, keepValidOnFailure: Boolean): String</ID>
+    <ID>ReturnCount:DeviceSignIn.kt$DeviceSignIn$private suspend fun waitForAnswer(mine: Int, code: DeviceCode): State</ID>
+    <ID>ReturnCount:Discovery.kt$Discovery$suspend fun examine(entry: SearchEntry, known: Set&lt;String&gt;): Verdict</ID>
+    <ID>ReturnCount:DriveSyncEngine.kt$DriveSyncEngine$private suspend fun jobsThenPass(run: Run, options: PassOptions): PassOutcome?</ID>
+    <ID>ReturnCount:Ed25519Stream.kt$Ed25519Stream$fun verify(): Boolean</ID>
+    <ID>ReturnCount:Ed25519Stream.kt$Ed25519Stream.Companion$private fun recoverX(y: BigInteger, sign: Int): BigInteger?</ID>
+    <ID>ReturnCount:EngineRange.kt$EngineRange.Companion$private fun parseAlternative(text: String): List&lt;Bound&gt;?</ID>
+    <ID>ReturnCount:EngineRange.kt$EngineRange.Companion$private fun partial(text: String): Partial?</ID>
+    <ID>ReturnCount:FakeAgentsEnv.kt$FakeAgentsEnv$private fun codeServer(agentId: String, home: File, args: List&lt;String&gt;, onLine: (String) -&gt; Unit): Int</ID>
+    <ID>ReturnCount:GitHubBuilds.kt$GitHubBuilds$override suspend fun progress(projectId: String, runId: Long): BuildProgress?</ID>
+    <ID>ReturnCount:GitHubBuilds.kt$GitHubBuilds$private suspend fun ending(project: Project, run: WorkflowRun, jobs: List&lt;WorkflowJob&gt;): Ending</ID>
+    <ID>ReturnCount:GuardPolicy.kt$GuardPolicy$fun canStart( agentId: String, kind: RoomKind, running: Map&lt;String, RoomKind&gt;, verdict: GuardVerdict, snapshot: PhoneSnapshot, maxAgents: Int, names: (String) -&gt; String, ): Decision</ID>
+    <ID>ReturnCount:GuardPolicy.kt$GuardPolicy$fun roomsToClose( agentId: String, kind: RoomKind, running: Map&lt;String, RoomKind&gt;, idleFirst: List&lt;String&gt;, snapshot: PhoneSnapshot, maxAgents: Int, measured: Map&lt;String, Int&gt; = emptyMap(), ): List&lt;String&gt;?</ID>
+    <ID>ReturnCount:GuestLines.kt$GuestLines$fun parse(raw: String): GuestLine</ID>
+    <ID>ReturnCount:GuestRoot.kt$GuestRoot$private fun guestTarget(target: String): String</ID>
+    <ID>ReturnCount:GuestRoot.kt$GuestRoot$private fun walk(names: List&lt;String&gt;, create: Boolean): Path?</ID>
+    <ID>ReturnCount:HelpSearch.kt$HelpRoute.Companion$fun resolve(id: String?, sections: List&lt;DocSection&gt;, agentPages: List&lt;DocSection&gt;, faq: List&lt;FaqEntry&gt;): HelpRoute</ID>
+    <ID>ReturnCount:Http1.kt$HttpInput$override fun read(b: ByteArray, off: Int, len: Int): Int</ID>
+    <ID>ReturnCount:Http1.kt$internal fun contentLength(headers: HeaderList): Long?</ID>
+    <ID>ReturnCount:Http1.kt$internal fun requestFraming(headers: HeaderList): Framing</ID>
+    <ID>ReturnCount:Http1.kt$internal fun responseFraming(requestMethod: String, response: ResponseHead): Framing</ID>
+    <ID>ReturnCount:ImageShrinker.kt$AndroidWebpShrinker$override fun toWebp(source: File, target: File): Boolean</ID>
+    <ID>ReturnCount:IndexMerge.kt$Chains$fun chain(objects: List&lt;VaultObject&gt;, key: String): List&lt;VaultObject&gt;</ID>
+    <ID>ReturnCount:JGitGate.kt$JGitGate$private fun fastForward(gateRepo: GateRepo, branch: String)</ID>
+    <ID>ReturnCount:JGitGate.kt$JGitGate$private fun pushBranch( gateRepo: GateRepo, ref: String, token: String, knownValues: List&lt;String&gt;, job: Job, ): PushResult</ID>
+    <ID>ReturnCount:Links.kt$Links$fun isOpenable(url: String): Boolean</ID>
+    <ID>ReturnCount:Lookalikes.kt$Lookalikes$fun problem(namespace: String, name: String): String?</ID>
+    <ID>ReturnCount:Loopback.kt$Loopback$internal fun parse(raw: String): HttpAnswer?</ID>
+    <ID>ReturnCount:LoopbackPortBridge.kt$LoopbackPortBridge$override fun isInternal(url: String): Boolean</ID>
+    <ID>ReturnCount:LoopbackPortBridge.kt$LoopbackPortBridge$private fun bindBothLoopbacks(): List&lt;ServerSocket&gt;?</ID>
+    <ID>ReturnCount:Maintenance.kt$Maintenance$private suspend fun reencrypt(run: Run, drive: DriveStore, snapshot: RemoteSnapshot): RemoteSnapshot</ID>
+    <ID>ReturnCount:Maintenance.kt$Maintenance$suspend fun run(run: Run): List&lt;String&gt;</ID>
+    <ID>ReturnCount:MemoryFiles.kt$DiskUsage$fun sizeOf(root: File, skipDirectory: String? = null): Long</ID>
+    <ID>ReturnCount:MemoryFiles.kt$MemoryFiles$fun isSafe(home: File, file: File): Boolean</ID>
+    <ID>ReturnCount:MeteredDataBudget.kt$MeteredDataBudget$override fun allow(bytes: Long, kind: String, big: Boolean): Decision</ID>
+    <ID>ReturnCount:OpenVsx.kt$OpenVsx$suspend fun allVersions(namespace: String, name: String, target: String, pages: Int = VERSION_PAGES): List&lt;ExtensionVersion&gt;</ID>
+    <ID>ReturnCount:OpenVsx.kt$OpenVsx$suspend fun firstPublished(namespace: String, name: String): Long?</ID>
+    <ID>ReturnCount:OpenVsxFixture.kt$OpenVsxFixture$private fun extensionAnswer(rest: List&lt;String&gt;): MockResponse?</ID>
+    <ID>ReturnCount:PhoneProtocol.kt$LineReader$fun next(): Line</ID>
+    <ID>ReturnCount:PhoneProtocol.kt$PhoneSession$private suspend fun accept(text: String, requests: CoroutineScope, requestJob: Job)</ID>
+    <ID>ReturnCount:PieceMaker.kt$PieceMaker$fun transcript(c: Candidate, known: Known, compact: Boolean): MakeResult</ID>
+    <ID>ReturnCount:PieceMaker.kt$PieceMaker$fun whole(c: Candidate, known: Known, sameContent: (String) -&gt; SameContent?): MakeResult</ID>
+    <ID>ReturnCount:PieceMaker.kt$PieceMaker$private fun appendOrRewrite(c: Candidate, known: Known, end: Long): MakeResult</ID>
+    <ID>ReturnCount:Projects.kt$RepoAddress.Companion$fun parse(text: String): RepoAddress?</ID>
+    <ID>ReturnCount:ProotComputer.kt$ProotComputer$private suspend fun agyVersion(): String?</ID>
+    <ID>ReturnCount:ProotComputer.kt$ProotComputer$private suspend fun linuxLookup(): HostCheck?</ID>
+    <ID>ReturnCount:PutOnMain.kt$MainMerger$private suspend fun cleanUp(session: SessionRecord, project: Project, mergedTip: String): Boolean</ID>
+    <ID>ReturnCount:PutOnMain.kt$MainMerger$private suspend fun merge(session: SessionRecord, project: Project, base: String, tip: String, identity: LinuxGit.Identity): Merge</ID>
+    <ID>ReturnCount:PutOnMain.kt$MainMerger$suspend fun run(session: SessionRecord, project: Project): Outcome</ID>
+    <ID>ReturnCount:Reconciler.kt$Reconciler$fun adopt(index: VaultIndex?, c: Candidate): FileTrack?</ID>
+    <ID>ReturnCount:Reconciler.kt$Reconciler$private suspend fun align(run: Run, drive: DriveStore, track: FileTrack, chain: List&lt;com.pocketide.model.VaultObject&gt;, queued: List&lt;QueueEntry&gt;, batch: Conflicts.Batch): FileTrack?</ID>
+    <ID>ReturnCount:RestClient.kt$RestClient$private fun rateLimitWait(response: Response): Long?</ID>
+    <ID>ReturnCount:Restorer.kt$Restorer$suspend fun materialize(run: Run, drive: DriveStore, chain: List&lt;VaultObject&gt;, replaceUntrackedMemory: Boolean)</ID>
+    <ID>ReturnCount:Restorer.kt$Restorer$suspend fun restore(run: Run, choice: RestoreChoice): String?</ID>
+    <ID>ReturnCount:RoomFiles.kt$RoomFiles$fun directory(relative: String, create: Boolean): Path?</ID>
+    <ID>ReturnCount:RoomFiles.kt$RoomFiles$fun read(relative: String, limit: Long = MAX_READ): String?</ID>
+    <ID>ReturnCount:RoomFiles.kt$RoomFiles$private fun existing(relative: String): Path?</ID>
+    <ID>ReturnCount:RoomLayout.kt$RoomLayout$fun hostPath(dirs: AppDirs, agentId: String, guestPath: String): RoomPath?</ID>
+    <ID>ReturnCount:RoomManager.kt$RoomManager$private fun carefulNow(agentId: String): Boolean</ID>
+    <ID>ReturnCount:RoomManager.kt$RoomManager$private suspend fun awaitReady(room: LiveRoom): Boolean</ID>
+    <ID>ReturnCount:RoomManager.kt$RoomManager$private suspend fun openLocked(agentId: String, sessionId: String, admitted: Boolean): RoomState</ID>
+    <ID>ReturnCount:RoomManager.kt$RoomManager$private suspend fun signOut(agentId: String): String</ID>
+    <ID>ReturnCount:RoomManager.kt$RoomManager$private suspend fun start(profile: RoomProfile, session: SessionRecord, port: Int? = null, admitted: Boolean = false): RoomState</ID>
+    <ID>ReturnCount:RoomPaths.kt$RoomPaths$fun holds(folder: String, extensionId: String, version: String? = null): Boolean</ID>
+    <ID>ReturnCount:RoomsModule.kt$GraphRoomsEnv$override suspend fun gitIdentity(): Map&lt;String, String&gt;</ID>
+    <ID>ReturnCount:SafeFiles.kt$SafeFiles$fun delete(target: File): Boolean</ID>
+    <ID>ReturnCount:SemVer.kt$SemVer$override fun compareTo(other: SemVer): Int</ID>
+    <ID>ReturnCount:SemVer.kt$SemVer.Companion$fun parse(text: String): SemVer?</ID>
+    <ID>ReturnCount:SessionManager.kt$SessionManager$override suspend fun changes(sessionId: String): SessionChanges</ID>
+    <ID>ReturnCount:SessionManager.kt$SessionManager$override suspend fun putOnMain(sessionId: String): PutOnMainResult</ID>
+    <ID>ReturnCount:SessionManager.kt$SessionManager$override suspend fun saveNow(sessionId: String): String?</ID>
+    <ID>ReturnCount:SessionManager.kt$SessionManager$override suspend fun transcript(sessionId: String): List&lt;TranscriptEntry&gt;</ID>
+    <ID>ReturnCount:SessionManager.kt$SessionManager$override suspend fun unsaved(projectId: String): String?</ID>
+    <ID>ReturnCount:SessionManager.kt$SessionManager$private suspend fun pushBranch(sessionId: String): String?</ID>
+    <ID>ReturnCount:SetupWorld.kt$FakeGuest$override suspend fun run(root: File, argv: List&lt;String&gt;, onLine: (String) -&gt; Unit): Int</ID>
+    <ID>ReturnCount:SyncModule.kt$GraphPorts$override fun backgroundLimit(): String?</ID>
+    <ID>ReturnCount:SyncPass.kt$SyncPass$suspend fun run(run: Run, opts: PassOptions): PassOutcome</ID>
+    <ID>ReturnCount:SyncPass.kt$SyncPass$suspend fun upload(run: Run, drive: DriveStore, opts: PassOptions, book: SessionBook, onlyConflicts: Boolean): UploadReport</ID>
+    <ID>ReturnCount:TarGzExtractor.kt$TarGzExtractor.TarStream$fun next(): TarHeader?</ID>
+    <ID>ReturnCount:TerminalKeys.kt$TerminalKeys$fun copiedText(jsonResult: String?, max: Int = MAX_COPY_CHARS): String?</ID>
+    <ID>ReturnCount:TestSupport.kt$HostGitComputer$private fun translate(arg: String, command: LinuxCommand): String</ID>
+    <ID>ReturnCount:ToolSummary.kt$ToolSummary$private fun detailOf(args: JsonObject): String?</ID>
+    <ID>ReturnCount:TrackedFiles.kt$SessionMatcher$fun homeSession(path: String, cwd: String?): String?</ID>
+    <ID>ReturnCount:TranscriptIndex.kt$TranscriptIndex.Source$override fun carried(file: File, plain: File): FileFacts?</ID>
+    <ID>ReturnCount:TranscriptIndex.kt$TranscriptIndex.Source$override fun read(file: File): FileFacts</ID>
+    <ID>ReturnCount:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun checkLocked(login: String): KeyringCheck</ID>
+    <ID>ReturnCount:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun openHalfG(file: HalfGFile, password: CharArray?): OpenedHalf?</ID>
+    <ID>ReturnCount:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun reconcile(login: String, remade: Boolean)</ID>
+    <ID>ReturnCount:WorkflowChanges.kt$WorkflowChanges$fun events(text: String): List&lt;String&gt;</ID>
+    <ID>ReturnCount:Worktrees.kt$Worktrees$suspend fun catchUp(session: SessionRecord, project: Project)</ID>
+    <ID>SpreadOperator:GitHubRestApi.kt$GitHubRestApi$(owner, name, "contents", *pathSegments(path))</ID>
+    <ID>SwallowedException:AddedFiles.kt$AddedFiles$failed: IOException</ID>
+    <ID>SwallowedException:AddedFiles.kt$AddedFiles$taken: FileAlreadyExistsException</ID>
+    <ID>SwallowedException:Age.kt$PayloadStream$e: InvalidCipherTextException</ID>
+    <ID>SwallowedException:AgeHeader.kt$AgeBase64$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:AgeHeader.kt$ChaChaPoly$e: InvalidCipherTextException</ID>
+    <ID>SwallowedException:AgentDoctor.kt$AgentDoctor$failed: IOException</ID>
+    <ID>SwallowedException:AgentDoctor.kt$AgentDoctor$refused: IllegalStateException</ID>
+    <ID>SwallowedException:AgentDoctor.kt$AgentDoctor$tooSlow: TimeoutCancellationException</ID>
+    <ID>SwallowedException:AgentStore.kt$AgentStore$unreadable: IllegalArgumentException</ID>
+    <ID>SwallowedException:AgentWorkers.kt$AgentDiscoveryWorker$failed: IOException</ID>
+    <ID>SwallowedException:AgentWorkers.kt$AgentUpdateWorker$failed: IOException</ID>
+    <ID>SwallowedException:AgentWorkers.kt$AgentUpdateWorker$failed: IllegalStateException</ID>
+    <ID>SwallowedException:AgentsModule.kt$AgentNotices$denied: SecurityException</ID>
+    <ID>SwallowedException:AgyInstaller.kt$AgyInstaller$unreadable: IllegalArgumentException</ID>
+    <ID>SwallowedException:AppUpdateWorker.kt$AppUpdateWorker$waiting: IOException</ID>
+    <ID>SwallowedException:AppUpdateWorker.kt$UpdateNotices$denied: SecurityException</ID>
+    <ID>SwallowedException:Autosaver.kt$Autosaver$failed: Exception</ID>
+    <ID>SwallowedException:BareRefs.kt$BareRefs$unreadable: IOException</ID>
+    <ID>SwallowedException:BridgeConnection.kt$BridgeConnection$e: EOFException</ID>
+    <ID>SwallowedException:BridgeConnection.kt$BridgeConnection$e: HttpProtocolException</ID>
+    <ID>SwallowedException:BridgeConnection.kt$BridgeConnection$e: IOException</ID>
+    <ID>SwallowedException:BridgeConnection.kt$BridgeConnection$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:BridgeConnection.kt$BridgeConnection$e: SocketTimeoutException</ID>
+    <ID>SwallowedException:BridgeConnection.kt$e: IOException</ID>
+    <ID>SwallowedException:BridgeTestKit.kt$TestUpstream$e: IOException</ID>
+    <ID>SwallowedException:Catalog.kt$OpenVsxCatalog$failed: IOException</ID>
+    <ID>SwallowedException:Catalog.kt$OpenVsxCatalog$failed: IllegalStateException</ID>
+    <ID>SwallowedException:CheckPost.kt$CheckPost$e: IncorrectObjectTypeException</ID>
+    <ID>SwallowedException:CheckPost.kt$CheckPost$e: MissingObjectException</ID>
+    <ID>SwallowedException:CodeServerSlot.kt$CodeServerSlot$tooSlow: TimeoutCancellationException</ID>
+    <ID>SwallowedException:ConfigFiles.kt$ConfigFiles$unreadable: IllegalArgumentException</ID>
+    <ID>SwallowedException:ConfigFiles.kt$ConfigFiles$unreadable: SerializationException</ID>
+    <ID>SwallowedException:DeviceFlowAuth.kt$DeviceFlowAuth$e: GitHubException</ID>
+    <ID>SwallowedException:DeviceFlowAuth.kt$DeviceFlowAuth$e: GitHubRateLimitException</ID>
+    <ID>SwallowedException:DeviceFlowAuth.kt$DeviceFlowAuth$e: IOException</ID>
+    <ID>SwallowedException:DeviceFlowAuth.kt$DeviceFlowAuth$e: NotConnectedException</ID>
+    <ID>SwallowedException:Discovery.kt$Discovery$unreadable: IOException</ID>
+    <ID>SwallowedException:ExtensionInstaller.kt$ExtensionInstaller$refused: IOException</ID>
+    <ID>SwallowedException:ExtensionInstaller.kt$ExtensionInstaller$tooSlow: TimeoutCancellationException</ID>
+    <ID>SwallowedException:ExtensionInstaller.kt$ExtensionInstaller$unsupported: UnsupportedOperationException</ID>
+    <ID>SwallowedException:GitFiles.kt$e: IOException</ID>
+    <ID>SwallowedException:GitHubBuilds.kt$GitHubBuilds$e: GitHubException</ID>
+    <ID>SwallowedException:GitHubBuilds.kt$GitHubBuilds$e: IOException</ID>
+    <ID>SwallowedException:GitHubBuilds.kt$GitHubBuilds$e: MediaException</ID>
+    <ID>SwallowedException:GitHubBuilds.kt$GitHubBuilds$e: UnsafeZipException</ID>
+    <ID>SwallowedException:GitHubRestApi.kt$GitHubRestApi$e: GitHubException</ID>
+    <ID>SwallowedException:GitHubRestApi.kt$GitHubRestApi$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:GitHubWire.kt$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:GitHubWire.kt$e: SerializationException</ID>
+    <ID>SwallowedException:GoogleDriveAuth.kt$GoogleDriveAuth$e: AuthFailure</ID>
+    <ID>SwallowedException:GuestRoot.kt$GuestRoot.Companion$missing: IOException</ID>
+    <ID>SwallowedException:HalfPassword.kt$HalfPassword$e: CharacterCodingException</ID>
+    <ID>SwallowedException:JGitGate.kt$JGitGate.Companion$e: IncorrectObjectTypeException</ID>
+    <ID>SwallowedException:JGitGate.kt$JGitGate.Companion$e: MissingObjectException</ID>
+    <ID>SwallowedException:JsonLines.kt$malformed: IllegalArgumentException</ID>
+    <ID>SwallowedException:JsonState.kt$JsonFile$unreadable: IllegalArgumentException</ID>
+    <ID>SwallowedException:Jsonc.kt$Jsonc$unreadable: IllegalArgumentException</ID>
+    <ID>SwallowedException:Jsonc.kt$Jsonc$unreadable: SerializationException</ID>
+    <ID>SwallowedException:KeyCopy.kt$KeyCopy$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:LinuxGit.kt$LinuxGit$failed: Exception</ID>
+    <ID>SwallowedException:Listeners.kt$ListenerScan$e: IOException</ID>
+    <ID>SwallowedException:Listeners.kt$ListenerScan$e: SecurityException</ID>
+    <ID>SwallowedException:Listeners.kt$ListenerScan.Companion$e: SocketException</ID>
+    <ID>SwallowedException:Loopback.kt$Loopback$closed: IOException</ID>
+    <ID>SwallowedException:Loopback.kt$Loopback$failed: IOException</ID>
+    <ID>SwallowedException:Loopback.kt$Loopback$slow: java.net.SocketTimeoutException</ID>
+    <ID>SwallowedException:LoopbackPortBridge.kt$LoopbackPortBridge$e: IOException</ID>
+    <ID>SwallowedException:LoopbackPortBridge.kt$LoopbackPortBridge$e: URISyntaxException</ID>
+    <ID>SwallowedException:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$e: ConnectException</ID>
+    <ID>SwallowedException:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$e: IOException</ID>
+    <ID>SwallowedException:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$e: SocketException</ID>
+    <ID>SwallowedException:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$e: java.net.SocketTimeoutException</ID>
+    <ID>SwallowedException:NetworkDoctor.kt$PhoneNetwork.Companion$unavailable: RuntimeException</ID>
+    <ID>SwallowedException:OpenUrl.kt$AndroidBrowser$e: ActivityNotFoundException</ID>
+    <ID>SwallowedException:OpenUrl.kt$WebAddress$e: URISyntaxException</ID>
+    <ID>SwallowedException:OpenVsx.kt$OpenVsx$unreadable: IllegalArgumentException</ID>
+    <ID>SwallowedException:OpenVsxSignature.kt$OpenVsxSignature$notBase64: IllegalArgumentException</ID>
+    <ID>SwallowedException:PhoneDns.kt$PhoneDns$refused: RuntimeException</ID>
+    <ID>SwallowedException:PhoneDns.kt$PhoneDns$unavailable: RuntimeException</ID>
+    <ID>SwallowedException:PhoneGuestToolsTest.kt$PhoneGuestToolsTest$e: IOException</ID>
+    <ID>SwallowedException:PhoneProtocol.kt$PhoneSession$e: Exception</ID>
+    <ID>SwallowedException:PhoneProtocol.kt$PhoneSession$e: IOException</ID>
+    <ID>SwallowedException:PhoneProtocol.kt$PhoneSession$e: SerializationException</ID>
+    <ID>SwallowedException:PhoneProtocol.kt$PhoneSession$e: TimeoutCancellationException</ID>
+    <ID>SwallowedException:ProcStandIns.kt$ProcStandIns.Companion$unreadable: IOException</ID>
+    <ID>SwallowedException:ProcStandIns.kt$ProcStandIns.Companion$unreadable: SecurityException</ID>
+    <ID>SwallowedException:ProjectRegistry.kt$ProjectRegistry$failed: Exception</ID>
+    <ID>SwallowedException:ProjectRegistry.kt$ProjectRegistry$offline: Exception</ID>
+    <ID>SwallowedException:ProjectRegistry.kt$ProjectRegistry$offline: IOException</ID>
+    <ID>SwallowedException:ProjectRegistry.kt$ProjectRegistry$signedOut: NotConnectedException</ID>
+    <ID>SwallowedException:ProotComputer.kt$ProotComputer$failure: Exception</ID>
+    <ID>SwallowedException:ProotComputer.kt$ProotComputer$failure: IOException</ID>
+    <ID>SwallowedException:ProotComputer.kt$ProotComputer$tooSlow: TimeoutCancellationException</ID>
+    <ID>SwallowedException:PutOnMain.kt$MainMerger$kept: Exception</ID>
+    <ID>SwallowedException:PutOnMain.kt$MainMerger$kept: SessionException</ID>
+    <ID>SwallowedException:PutOnMain.kt$MainMerger$offline: Exception</ID>
+    <ID>SwallowedException:PutOnMain.kt$MainMerger$signedOut: NotConnectedException</ID>
+    <ID>SwallowedException:PutOnMain.kt$MainMerger$unavailable: SessionException</ID>
+    <ID>SwallowedException:RoomFiles.kt$RoomFiles$raced: FileAlreadyExistsException</ID>
+    <ID>SwallowedException:RoomFiles.kt$RoomFiles$unreadable: IOException</ID>
+    <ID>SwallowedException:RoomFiles.kt$RoomFiles.Companion$missing: IOException</ID>
+    <ID>SwallowedException:RoomFilesTest.kt$RoomFilesTest$refused: IOException</ID>
+    <ID>SwallowedException:RoomFilesTest.kt$RoomFilesTest$refused: IllegalArgumentException</ID>
+    <ID>SwallowedException:RoomManager.kt$RoomManager$closed: IOException</ID>
+    <ID>SwallowedException:RoomManager.kt$RoomManager.Ports$unreadable: IOException</ID>
+    <ID>SwallowedException:RoomManagerTest.kt$RoomManagerTest$missing: java.io.IOException</ID>
+    <ID>SwallowedException:RoomProcesses.kt$ProcFacts$gone: java.io.IOException</ID>
+    <ID>SwallowedException:RoomScriptsTest.kt$RoomScriptsTest$missing: java.io.IOException</ID>
+    <ID>SwallowedException:RoomTerminals.kt$RoomTerminals$closed: IOException</ID>
+    <ID>SwallowedException:RoomTerminals.kt$RoomTerminals$failed: IOException</ID>
+    <ID>SwallowedException:RoomsModule.kt$RoomNotices$denied: SecurityException</ID>
+    <ID>SwallowedException:SafeFiles.kt$SafeFiles$kept: IOException</ID>
+    <ID>SwallowedException:SafeFiles.kt$SafeFiles$unreadable: IOException</ID>
+    <ID>SwallowedException:ScheduleWork.kt$ScheduledTaskWorker$e: ScheduleException</ID>
+    <ID>SwallowedException:SealedProjectSecrets.kt$SealedProjectSecrets$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:SelfUpdater.kt$SelfUpdater$failed: RuntimeException</ID>
+    <ID>SwallowedException:SelfUpdater.kt$SelfUpdater$refused: SecurityException</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$failed: Exception</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$failure: Exception</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$offline: Exception</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$signedOut: NotConnectedException</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$unavailable: SessionException</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$unreadable: Exception</ID>
+    <ID>SwallowedException:SessionManager.kt$SessionManager$unreadable: SessionException</ID>
+    <ID>SwallowedException:SessionMediaLibrary.kt$SessionMediaLibrary$e: AtomicMoveNotSupportedException</ID>
+    <ID>SwallowedException:SessionMediaLibrary.kt$SessionMediaLibrary$e: IOException</ID>
+    <ID>SwallowedException:SessionMediaLibrary.kt$SessionMediaLibrary$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:SessionMediaLibrary.kt$SessionMediaLibrary$e: OutOfMemoryError</ID>
+    <ID>SwallowedException:TaskSchedules.kt$TaskSchedules$e: IOException</ID>
+    <ID>SwallowedException:TaskSchedules.kt$TaskSchedules$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:TestSupport.kt$HostGitComputer.Companion$missing: java.io.IOException</ID>
+    <ID>SwallowedException:TranscriptIndex.kt$TranscriptIndex$full: IOException</ID>
+    <ID>SwallowedException:TranscriptIndex.kt$TranscriptIndex$unreadable: IOException</ID>
+    <ID>SwallowedException:TranscriptIndex.kt$TranscriptIndex.Source$unreadable: IOException</ID>
+    <ID>SwallowedException:Trees.kt$FileModes$unsupported: IllegalArgumentException</ID>
+    <ID>SwallowedException:Trees.kt$FileModes$unsupported: UnsupportedOperationException</ID>
+    <ID>SwallowedException:UnixPhoneBridge.kt$UnixPhoneBridge.Companion$e: IOException</ID>
+    <ID>SwallowedException:UnixPhoneBridge.kt$UnixPhoneBridge.RoomSocket$e: ErrnoException</ID>
+    <ID>SwallowedException:UnixPhoneBridge.kt$UnixPhoneBridge.RoomSocket$e: IOException</ID>
+    <ID>SwallowedException:VaultKeysImpl.kt$VaultKeysImpl$e: AgeException</ID>
+    <ID>SwallowedException:VaultKeysImpl.kt$VaultKeysImpl$e: AgeNoMatchException</ID>
+    <ID>SwallowedException:VaultKeysImpl.kt$VaultKeysImpl$e: DamagedKeyFile</ID>
+    <ID>SwallowedException:VaultKeysImpl.kt$VaultKeysImpl$e: Exception</ID>
+    <ID>SwallowedException:VaultKeysImpl.kt$VaultKeysImpl$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:VaultKeysImpl.kt$VaultKeysImpl$e: NotConnectedException</ID>
+    <ID>SwallowedException:VaultStores.kt$PhoneKeys$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:VaultStores.kt$RemoteKeys$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:VaultStores.kt$RemoteKeys$refused: DriveException.Other</ID>
+    <ID>SwallowedException:VaultStores.kt$e: IllegalArgumentException</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:Age.kt$AgeInputStream$IndexOutOfBoundsException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:Age.kt$AgeOutputStream$IndexOutOfBoundsException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:BuildsPanel.kt$IllegalStateException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:ChatsScreens.kt$IllegalStateException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:HomeDialogs.kt$IllegalStateException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:SessionActions.kt$IllegalStateException()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:SessionTools.kt$IllegalStateException()</ID>
+    <ID>ThrowsCount:AccountMove.kt$AccountMove$private suspend fun verify(run: Run, job: MoveJob, target: DriveStore)</ID>
+    <ID>ThrowsCount:AccountMove.kt$AccountMove$suspend fun moveTo(run: Run, fallbackFrom: String?, to: String)</ID>
+    <ID>ThrowsCount:AccountMove.kt$AccountMove$suspend fun start(run: Run)</ID>
+    <ID>ThrowsCount:AddedFiles.kt$AddedFiles$fun copyInto(dir: File, name: String, source: InputStream, maxBytes: Long = MAX_BYTES): File</ID>
+    <ID>ThrowsCount:Age.kt$AgeIdentity$internal fun unwrap(stanza: Stanza): ByteArray?</ID>
+    <ID>ThrowsCount:Age.kt$AgeInputStream$private fun nextChunk()</ID>
+    <ID>ThrowsCount:AgeHeader.kt$AgeHeader.Companion$fun read(input: InputStream): AgeHeader</ID>
+    <ID>ThrowsCount:AgeHeader.kt$AgeHeader.Companion$private fun readLine(input: InputStream, raw: ByteArrayOutputStream): String?</ID>
+    <ID>ThrowsCount:AgeHeader.kt$AgeHeader.Companion$private fun readStanza(argumentLine: String, input: InputStream, raw: ByteArrayOutputStream): Stanza</ID>
+    <ID>ThrowsCount:AgyInstaller.kt$AgyInstaller$suspend fun latest(): AgyManifest</ID>
+    <ID>ThrowsCount:ApkFetcher.kt$ApkFetcher$private suspend fun receive(url: String, part: File, release: AppRelease, onProgress: (Float) -&gt; Unit)</ID>
+    <ID>ThrowsCount:Catalog.kt$OpenVsxCatalog$private suspend fun bringExtensionUpToDate(agent: AgentInfo): DoctorReport?</ID>
+    <ID>ThrowsCount:DeviceFlowAuth.kt$DeviceFlowAuth$private suspend fun refresh(latest: StoredTokens, keepValidOnFailure: Boolean): String</ID>
+    <ID>ThrowsCount:DriveCalls.kt$DriveCalls$suspend fun exchange(configure: Request.Builder.() -&gt; Unit): Response</ID>
+    <ID>ThrowsCount:ExtensionInstaller.kt$ExtensionInstaller$private suspend fun overview(extensionId: String, namespace: String): Pair&lt;ExtensionVersion, String&gt;</ID>
+    <ID>ThrowsCount:ExtensionInstaller.kt$ExtensionInstaller$private suspend fun release( extensionId: String, overview: ExtensionVersion, target: String, version: String, namespace: String, vscode: SemVer, ): ExtensionRelease</ID>
+    <ID>ThrowsCount:GitHubBuilds.kt$GitHubBuilds$private fun writeInside(root: File, path: String, bytes: ByteArray)</ID>
+    <ID>ThrowsCount:GitHubReleases.kt$GitHubReleases$private suspend fun text(asset: ReleaseAsset): String</ID>
+    <ID>ThrowsCount:GoogleDriveAuth.kt$GoogleDriveAuth$private suspend fun fetch(account: String): String</ID>
+    <ID>ThrowsCount:Http1.kt$HttpInput$fun readLine(limit: Int): String</ID>
+    <ID>ThrowsCount:Http1.kt$internal fun parseRequestHead(head: ByteArray, maxFields: Int): RequestHead</ID>
+    <ID>ThrowsCount:Http1.kt$internal fun requestFraming(headers: HeaderList): Framing</ID>
+    <ID>ThrowsCount:Http1.kt$private fun parseFields(lines: List&lt;String&gt;, maxFields: Int, malformed: Int, tooMany: Int): HeaderList</ID>
+    <ID>ThrowsCount:JGitGate.kt$JGitGate$private fun &lt;T&gt; useLocked(gitDir: File, block: (GateRepo) -&gt; T): T</ID>
+    <ID>ThrowsCount:LinuxGit.kt$LinuxGit$suspend fun run(room: String?, args: List&lt;String&gt;, identity: Identity? = null, errors: Boolean = true): Output</ID>
+    <ID>ThrowsCount:McpTools.kt$McpTools$private suspend fun runBuild(agentId: String, session: SessionRecord, input: JsonObject): String</ID>
+    <ID>ThrowsCount:MemoryFiles.kt$MemoryFiles$@Throws(IOException::class) fun read(home: File, file: File): String</ID>
+    <ID>ThrowsCount:MemoryFiles.kt$MemoryFiles$@Throws(IOException::class) fun save(home: File, file: File, text: String)</ID>
+    <ID>ThrowsCount:OpenVsx.kt$OpenVsx$private suspend fun &lt;R&gt; get(url: HttpUrl, use: (ByteArray?) -&gt; R): R</ID>
+    <ID>ThrowsCount:PhoneProtocol.kt$PhoneSession$private fun parse(text: String): Request</ID>
+    <ID>ThrowsCount:PhoneSessionTest.kt$PhoneSessionTest$@Test fun `a failing handler is answered and the connection carries on`()</ID>
+    <ID>ThrowsCount:ProjectRegistry.kt$ProjectRegistry$private suspend fun clone(project: Project)</ID>
+    <ID>ThrowsCount:PublicReleases.kt$PublicReleases$private suspend fun get(url: HttpUrl): Pair&lt;String, Headers&gt;</ID>
+    <ID>ThrowsCount:RemoteIndex.kt$RemoteIndex$suspend fun commit( drive: DriveStore, cipher: VaultCipher, start: RemoteSnapshot, requireLease: (VaultIndex?) -&gt; Lease?, change: (VaultIndex) -&gt; VaultIndex, emptyIndex: () -&gt; VaultIndex, ): RemoteSnapshot</ID>
+    <ID>ThrowsCount:SafeUnzip.kt$SafeUnzip$fun unzip(zip: InputStream, dest: File): List&lt;File&gt;</ID>
+    <ID>ThrowsCount:SealedBox.kt$SealedBox$internal fun open(recipientPublicKey: ByteArray, recipientSecretKey: ByteArray, sealed: ByteArray): ByteArray</ID>
+    <ID>ThrowsCount:SessionMediaLibrary.kt$SessionMediaLibrary$private fun copyNoFollow(source: File, target: File, name: String)</ID>
+    <ID>ThrowsCount:SessionMediaLibrary.kt$SessionMediaLibrary$private fun store(session: SessionRecord, name: String, from: String, inPlaceSource: File?, fill: (File) -&gt; Unit): MediaItem</ID>
+    <ID>ThrowsCount:TaskSchedules.kt$TaskSchedules$private fun check(task: ScheduledTask)</ID>
+    <ID>ThrowsCount:UnixPhoneBridge.kt$UnixPhoneBridge.RoomSocket$fun open()</ID>
+    <ID>ThrowsCount:VaultKeysImpl.kt$VaultKeysImpl$private suspend fun createKeyring(login: String): RepoInfo</ID>
+    <ID>ThrowsCount:VaultStores.kt$RemoteKeys$private fun &lt;T&gt; decode(serializer: KSerializer&lt;T&gt;, bytes: ByteArray, damaged: String): T</ID>
+    <ID>ThrowsCount:VerifiedDownload.kt$VerifiedDownload$private suspend fun receive(url: HttpUrl, part: File, expected: Expected, onProgress: (Long, Long) -&gt; Unit)</ID>
+    <ID>ThrowsCount:WorktreeCommitter.kt$WorktreeCommitter$suspend fun commit(session: SessionRecord, path: String, message: String, identity: GitIdentity)</ID>
+    <ID>ThrowsCount:YourDataScreen.kt$private suspend fun continueMove(graph: AppGraph, data: Intent?)</ID>
+    <ID>TooGenericExceptionCaught:AccountMove.kt$AccountMove$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:AppStartup.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:Attempt.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:Autosaver.kt$Autosaver$failed: Exception</ID>
+    <ID>TooGenericExceptionCaught:BareRepos.kt$BareRepos$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:BrowserInstaller.kt$BrowserInstaller$failed: Exception</ID>
+    <ID>TooGenericExceptionCaught:ComputerSetup.kt$ComputerSetup$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:ComputerStep.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DeviceSignIn.kt$DeviceSignIn$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DriveStep.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DriveSyncEngine.kt$DriveSyncEngine$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:JGitGate.kt$JGitGate$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LinuxGit.kt$LinuxGit$failed: Exception</ID>
+    <ID>TooGenericExceptionCaught:LoopbackPortBridge.kt$LoopbackPortBridge$e: RuntimeException</ID>
+    <ID>TooGenericExceptionCaught:MediaViews.kt$PdfDocument$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:NetworkDoctor.kt$HostProbe$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:NetworkDoctor.kt$PhoneNetwork.Companion$unavailable: RuntimeException</ID>
+    <ID>TooGenericExceptionCaught:PhoneDns.kt$PhoneDns$refused: RuntimeException</ID>
+    <ID>TooGenericExceptionCaught:PhoneDns.kt$PhoneDns$unavailable: RuntimeException</ID>
+    <ID>TooGenericExceptionCaught:PhoneProtocol.kt$PhoneSession$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ProjectRegistry.kt$ProjectRegistry$failed: Exception</ID>
+    <ID>TooGenericExceptionCaught:ProjectRegistry.kt$ProjectRegistry$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:ProjectRegistry.kt$ProjectRegistry$offline: Exception</ID>
+    <ID>TooGenericExceptionCaught:ProotComputer.kt$ProotComputer$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:PutOnMain.kt$MainMerger$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:PutOnMain.kt$MainMerger$kept: Exception</ID>
+    <ID>TooGenericExceptionCaught:PutOnMain.kt$MainMerger$offline: Exception</ID>
+    <ID>TooGenericExceptionCaught:ResetComputer.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SecretsScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SelfUpdater.kt$SelfUpdater$failed: RuntimeException</ID>
+    <ID>TooGenericExceptionCaught:SessionManager.kt$SessionManager$failed: Exception</ID>
+    <ID>TooGenericExceptionCaught:SessionManager.kt$SessionManager$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SessionManager.kt$SessionManager$offline: Exception</ID>
+    <ID>TooGenericExceptionCaught:SessionManager.kt$SessionManager$unreadable: Exception</ID>
+    <ID>TooGenericExceptionCaught:SettingsAdvanced.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SettingsScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultKeysImpl.kt$VaultKeysImpl$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:WorkCommon.kt$e: Exception</ID>
+    <ID>TooGenericExceptionThrown:PhoneSessionTest.kt$PhoneSessionTest$throw RuntimeException("internal detail that stays on the phone")</ID>
+    <ID>TooManyFunctions:AgentDoctor.kt$AgentDoctor</ID>
+    <ID>TooManyFunctions:AgentPages.kt$AgentPages</ID>
+    <ID>TooManyFunctions:AgentsModule.kt$GraphAgentsEnv : AgentsEnv</ID>
+    <ID>TooManyFunctions:AndroidPhoneMonitor.kt$AndroidPhoneMonitor : PhoneMonitor</ID>
+    <ID>TooManyFunctions:AppNav.kt$AppNavigator : PocketNav</ID>
+    <ID>TooManyFunctions:AppNav.kt$com.pocketide.ui.AppNav.kt</ID>
+    <ID>TooManyFunctions:BridgeAccess.kt$BridgeAccess</ID>
+    <ID>TooManyFunctions:BridgeConnection.kt$BridgeConnection : Closeable</ID>
+    <ID>TooManyFunctions:BuildsModule.kt$GraphBuildsPorts : BuildsPorts</ID>
+    <ID>TooManyFunctions:Catalog.kt$OpenVsxCatalog : AgentCatalog</ID>
+    <ID>TooManyFunctions:CheckPost.kt$CheckPost$Scan</ID>
+    <ID>TooManyFunctions:CodeServerSlot.kt$CodeServerSlot</ID>
+    <ID>TooManyFunctions:Computer.kt$Computer</ID>
+    <ID>TooManyFunctions:ComputerSetup.kt$ComputerSetup</ID>
+    <ID>TooManyFunctions:ConfigFiles.kt$ConfigFiles</ID>
+    <ID>TooManyFunctions:DeviceFlowAuth.kt$DeviceFlowAuth : GitHubAuthUserTokens</ID>
+    <ID>TooManyFunctions:DocBlocks.kt$com.pocketide.ui.screens.help.DocBlocks.kt</ID>
+    <ID>TooManyFunctions:DocsDsl.kt$com.pocketide.docs.DocsDsl.kt</ID>
+    <ID>TooManyFunctions:DriveRestStore.kt$DriveRestStore : DriveStore</ID>
+    <ID>TooManyFunctions:DriveSyncEngine.kt$DriveSyncEngine : SyncEngine</ID>
+    <ID>TooManyFunctions:ExtensionInstaller.kt$ExtensionInstaller</ID>
+    <ID>TooManyFunctions:GitHub.kt$GitHubApi</ID>
+    <ID>TooManyFunctions:GitHubBuilds.kt$BuildsPorts</ID>
+    <ID>TooManyFunctions:GitHubBuilds.kt$GitHubBuilds : Builds</ID>
+    <ID>TooManyFunctions:GitHubRestApi.kt$GitHubRestApi : GitHubApi</ID>
+    <ID>TooManyFunctions:GoogleDriveAuth.kt$GoogleDriveAuth : DriveAuth</ID>
+    <ID>TooManyFunctions:HelpScreen.kt$com.pocketide.ui.screens.help.HelpScreen.kt</ID>
+    <ID>TooManyFunctions:HomeScreen.kt$com.pocketide.ui.screens.home.HomeScreen.kt</ID>
+    <ID>TooManyFunctions:Http1.kt$HeaderList</ID>
+    <ID>TooManyFunctions:Http1.kt$com.pocketide.bridge.Http1.kt</ID>
+    <ID>TooManyFunctions:JGitGate.kt$JGitGate : GitGate</ID>
+    <ID>TooManyFunctions:JsonLines.kt$com.pocketide.sessions.transcripts.JsonLines.kt</ID>
+    <ID>TooManyFunctions:LimitedScreens.kt$LimitedNav : PocketNav</ID>
+    <ID>TooManyFunctions:Limiter.kt$Limiter</ID>
+    <ID>TooManyFunctions:LimiterImpl.kt$LimiterImpl : Limiter</ID>
+    <ID>TooManyFunctions:LockScreens.kt$com.pocketide.ui.screens.lock.LockScreens.kt</ID>
+    <ID>TooManyFunctions:LoopbackPortBridge.kt$LoopbackPortBridge : PortBridgeBridgeDirectory</ID>
+    <ID>TooManyFunctions:Maintenance.kt$Maintenance</ID>
+    <ID>TooManyFunctions:ManageUi.kt$com.pocketide.ui.manage.ManageUi.kt</ID>
+    <ID>TooManyFunctions:McpTools.kt$McpPorts</ID>
+    <ID>TooManyFunctions:McpTools.kt$McpTools</ID>
+    <ID>TooManyFunctions:MediaSniffer.kt$MediaSniffer</ID>
+    <ID>TooManyFunctions:MediaViews.kt$com.pocketide.ui.screens.project.MediaViews.kt</ID>
+    <ID>TooManyFunctions:MemoryFiles.kt$MemoryFiles</ID>
+    <ID>TooManyFunctions:OpenVsx.kt$OpenVsx</ID>
+    <ID>TooManyFunctions:PocketNav.kt$PocketNav</ID>
+    <ID>TooManyFunctions:ProjectLogic.kt$com.pocketide.ui.screens.project.ProjectLogic.kt</ID>
+    <ID>TooManyFunctions:ProjectRegistry.kt$ProjectRegistry : Projects</ID>
+    <ID>TooManyFunctions:ProjectScreens.kt$com.pocketide.ui.screens.project.ProjectScreens.kt</ID>
+    <ID>TooManyFunctions:ProotComputer.kt$ProotComputer : Computer</ID>
+    <ID>TooManyFunctions:RestClient.kt$RestClient</ID>
+    <ID>TooManyFunctions:RoomConfigurator.kt$RoomConfigurator</ID>
+    <ID>TooManyFunctions:RoomEngines.kt$RoomEngines</ID>
+    <ID>TooManyFunctions:RoomFiles.kt$RoomFiles</ID>
+    <ID>TooManyFunctions:RoomManager.kt$RoomManager : Rooms</ID>
+    <ID>TooManyFunctions:RoomManager.kt$RoomManager$Ports : McpPorts</ID>
+    <ID>TooManyFunctions:RoomTerminals.kt$RoomTerminals</ID>
+    <ID>TooManyFunctions:Rooms.kt$Rooms</ID>
+    <ID>TooManyFunctions:RoomsEnv.kt$RoomsEnv</ID>
+    <ID>TooManyFunctions:RoomsModule.kt$GraphRoomsEnv : RoomsEnv</ID>
+    <ID>TooManyFunctions:Routes.kt$Routes</ID>
+    <ID>TooManyFunctions:SealedProjectSecrets.kt$SealedProjectSecrets : ProjectSecrets</ID>
+    <ID>TooManyFunctions:SelfUpdater.kt$SelfUpdater : AppUpdater</ID>
+    <ID>TooManyFunctions:SessionManager.kt$SessionManager : SessionsProjectWork</ID>
+    <ID>TooManyFunctions:SessionMediaLibrary.kt$SessionMediaLibrary : MediaLibrary</ID>
+    <ID>TooManyFunctions:Sessions.kt$Sessions</ID>
+    <ID>TooManyFunctions:SettingsAdvanced.kt$com.pocketide.ui.screens.settings.SettingsAdvanced.kt</ID>
+    <ID>TooManyFunctions:ShellComponents.kt$com.pocketide.ui.shell.ShellComponents.kt</ID>
+    <ID>TooManyFunctions:Sync.kt$SyncEngine</ID>
+    <ID>TooManyFunctions:SyncModule.kt$GraphPorts : SyncPorts</ID>
+    <ID>TooManyFunctions:SyncPass.kt$SyncPass</ID>
+    <ID>TooManyFunctions:SyncPorts.kt$SyncPorts</ID>
+    <ID>TooManyFunctions:TarGzExtractor.kt$TarGzExtractor$TarStream</ID>
+    <ID>TooManyFunctions:TerminalKeys.kt$TerminalKeys</ID>
+    <ID>TooManyFunctions:Toml.kt$TomlDocument</ID>
+    <ID>TooManyFunctions:Vault.kt$VaultKeys</ID>
+    <ID>TooManyFunctions:VaultKeysImpl.kt$VaultKeysImpl : VaultKeys</ID>
+    <ID>TooManyFunctions:VaultStores.kt$RemoteKeys</ID>
+    <ID>TooManyFunctions:WorkCommon.kt$com.pocketide.ui.screens.project.WorkCommon.kt</ID>
+    <ID>TooManyFunctions:YourDataScreen.kt$com.pocketide.ui.screens.data.YourDataScreen.kt</ID>
+    <ID>UseCheckOrError:Catalog.kt$OpenVsxCatalog$throw IllegalStateException("${agent.displayName} has no extension to install.")</ID>
+    <ID>UseCheckOrError:Catalog.kt$OpenVsxCatalog$throw IllegalStateException("${candidate.displayName} can no longer be added: ${verdict.rule.why}.")</ID>
+    <ID>UseCheckOrError:Catalog.kt$OpenVsxCatalog$throw IllegalStateException("PocketIDE does not know the agent \"$agentId\".")</ID>
+    <ID>UseCheckOrError:LoopbackPortBridge.kt$LoopbackPortBridge$throw IllegalStateException("The bridge could not open a port on this phone.")</ID>
+    <ID>UseCheckOrError:McpTools.kt$McpTools$throw IllegalStateException( "The owner must read and approve the change to GitHub Actions code in $paths in PocketIDE before this build can run.", )</ID>
+    <ID>UseCheckOrError:McpTools.kt$McpTools$throw IllegalStateException("GitHub did not start the build. The workflow file may not be on this branch yet: commit it, then try again.")</ID>
+    <ID>UseCheckOrError:McpTools.kt$McpTools$throw IllegalStateException("Not put on main: ${result.why}")</ID>
+    <ID>UseCheckOrError:McpTools.kt$McpTools$throw IllegalStateException("This chat is not in a PocketIDE session. Open it from a project in PocketIDE.")</ID>
+    <ID>UseCheckOrError:McpTools.kt$McpTools$throw IllegalStateException("This session's project is not on this phone.")</ID>
+    <ID>UseCheckOrError:OpenUrl.kt$AndroidBrowser$throw IllegalStateException("No browser on this phone can open that page.")</ID>
+    <ID>UseCheckOrError:RoomManager.kt$RoomManager$throw IllegalStateException("This session is not on this phone yet.")</ID>
+    <ID>UseCheckOrError:RoomManagerTest.kt$RoomManagerTest.FakeEnv$throw IllegalStateException("Open VSX could not be reached.")</ID>
+    <ID>UseCheckOrError:RoomTerminals.kt$RoomTerminals$throw IllegalStateException("The terminal could not start: ${failed.message}")</ID>
+    <ID>UseCheckOrError:SessionTools.kt$throw IllegalStateException("The file could not be opened.")</ID>
+    <ID>UseCheckOrError:VaultFakes.kt$TestBox$throw IllegalStateException("Keystore is not ready")</ID>
+    <ID>UseCheckOrError:YourDataScreen.kt$throw IllegalStateException("Google asks again. Tap Open Google's window.")</ID>
+    <ID>UseCheckOrError:YourDataScreen.kt$throw IllegalStateException("Google did not say which account was chosen. Try again.")</ID>
+  </CurrentIssues>
+</SmellBaseline>

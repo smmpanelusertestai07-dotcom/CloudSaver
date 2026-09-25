@@ -126,6 +126,16 @@ jobs:
           echo "stable_key=$stable" >> "$GITHUB_OUTPUT"
           echo "Signing certificate SHA-256: $sha256 (stable key: $stable)"
 
+      # Plan §15. Both hold a baseline in pocket/tools/quality/ of what the code had when the gate
+      # arrived, so a new finding fails; Android Lint below treats every warning as an error.
+      - name: Kotlin style (ktlint)
+        working-directory: pocket
+        run: ./gradlew --no-daemon ktlintCheck
+
+      - name: Code smells (detekt)
+        working-directory: pocket
+        run: ./gradlew --no-daemon detekt
+
       - name: Lint, unit tests and the release build
         working-directory: pocket
         env:
