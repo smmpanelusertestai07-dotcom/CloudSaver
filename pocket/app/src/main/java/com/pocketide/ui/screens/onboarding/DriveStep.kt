@@ -49,6 +49,7 @@ import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.shell.StatusLine
 import com.pocketide.ui.shell.StepHeader
 import com.pocketide.ui.shell.rememberGraph
+import com.pocketide.vault.GitHubAppMissingException
 import com.pocketide.vault.KeyState
 import com.pocketide.vault.VaultKeys
 import com.pocketide.vault.WrongPasswordException
@@ -135,6 +136,7 @@ fun DriveStepScreen(onDone: () -> Unit) {
             SectionLabel("Your chats' key")
             KeySetup(
                 vault = graph.vault,
+                openInstallPage = { External.openUrl(context, graph.gitHubAuth.installUrl()) },
                 // Opened with the extra password: this phone's settings must know it is on.
                 onPasswordUsed = { graph.settings.update { it.copy(extraPassword = true) } },
                 onReady = { keyReady = true },
@@ -151,7 +153,8 @@ private sealed interface KeyPhase {
     data object Working : KeyPhase
     data class NeedsPassword(val wrong: Boolean) : KeyPhase
     data class Lost(val why: String) : KeyPhase
-    data class Failed(val why: String) : KeyPhase
+    /** [appMissing]: the keyring could not be made until PocketIDE's GitHub App is installed. */
+    data class Failed(val why: String, val appMissing: Boolean = false) : KeyPhase
     data class Ready(val restored: Boolean) : KeyPhase
 }
 
@@ -160,7 +163,7 @@ private sealed interface KeyPhase {
  * that exists but cannot be rebuilt is never silently replaced: the owner decides.
  */
 @Composable
-private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -> Unit) {
+private fun KeySetup(vault: VaultKeys, openInstallPage: () -> Unit, onPasswordUsed: () -> Unit, onReady: () -> Unit) {
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf<KeyPhase>(KeyPhase.Working) }
     var confirmNewKey by remember { mutableStateOf(false) }
@@ -174,6 +177,8 @@ private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -
                 throw e
             } catch (_: IOException) {
                 KeyPhase.Failed("No connection. Check the internet and try again.")
+            } catch (e: GitHubAppMissingException) {
+                KeyPhase.Failed(e.message.orEmpty(), appMissing = true)
             } catch (e: Exception) {
                 KeyPhase.Failed(Redact.text(e.message ?: "The key could not be set up.").take(200))
             }
@@ -227,7 +232,12 @@ private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -
             is KeyPhase.NeedsPassword -> ExtraPasswordEntry(wrong = current.wrong, onSubmit = { restore(it) })
             is KeyPhase.Failed -> {
                 NoticeCard(current.why, Tone.ERROR)
-                PrimaryAction("Try again", onClick = { restore(null) })
+                if (current.appMissing) {
+                    PrimaryAction("Install PocketIDE on your GitHub", onClick = openInstallPage)
+                    SecondaryAction("Try again", onClick = { restore(null) })
+                } else {
+                    PrimaryAction("Try again", onClick = { restore(null) })
+                }
             }
             is KeyPhase.Lost -> {
                 NoticeCard(

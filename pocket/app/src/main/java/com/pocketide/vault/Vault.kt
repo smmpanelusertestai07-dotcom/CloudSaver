@@ -113,6 +113,16 @@ private val NO_NOTICE: StateFlow<String?> = MutableStateFlow(null)
 /** A vault problem, with a plain sentence the owner can act on. */
 open class VaultException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/**
+ * The keyring could not be made because PocketIDE's GitHub App is not installed on the owner's
+ * account: signing in alone does not install it. The fix is its install page.
+ */
+class GitHubAppMissingException :
+    VaultException(
+        "PocketIDE's GitHub App is not installed on your GitHub account, so it cannot make your private " +
+            "pocketide-keyring repository. Install it, then try again.",
+    )
+
 /** The extra password did not open Half G. */
 class WrongPasswordException : VaultException("That password is not right. Check it and try again.")
 

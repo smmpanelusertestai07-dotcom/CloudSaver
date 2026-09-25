@@ -132,6 +132,18 @@ class VaultRecoveryTest {
     }
 
     @Test
+    fun `a first set-up without the GitHub App installed says to install it, then works once it is`() = runTest {
+        accounts.gitHub.appInstalled = false
+        val vault = newPhone().vault()
+
+        failsWith<GitHubAppMissingException> { vault.setUp() }
+
+        accounts.gitHub.appInstalled = true
+        vault.setUp()
+        assertTrue(VaultKeyFiles.KEYRING_REPO in accounts.gitHub.repos)
+    }
+
+    @Test
     fun `a keyring the GitHub App cannot see is never made again over it, and Drive is left alone`() = runTest {
         val first = newPhone().vault()
         first.setUp()

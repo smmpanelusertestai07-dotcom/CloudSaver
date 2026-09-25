@@ -7,6 +7,7 @@ import com.pocketide.core.SecureStore
 import com.pocketide.github.AccountUsage
 import com.pocketide.github.GitHubAccount
 import com.pocketide.github.GitHubApi
+import com.pocketide.github.GitHubException
 import com.pocketide.github.NotConnectedException
 import com.pocketide.github.PullRequest
 import com.pocketide.github.RepoFile
@@ -116,6 +117,9 @@ class FakeGitHub(private val owner: String = OWNER) : GitHubApi {
     /** The keyring exists but the GitHub App cannot see it (left out of the installation's repositories). */
     var keyringHidden = false
 
+    /** The GitHub App is installed on the owner's account; signing in alone does not install it. */
+    var appInstalled = true
+
     /** File writes still to fail, for interrupted-change tests. */
     var failWrites = 0
 
@@ -135,8 +139,14 @@ class FakeGitHub(private val owner: String = OWNER) : GitHubApi {
         return visible(name)?.let { info(name, it) }
     }
 
+    override suspend fun installedOn(login: String): Boolean {
+        ensureConnected()
+        return appInstalled
+    }
+
     override suspend fun createPrivateRepo(name: String, description: String, autoInit: Boolean): RepoInfo {
         ensureConnected()
+        if (!appInstalled) throw GitHubException("GitHub refused: Resource not accessible by integration", 403)
         check(name !in repos) { "name already exists on this account" }
         val repo = Repo(isPrivate = true, collaborators = mutableListOf(owner))
         repos[name] = repo

@@ -69,7 +69,14 @@ internal data class RepoJson(
 private const val DEFAULT_BRANCH = "main"
 
 @Serializable
-internal data class InstallationJson(val id: Long, @SerialName("suspended_at") val suspendedAt: String? = null)
+internal data class InstallationJson(
+    val id: Long,
+    @SerialName("suspended_at") val suspendedAt: String? = null,
+    val account: InstallationAccountJson? = null,
+)
+
+@Serializable
+internal data class InstallationAccountJson(val login: String)
 
 @Serializable
 internal data class InstallationsPage(val installations: List<InstallationJson> = emptyList())

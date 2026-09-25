@@ -38,12 +38,8 @@ internal class GitHubRestApi(
     override suspend fun me(): GitHubAccount = user().account()
 
     /** Repositories the owner and PocketIDE's App installations can both reach: the Import picker. */
-    override suspend fun repos(): List<RepoInfo> {
-        val installations = rest.pages(rest.url("user", "installations")) {
-            decode(InstallationsPage.serializer(), it).installations
-        }
-        return installations
-            .filter { it.suspendedAt == null }
+    override suspend fun repos(): List<RepoInfo> =
+        activeInstallations()
             .flatMap { installation ->
                 rest.pages(rest.url("user", "installations", installation.id.toString(), "repositories")) {
                     decode(InstallationReposPage.serializer(), it).repositories
@@ -51,7 +47,14 @@ internal class GitHubRestApi(
             }
             .map { it.info() }
             .distinctBy { "${it.owner}/${it.name}".lowercase(Locale.ROOT) }
-    }
+
+    override suspend fun installedOn(login: String): Boolean =
+        activeInstallations().any { it.account?.login.equals(login, ignoreCase = true) }
+
+    /** The App's installations the signed-in user can reach, suspended ones left out. */
+    private suspend fun activeInstallations(): List<InstallationJson> =
+        rest.pages(rest.url("user", "installations")) { decode(InstallationsPage.serializer(), it).installations }
+            .filter { it.suspendedAt == null }
 
     override suspend fun repo(owner: String, name: String): RepoInfo? =
         rest.getOrNull(repoUrl(owner, name))?.let { decode(RepoJson.serializer(), it.text).info() }

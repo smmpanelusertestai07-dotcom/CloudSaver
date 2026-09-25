@@ -195,4 +195,11 @@ interface GitHubApi {
      * (a session's pull request, found by its branch); null when there is none.
      */
     suspend fun pullRequestFor(owner: String, name: String, head: String): PullRequest? = null
+
+    /**
+     * True when PocketIDE's GitHub App is installed, and not suspended, on the account [login].
+     * Signing in does not install it, and without it GitHub refuses to make repositories there.
+     * A fake that does not model installations says yes.
+     */
+    suspend fun installedOn(login: String): Boolean = true
 }
