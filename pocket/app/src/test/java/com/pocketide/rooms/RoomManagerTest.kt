@@ -28,7 +28,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -54,6 +56,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
@@ -232,6 +235,27 @@ class RoomManagerTest {
         assertTrue(dirs.roomBridge("claude").listFiles().orEmpty().none { it.name.endsWith(".secret") })
         rooms.stop("claude")
         assertTrue(env.ports.revoked.contains(exposed.targetPort))
+    }
+
+    @Test fun `a terminal whose opening is cancelled while it starts is stopped, not left running`() = runBlocking {
+        val starting = CountDownLatch(1)
+        val cancelled = CountDownLatch(1)
+        env.computer.beforeStart = { command ->
+            if (RoomLayout.TERMINAL_SERVER in command.argv) {
+                starting.countDown()
+                cancelled.await(10, TimeUnit.SECONDS)
+            }
+        }
+        // The owner leaves the terminal tab while "Opening a shell" shows.
+        val opening = launch(Dispatchers.Default) { rooms.terminal("s1") }
+        assertTrue(withContext(Dispatchers.IO) { starting.await(10, TimeUnit.SECONDS) })
+        opening.cancel()
+        cancelled.countDown()
+        opening.join()
+        val process = env.computer.processes.single()
+        assertTrue("the started term.py is stopped", env.computer.stopped.contains(process))
+        assertTrue(env.ports.exposed.none { it.purpose == "terminal:s1" })
+        assertTrue(dirs.roomBridge("claude").listFiles().orEmpty().none { it.name.endsWith(".secret") })
     }
 
     @Test fun `a terminal start takes out what an agent added to the settings, as an engine start does`() = runBlocking {
@@ -482,8 +506,12 @@ class RoomManagerTest {
         /** Runs the real room.py's steps before Claude's stand-in engine, on the room's folders here. */
         @Volatile var runsRoomSteps = false
 
+        /** Runs as a program starts, before it exists: a test may hold the start here. */
+        @Volatile var beforeStart: (LinuxCommand) -> Unit = {}
+
         override fun start(command: LinuxCommand): Process {
             commands += command
+            beforeStart(command)
             roomSteps(command)
             val argv = command.argv
             val local = when {
