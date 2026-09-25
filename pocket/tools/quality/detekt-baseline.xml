@@ -535,7 +535,6 @@
     <ID>MagicNumber:WorkText.kt$WorkText$60_000</ID>
     <ID>MatchingDeclarationName:Catalog.kt$OpenVsxCatalog : AgentCatalog</ID>
     <ID>MatchingDeclarationName:ChatRow.kt$ChatDialog</ID>
-    <ID>MatchingDeclarationName:Components.kt$Tone</ID>
     <ID>MatchingDeclarationName:GitHubAppSetup.kt$GitHubAppForm</ID>
     <ID>MatchingDeclarationName:JsonLines.kt$JsonLineReader : Closeable</ID>
     <ID>MatchingDeclarationName:Listeners.kt$ListenerScan</ID>
@@ -547,19 +546,11 @@
     <ID>MatchingDeclarationName:Toml.kt$TomlDocument</ID>
     <ID>MaxLineLength:ActivityScreen.kt$FilledTonalButton</ID>
     <ID>MaxLineLength:BridgeWebSocketTest.kt$BridgeWebSocketTest$exchange.output.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $accept\r\n\r\n".toByteArray())</ID>
-    <ID>MaxLineLength:BuildsPanel.kt$AssistChip(onClick = { nav.schedules(projectId) }, label = { Text("Scheduled tasks") }, leadingIcon = { Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)) })</ID>
-    <ID>MaxLineLength:BuildsPanel.kt$AssistChip(onClick = { nav.secrets(projectId) }, label = { Text("Variables &amp; Secrets") }, leadingIcon = { Icon(Icons.Filled.Key, null, Modifier.size(18.dp)) })</ID>
-    <ID>MaxLineLength:BuildsPanel.kt$Text("Runs on ${template.runner} · ${template.fileName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:BuildsPanel.kt$Text(run.branch, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:BuildsPanel.kt$if (count == 0) "This run has no files to bring." else "${WorkFormat.count(count, "file", "files")} added to Media of \"${target.title}\"."</ID>
     <ID>MaxLineLength:Catalog.kt$OpenVsxCatalog$keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), present?.let { ExtensionInstaller.packageFile(folder, it.version) }))</ID>
     <ID>MaxLineLength:Catalog.kt$OpenVsxCatalog$val after = if (restored) "Version ${present.version} is back in place." else "Version ${present.version} could not be put back; repair it from the Computer screen."</ID>
     <ID>MaxLineLength:CatalogTest.kt$CatalogTest$codex.versions += FakeVersion("26.5908.31748", engine = "^1.96.2", preRelease = true, packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", "26.5908.31748", "^1.96.2", listOf("chatgpt.openSidebar")))</ID>
     <ID>MaxLineLength:CatalogTest.kt$CatalogTest$codex.versions += FakeVersion("26.908.40401", engine = "^1.96.2", packageJson = OpenVsxFixture.packageJson("openai", "chatgpt", "26.908.40401", "^1.96.2", listOf("chatgpt.openSidebar")))</ID>
     <ID>MaxLineLength:CatalogTest.kt$CatalogTest$private</ID>
-    <ID>MaxLineLength:ChatsScreens.kt$scope.act(snackbar, "Could not change it", done = "It will be backed up to your Drive.") { graph.sessions.setBackUp(session.id, true) }</ID>
-    <ID>MaxLineLength:ChatsScreens.kt$snackbar.showSnackbar(if (failures == 0) "Deleted forever." else "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again.")</ID>
-    <ID>MaxLineLength:ChatsScreens.kt$snackbar.showSnackbar(if (failures == 0) "Kept on this phone only. Marked \"Not backed up\"." else "Some chats could not be changed. Try again.")</ID>
     <ID>MaxLineLength:ClaudeStateTest.kt$ClaudeStateTest$val toml = ConfigChange("codex", ".codex/config.toml", "mcp_servers", "gh", "[mcp_servers.gh]\ncommand = \"npx\"\nenv = { API_KEY = \"k-123\", PATH = \"/usr/bin\" }")</ID>
     <ID>MaxLineLength:ClaudeStateTest.kt$ClaudeStateTest$val withSecrets = """["","mcpServers","gh",{"command":"npx","env":{"GITHUB_TOKEN":"abc123","NODE_OPTIONS":"--require /tmp/x.js"},"headers":{"Authorization":"Bearer zzz"}}]"""</ID>
     <ID>MaxLineLength:CodexConfigTest.kt$ManagedBlockTest$for</ID>
@@ -571,7 +562,6 @@
     <ID>MaxLineLength:ConfigFilesTest.kt$ConfigFilesTest$val written = ConfigFiles.extensionsRegistry(existing, "pocketide.pocketide-companion", "3.0.0", "pocketide.pocketide-companion-3.0.0", "/root/.local/share/code-server/extensions/pocketide.pocketide-companion-3.0.0", 42)!!</ID>
     <ID>MaxLineLength:DeviceFlowAuthTest.kt$DeviceFlowAuthTest$json("""{"access_token":"$access","expires_in":28800,"refresh_token":"$refresh","refresh_token_expires_in":15897600,"scope":"","token_type":"bearer"}""")</ID>
     <ID>MaxLineLength:DeviceFlowAuthTest.kt$DeviceFlowAuthTest$json("""{"device_code":"3584d83530557fdd1f46af8289938c8ef79f9dc5","user_code":"WDJB-MJHT","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}""")</ID>
-    <ID>MaxLineLength:DeviceFlowAuthTest.kt$DeviceFlowAuthTest$val offlineAuth = DeviceFlowAuth({ GitHubApp("Iv23li", "") }, TokenStore(store), testHttp, closed.url("/"), closed.url("/"), clock, Dispatchers.IO, pause = {})</ID>
     <ID>MaxLineLength:DiscoveryTest.kt$DiscoveryTest$private</ID>
     <ID>MaxLineLength:DiscoveryTest.kt$VerifiedDownloadTest$fetch(Expected(sha256 = OpenVsxFixture.sha256(payload), signature = otherKeys.public.encoded.copyOfRange(12, 44) to OpenVsxFixture.sign(payload, otherKeys).also { it[0] = (it[0] + 1).toByte() }))</ID>
     <ID>MaxLineLength:DriveRestStoreTest.kt$DriveRestStoreTest$drive.enqueue(200, """{"storageQuota":{"limit":"16106127360","usage":"5000","usageInDrive":"4000","usageInDriveTrash":"0"},"user":{"emailAddress":"owner@example.com"}}""")</ID>
@@ -612,15 +602,9 @@
     <ID>MaxLineLength:Fixtures.kt$Fixtures$codex("2026-09-24T07:00:01.000Z", "response_item", """{"type":"web_search_call","status":"completed","action":{"type":"search","query":"material 3 dark theme"}}""")</ID>
     <ID>MaxLineLength:FormatTest.kt$FormatTest$assertEquals("/clear", ClaudeFormat.typed("&lt;command-name&gt;/clear&lt;/command-name&gt;\n&lt;command-message&gt;clear&lt;/command-message&gt;\n&lt;command-args&gt;&lt;/command-args&gt;"))</ID>
     <ID>MaxLineLength:FormatTest.kt$FormatTest$val meta = """{"timestamp":"2026-09-24T06:00:00Z","type":"session_meta","payload":{"id":"t2","parent_thread_id":"t1","cwd":"$WORKTREE_B","timestamp":"x","originator":"o","cli_version":"1"}}""" + "\n"</ID>
-    <ID>MaxLineLength:GitHubRestApiTest.kt$GitHubRestApiTest$server.enqueue(json("""{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}]}""", 422))</ID>
-    <ID>MaxLineLength:GitHubRestApiTest.kt$GitHubRestApiTest$server.enqueue(json("""{"type":"file","encoding":"base64","size":13,"name":"half-g.json","path":"keys/half-g.json","content":"${content.replace("\r\n", "\\n")}","sha":"abc123"}"""))</ID>
-    <ID>MaxLineLength:GitHubRestApiTest.kt$GitHubRestApiTest$server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"https://api.github.com/repos/octo/demo/actions/runs/30433642","html_url":"https://github.com/octo/demo/actions/runs/30433642"}"""))</ID>
     <ID>MaxLineLength:GuardPolicy.kt$GuardPolicy$battery != null &amp;&amp; battery &lt;= 10 -&gt; GuardVerdict(Guard.PAUSE, "The battery is at $battery %. Agents pause after their current step until the phone charges.")</ID>
     <ID>MaxLineLength:GuardPolicy.kt$GuardPolicy$battery != null &amp;&amp; battery &lt;= 20 -&gt; GuardVerdict(Guard.NO_NEW_HEAVY, "The battery is at $battery %. New agents and heavy work wait until the phone charges.")</ID>
     <ID>MaxLineLength:GuestFactsTest.kt$GuestFactsTest$assertEquals("Snapdragon · 4× Kryo 4xx Gold", CpuFacts.describe("model name : Snapdragon\n" + "CPU implementer : 0x51\nCPU part : 0x804\n".repeat(4), null))</ID>
-    <ID>MaxLineLength:HomeScreen.kt$Text(agent.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))</ID>
-    <ID>MaxLineLength:HomeScreen.kt$Text(project.repo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))</ID>
-    <ID>MaxLineLength:HomeScreen.kt$Text(summary, style = MaterialTheme.typography.bodySmall, color = if (running &gt; 0) toneColor(Tone.OK) else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:LinuxScriptsTest.kt$LinuxScriptsTest$assertEquals(setOf("HOME=/root", "MULTI=a", "b", "PASSWORD=per-launch", "PATH=/usr/bin:/bin", "UID=7"), output.lines().filter { it.isNotEmpty() }.toSet())</ID>
     <ID>MaxLineLength:LinuxScriptsTest.kt$LinuxScriptsTest$val (code, output) = run(perl!!, File(folder, "launch.pl").absolutePath, variables.absolutePath, "env", environment = mapOf("HOME" to "/root", "PATH" to "/nowhere"))</ID>
     <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 0: 00000000000000000000000000000000:1F90 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 4 1 0 100 0 0 10 0"</ID>
@@ -628,16 +612,11 @@
     <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 1: 00000000000000000000000000000000:0BB9 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 6 1 0 100 0 0 10 0"</ID>
     <ID>MaxLineLength:ListenerScanTest.kt$ListenerScanTest$" 2: 0000000000000000FFFF00000100007F:1F42 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 10123 0 7 1 0 100 0 0 10 0"</ID>
     <ID>MaxLineLength:LoopbackPortBridgeTest.kt$LoopbackPortBridgeTest$for</ID>
-    <ID>MaxLineLength:ManageUi.kt$colors = if (destructive) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors()</ID>
     <ID>MaxLineLength:McpTools.kt$McpTools$?:</ID>
     <ID>MaxLineLength:McpToolsTest.kt$McpToolsTest$ports.snapshot = PhoneSnapshot.UNKNOWN.copy(at = 1, batteryPercent = 18, charging = false, totalRamBytes = 4_000_000_000, availRamBytes = 900_000_000, metered = true)</ID>
     <ID>MaxLineLength:NetworkDoctorTest.kt$NetworkDoctorTest$for</ID>
     <ID>MaxLineLength:OpenVsxFixture.kt$OpenVsxFixture$"${vsixName(extension, version)}.sigzip" -&gt; MockResponse.Builder().body(Buffer().write(sigzip(sign(vsix, if (version.wrongSignature) otherKey else key)))).build()</ID>
     <ID>MaxLineLength:OpenVsxFixture.kt$OpenVsxFixture.Companion$fun sigzip(signature: ByteArray): ByteArray</ID>
-    <ID>MaxLineLength:ProjectScreens.kt$Icon(if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back")</ID>
-    <ID>MaxLineLength:ProjectScreens.kt$Text(WorkFormat.count(list.size, "session", "sessions"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ProjectScreens.kt$Text(decision.reason ?: "The phone cannot start another agent right now.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)</ID>
-    <ID>MaxLineLength:ProjectScreens.kt$Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:Reconciler.kt$Reconciler$private suspend</ID>
     <ID>MaxLineLength:Reconciler.kt$Reconciler$val</ID>
     <ID>MaxLineLength:Reconciler.kt$Reconciler$val kept = if (track.kind.appendOnly) ChainCheck.prefixOf(place, chain)?.let { rebased(track, chain, it) } else if (lost) rebased(track, chain, null) else null</ID>
@@ -649,13 +628,9 @@
     <ID>MaxLineLength:RoomFilesTest.kt$RoomFilesTest$assertEquals(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(File(home, ".claude/CLAUDE.md").toPath()))</ID>
     <ID>MaxLineLength:RoomManagerTest.kt$RoomManagerTest$assertTrue("the password file is gone once code-server has started", dirs.roomBridge("claude").listFiles().orEmpty().none { it.name.endsWith(".secret") })</ID>
     <ID>MaxLineLength:ScheduledRun.kt$ScheduledRun$ports.notify(task.id, if (ok) "Scheduled task finished" else "Scheduled task needs a look", "${task.title}: $ended Open the session to review it.")</ID>
-    <ID>MaxLineLength:SchedulesModule.kt$GraphRunPorts$if (state !is ComputerState.Ready &amp;&amp; state !is ComputerState.Updating) throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")</ID>
     <ID>MaxLineLength:SealedBoxTest.kt$SealedBoxTest$val words = { bytes: ByteArray -&gt; ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().let { b -&gt; IntArray(b.remaining()) { b.get(it) } } }</ID>
-    <ID>MaxLineLength:SecretsScreen.kt$else</ID>
     <ID>MaxLineLength:ShellLogicTest.kt$ShellLogicTest$val realme = PhoneFacts(33, "13", arm64 = true, playServices = true, totalRamBytes = (3.7 * gib).toLong(), freeStorageBytes = 40 * gb, screenLock = true)</ID>
-    <ID>MaxLineLength:SyncModule.kt$GraphPorts$return if (Build.VERSION.SDK_INT &gt;= Build.VERSION_CODES.R &amp;&amp; bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED) Plain.BACKGROUND_RESTRICTED else null</ID>
     <ID>MaxLineLength:SyncPass.kt$SyncPass$val synced = FileTrack(kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name))</ID>
-    <ID>MaxLineLength:SyncTestKit.kt$fun</ID>
     <ID>MaxLineLength:TestSupport.kt$Project(id = PROJECT_ID, owner = "alice", repo = "demo", defaultBranch = defaultBranch, isPrivate = isPrivate, addedAt = 0, lastActivityAt = 0, cloned = true)</ID>
     <ID>MaxLineLength:TranscriptIndexTest.kt$TranscriptIndexTest$val file = write(File(dirs.roomHome("antigravity"), ".gemini/antigravity/brain/c/.system_generated/logs/transcript.jsonl"), Fixtures.antigravity(WORKTREE_A))</ID>
     <ID>MaxLineLength:TranscriptIndexTest.kt$TranscriptIndexTest$write(File(dirs.roomHome("antigravity"), ".gemini/antigravity-cli/brain/conv-b/.system_generated/logs/transcript.jsonl"), Fixtures.antigravity(WORKTREE_B))</ID>
@@ -667,10 +642,6 @@
     <ID>MaxLineLength:Views.kt$Notices$Notice("computer", "The computer is removed tomorrow", "It goes on ${Ist.date(due)} unless an agent runs before then. Your projects and chats are safe either way.")</ID>
     <ID>MaxLineLength:Views.kt$Notices$Notice("computer", "The computer will be removed", "No agent has run for $days days. The computer is removed on ${Ist.date(due)} to free space; Home offers to set it up again when you need it.")</ID>
     <ID>MaxLineLength:Views.kt$Notices$Notice("drive", "Reconnect Google Drive", "PocketIDE can no longer reach your Drive, so new chats wait safely on this phone. Open PocketIDE to reconnect.")</ID>
-    <ID>MaxLineLength:YourDataScreen.kt$Text("3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.", style = MaterialTheme.typography.bodyMedium)</ID>
-    <ID>MaxLineLength:YourDataScreen.kt$TypeRow("Build outputs", sizes?.let { ManageFormat.bytes(it.builds) } ?: pending, listOf(Place.PHONE, Place.GITHUB), "The last 3 per project here; GitHub keeps artifacts for 7 days.")</ID>
-    <ID>MaxLineLength:YourDataScreen.kt$TypeRow("Projects", "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here", listOf(Place.GITHUB, Place.PHONE), "GitHub holds the main copy; the phone holds a working copy.")</ID>
-    <ID>MaxLineLength:YourDataScreen.kt$TypeRow("The computer", sizes?.let { ManageFormat.bytes(it.computer) } ?: pending, listOf(Place.PHONE), "Rebuildable any time; nothing in it is the only copy.")</ID>
     <ID>NestedBlockDepth:AddedFiles.kt$AddedFiles$fun copyInto(dir: File, name: String, source: InputStream, maxBytes: Long = MAX_BYTES): File</ID>
     <ID>NestedBlockDepth:ApkFetcher.kt$ApkFetcher$private suspend fun receive(url: String, part: File, release: AppRelease, onProgress: (Float) -&gt; Unit)</ID>
     <ID>NestedBlockDepth:BridgeTestKit.kt$TestUpstream$private fun serve(socket: Socket)</ID>
@@ -963,7 +934,6 @@
     <ID>SwallowedException:RoomReadsTest.kt$RoomReadsTest$refused: IOException</ID>
     <ID>SwallowedException:RoomScriptsTest.kt$RoomScriptsTest$missing: java.io.IOException</ID>
     <ID>SwallowedException:RoomTerminals.kt$RoomTerminals$closed: IOException</ID>
-    <ID>SwallowedException:RoomTerminals.kt$RoomTerminals$failed: IOException</ID>
     <ID>SwallowedException:RoomsModule.kt$RoomNotices$denied: SecurityException</ID>
     <ID>SwallowedException:SafeFiles.kt$SafeFiles$kept: IOException</ID>
     <ID>SwallowedException:SafeFiles.kt$SafeFiles$unreadable: IOException</ID>
@@ -1039,7 +1009,6 @@
     <ID>ThrowsCount:Http1.kt$internal fun requestFraming(headers: HeaderList): Framing</ID>
     <ID>ThrowsCount:Http1.kt$private fun parseFields(lines: List&lt;String&gt;, maxFields: Int, malformed: Int, tooMany: Int): HeaderList</ID>
     <ID>ThrowsCount:JGitGate.kt$JGitGate$private fun &lt;T&gt; useLocked(gitDir: File, block: (GateRepo) -&gt; T): T</ID>
-    <ID>ThrowsCount:LinkFreeFiles.kt$LinkFreeFiles$@Throws(IOException::class) fun readText(root: File, file: File, limit: Long, tooLarge: String): String</ID>
     <ID>ThrowsCount:LinuxGit.kt$LinuxGit$suspend fun run(room: String?, args: List&lt;String&gt;, identity: Identity? = null, errors: Boolean = true): Output</ID>
     <ID>ThrowsCount:McpTools.kt$McpTools$private suspend fun runBuild(agentId: String, session: SessionRecord, input: JsonObject): String</ID>
     <ID>ThrowsCount:MemoryFiles.kt$MemoryFiles$@Throws(IOException::class) fun save(home: File, file: File, text: String)</ID>
@@ -1204,7 +1173,6 @@
     <ID>UseCheckOrError:OpenUrl.kt$AndroidBrowser$throw IllegalStateException("No browser on this phone can open that page.")</ID>
     <ID>UseCheckOrError:RoomManager.kt$RoomManager$throw IllegalStateException("This session is not on this phone yet.")</ID>
     <ID>UseCheckOrError:RoomManagerTest.kt$RoomManagerTest.FakeEnv$throw IllegalStateException("Open VSX could not be reached.")</ID>
-    <ID>UseCheckOrError:RoomTerminals.kt$RoomTerminals$throw IllegalStateException("The terminal could not start: ${failed.message}")</ID>
     <ID>UseCheckOrError:Rooms.kt$Rooms$throw IllegalStateException("The agent's room cannot run programs yet.")</ID>
     <ID>UseCheckOrError:SessionPull.kt$throw IllegalStateException("This session's project is not on this phone.")</ID>
     <ID>UseCheckOrError:SessionTools.kt$throw IllegalStateException("The file could not be opened.")</ID>
