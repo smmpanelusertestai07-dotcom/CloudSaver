@@ -3,6 +3,7 @@ package com.pocketide.linux
 import com.pocketide.agents.SemVer
 import com.pocketide.core.Clock
 import com.pocketide.model.Decision
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,8 +32,8 @@ internal class SetupPlaces(val rootfs: File, val downloads: File, val record: Fi
     val staging = File(rootfs.parentFile, rootfs.name + ".partial")
 }
 
-/** An expected stop, already in the owner's words. */
-internal class SetupStop(val why: String, val fix: String) : Exception(why)
+/** An expected stop, already in the owner's words; [mobileDataBytes] as in [ComputerState.Broken]. */
+internal class SetupStop(val why: String, val fix: String, val mobileDataBytes: Long? = null) : Exception(why)
 
 /**
  * Builds, repairs, updates and removes the computer. Every step checks what is already done
@@ -52,7 +53,6 @@ internal class ComputerSetup(
     private val ubuntu: PinnedDownload = LinuxPins.ubuntuBase,
     private val ubuntuVersion: String = LinuxPins.UBUNTU_VERSION,
     private val codeServer: CodeServerPin = LinuxPins.codeServer,
-    private val ubuntuSupportEnds: Long = LinuxPins.UBUNTU_SUPPORT_ENDS,
     private val extractor: TarGzExtractor = TarGzExtractor(),
 ) {
     private val records = RecordStore(places.record)
@@ -86,7 +86,7 @@ internal class ComputerSetup(
             publish(stateOnDisk())
             throw cancelled
         } catch (stop: SetupStop) {
-            ComputerState.Broken(stop.why, stop.fix)
+            ComputerState.Broken(stop.why, stop.fix, stop.mobileDataBytes)
         } catch (failure: Exception) {
             broken(failure)
         }
@@ -177,7 +177,7 @@ internal class ComputerSetup(
 
     /** Ubuntu past the end of its security fixes, which only a computer built on the next LTS gets again. */
     private fun supportEnded(record: SetupRecord): RepairItem? {
-        if (clock.now() < ubuntuSupportEnds || record.ubuntu != ubuntuVersion) return null
+        if (clock.now() < LinuxPins.UBUNTU_SUPPORT_ENDS || record.ubuntu != ubuntuVersion) return null
         val release = ubuntuVersion.split('.').take(2).joinToString(".")
         return RepairItem(SUPPORT, RepairStatus.WARN, "Ubuntu $release no longer gets security fixes. $FIX_NEXT_LTS")
     }
@@ -363,7 +363,10 @@ internal class ComputerSetup(
             (if (codeServerDone) 0 else remaining(codeServer.download()))
         if (download > 0) {
             val decision = host.allow(download, KIND_SETUP)
-            if (!decision.allowed) throw SetupStop(decision.reason ?: WAITING_FOR_WIFI, FIX_WIFI)
+            if (!decision.allowed) {
+                val onMobileData = NeedsMobileData.of(decision, KIND_SETUP, download)?.bytes
+                throw SetupStop(decision.reason ?: WAITING_FOR_WIFI, FIX_WIFI, onMobileData)
+            }
         }
         val space = (if (baseInPlace) 0 else UBUNTU_SPACE) +
             (if (toolsDone) 0 else TOOLS_SPACE) +
@@ -597,6 +600,6 @@ internal class ComputerSetup(
         private const val SUPPORT = "Ubuntu's support"
         private const val FIX_NEXT_LTS =
             "Update PocketIDE: once an update brings the next Ubuntu, Reset the computer to move to it. Projects and chats are not affected."
-        private const val FIX_SET_UP_AGAIN = "Set it up again. Projects and chats are not affected."
+        private const val FIX_SET_UP_AGAIN = "Set it up again from Home. Projects and chats are not affected."
     }
 }

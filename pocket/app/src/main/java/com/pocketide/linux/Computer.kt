@@ -9,8 +9,12 @@ sealed interface ComputerState {
     data class Installing(val step: String, val fraction: Float?, val bytesDone: Long, val bytesTotal: Long) : ComputerState
     data object Ready : ComputerState
     data class Updating(val what: String) : ComputerState
-    /** Something is wrong; [fix] says what the owner can do (usually "Reset computer"). */
-    data class Broken(val why: String, val fix: String) : ComputerState
+    /**
+     * Something is wrong; [fix] says what the owner can do (usually "Reset computer"). When set-up
+     * stopped only to wait for Wi-Fi, [mobileDataBytes] is what it still has to download, so the
+     * screen can ask to take exactly that on mobile data.
+     */
+    data class Broken(val why: String, val fix: String, val mobileDataBytes: Long? = null) : ComputerState
 }
 
 /**

@@ -142,11 +142,18 @@ internal fun SetUpComputer(state: ComputerState, onLater: (() -> Unit)?) {
             onDismissRequest = { askMobile = false },
             title = { Text("Set up on mobile data?") },
             text = {
+                // What set-up still has to fetch, when it already stopped to wait for Wi-Fi (after a reset, say).
+                val left = (state as? ComputerState.Broken)?.mobileDataBytes
+                val size = if (left != null) {
+                    "Set-up still has ${Formats.bytes(left)} to download."
+                } else {
+                    "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it."
+                }
                 Text(
-                    "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it. " +
-                        "On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
-                        "For this set-up only, its downloads may use mobile data today, up to " +
-                        "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Your data settings do not change.",
+                    "$size On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
+                        "For the computer's set-up only, its downloads may use mobile data today, up to " +
+                        "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Each agent's first download " +
+                        "follows your data settings (Wi-Fi by default). Your data settings do not change.",
                 )
             },
             confirmButton = {
