@@ -2,6 +2,7 @@ package com.pocketide.ui.screens.project
 
 import com.pocketide.bridge.PortListener
 import com.pocketide.builds.BuildTemplate
+import com.pocketide.github.JobStep
 import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
@@ -232,6 +233,15 @@ fun runStatus(run: WorkflowRun): Pair<String, Tone> = when (run.status) {
     "in_progress" -> "Running" to Tone.OK
     "queued", "pending", "requested", "waiting" -> "Waiting for a runner" to Tone.WARN
     else -> run.status.replaceFirstChar { it.uppercase() } to Tone.NEUTRAL
+}
+
+/** A step's state at a glance: done, failed, running, skipped or not started yet. */
+fun stepMark(step: JobStep): String = when {
+    step.status == "completed" && step.conclusion == "success" -> "✓"
+    step.status == "completed" && step.conclusion in setOf("failure", "timed_out", "cancelled") -> "✗"
+    step.status == "completed" -> "–"
+    step.status == "in_progress" -> "▶"
+    else -> "·"
 }
 
 /** The list keeps checking while a run is unfinished, or while the run started here is not listed yet. */

@@ -1,5 +1,6 @@
 package com.pocketide.ui.screens.project
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Key
@@ -37,10 +40,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
+import com.pocketide.builds.WorkflowApprovalNeeded
 import com.pocketide.core.Ist
+import com.pocketide.git.Hold
 import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
 import com.pocketide.ui.components.SectionCard
@@ -77,6 +84,10 @@ fun BuildsPanel(
     var busy by remember { mutableStateOf<String?>(null) }
     // The run this phone started: followed by its id, never "the latest run" (which may be another one).
     var followed by rememberSaveable(projectId) { mutableStateOf<Long?>(null) }
+    // Its live steps, the runner that really ran it and, when it failed, where and why.
+    var progress by remember(projectId) { mutableStateOf<BuildProgress?>(null) }
+    // A run the check-post held because the branch changes GitHub Actions code: the owner reads it first.
+    var held by remember(projectId) { mutableStateOf<HeldRun?>(null) }
 
     suspend fun loadRuns() {
         val before = runs?.getOrNull()
@@ -94,6 +105,33 @@ fun BuildsPanel(
         if (!needsPolling(current, followed)) return@LaunchedEffect
         delay(RUN_POLL_MS)
         loadRuns()
+    }
+
+    LaunchedEffect(projectId, followed) {
+        val runId = followed ?: return@LaunchedEffect
+        if (progress?.run?.id != runId) progress = null
+        while (true) {
+            attempt { graph.builds.progress(projectId, runId) }.getOrNull()?.let { progress = it }
+            if (progress?.run?.status == "completed") break
+            delay(RUN_POLL_MS)
+        }
+    }
+
+    /** Starts [template] on [target]'s branch; a held workflow change opens its diffs instead. */
+    suspend fun startRun(template: BuildTemplate, target: SessionRecord): String? {
+        val runId = try {
+            graph.builds.run(projectId, template.id, target.branch)
+        } catch (needed: WorkflowApprovalNeeded) {
+            held = HeldRun(template, target, needed.holds)
+            return null
+        }
+        followed = runId
+        loadRuns()
+        return if (runId == null) {
+            "${template.title} was sent to GitHub for \"${target.title}\". It shows here once GitHub lists it."
+        } else {
+            "${template.title} started on GitHub for \"${target.title}\". A notification follows it."
+        }
     }
 
     fun work(label: String, failed: String, block: suspend () -> String?) {
@@ -147,18 +185,7 @@ fun BuildsPanel(
                         "Added ${template.fileName} to \"${target.title}\"."
                     }
                 },
-                onRun = { target ->
-                    work("run", "Could not start the build") {
-                        val runId = graph.builds.run(projectId, template.id, target.branch)
-                        followed = runId
-                        loadRuns()
-                        if (runId == null) {
-                            "${template.title} was sent to GitHub for \"${target.title}\". It shows here once GitHub lists it."
-                        } else {
-                            "${template.title} started on GitHub for \"${target.title}\". A notification follows it."
-                        }
-                    }
-                },
+                onRun = { target -> work("run", "Could not start the build") { startRun(template, target) } },
             )
         }
         item {
@@ -184,6 +211,7 @@ fun BuildsPanel(
                 RunCard(
                     run = run,
                     mine = run.id == followed,
+                    progress = progress?.takeIf { it.run.id == run.id },
                     target = sessionForBranch(sessions, run.branch) ?: session,
                     busy = busy != null,
                     onCollect = { target ->
@@ -197,7 +225,25 @@ fun BuildsPanel(
             }
         }
     }
+
+    held?.let { run ->
+        WorkflowApprovalDialog(
+            holds = run.holds,
+            approveLabel = "Approve and run",
+            onApprove = {
+                held = null
+                work("run", "Could not start the build") {
+                    approveWorkflowChanges(graph, projectId, run.holds)
+                    startRun(run.template, run.target)
+                }
+            },
+            onDismiss = { held = null },
+        )
+    }
 }
+
+/** A run the check-post held until the owner approves its GitHub Actions changes. */
+private class HeldRun(val template: BuildTemplate, val target: SessionRecord, val holds: List<Hold>)
 
 /** How often a queued or running build is checked while this tab is open. */
 private const val RUN_POLL_MS = 15_000L
@@ -232,8 +278,18 @@ private fun TemplateCard(
 }
 
 @Composable
-private fun RunCard(run: WorkflowRun, mine: Boolean, target: SessionRecord?, busy: Boolean, onCollect: (SessionRecord) -> Unit, onOpen: () -> Unit) {
-    val (label, tone) = runStatus(run)
+private fun RunCard(
+    run: WorkflowRun,
+    mine: Boolean,
+    progress: BuildProgress?,
+    target: SessionRecord?,
+    busy: Boolean,
+    onCollect: (SessionRecord) -> Unit,
+    onOpen: () -> Unit,
+) {
+    // The followed run's own answer is fresher than the list's, and names the runner once it ended.
+    val shown = progress?.run ?: run
+    val (label, tone) = runStatus(shown)
     SectionCard(title = null) {
         if (mine) Text("Started from this phone", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -245,15 +301,49 @@ private fun RunCard(run: WorkflowRun, mine: Boolean, target: SessionRecord?, bus
         }
         val started = isoToEpoch(run.createdAt)?.let { Ist.dateTime(it) } ?: run.createdAt
         Text(
-            listOfNotNull(started, run.runnerImage?.let { "Runner: $it" }).joinToString(" · "),
+            listOfNotNull(started, shown.runnerImage?.let { "Runner: $it" }).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        progress?.let { RunProgress(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (run.status == "completed" && target != null) {
+            if (shown.status == "completed" && target != null) {
                 OutlinedButton(enabled = !busy, onClick = { onCollect(target) }) { Text("Bring results to Media") }
             }
             TextButton(onClick = onOpen) { Text("Open on GitHub") }
+        }
+    }
+}
+
+/** The followed run's jobs and steps as they go, and for a failure its job, step and last log lines. */
+@Composable
+private fun RunProgress(progress: BuildProgress) {
+    progress.jobs.forEach { job ->
+        Text(job.name, style = MaterialTheme.typography.labelLarge)
+        job.steps.forEach { step ->
+            Text(
+                "${stepMark(step)} ${step.name}",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    val failedJob = progress.failedJob ?: return
+    Text(
+        "Failed in $failedJob" + (progress.failedStep?.let { ", step \"$it\"" } ?: "") + ".",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error,
+    )
+    progress.failureLog?.takeIf { it.isNotBlank() }?.let { log ->
+        SelectionContainer {
+            Text(
+                log,
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                softWrap = false,
+            )
         }
     }
 }

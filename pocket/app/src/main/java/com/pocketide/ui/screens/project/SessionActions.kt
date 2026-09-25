@@ -29,21 +29,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.pocketide.git.Hold
 import com.pocketide.model.SessionRecord
+import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
+import kotlinx.coroutines.launch
 
 private sealed interface PutPhase {
     data object Confirm : PutPhase
     data object Running : PutPhase
+    /** The check-post holds GitHub Actions changes: the owner reads their diffs, then approves or not. */
+    data class Approve(val holds: List<Hold>, val outcome: Outcome) : PutPhase
     data class Done(val outcome: Outcome) : PutPhase
 }
 
@@ -54,6 +60,7 @@ private sealed interface PutPhase {
 @Composable
 fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((String) -> Unit)? = null) {
     val graph = rememberGraph()
+    val scope = rememberCoroutineScope()
     var phase by remember(session.id) { mutableStateOf<PutPhase>(PutPhase.Confirm) }
     // What would go to main, shown before the owner agrees: an agent may have changed more than it was asked to.
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
@@ -80,12 +87,12 @@ fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((
         PutPhase.Running -> {
             LaunchedEffect(session.id) {
                 val result = finish { graph.sessions.putOnMain(session.id) }
-                phase = PutPhase.Done(
-                    result.fold(
-                        onSuccess = { describePutOnMain(it) },
-                        onFailure = { Outcome("Not put on main", "${plainReason(it)} Nothing changed on main.", Tone.ERROR) },
-                    ),
+                val outcome = result.fold(
+                    onSuccess = { describePutOnMain(it) },
+                    onFailure = { Outcome("Not put on main", "${plainReason(it)} Nothing changed on main.", Tone.ERROR) },
                 )
+                val held = (result.getOrNull() as? PutOnMainResult.Blocked)?.holds.orEmpty()
+                phase = if (held.any(::isApprovable)) PutPhase.Approve(held, outcome) else PutPhase.Done(outcome)
             }
             AlertDialog(
                 onDismissRequest = {},
@@ -100,6 +107,18 @@ fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((
                 confirmButton = {},
             )
         }
+        is PutPhase.Approve -> WorkflowApprovalDialog(
+            holds = current.holds,
+            approveLabel = "Approve and put on main",
+            onApprove = {
+                scope.launch {
+                    finish { approveWorkflowChanges(graph, session.projectId, current.holds) }
+                        .onSuccess { phase = PutPhase.Running }
+                        .onFailure { phase = PutPhase.Done(Outcome("Not approved", plainReason(it), Tone.ERROR)) }
+                }
+            },
+            onDismiss = { phase = PutPhase.Done(current.outcome) },
+        )
         is PutPhase.Done -> AlertDialog(
             onDismissRequest = onClose,
             title = { Text(current.outcome.title, color = toneColor(current.outcome.tone)) },

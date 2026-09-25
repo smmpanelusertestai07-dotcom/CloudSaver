@@ -582,6 +582,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val sleeps by graph.rooms.sleepsAt.collectAsStateWithLifecycle()
     val installed by graph.agents.installed.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
+    val trusts by graph.projects.trust.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
     val found = sessions.firstOrNull { it.id == sessionId }
     // A list refresh that briefly lacks the session must not tear down the agent's page.
@@ -679,6 +680,11 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                 }
                 if (publicRepo && session.status == SessionStatus.OPEN && panel == null && !barHidden) {
                     NeutralBranchNote(prefs)
+                }
+                // Read again when the answer changes: the room restarts careful, or not, by itself.
+                val careful = remember(trusts, projects, session.projectId) { graph.projects.trustOf(session.projectId) } == ProjectTrust.SOMEONE_ELSES
+                if (careful && panel == null && !barHidden) {
+                    CarefulNote(name, onChange = { nav.project(session.projectId) })
                 }
                 if (isLargeTranscript(session, graph.sessions.largeTranscript(sessionId)) && !bigDismissed && panel == null && !barHidden) {
                     BigChatBanner(
@@ -896,6 +902,23 @@ private fun NeutralBranchNote(prefs: WebPrefs) {
                 show = false
                 scope.launch { prefs.markNoteShown(NEUTRAL_BRANCH_NOTE) }
             }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+        }
+    }
+}
+
+/** Someone else's code (A13): the agent asks before it runs anything, and its browser tools are off. */
+@Composable
+private fun CarefulNote(agentName: String, onChange: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.tertiaryContainer) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "This project is marked as someone else's code, so $agentName asks before it runs anything and its " +
+                    "browser tools are off. If the code is yours, say so on the project.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onChange) { Text("Change") }
         }
     }
 }
