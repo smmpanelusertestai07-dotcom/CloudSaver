@@ -1,5 +1,6 @@
 package com.pocketide.ui.screens.project
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.git.Hold
 import com.pocketide.model.SessionRecord
 import com.pocketide.sessions.PutOnMainResult
@@ -43,6 +45,7 @@ import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import kotlinx.coroutines.launch
 
 private sealed interface PutPhase {
@@ -55,12 +58,20 @@ private sealed interface PutPhase {
 
 /**
  * "Put on main" for [session]: asks first, runs the merge (check-post, push), then says what
- * happened in plain words. Conflicts and check-post findings are listed, never hidden.
+ * happened in plain words. Conflicts and check-post findings are listed, never hidden. The merge
+ * runs in the computer: when it failed because the computer is not set up, [onSetUpComputer]
+ * leads there.
  */
 @Composable
-fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((String) -> Unit)? = null) {
+fun PutOnMainFlow(
+    session: SessionRecord,
+    onClose: () -> Unit,
+    onSetUpComputer: () -> Unit,
+    onOpenSession: ((String) -> Unit)? = null,
+) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     var phase by remember(session.id) { mutableStateOf<PutPhase>(PutPhase.Confirm) }
     // What would go to main, shown before the owner agrees: an agent may have changed more than it was asked to.
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
@@ -125,7 +136,9 @@ fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((
             text = { Text(current.outcome.text) },
             confirmButton = {
                 val open = onOpenSession
-                if (open != null && current.outcome.tone != Tone.OK) {
+                if (current.outcome.tone == Tone.ERROR && SetUpOffer.needsOwner(computer)) {
+                    TextButton(onClick = { onClose(); onSetUpComputer() }) { Text(SetUpOffer.TITLE) }
+                } else if (open != null && current.outcome.tone != Tone.OK) {
                     TextButton(onClick = { onClose(); open(session.id) }) { Text("Open session") }
                 } else {
                     TextButton(onClick = onClose) { Text("OK") }
@@ -180,14 +193,21 @@ private fun ChangeSummary(changes: Result<SessionChanges>?) {
 
 private const val SUMMARY_FILES = 6
 
-/** What a session changed compared with main: its commits and files, with lines added and removed. */
+/**
+ * What a session changed compared with main: its pull request and checks on GitHub ([onOpen]
+ * opens them there), then its commits and files, with lines added and removed. The changes are
+ * read in the computer: when that failed because it is not set up, [onSetUpComputer] leads there.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
+fun ChangesSheet(session: SessionRecord, onOpen: (String) -> Unit, onDismiss: () -> Unit, onSetUpComputer: () -> Unit) {
     val graph = rememberGraph()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
         value = attempt { graph.sessions.changes(session.id) }
     }
+    var viewing by remember(session.id) { mutableStateOf<String?>(null) }
+    viewing?.let { path -> SessionFilesDialog(session, startFile = path, onDismiss = { viewing = null }) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding()) {
             Text("Changes", style = MaterialTheme.typography.titleLarge)
@@ -199,14 +219,23 @@ fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.size(12.dp))
+            SectionLabel("On GitHub")
+            SessionPullRows(session, onOpen)
+            Spacer(Modifier.size(12.dp))
             val result = changes
             when {
                 result == null -> Row(Modifier.padding(vertical = 24.dp)) { CircularProgressIndicator() }
-                result.isFailure -> Text(
-                    "Could not read the changes: ${plainReason(result.exceptionOrNull() ?: IllegalStateException())}",
-                    modifier = Modifier.padding(vertical = 16.dp),
-                )
-                else -> ChangesList(result.getOrThrow())
+                result.isFailure -> {
+                    Text(
+                        "Could not read the changes: ${plainReason(result.exceptionOrNull() ?: IllegalStateException())}",
+                        modifier = Modifier.padding(vertical = 16.dp),
+                    )
+                    // Changes are read in the computer, so setting it up is what helps.
+                    if (SetUpOffer.needsOwner(computer)) {
+                        TextButton(onClick = { onDismiss(); onSetUpComputer() }) { Text(SetUpOffer.TITLE) }
+                    }
+                }
+                else -> ChangesList(result.getOrThrow(), onOpen = { viewing = it })
             }
             Spacer(Modifier.size(16.dp))
         }
@@ -214,7 +243,7 @@ fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun ChangesList(changes: SessionChanges) {
+private fun ChangesList(changes: SessionChanges, onOpen: (String) -> Unit) {
     if (changes.commits.isEmpty() && changes.files.isEmpty()) {
         Text("No changes yet. The agent has not committed anything in this session.", modifier = Modifier.padding(vertical = 16.dp))
         return
@@ -224,7 +253,10 @@ private fun ChangesList(changes: SessionChanges) {
         items(changes.commits) { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         item { SectionLabel(WorkFormat.count(changes.files.size, "file", "files")) }
         items(changes.files) { file ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClickLabel = "View file") { onOpen(file.path) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     file.path,
                     fontFamily = FontFamily.Monospace,

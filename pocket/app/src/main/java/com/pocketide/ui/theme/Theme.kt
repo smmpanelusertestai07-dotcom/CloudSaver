@@ -29,9 +29,27 @@ object Brand {
 @Immutable
 data class StatusColors(val ok: Color, val warn: Color, val error: Color, val neutral: Color)
 
-val LocalStatusColors = staticCompositionLocalOf { StatusColors(Brand.Running, Brand.NeedsYou, Brand.Failed, Color.Gray) }
+/**
+ * State colours for text and chips. They are darker (lighter in dark mode) than the brand's own
+ * state colours, which stay for the icon: small text in each reads at 4.5:1 or more, alone and
+ * on its chip's tint, on every card colour (StatusContrastTest).
+ */
+internal val LightStatus = StatusColors(
+    ok = Color(0xFF0A6636),
+    warn = Color(0xFF7F4F00),
+    error = Color(0xFFA8231C),
+    neutral = Color(0xFF5E5866),
+)
+internal val DarkStatus = StatusColors(
+    ok = Color(0xFF6DD89A),
+    warn = Color(0xFFF2C063),
+    error = Color(0xFFFFB4AB),
+    neutral = Color(0xFFADA6B1),
+)
 
-private val Light: ColorScheme = lightColorScheme(
+val LocalStatusColors = staticCompositionLocalOf { LightStatus }
+
+internal val Light: ColorScheme = lightColorScheme(
     primary = Brand.TileFlat,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFEBDDFF),
@@ -57,7 +75,7 @@ private val Light: ColorScheme = lightColorScheme(
     error = Brand.Failed,
 )
 
-private val Dark: ColorScheme = darkColorScheme(
+internal val Dark: ColorScheme = darkColorScheme(
     primary = Brand.AccentOnDark,
     onPrimary = Color(0xFF3B0F80),
     primaryContainer = Color(0xFF532A99),
@@ -90,11 +108,7 @@ fun PocketTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> U
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val status = if (dark) {
-        StatusColors(Color(0xFF6DD89A), Color(0xFFF2C063), Color(0xFFFFB4AB), Color(0xFF958E99))
-    } else {
-        StatusColors(Brand.Running, Brand.NeedsYou, Brand.Failed, Color(0xFF7B7581))
-    }
+    val status = if (dark) DarkStatus else LightStatus
     androidx.compose.runtime.CompositionLocalProvider(LocalStatusColors provides status) {
         MaterialTheme(colorScheme = if (dark) Dark else Light, typography = Typography(), content = content)
     }

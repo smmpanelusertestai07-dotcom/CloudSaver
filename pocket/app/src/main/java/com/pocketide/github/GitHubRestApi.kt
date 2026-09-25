@@ -285,11 +285,17 @@ internal class GitHubRestApi(
         null
     }
 
+    override suspend fun pullRequestFor(owner: String, name: String, head: String): PullRequest? {
+        val query = mapOf("head" to qualifiedHead(owner, head), "state" to "all", "sort" to "created", "direction" to "desc", "per_page" to "1")
+        return decode(ListSerializer(PullJson.serializer()), rest.get(repoUrl(owner, name, "pulls", query = query)).text).firstOrNull()?.pullRequest()
+    }
+
     private suspend fun openPullFor(owner: String, name: String, head: String, base: String): PullRequest? {
-        val qualifiedHead = if (':' in head) head else "$owner:$head"
-        val url = repoUrl(owner, name, "pulls", query = mapOf("head" to qualifiedHead, "base" to base, "state" to "open"))
+        val url = repoUrl(owner, name, "pulls", query = mapOf("head" to qualifiedHead(owner, head), "base" to base, "state" to "open"))
         return decode(ListSerializer(PullJson.serializer()), rest.get(url).text).firstOrNull()?.pullRequest()
     }
+
+    private fun qualifiedHead(owner: String, head: String) = if (':' in head) head else "$owner:$head"
 
     private fun repoUrl(owner: String, name: String, vararg rest: String, query: Map<String, String?> = emptyMap()): HttpUrl =
         this.rest.url("repos", checkName(owner), checkName(name), *rest, query = query)

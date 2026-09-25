@@ -20,7 +20,7 @@ class MemoryFilesTest {
 
     private fun write(home: File, relative: String, text: String): File =
         File(home, relative).apply {
-            parentFile.mkdirs()
+            parentFile?.mkdirs()
             writeText(text)
         }
 

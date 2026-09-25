@@ -33,7 +33,10 @@ sealed interface DevicePoll {
 interface GitHubAuth {
     val account: StateFlow<GitHubAccount?>
 
-    /** True when the build carries a GitHub App client ID (owner configuration). */
+    /**
+     * True when there is a GitHub App to sign in through: the one the owner entered in the app, or
+     * else the build's. It can change while the app runs.
+     */
     val configured: Boolean
 
     suspend fun startDeviceFlow(): DeviceCode
@@ -186,4 +189,10 @@ interface GitHubApi {
 
     /** The job's log: runner image and last lines. Null when GitHub no longer has it. */
     suspend fun jobLog(owner: String, name: String, jobId: Long): JobLog? = null
+
+    /**
+     * The newest pull request from the branch [head] of this repository, open, merged or closed
+     * (a session's pull request, found by its branch); null when there is none.
+     */
+    suspend fun pullRequestFor(owner: String, name: String, head: String): PullRequest? = null
 }

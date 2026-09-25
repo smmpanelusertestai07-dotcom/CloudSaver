@@ -115,6 +115,53 @@ class RestoreTest {
     }
 
     @Test
+    fun aFileAlreadyOnTheNewPhoneNeverReplacesDrivesCopy() = runBlocking {
+        val history = ".claude/history.jsonl"
+        val oldPrompts = "{\"display\":\"old prompt 1\"}\n{\"display\":\"old prompt 2\"}\n"
+        val newPrompt = "{\"display\":\"new phone prompt\"}\n"
+        val old = TestPhone(accounts, clock)
+        old.homeFile("claude", history).writeText(oldPrompts)
+        old.engine.syncNow()
+        clock.advance(LeasePolicy.TTL_MS + 1)
+
+        // The new phone's agent wrote its own history before the restore brought Drive's.
+        val fresh = TestPhone(accounts, clock, deviceId = "new-phone", deviceName = "New phone")
+        fresh.homeFile("claude", history).writeText(newPrompt)
+        fresh.engine.restore(RestoreChoice.WIFI_ONLY)
+        fresh.engine.syncNow()
+
+        assertEquals(oldPrompts, fresh.homeFile("claude", history).readText())
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.restore(RestoreChoice.WIFI_ONLY)
+        assertEquals("Drive keeps the old prompts", oldPrompts, reader.homeFile("claude", history).readText())
+        val copy = fresh.remoteIndex()!!.objects.single { it.path.startsWith(Conflicts.FOLDER) && it.path.endsWith(history) }
+        val stored = fresh.drive.files.getValue(copy.driveId!!).bytes
+        assertEquals("the new phone's prompt is kept as a conflict copy", newPrompt, Codec.gunzip(fresh.cipher.decryptBytes(stored)).toString(Charsets.UTF_8))
+    }
+
+    @Test
+    fun removingAPhonesOwnCopyNeverRemovesDrivesVersionItNeverHad() = runBlocking {
+        val rules = ".claude/rules/house.md"
+        val old = TestPhone(accounts, clock)
+        old.homeFile("claude", rules).writeText("The old phone's rules.")
+        old.engine.syncNow()
+
+        // A second phone has its own copy while the first holds the lease, and then deletes it.
+        val other = TestPhone(accounts, clock, deviceId = "other", deviceName = "Other")
+        val mine = other.homeFile("claude", rules).apply { writeText("Another phone's rules.") }
+        other.engine.syncNow()
+        mine.delete()
+        clock.advance(LeasePolicy.TTL_MS + 1)
+        other.engine.syncNow()
+        clock.advance(2 * Durations.HOUR)
+        other.engine.syncNow()
+
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.restore(RestoreChoice.WIFI_ONLY)
+        assertEquals("The old phone's rules.", reader.homeFile("claude", rules).readText())
+    }
+
+    @Test
     fun aWifiOnlyRestorePausesOnMobileDataAndContinuesLater() = runBlocking {
         val old = TestPhone(accounts, clock).apply { sessions += session("s", at = clock.now, ref = "cccc3333") }
         val path = claudeTranscript("owner/app", "s", "cccc3333")

@@ -12,7 +12,7 @@ class DiskUsageTest {
     val temp = TemporaryFolder()
 
     private fun file(root: File, relative: String, size: Int) = File(root, relative).apply {
-        parentFile.mkdirs()
+        parentFile?.mkdirs()
         writeBytes(ByteArray(size))
     }
 

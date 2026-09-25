@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -96,9 +97,11 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
 import com.pocketide.rooms.RoomState
+import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
 import com.pocketide.ui.web.WebPrefs
 import com.pocketide.ui.web.nextZoom
@@ -141,9 +144,31 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     var creating by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
+    var askMobileData by remember(projectId) { mutableStateOf<NeedsMobileData?>(null) }
+
     LaunchedEffect(projectId, cloneTries) {
         cloneProblem = null
-        attempt { graph.projects.ensureCloned(projectId) }.onFailure { cloneProblem = plainReason(it) }
+        attempt { graph.projects.ensureCloned(projectId) }.onFailure {
+            cloneProblem = plainReason(it)
+            if (it is NeedsMobileData) askMobileData = it
+        }
+    }
+    askMobileData?.let { ask ->
+        AlertDialog(
+            onDismissRequest = { askMobileData = null },
+            title = { Text("Download ${ask.size} on mobile data?") },
+            text = { Text("This project is big, so it waits for Wi-Fi. It can download now on mobile data instead.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        askMobileData = null
+                        graph.dataBudget.allowOnce(ask.kind, ask.bytes)
+                        cloneTries++
+                    },
+                ) { Text("Use mobile data") }
+            },
+            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+        )
     }
 
     val terminal = rememberTerminalState("term:${selected?.id}")
@@ -268,7 +293,12 @@ private fun ProjectHeader(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusChip(if (project.isPrivate) "Private" else "Public", if (project.isPrivate) Tone.OK else Tone.WARN)
             val (whose, tone) = trustText(trust)
-            Box(Modifier.clickable(onClickLabel = "Change whose code this is") { asking = true }) { StatusChip(whose, tone) }
+            // The only control for careful mode: a full touch target around the small chip.
+            Box(
+                Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(onClickLabel = "Change whose code this is", role = Role.Button) { asking = true },
+                contentAlignment = Alignment.Center,
+            ) { StatusChip(whose, tone) }
             Text(
                 "Last activity ${Ist.dateTime(project.lastActivityAt)} · ${WorkFormat.count(sessionCount, "session", "sessions")}",
                 style = MaterialTheme.typography.bodySmall,
@@ -364,6 +394,7 @@ private fun SessionsTab(
     val context = LocalContext.current
     var putting by remember { mutableStateOf<SessionRecord?>(null) }
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
+    var browsing by remember { mutableStateOf<SessionRecord?>(null) }
     var deleting by remember { mutableStateOf<SessionRecord?>(null) }
     val groups = remember(sessions, projectId) { sessionsByAgent(sessions, projectId) }
 
@@ -400,6 +431,7 @@ private fun SessionsTab(
                             if (!pinned) scope.launch { snackbar.showSnackbar("This phone's home screen does not accept shortcuts.") }
                         },
                         onChanges = { changes = session },
+                        onFiles = { browsing = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
                     )
@@ -408,8 +440,9 @@ private fun SessionsTab(
         }
     }
 
-    putting?.let { PutOnMainFlow(it, onClose = { putting = null }, onOpenSession = nav::agent) }
-    changes?.let { ChangesSheet(it, onDismiss = { changes = null }) }
+    putting?.let { PutOnMainFlow(it, onClose = { putting = null }, onSetUpComputer = nav::computer, onOpenSession = nav::agent) }
+    changes?.let { ChangesSheet(it, onOpen = nav::openExternal, onDismiss = { changes = null }, onSetUpComputer = nav::computer) }
+    browsing?.let { SessionFilesDialog(it, startFile = null, onDismiss = { browsing = null }) }
     deleting?.let { session ->
         ConfirmDialog(
             title = "Delete \"${session.title}\"?",
@@ -429,6 +462,7 @@ private fun SessionCard(
     onOpen: () -> Unit,
     onPin: () -> Unit,
     onChanges: () -> Unit,
+    onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -464,6 +498,7 @@ private fun SessionCard(
                     DropdownMenuItem(text = { Text("Open") }, onClick = { menu = false; onOpen() })
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                        DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                         DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
                     }
@@ -583,6 +618,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val installed by graph.agents.installed.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val trusts by graph.projects.trust.collectAsStateWithLifecycle()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
     val found = sessions.firstOrNull { it.id == sessionId }
     // A list refresh that briefly lacks the session must not tear down the agent's page.
@@ -606,6 +642,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var tries by remember(sessionId) { mutableIntStateOf(0) }
     var panel by remember(sessionId) { mutableStateOf<AgentPanel?>(null) }
     var showChanges by remember { mutableStateOf(false) }
+    var showFiles by remember { mutableStateOf(false) }
     var putting by remember { mutableStateOf(false) }
     var bigDismissed by rememberSaveable(sessionId) { mutableStateOf(false) }
     var startingFresh by remember { mutableStateOf(false) }
@@ -658,6 +695,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onBack = { if (panel != null) panel = null else nav.back() },
                         onPanel = { panel = it },
                         onChanges = { showChanges = true },
+                        onFiles = { showFiles = true },
                         onPutOnMain = { putting = true },
                         onZoom = { chosen ->
                             zoom = chosen
@@ -708,6 +746,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         stopReason = stops[agentId]?.message,
                         onRetry = { tries++ },
                         onBack = nav::back,
+                        onSetUp = nav::computer.takeIf { SetUpOffer.needsOwner(computer) },
                     ) { url ->
                         AgentWebView(
                             url = url,
@@ -742,8 +781,9 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
         }
     }
 
-    if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false })
-    if (putting) PutOnMainFlow(session, onClose = { putting = false })
+    if (showChanges) ChangesSheet(session, onOpen = nav::openExternal, onDismiss = { showChanges = false }, onSetUpComputer = nav::computer)
+    if (showFiles) SessionFilesDialog(session, startFile = null, onDismiss = { showFiles = false })
+    if (putting) PutOnMainFlow(session, onClose = { putting = false }, onSetUpComputer = nav::computer)
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
     if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
     if (addingFile) AddFileFlow(sessionId, snackbar, scope, onClose = { addingFile = false })
@@ -774,6 +814,7 @@ private fun AgentBar(
     onBack: () -> Unit,
     onPanel: (AgentPanel) -> Unit,
     onChanges: () -> Unit,
+    onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onZoom: (Int) -> Unit,
     onImmersive: () -> Unit,
@@ -795,8 +836,20 @@ private fun AgentBar(
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(panelTitle ?: agentName(agent, session.agentId), style = MaterialTheme.typography.titleSmall)
-                Text(session.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // One line each: the bar stays slim above the agent whatever the title or font size.
+                Text(
+                    panelTitle ?: agentName(agent, session.agentId),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    session.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             if (sleepText != null && panelTitle == null) StatusChip(sleepText, Tone.WARN)
             Box {
@@ -807,6 +860,7 @@ private fun AgentBar(
                     }
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                        DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                     }
                     if (open) {
@@ -855,13 +909,19 @@ private fun RoomContent(
     stopReason: String?,
     onRetry: () -> Unit,
     onBack: () -> Unit,
+    /** Set while the computer is not set up (or set-up stopped): retrying cannot help, setting it up does. */
+    onSetUp: (() -> Unit)?,
     ready: @Composable (String) -> Unit,
 ) {
     when (view) {
         is RoomView.Ready -> ready(view.url)
         is RoomView.Opening -> CenterMessage(view.step ?: "Opening $agentName…", progress = true)
         is RoomView.Failed -> CenterMessage("$agentName did not start: ${view.why}") {
-            Button(onClick = onRetry) { Text("Retry") }
+            if (onSetUp != null) {
+                Button(onClick = onSetUp) { Text(SetUpOffer.TITLE) }
+            } else {
+                Button(onClick = onRetry) { Text("Retry") }
+            }
             OutlinedButton(onClick = onBack) { Text("Back") }
         }
         RoomView.Elsewhere -> CenterMessage("$agentName's room is open on another session now.") {

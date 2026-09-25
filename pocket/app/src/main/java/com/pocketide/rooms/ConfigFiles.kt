@@ -15,17 +15,21 @@ import kotlinx.serialization.json.put
 
 /**
  * The configuration PocketIDE generates in each room (AgentFiles class GENERATED). Each writer
- * takes the file's current text and returns the new text: PocketIDE's keys are set, everything
- * else the file holds is kept. A file that cannot be read as what it should be gives null, and
- * the caller decides (set aside and rewrite, or leave alone).
+ * takes the file's current text and gives the new text. Settings that can run code (hooks, MCP
+ * servers, permission allow rules and modes, environment blocks, commands the agent runs for
+ * itself) are rebuilt every time: PocketIDE's own, then those the owner kept ([kept]); anything
+ * else an agent put there is taken out and handed back as [Rebuilt.added], for the owner to see.
+ * Every other key the file holds is kept. A file that cannot be read as what it should be gives
+ * null, and the caller decides (set aside and rewrite, or leave alone).
  */
 internal object ConfigFiles {
 
     /**
      * code-server's user settings: phone layout, no telemetry, no self-updates, the agent's own
      * keys, and with [careful] (someone else's code) the agent's ask-before-running settings.
+     * The settings that start programs or loosen the agent's permissions are rebuilt.
      */
-    fun codeServerSettings(existing: String?, profile: RoomProfile, fontSize: Int, careful: Boolean = false): String? {
+    fun codeServerSettings(existing: String?, profile: RoomProfile, fontSize: Int, careful: Boolean = false, kept: List<Entry> = emptyList()): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
         val managed = linkedMapOf<String, JsonElement>()
         CODE_SERVER_SETTINGS.forEach { (key, value) -> managed[key] = value }
@@ -33,9 +37,10 @@ internal object ConfigFiles {
         managed["terminal.integrated.fontSize"] = JsonPrimitive(fontSize)
         managed.putAll(profile.extensionSettings)
         if (careful) managed.putAll(profile.carefulSettings)
-        // Back on the owner's own code, a careful value PocketIDE set goes; any other value stays.
-        val kept = if (careful) current else current.filterNot { (key, value) -> profile.carefulSettings[key] == value }
-        return Jsonc.write(JsonObject(kept + managed))
+        // A careful value PocketIDE set is PocketIDE's: it goes again on the owner's own code.
+        val carefulValues = profile.carefulSettings.map { (key, value) -> Entry(key, "", ExecutableJson.canonical(value)) }
+        return rebuild(current, CODE_SERVER_SLOTS, ours = emptyList(), kept) { entry -> carefulValues.any { it.sameAs(entry) } }
+            .let { (rebuilt, added) -> Rebuilt(Jsonc.write(JsonObject(rebuilt + managed)), added) }
     }
 
     /**
@@ -43,66 +48,52 @@ internal object ConfigFiles {
      * error reporting off, transcripts kept for ten years (Claude deletes them after 30 days by
      * default, which could lose chats not yet backed up), and the notification hook.
      */
-    fun claudeSettings(existing: String?, deny: List<String>, notifyCommand: String): String? {
+    fun claudeSettings(existing: String?, deny: List<String>, notifyCommand: String, kept: List<Entry> = emptyList()): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
-        val permissions = current["permissions"] as? JsonObject ?: JsonObject(emptyMap())
+        val ours = listOf(Entry(HOOKS, "Notification", ExecutableJson.canonical(notifyHook(notifyCommand)))) +
+            CLAUDE_ENV.map { (name, value) -> Entry(ENV, name, ExecutableJson.canonical(value)) }
+        // Hooks of an earlier PocketIDE (another notify.py line) are PocketIDE's too: replaced, not shown.
+        val (rebuilt, added) = rebuild(current, CLAUDE_SLOTS, ours, kept) { it.place == HOOKS && it.value.contains(RoomLayout.NOTIFY) }
+        val permissions = rebuilt["permissions"] as? JsonObject ?: JsonObject(emptyMap())
         val ownDeny = (permissions["deny"] as? JsonArray).orEmpty()
         val mergedDeny = ownDeny + deny.filter { rule -> ownDeny.none { it.stringOrNull() == rule } }.map(::JsonPrimitive)
-        val env = (current["env"] as? JsonObject ?: JsonObject(emptyMap())) + CLAUDE_ENV
-        val keepDays = (current["cleanupPeriodDays"] as? JsonPrimitive)?.intOrNull
-        val hooks = current["hooks"] as? JsonObject ?: JsonObject(emptyMap())
-        val notification = ((hooks["Notification"] as? JsonArray).orEmpty())
-            .filterNot { group -> mentions(group, RoomLayout.NOTIFY) } + notifyHook(notifyCommand)
-        val updated = current + mapOf(
+        val keepDays = (rebuilt["cleanupPeriodDays"] as? JsonPrimitive)?.intOrNull
+        val updated = rebuilt + mapOf(
             "permissions" to JsonObject(permissions + ("deny" to JsonArray(mergedDeny))),
-            "env" to JsonObject(env),
             "cleanupPeriodDays" to JsonPrimitive(maxOf(keepDays ?: 0, CLAUDE_KEEP_DAYS)),
-            "hooks" to JsonObject(hooks + ("Notification" to JsonArray(notification))),
         )
-        return Jsonc.write(JsonObject(updated))
+        return Rebuilt(Jsonc.write(JsonObject(updated)), added)
     }
 
     /** The `~/.claude.json` entries room.py merges in Linux (that file also holds the sign-in). */
     fun claudeMcpEntries(servers: Map<String, McpServer?>): String = Json.encodeToString(
         JsonObject.serializer(),
-        JsonObject(
-            servers.mapValues { (_, server) ->
-                server?.let {
-                    buildJsonObject {
-                        put("type", "stdio")
-                        put("command", it.command)
-                        put("args", JsonArray(it.args.map(::JsonPrimitive)))
-                        put("env", JsonObject(it.env.mapValues { (_, value) -> JsonPrimitive(value) }))
-                    }
-                } ?: JsonNull
-            },
-        ),
+        JsonObject(servers.mapValues { (_, server) -> server?.let(::claudeServer) ?: JsonNull }),
     )
 
-    /** Antigravity's `~/.gemini/config/mcp_config.json`; a null server is removed. */
-    fun antigravityMcp(existing: String?, servers: Map<String, McpServer?>): String? {
+    /** Antigravity's `~/.gemini/config/mcp_config.json`: PocketIDE's servers (a null one removed) and those the owner kept. */
+    fun antigravityMcp(existing: String?, servers: Map<String, McpServer?>, kept: List<Entry> = emptyList()): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
-        val own = (current["mcpServers"] as? JsonObject ?: JsonObject(emptyMap())).toMutableMap()
-        for ((name, server) in servers) {
-            if (server == null) {
-                own.remove(name)
-            } else {
-                own[name] = buildJsonObject {
-                    put("command", server.command)
-                    put("args", JsonArray(server.args.map(::JsonPrimitive)))
-                    put("env", JsonObject(server.env.mapValues { (_, value) -> JsonPrimitive(value) }))
-                    put("disabled", false)
-                }
-            }
+        val ours = servers.map { (name, server) ->
+            Entry(MCP_SERVERS, name, server?.let { ExecutableJson.canonical(antigravityServer(it)) }.orEmpty())
         }
-        return Jsonc.write(JsonObject(current + ("mcpServers" to JsonObject(own))))
+        val (rebuilt, added) = rebuild(current, ANTIGRAVITY_MCP_SLOTS, ours.filter { it.value.isNotEmpty() }, kept, ourNames = ours)
+        return Rebuilt(Jsonc.write(rebuilt), added)
     }
 
-    /** The agy CLI's settings: telemetry off (it is on by default). */
-    fun antigravitySettings(existing: String?): String? {
+    /** The agy CLI's settings: telemetry off (it is on by default); its allow rules and hooks rebuilt. */
+    fun antigravitySettings(existing: String?, kept: List<Entry> = emptyList()): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
-        return Jsonc.write(JsonObject(current + ("enableTelemetry" to JsonPrimitive(false))))
+        val (rebuilt, added) = rebuild(current, ANTIGRAVITY_CLI_SLOTS, ours = emptyList(), kept)
+        return Rebuilt(Jsonc.write(JsonObject(rebuilt + ("enableTelemetry" to JsonPrimitive(false)))), added)
     }
+
+    /** Antigravity's `~/.gemini/config/hooks.json`, where every entry is a hook: only those the owner kept. */
+    fun antigravityHooks(existing: String?, kept: List<Entry> = emptyList()): Rebuilt? =
+        hooksFile(existing, ANTIGRAVITY_HOOKS_SLOTS, kept)
+
+    /** Codex's `~/.codex/hooks.json`: only the hooks the owner kept. */
+    fun codexHooks(existing: String?, kept: List<Entry> = emptyList()): Rebuilt? = hooksFile(existing, CODEX_HOOKS_SLOTS, kept)
 
     /**
      * Codex's `~/.codex/config.toml`: no update checks, analytics or feedback uploads, file-based
@@ -111,9 +102,26 @@ internal object ConfigFiles {
      * sandbox needs user namespaces, which proot does not give, so the room is the boundary.
      * With [careful] (someone else's code) Codex asks before it runs commands (approval on request);
      * back on the owner's own code that value goes again, and any other the owner chose stays.
+     * MCP servers, inline hooks, model providers (they can run a command for their key), the
+     * environment given to commands and the notify program are rebuilt. Null for a file with a
+     * line this reader cannot place (TomlDocument.understood): Codex might read a setting there.
      */
-    fun codexConfig(existing: String?, servers: Map<String, McpServer?>, notify: List<String>, careful: Boolean = false): String {
+    fun codexConfig(
+        existing: String?,
+        servers: Map<String, McpServer?>,
+        notify: List<String>,
+        careful: Boolean = false,
+        kept: List<Entry> = emptyList(),
+    ): Rebuilt? {
         val toml = TomlDocument(existing.orEmpty())
+        if (!toml.understood()) return null
+        val found = (CODEX_PLACES + CODEX_NOTIFY).flatMap { place ->
+            toml.settings(listOf(place)).map { (name, text) -> Entry(place, name, text, keepable = name.isNotEmpty() || place != CODEX_MCP) }
+        }
+        val ours = { entry: Entry ->
+            (entry.place == CODEX_MCP && entry.key in servers.keys) || (entry.place == CODEX_NOTIFY && entry.value.contains(RoomLayout.TOOLS))
+        }
+        val added = found.filter { entry -> !ours(entry) && kept.none { it.sameAs(entry) } }.distinct()
         if (careful) {
             toml.setTopLevel(CODEX_APPROVAL, CODEX_CAREFUL_APPROVAL)
         } else if (toml.topLevelValue(CODEX_APPROVAL) == CODEX_CAREFUL_APPROVAL) {
@@ -121,27 +129,17 @@ internal object ConfigFiles {
         }
         toml.setTopLevel("check_for_update_on_startup", "false")
         toml.setTopLevel("cli_auth_credentials_store", TomlDocument.string("file"))
-        toml.setTopLevel("notify", TomlDocument.array(notify))
+        val keptNotify = kept.lastOrNull { it.place == CODEX_NOTIFY }
+        toml.setTopLevel(CODEX_NOTIFY, keptNotify?.value?.substringAfter('=')?.trim() ?: TomlDocument.array(notify))
         if (!toml.has(listOf("sandbox_mode"))) toml.setTopLevel("sandbox_mode", TomlDocument.string("danger-full-access"))
         toml.set(listOf("analytics"), "enabled", "false")
         toml.set(listOf("feedback"), "enabled", "false")
+        CODEX_PLACES.forEach { toml.removeTable(listOf(it)) }
         for ((name, server) in servers) {
-            val table = listOf("mcp_servers", name)
-            if (server == null) {
-                toml.removeTable(table)
-                continue
-            }
-            val entries = buildList {
-                add("command" to TomlDocument.string(server.command))
-                add("args" to TomlDocument.array(server.args))
-                if (server.env.isNotEmpty()) add("env" to TomlDocument.inlineTable(server.env))
-                add("startup_timeout_sec" to server.startupTimeoutSec.toString())
-                add("tool_timeout_sec" to server.toolTimeoutSec.toString())
-                add("enabled" to "true")
-            }
-            toml.replaceTable(table, entries)
+            if (server != null) toml.replaceTable(listOf(CODEX_MCP, name), codexServer(server))
         }
-        return toml.text()
+        kept.filter { it.place in CODEX_PLACES && it.keepable && !(it.place == CODEX_MCP && it.key in servers.keys) }.forEach { toml.add(it.value) }
+        return Rebuilt(toml.text(), added)
     }
 
     /**
@@ -179,6 +177,53 @@ internal object ConfigFiles {
         })
     }
 
+    /**
+     * [current] with [slots] holding PocketIDE's entries ([ours]) and then the owner's ([kept]),
+     * and what it held there besides. A member under a name in [ourNames] (by default the names
+     * in [ours]) is PocketIDE's, and so is an entry [isOurs] says is: rewritten, never shown.
+     */
+    private fun rebuild(
+        current: JsonObject,
+        slots: List<Slot>,
+        ours: List<Entry>,
+        kept: List<Entry>,
+        ourNames: List<Entry> = ours,
+        isOurs: (Entry) -> Boolean = { false },
+    ): Pair<JsonObject, List<Entry>> {
+        val found = ExecutableJson.entries(current, slots)
+        val added = ExecutableJson.added(found, ourNames, kept, slots, isOurs)
+        return ExecutableJson.rebuild(current, slots, ours + kept) to added
+    }
+
+    private fun hooksFile(existing: String?, slots: List<Slot>, kept: List<Entry>): Rebuilt? {
+        val current = Jsonc.parseObject(existing) ?: return null
+        val (rebuilt, added) = rebuild(current, slots, ours = emptyList(), kept)
+        return Rebuilt(Jsonc.write(rebuilt), added, empty = rebuilt.isEmpty())
+    }
+
+    private fun claudeServer(server: McpServer) = buildJsonObject {
+        put("type", "stdio")
+        put("command", server.command)
+        put("args", JsonArray(server.args.map(::JsonPrimitive)))
+        put("env", JsonObject(server.env.mapValues { (_, value) -> JsonPrimitive(value) }))
+    }
+
+    private fun antigravityServer(server: McpServer) = buildJsonObject {
+        put("command", server.command)
+        put("args", JsonArray(server.args.map(::JsonPrimitive)))
+        put("env", JsonObject(server.env.mapValues { (_, value) -> JsonPrimitive(value) }))
+        put("disabled", false)
+    }
+
+    private fun codexServer(server: McpServer) = buildList {
+        add("command" to TomlDocument.string(server.command))
+        add("args" to TomlDocument.array(server.args))
+        if (server.env.isNotEmpty()) add("env" to TomlDocument.inlineTable(server.env))
+        add("startup_timeout_sec" to server.startupTimeoutSec.toString())
+        add("tool_timeout_sec" to server.toolTimeoutSec.toString())
+        add("enabled" to "true")
+    }
+
     private fun notifyHook(command: String) = buildJsonObject {
         put("matcher", "")
         put("hooks", buildJsonArray {
@@ -189,20 +234,75 @@ internal object ConfigFiles {
         })
     }
 
-    private fun mentions(element: JsonElement, text: String): Boolean = when (element) {
-        is JsonPrimitive -> element.contentOrNull?.contains(text) == true
-        is JsonArray -> element.any { mentions(it, text) }
-        is JsonObject -> element.values.any { mentions(it, text) }
-    }
-
     private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
     const val CLAUDE_KEEP_DAYS = 3650
 
+    private const val HOOKS = "hooks"
+    private const val ENV = "env"
+    private const val MCP_SERVERS = "mcpServers"
+    private const val CODEX_MCP = "mcp_servers"
+    private const val CODEX_NOTIFY = "notify"
     private const val CODEX_APPROVAL = "approval_policy"
     private val CODEX_CAREFUL_APPROVAL = TomlDocument.string("on-request")
+
+    /** Codex's places that can run code, besides notify: rebuilt whole. */
+    private val CODEX_PLACES = listOf(CODEX_MCP, "hooks", "model_providers", "shell_environment_policy")
+
+    /**
+     * Claude Code's settings that run a command, load code or loosen what it may do without
+     * asking (code.claude.com settings reference): hooks, environment, allow rules, the
+     * permission mode, extra folders, the helper commands, project MCP approvals and plugins.
+     */
+    private val CLAUDE_SLOTS = listOf(
+        Slot.Grouped(listOf(HOOKS)),
+        Slot.Members(listOf(ENV)),
+        Slot.Items(listOf("permissions", "allow")),
+        Slot.Value(listOf("permissions", "defaultMode")),
+        Slot.Items(listOf("permissions", "additionalDirectories")),
+        Slot.Value(listOf("apiKeyHelper")),
+        Slot.Value(listOf("awsAuthRefresh")),
+        Slot.Value(listOf("awsCredentialExport")),
+        Slot.Value(listOf("otelHeadersHelper")),
+        Slot.Value(listOf("statusLine")),
+        Slot.Value(listOf("subagentStatusLine")),
+        Slot.Value(listOf("fileSuggestion")),
+        Slot.Value(listOf("enableAllProjectMcpServers")),
+        Slot.Items(listOf("enabledMcpjsonServers")),
+        Slot.Members(listOf("enabledPlugins")),
+        Slot.Members(listOf("extraKnownMarketplaces")),
+    )
+
+    /**
+     * code-server settings that start a program for the agent, give it an environment, or loosen
+     * its permissions, and the built-in ones that name a program the editor runs by itself (git,
+     * the TypeScript server, PHP's checker, the terminals).
+     */
+    private val CODE_SERVER_SLOTS = listOf(
+        Slot.Value(listOf("chatgpt.cliExecutable")),
+        Slot.Value(listOf("claudeCode.claudeProcessWrapper")),
+        Slot.Value(listOf("claudeCode.environmentVariables")),
+        Slot.Value(listOf("claudeCode.allowDangerouslySkipPermissions")),
+        Slot.Value(listOf("claudeCode.initialPermissionMode")),
+        Slot.Members(listOf("terminal.integrated.env.linux")),
+        Slot.Members(listOf("terminal.integrated.profiles.linux")),
+        Slot.Value(listOf("terminal.integrated.defaultProfile.linux")),
+        Slot.Value(listOf("terminal.integrated.automationProfile.linux")),
+        Slot.Value(listOf("terminal.integrated.shell.linux")),
+        Slot.Value(listOf("terminal.integrated.shellArgs.linux")),
+        Slot.Value(listOf("terminal.integrated.automationShell.linux")),
+        Slot.Value(listOf("terminal.external.linuxExec")),
+        Slot.Value(listOf("git.path")),
+        Slot.Value(listOf("typescript.tsdk")),
+        Slot.Value(listOf("php.validate.executablePath")),
+    )
+
+    private val ANTIGRAVITY_MCP_SLOTS = listOf(Slot.Members(listOf(MCP_SERVERS)))
+    private val ANTIGRAVITY_CLI_SLOTS = listOf(Slot.Items(listOf("permissions", "allow")), Slot.Members(listOf(HOOKS)))
+    private val ANTIGRAVITY_HOOKS_SLOTS = listOf(Slot.Members(emptyList()))
+    private val CODEX_HOOKS_SLOTS = listOf(Slot.Grouped(listOf(HOOKS)), Slot.Members(emptyList(), except = setOf(HOOKS)))
 
     /** Off: its self-updater (PocketIDE updates the extension) and error reports. */
     private val CLAUDE_ENV = mapOf(

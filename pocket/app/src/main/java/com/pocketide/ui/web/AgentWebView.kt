@@ -51,6 +51,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +60,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import com.pocketide.media.VideoFrames
 import com.pocketide.ui.shell.External
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** What the page's callbacks reach; refreshed on every composition so nothing goes stale. */
 internal class WebCallbacks {
@@ -85,6 +91,8 @@ class WebViewHolder internal constructor() {
     internal var webView: WebView? = null
     internal var loadedUrl: String? = null
     internal var pendingFiles: ValueCallback<Array<Uri>>? = null
+    /** Key frames per picked video for the waiting input; 0 when videos go to it as they are. */
+    internal var framesPerVideo = 0
     /** Windows the page opened that are not yet handed to Chrome or dropped. */
     internal var popups = 0
     internal val callbacks = WebCallbacks()
@@ -136,6 +144,31 @@ class WebViewHolder internal constructor() {
         pendingFiles = null
     }
 
+    /**
+     * The picker's answer for the waiting input. When that input takes only pictures, each video
+     * becomes [framesPerVideo] key frames first, off the main thread (§8).
+     */
+    internal fun receivePicked(uris: List<Uri>, context: Context, scope: CoroutineScope) {
+        val perVideo = framesPerVideo
+        val pending = pendingFiles
+        if (uris.isEmpty() || perVideo == 0 || pending == null) {
+            deliverFiles(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
+            return
+        }
+        val app = context.applicationContext
+        scope.launch {
+            var answer: Array<Uri>? = null
+            try {
+                val replaced = withContext(Dispatchers.IO) { VideoFrames.forImageInput(app, uris, perVideo) }
+                WebPolicy.unreadableVideos(replaced.unreadableVideos)?.let(callbacks.notice)
+                answer = replaced.items.takeIf { it.isNotEmpty() }?.toTypedArray()
+            } finally {
+                // Only the input that asked gets the answer; a newer file input has its own.
+                if (pendingFiles === pending) deliverFiles(answer)
+            }
+        }
+    }
+
     internal fun obtain(context: Context, create: (Context) -> WebView): WebView {
         val existing = webView
         if (existing != null) {
@@ -174,7 +207,8 @@ private const val DOWNLOAD_BLOCKED =
  * are on; file and content access are off; Safe Browsing is on; mixed content is never
  * allowed. Only URLs [isInternal] accepts load inside the app (the port bridge's own origins);
  * any other link, and any new window, opens in Chrome through [onOpenExternal]. A file input
- * opens Android's photo picker, which needs no permission. Downloads are refused with a notice.
+ * opens Android's photo picker, which needs no permission; an input that takes only pictures
+ * still offers videos and gets a few key frames of each. Downloads are refused with a notice.
  */
 @Composable
 fun AgentWebView(
@@ -194,11 +228,12 @@ fun AgentWebView(
     onInteraction: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        holder.deliverFiles(uri?.let { arrayOf(it) })
+        holder.receivePicked(listOfNotNull(uri), context, scope)
     }
     val pickMany = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
-        holder.deliverFiles(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
+        holder.receivePicked(uris, context, scope)
     }
     SideEffect {
         holder.callbacks.isInternal = isInternal
@@ -373,6 +408,9 @@ private class UsedWebView(context: Context, private val holder: WebViewHolder) :
 
 private const val INTERACTION_EVERY_MS = 60_000L
 
+// Lint flags the super-constructor call of every Kotlin WebViewClient, even one that overrides
+// onRenderProcessGone as each of ours does; WebViewClientsTest holds them to it instead.
+@SuppressLint("MissingOnRenderProcessGone")
 private class AgentClient(private val holder: WebViewHolder) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
@@ -421,9 +459,10 @@ private class AgentChrome(private val holder: WebViewHolder) : WebChromeClient()
     ): Boolean {
         holder.deliverFiles(null)
         holder.pendingFiles = filePathCallback
-        val kind = WebPolicy.pickerKind(fileChooserParams.acceptTypes?.toList().orEmpty())
         val multiple = fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE
-        if (!holder.callbacks.chooseFiles(kind, multiple)) {
+        val pick = WebPolicy.filePick(fileChooserParams.acceptTypes?.toList().orEmpty(), multiple)
+        holder.framesPerVideo = pick.framesPerVideo
+        if (!holder.callbacks.chooseFiles(pick.picker, multiple)) {
             // Returning false hands the callback back to the WebView, so it must not be called.
             holder.pendingFiles = null
             return false
@@ -457,6 +496,7 @@ private class AgentChrome(private val holder: WebViewHolder) : WebChromeClient()
  * address goes to Chrome (after a question when no tap opened it) and the throwaway view is
  * destroyed before it loads anything. JavaScript stays off in it.
  */
+@SuppressLint("MissingOnRenderProcessGone") // Overridden below; see AgentClient.
 private class PopupCatcher(
     private val holder: WebViewHolder,
     private val popup: WebView,
@@ -478,6 +518,12 @@ private class PopupCatcher(
 
     override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
         handle(url)
+    }
+
+    /** The renderer is shared with the agent's view: answering false here would end the whole app. */
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        destroyPopup()
+        return true
     }
 
     private fun handle(url: String?) {

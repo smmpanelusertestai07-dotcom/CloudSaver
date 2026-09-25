@@ -10,7 +10,7 @@ internal object GuidePhone {
         "GitHub Actions: plans and limits",
         "What your GitHub plan includes for builds, what extra use costs, and why PocketIDE uses only Actions.",
         info(
-            "Prices and limits below are GitHub's, $AS_OF, in US dollars (your bank converts them). GitHub can " +
+            "Prices and limits below are GitHub's, $AS_OF, in US dollars. GitHub can " +
                 "change them; its pages are linked below.",
         ),
         table(
@@ -33,8 +33,8 @@ internal object GuidePhone {
         tip("Recommendation: Free with private repos; open source in public repos, where Actions is free."),
         p(
             "Why only Actions: it already holds your code, so no new company sees it, and results come back " +
-                "into Media. Free computers with no sign-in do not exist: any remote computer is somebody's " +
-                "server, and using build minutes for anything but builds and tests breaks the providers' terms.",
+                "into Media. Free computers with no sign-in do not exist, and using build minutes for anything " +
+                "but builds and tests breaks the providers' terms.",
         ),
         link("GitHub pricing", DocLinks.GITHUB_PRICING),
         link("GitHub Actions billing", DocLinks.ACTIONS_BILLING),
@@ -87,8 +87,7 @@ internal object GuidePhone {
         "Limits: what a phone cannot do",
         "What is impossible on the phone, and where that work goes instead.",
         p(
-            "The phone has an arm64 processor; tools made only for x86-64 computers or for macOS cannot run on " +
-                "it. That work goes to GitHub Actions.",
+            "The phone has an arm64 processor, so tools made only for x86-64 or macOS run on GitHub Actions instead.",
         ),
         table(
             listOf("Not on the phone", "Instead"),
@@ -106,8 +105,7 @@ internal object GuidePhone {
             row("Local AI models good enough for agent work", "The agents' own cloud models"),
         ),
         p(
-            "The agents need the internet, because their models are remote. The computer, your files and " +
-                "Preview work offline, and sync catches up later.",
+            "Offline, the computer, your files and Preview still work; the agents wait and sync catches up later.",
         ),
     )
 
@@ -115,16 +113,17 @@ internal object GuidePhone {
         "if-something-breaks",
         "If something breaks",
         "What to try, in order, what each message means, and what survives each step.",
-        steps(
-            "Reload the agent's screen. It takes seconds.",
-            "If that fails, stop the agent (its menu → Stop agent) and open it again.",
-            "If that fails, Reset computer (Settings → Advanced) rebuilds the computer over Wi-Fi.",
-        ),
+        p(FixLadder.helpIntro),
+        steps(*FixLadder.rungs.map(FixLadder::helpStep).toTypedArray()),
         table(
             listOf("You see", "What to do"),
             row(
                 "Claude Code asks you to sign in, then stops",
                 "The account has no Claude Code plan: Pro, Max, Team, Enterprise or Console.",
+            ),
+            row(
+                "At sign-in: Error 400 invalid_request, 401 invalid_client or Invalid code verifier",
+                "The link was changed on the way. Start a fresh sign-in.",
             ),
             row(
                 "Antigravity still asks to sign in after you did",

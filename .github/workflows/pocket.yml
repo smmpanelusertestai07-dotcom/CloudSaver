@@ -8,7 +8,8 @@ name: pocketide
 #   engine   the Linux side on a real arm64 runner: scripts, Python tests, and bootstrap.sh
 #            setting up the exact Ubuntu base the app pins
 #   pins     every download the app pins, re-checked against its publisher
-#   proot    PRoot rebuilt from pinned sources with 16 KB alignment (an artifact to adopt)
+#   proot    PRoot rebuilt from pinned sources with 16 KB alignment: a build check and an
+#            artifact for a later release, not what the APK ships (that is 2.6.0's, see sources.json)
 #   device   the instrumented tests (JGit on Android) on an Android 11 emulator (not a release gate)
 #   release  main only, and only with the owner's stable key: tag pocketide-v<version>, once
 on:
@@ -124,6 +125,16 @@ jobs:
           echo "CERT_SHA256=$sha256" >> "$GITHUB_ENV"
           echo "stable_key=$stable" >> "$GITHUB_OUTPUT"
           echo "Signing certificate SHA-256: $sha256 (stable key: $stable)"
+
+      # Plan §15. Both hold a baseline in pocket/tools/quality/ of what the code had when the gate
+      # arrived, so a new finding fails; Android Lint below treats every warning as an error.
+      - name: Kotlin style (ktlint)
+        working-directory: pocket
+        run: ./gradlew --no-daemon ktlintCheck
+
+      - name: Code smells (detekt)
+        working-directory: pocket
+        run: ./gradlew --no-daemon detekt
 
       - name: Lint, unit tests and the release build
         working-directory: pocket
@@ -293,9 +304,10 @@ jobs:
         run: python3 pocket/tools/check-pins.py
 
   proot:
-    name: PRoot from source (16 KB aligned)
+    name: PRoot from source (16 KB aligned, not shipped)
     # The NDK is published for x86-64 Linux hosts only, so this cross-compiles; the result is
-    # an arm64 Android binary.
+    # an arm64 Android binary. The APK keeps the PRoot proven on the phone until this build has
+    # been tested there, so the artifact is named as not shipped.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -303,9 +315,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: NDK
+      - name: NDK and gawk
         run: |
           set -euo pipefail
+          # PRoot's makefile needs gawk (strtonum); the runner's awk may be mawk.
+          command -v gawk > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q gawk; }
           ndk=$(python3 -c 'import json; print(json.load(open("pocket/tools/proot/sources.json"))["ndk"])')
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           (yes || true) | "$sdkmanager" --licenses > /dev/null
@@ -317,7 +331,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: PocketIDE-proot
+          name: PocketIDE-proot-not-shipped
           path: ${{ runner.temp }}/proot/
           if-no-files-found: error
 
@@ -342,6 +356,16 @@ jobs:
         with:
           cache-provider: basic
 
+      # A stock runner has about 7 GB free. The system image and the emulator's data partition
+      # need more, and without the room the emulator quits at launch ("Not enough space to create
+      # userdata partition"). Nothing removed here is used by this job.
+      - name: Free disk space for the emulator
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android/sdk/ndk /opt/hostedtoolcache/CodeQL /usr/share/dotnet \
+            /usr/share/swift /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/local/share/powershell || true
+          df -h / | tail -1
+
       - name: Let the emulator use KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
@@ -349,6 +373,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Start an Android 11 emulator
+        timeout-minutes: 25
         run: |
           set -euo pipefail
           sdk="${ANDROID_HOME:?the runner has no Android SDK}"
@@ -356,21 +381,54 @@ jobs:
           image="system-images;android-30;google_apis;x86_64"
           (yes || true) | "$tools/sdkmanager" --licenses > /dev/null
           "$tools/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" platform-tools emulator "$image" > /dev/null
+          # The runner sets XDG_CONFIG_HOME, so avdmanager and the emulator would otherwise look for
+          # AVDs in different folders and the emulator quits with "no file pocket.ini". Both honour
+          # ANDROID_AVD_HOME, so one folder is named for both.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo no | "$tools/avdmanager" create avd --force --name pocket --package "$image" --device pixel_5 > /dev/null
+          if [ ! -f "$ANDROID_AVD_HOME/pocket.ini" ]; then
+            echo "::error::avdmanager did not create the AVD in $ANDROID_AVD_HOME"
+            find "$HOME" -maxdepth 5 -name pocket.ini 2> /dev/null
+            exit 1
+          fi
+          log="$RUNNER_TEMP/emulator.log"
+          # 2 GB of data is plenty for the tests and leaves the runner room to spare.
           nohup "$sdk/emulator/emulator" -avd pocket -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu swiftshader_indirect -memory 4096 -partition-size 4096 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+            -gpu swiftshader_indirect -memory 4096 -partition-size 2048 -camera-back none -camera-front none \
+            > "$log" 2>&1 &
+          pid=$!
           adb="$sdk/platform-tools/adb"
-          "$adb" wait-for-device
-          for _ in $(seq 1 120); do
-            [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
+          "$adb" start-server > /dev/null 2>&1
+          booted() { [ "$("$adb" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; }
+          # Never wait blindly: stop as soon as the emulator quits, and give up after 15 minutes.
+          for _ in $(seq 1 180); do
+            if ! kill -0 "$pid" 2> /dev/null; then
+              echo "::error::The emulator quit while starting; its log follows."
+              cat "$log"
+              exit 1
+            fi
+            booted && break
             sleep 5
           done
-          [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || { cat "$RUNNER_TEMP/emulator.log"; exit 1; }
+          if ! booted; then
+            echo "::error::The emulator did not finish starting within 15 minutes; its log follows."
+            cat "$log"
+            exit 1
+          fi
+          # The app ships arm64 code only; this image runs it through Android's ARM translation.
+          abis=$("$adb" shell getprop ro.product.cpu.abilist | tr -d '\r')
+          echo "Device ABIs: $abis"
+          case ",$abis," in
+            *,arm64-v8a,*) ;;
+            *) echo "::error::This emulator image cannot run arm64 apps ($abis)"; exit 1 ;;
+          esac
           for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
             "$adb" shell settings put global "$scale" 0
           done
 
       - name: Instrumented tests
+        timeout-minutes: 30
         working-directory: pocket
         run: ./gradlew --no-daemon connectedDebugAndroidTest
 

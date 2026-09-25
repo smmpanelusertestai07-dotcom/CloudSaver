@@ -43,10 +43,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
+import com.pocketide.github.gitHubAppChoice
 import com.pocketide.model.LinkHealth
 import com.pocketide.model.LockReason
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.GitHubAppFields
+import com.pocketide.ui.screens.onboarding.GitHubAppForm
+import com.pocketide.ui.screens.onboarding.GitHubAppHowTo
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.CenteredTitle
 import com.pocketide.ui.shell.DeviceSignIn
@@ -168,6 +172,11 @@ private fun GitHubDisconnected() {
     val graph = rememberGraph()
     val context = LocalContext.current
     val recheck = rememberRecheck(graph)
+    val signIn = DeviceSignIn.of(graph)
+    val openUrl: (String) -> Unit = { External.openUrl(context, it) }
+    // Settings may not be reachable while locked, so an App that was deleted, or had device flow
+    // switched off, is changed here.
+    var changingApp by remember { mutableStateOf(false) }
     ShellPage {
         Gap(12.dp)
         CenteredTitle(
@@ -178,12 +187,31 @@ private fun GitHubDisconnected() {
         )
         ConnectionStatus(graph)
         Gap(24.dp)
-        GitHubConnectPanel(
-            signIn = DeviceSignIn.of(graph),
-            openUrl = { External.openUrl(context, it) },
-            onConnected = { recheck.run() },
-            startLabel = "Reconnect GitHub",
-        )
+        if (changingApp) {
+            ChangeGitHubApp(
+                graph = graph,
+                openUrl = openUrl,
+                onSaved = {
+                    changingApp = false
+                    signIn.start()
+                },
+                onCancel = { changingApp = false },
+            )
+        } else {
+            GitHubConnectPanel(
+                signIn = signIn,
+                openUrl = openUrl,
+                onConnected = { recheck.run() },
+                startLabel = "Reconnect GitHub",
+            )
+            QuietAction(
+                "Change the GitHub App",
+                onClick = {
+                    signIn.reset()
+                    changingApp = true
+                },
+            )
+        }
         RecheckResult(recheck)
         WhatHappened(
             "Access ends when the PocketIDE app is uninstalled from your GitHub account, its sign-in is revoked, " +
@@ -191,6 +219,20 @@ private fun GitHubDisconnected() {
         )
         FinePrint("The app stays locked until both GitHub and Google Drive are connected.")
     }
+}
+
+/** The GitHub App's client ID and name, with how to make a new App; saving starts a new sign-in. */
+@Composable
+private fun ChangeGitHubApp(graph: AppGraph, openUrl: (String) -> Unit, onSaved: () -> Unit, onCancel: () -> Unit) {
+    val choice = remember(graph) { gitHubAppChoice(graph) }
+    val form = remember(choice) { choice.current().let { GitHubAppForm(it.clientId, it.slug) } }
+    SectionLabel("Your GitHub App")
+    GitHubAppHowTo(openUrl)
+    Gap(16.dp)
+    GitHubAppFields(form)
+    Gap(16.dp)
+    PrimaryAction("Save and reconnect", onClick = { if (form.save(choice) != null) onSaved() })
+    QuietAction("Cancel", onClick = onCancel)
 }
 
 @Composable
@@ -216,6 +258,9 @@ private fun DriveDisconnected() {
         FinePrint("The app stays locked until both GitHub and Google Drive are connected.")
     }
 }
+
+private const val EMPTY_RECENTLY_DELETED = "Delete forever from Recently deleted"
+private const val DELETED_KEEP_SPACE = "Deleted chats keep their Drive space for 30 days, until they are deleted forever."
 
 @Composable
 private fun StorageFull(googleStorageFull: Boolean, nav: PocketNav) {
@@ -246,13 +291,16 @@ private fun StorageFull(googleStorageFull: Boolean, nav: PocketNav) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (googleStorageFull) {
                 PrimaryAction("See what uses your Google storage", onClick = { nav.openExternal(Links.GOOGLE_STORAGE) })
-                SecondaryAction("Delete PocketIDE's old chats", onClick = nav::yourData)
+                SecondaryAction("Delete PocketIDE's old or large chats", onClick = nav::yourData)
+                SecondaryAction(EMPTY_RECENTLY_DELETED, onClick = nav::recentlyDeleted)
                 SecondaryAction("Choose what to upload", onClick = nav::waitingUploads)
-                FinePrint("Gmail, Photos and Drive share one Google storage. Google One sells more if you want it.")
+                FinePrint("$DELETED_KEEP_SPACE Gmail, Photos and Drive share one Google storage. Google One sells more if you want it.")
             } else {
                 PrimaryAction("Raise the limit", onClick = { raise = true })
                 SecondaryAction("Delete old or large chats", onClick = nav::yourData)
+                SecondaryAction(EMPTY_RECENTLY_DELETED, onClick = nav::recentlyDeleted)
                 SecondaryAction("Choose what to upload", onClick = nav::waitingUploads)
+                FinePrint(DELETED_KEEP_SPACE)
                 AutoTrimRow(
                     on = settings.autoTrimOldChats,
                     onChange = { on -> graph.settings.update { it.copy(autoTrimOldChats = on) } },

@@ -152,7 +152,7 @@ internal fun ChatDialogHost(
             onDone = { title -> scope.act(snackbar, "Could not rename") { graph.sessions.rename(session.id, title) } },
             onDismiss = onClose,
         )
-        ChatDialog.PUT_ON_MAIN -> PutOnMainFlow(session, onClose = onClose, onOpenSession = nav::agent)
+        ChatDialog.PUT_ON_MAIN -> PutOnMainFlow(session, onClose = onClose, onSetUpComputer = nav::computer, onOpenSession = nav::agent)
         ChatDialog.REMOVE_MEDIA -> ConfirmDialog(
             title = "Remove media, keep the chat?",
             text = "The ${WorkFormat.count(session.mediaCount, "file", "files")} in this chat's Media (${WorkFormat.bytes(session.mediaBytes)}) " +

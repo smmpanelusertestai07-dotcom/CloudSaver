@@ -6,8 +6,8 @@ import com.pocketide.core.FileClass
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
+import java.nio.channels.Channels
 import java.nio.file.FileVisitResult
 import java.nio.file.FileVisitor
 import java.nio.file.Files
@@ -155,7 +155,7 @@ internal class Scanner(private val dirs: AppDirs) {
                 if (running && TrackRules.isDatabase(path)) return@walk
                 val track = tracks[fileKey(kind, agentId, path)]
                 val rollout = kind == ObjectKind.CHAT_PIECE && (path.startsWith(".codex/sessions/") || path.startsWith(".codex/archived_sessions/"))
-                val cwd = track?.headCwd ?: if (rollout && track?.sessionId == null) firstLineCwd(file) else null
+                val cwd = track?.headCwd ?: if (rollout && track?.sessionId == null) firstLineCwd(file, path) else null
                 val session = track?.sessionId ?: matcher.homeSession(path, cwd)
                 out += Candidate(kind, agentId, path, file, facts, session, video = false, headCwd = cwd)
             }
@@ -209,8 +209,8 @@ internal class Scanner(private val dirs: AppDirs) {
     }
 
     /** The "cwd" a Codex rollout records in its first line (the session's worktree). */
-    private fun firstLineCwd(file: File): String? = try {
-        FileInputStream(file).use { input ->
+    private fun firstLineCwd(file: File, path: String): String? = try {
+        Channels.newInputStream(openInRoom(file, path)).use { input ->
             val head = ByteArray(HEAD_BYTES)
             val n = input.read(head)
             if (n <= 0) return null
@@ -222,10 +222,24 @@ internal class Scanner(private val dirs: AppDirs) {
     }
 
     /** The file on this phone for a logical file, or null when the path is unsafe or not a file path. */
-    fun locate(kind: ObjectKind, agentId: String?, path: String): File? {
+    fun locate(kind: ObjectKind, agentId: String?, path: String): File? = roomFile(kind, agentId, path)?.file
+
+    /**
+     * Whether the folder that held a file is still a real folder: the room's home for the room's
+     * own files, the project's media folder in the room's work folder for session media. When it
+     * is gone, the room was removed rather than the file.
+     */
+    fun roomExists(kind: ObjectKind, agentId: String?, path: String): Boolean {
+        if (agentId == null || !isSafeName(agentId)) return false
+        val folder = if (kind.root == Root.WORK) safeChild(dirs.roomWork(agentId), "${path.substringBefore('/')}/$MEDIA") else dirs.roomHome(agentId)
+        return folder != null && isRealDirectory(folder)
+    }
+
+    /** [locate], with the room folder the file sits in. */
+    fun roomFile(kind: ObjectKind, agentId: String?, path: String): RoomFile? {
         if (kind == ObjectKind.SECRETS || agentId == null || !isSafeName(agentId)) return null
         val base = if (kind.root == Root.WORK) dirs.roomWork(agentId) else dirs.roomHome(agentId)
-        return safeChild(base, path)
+        return safeChild(base, path)?.let { RoomFile(base, path, it) }
     }
 
     companion object {

@@ -95,8 +95,10 @@ internal data class PullJson(
     val state: String,
     val merged: Boolean = false,
     val mergeable: Boolean? = null,
+    /** Lists of pull requests carry only this, not [merged]. */
+    @SerialName("merged_at") val mergedAt: String? = null,
 ) {
-    fun pullRequest() = PullRequest(number, htmlUrl, state, merged, mergeable)
+    fun pullRequest() = PullRequest(number, htmlUrl, state, merged || mergedAt != null, mergeable)
 }
 
 @Serializable

@@ -57,6 +57,7 @@ import com.pocketide.ui.manage.ManageList
 import com.pocketide.ui.manage.ManageText
 import com.pocketide.ui.manage.ScheduleForm
 import com.pocketide.ui.manage.SectionLabel
+import com.pocketide.ui.manage.SessionUsage
 import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.UsageMeter
@@ -68,6 +69,7 @@ import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.screens.project.rememberTicker
 import com.pocketide.ui.shell.Formats
 import kotlinx.coroutines.async
@@ -152,6 +154,8 @@ fun ActivityScreen(nav: PocketNav) {
             }
             item { SectionLabel("Agents") }
             item { AgentsCard(graph, agents, rooms, sessions, work, now, runner, nav) }
+            item { SectionLabel("Sessions, time and tokens") }
+            item { UsageCard(sessions, agents, now) }
             item { SectionLabel("Sync with Google Drive") }
             item {
                 SectionCard(null) {
@@ -173,15 +177,23 @@ fun ActivityScreen(nav: PocketNav) {
             item {
                 SectionCard(null) {
                     val limitMb = settings.mobileDailyLimitMb
-                    InfoRow("Today", ManageFormat.bytes(usage.todayMeteredBytes) + if (limitMb > 0) " of $limitMb MB" else "")
-                    if (limitMb > 0) UsageMeter(usage.todayMeteredBytes.toDouble() / (limitMb * 1_000_000.0))
+                    InfoRow("Today", ManageFormat.bytes(usage.todayMeteredBytes))
+                    if (limitMb > 0) {
+                        InfoRow("Daily limit", "${ManageFormat.bytes(usage.todayLimitedBytes)} of $limitMb MB")
+                        UsageMeter(usage.todayLimitedBytes.toDouble() / (limitMb * 1_000_000.0))
+                    }
                     InfoRow("This month", ManageFormat.bytes(usage.monthMeteredBytes))
                     usage.byType.entries.sortedByDescending { it.value }.filter { it.value > 0 }.take(5).forEach { (type, bytes) ->
                         InfoRow(Formats.dataKind(type), ManageFormat.bytes(bytes))
                     }
                     Hint(
-                        if (limitMb > 0) "Only mobile data counts; Wi-Fi is free. Big downloads wait for Wi-Fi."
-                        else "PocketIDE uses no mobile data for its own transfers. Agents' own traffic is never blocked.",
+                        if (limitMb > 0) {
+                            "Only mobile data counts; Wi-Fi is free. The daily limit is for PocketIDE's own transfers; " +
+                                "the agents' own traffic is counted but never blocked. " +
+                                if (settings.wifiOnlyBigDownloads) "Big downloads wait for Wi-Fi." else "Big downloads ask first and show their size."
+                        } else {
+                            "PocketIDE uses no mobile data for its own transfers. The agents' own traffic is counted but never blocked."
+                        },
                     )
                 }
             }
@@ -244,6 +256,10 @@ private fun AgentsCard(
         }
         val failed = agents.mapNotNull { agent -> (rooms[agent.id] as? RoomState.Failed)?.let { agent to it } }
         failed.forEach { (agent, state) -> ToneLine(Told("${agent.displayName}: ${state.why}", Tone.ERROR)) }
+        val computer by graph.computer.state.collectAsStateWithLifecycle()
+        if (failed.isNotEmpty() && SetUpOffer.needsOwner(computer)) {
+            TextButton(onClick = nav::computer) { Text(SetUpOffer.TITLE) }
+        }
         if (active.isNotEmpty()) {
             HorizontalDivider()
             OutlinedButton(
@@ -293,6 +309,29 @@ private fun runStatus(status: String): String = when (status) {
     "queued", "requested", "pending", "waiting" -> "Waiting"
     "in_progress" -> "Running"
     else -> status.replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
+
+@Composable
+private fun UsageCard(sessions: List<SessionRecord>, agents: List<AgentInfo>, now: Long) {
+    // Recounted when the ticker moves (about once a minute), not on every recomposition.
+    val periods = remember(sessions, now) { SessionUsage.periods(sessions, now, Ist.zone()) }
+    SectionCard(null) {
+        periods.forEachIndexed { index, period ->
+            if (index > 0) HorizontalDivider()
+            InfoRow(
+                period.period.label,
+                if (period.active == 0) "No sessions" else ManageFormat.duration(period.timeMs),
+            )
+            period.agents.forEach { usage ->
+                val name = agents.firstOrNull { it.id == usage.agentId }?.displayName ?: usage.agentId
+                Hint("$name: ${SessionUsage.line(usage)}")
+            }
+        }
+        Hint(
+            "Time runs from a session's start to its last activity. Tokens are each session's total, " +
+                "shown only where the agent records them.",
+        )
+    }
 }
 
 @Composable

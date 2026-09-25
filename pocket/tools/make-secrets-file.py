@@ -198,7 +198,8 @@ A. CREATE THE GITHUB APP (sign-in for PocketIDE; no server, no client secret)
       (the last part of its public link) into POCKETIDE_GITHUB_APP_SLUG. Do not generate a
       client secret or a private key: PocketIDE uses neither.
    8. Install App > your account > Only select repositories > pick your project repositories.
-      Repositories PocketIDE creates for you join the installation by themselves.
+      GitHub adds the repositories PocketIDE creates to this installation by itself; if one is
+      ever missing, PocketIDE shows a button that opens this page.
 
 
 B. CREATE THE GOOGLE CLOUD PROJECT (Drive's hidden app folder)

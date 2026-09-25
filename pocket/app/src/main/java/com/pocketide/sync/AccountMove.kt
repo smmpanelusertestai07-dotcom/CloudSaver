@@ -67,12 +67,14 @@ internal class AccountMove(private val kit: SyncKit) {
             val existing = target.find(RemoteIndex.NAME)?.id
             val bytes = kit.remote.encode(run.cipher, moved)
             val written = target.uploadBytes(RemoteIndex.NAME, bytes, existing)
+            moveQueue(run, job)
             job = job.copy(stage = MoveStage.REKEY, indexId = written.id)
             run.state = run.state.copy(
                 move = job,
                 account = job.to,
                 remote = RemoteMark(written.id, written.md5, written.modifiedTime, moved.revision, bytes.size.toLong(), moved.updatedAt),
-                alignedRevision = moved.revision,
+                // Another phone's writes this phone had not brought in yet are reconciled at the next pass.
+                alignedRevision = if (index.revision == run.state.alignedRevision) moved.revision else run.state.alignedRevision,
                 heldLease = true,
             )
             run.index = moved
@@ -108,6 +110,20 @@ internal class AccountMove(private val kit: SyncKit) {
         return job
     }
 
+    /**
+     * Queued entries that were uploaded (their record failed) or that reuse a file with the same
+     * content name files of the old account, which the owner may erase. From the switch on they
+     * name the new account's copy when the move made one; otherwise a blob is uploaded there again
+     * from the queue, where it still is, and a reuse is looked up by name when it is recorded.
+     * Done before the switch is saved, so a move cut off here repeats it.
+     */
+    private fun moveQueue(run: Run, job: MoveJob) {
+        for (e in run.entries()) {
+            val copy = job.copied[e.name]
+            kit.queue.update(run.cipher, e.copy(driveId = copy, attempted = e.blob && copy != null))
+        }
+    }
+
     private suspend fun copyOne(source: DriveStore, target: DriveStore, name: String, sourceId: String): String {
         val scratch = kit.queue.scratch()
         try {
@@ -119,12 +135,15 @@ internal class AccountMove(private val kit: SyncKit) {
         }
     }
 
-    /** Every object, the index and the vault's new key half are in the new account. */
+    /** Every object, the index and the vault's new key half are in the new account, and the queue names only files there. */
     private suspend fun verify(run: Run, job: MoveJob, target: DriveStore) {
-        val files = target.list().associateBy { it.name }
+        val present = target.list()
+        val files = present.associateBy { it.name }
+        val ids = present.map { it.id }.toSet()
         val index = run.index ?: throw SyncException("The copy could not be checked. Try the move again.")
         val missing = index.objects.distinctBy { it.name }.filter { o -> files[o.name]?.let { it.size == o.storedBytes || it.size <= 0 } != true }
-        if (missing.isNotEmpty()) throw SyncException("Some files did not arrive in ${job.to}. Try the move again.")
+        val strayQueued = run.entries().filter { it.driveId != null && it.driveId !in ids }
+        if (missing.isNotEmpty() || strayQueued.isNotEmpty()) throw SyncException("Some files did not arrive in ${job.to}. Try the move again.")
         val readBack = kit.remote.fetch(target, run.cipher, null, null).index
         if (readBack == null || readBack.revision != index.revision) throw SyncException("The copy could not be checked. Try the move again.")
         if (KEY_HALF !in files) throw SyncException("The new account does not have its key half yet. Try the move again.")

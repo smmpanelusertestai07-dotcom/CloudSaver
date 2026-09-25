@@ -1,5 +1,6 @@
 package com.pocketide.ui.manage
 
+import com.pocketide.model.AgentInfo
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.schedule.ScheduledTask
@@ -101,7 +102,13 @@ object DataMath {
             .take(limit)
             .toList()
 
-    fun liveSessions(sessions: List<SessionRecord>) = sessions.filter { it.status != SessionStatus.DELETED }
+    /** "myapp · Claude Code": the project's name and the agent's name as the owner knows it. */
+    fun sessionOrigin(session: SessionRecord, agents: List<AgentInfo>): String {
+        val agent = agents.firstOrNull { it.id == session.agentId }?.displayName ?: session.agentId
+        return "${session.projectId.substringAfter('/')} · $agent"
+    }
+
+    fun liveSessions(sessions: List<SessionRecord>) =sessions.filter { it.status != SessionStatus.DELETED }
 
     fun chatBytes(sessions: List<SessionRecord>): Long = liveSessions(sessions).sumOf { it.transcriptBytes }
 

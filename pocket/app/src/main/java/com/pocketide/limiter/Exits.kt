@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
+import androidx.core.content.edit
 
 /** What the engine was doing when this process last ended, written while it runs. */
 internal data class EngineTrace(val agentIds: List<String>, val bootCount: Int?)
@@ -56,15 +57,15 @@ internal class EngineRecord private constructor(private val context: Context) {
     private var previous: EngineTrace? = read()
 
     init {
-        if (previous != null) prefs.edit().remove(KEY_AGENTS).remove(KEY_BOOT).apply()
+        if (previous != null) prefs.edit { remove(KEY_AGENTS).remove(KEY_BOOT) }
     }
 
     fun running(agentIds: Collection<String>) {
-        prefs.edit().putString(KEY_AGENTS, agentIds.sorted().joinToString(",")).putInt(KEY_BOOT, bootCount() ?: -1).apply()
+        prefs.edit { putString(KEY_AGENTS, agentIds.sorted().joinToString(",")).putInt(KEY_BOOT, bootCount() ?: -1) }
     }
 
     fun stoppedCleanly() {
-        prefs.edit().remove(KEY_AGENTS).remove(KEY_BOOT).apply()
+        prefs.edit { remove(KEY_AGENTS).remove(KEY_BOOT) }
     }
 
     /** The stop to explain, if the rooms were running when an earlier process ended and the owner has not dismissed it. */
@@ -77,7 +78,7 @@ internal class EngineRecord private constructor(private val context: Context) {
 
     @Synchronized
     fun dismiss() {
-        prefs.edit().remove(KEY_STOP_AGENTS).remove(KEY_STOP_CAUSE).remove(KEY_STOP_MESSAGE).remove(KEY_STOP_AT).apply()
+        prefs.edit { remove(KEY_STOP_AGENTS).remove(KEY_STOP_CAUSE).remove(KEY_STOP_MESSAGE).remove(KEY_STOP_AT) }
     }
 
     private fun explain(trace: EngineTrace): RoomStop? {
@@ -96,12 +97,12 @@ internal class EngineRecord private constructor(private val context: Context) {
     }.getOrNull()
 
     private fun store(stop: RoomStop) {
-        prefs.edit()
-            .putString(KEY_STOP_AGENTS, stop.agentIds.joinToString(","))
-            .putString(KEY_STOP_CAUSE, stop.cause.name)
-            .putString(KEY_STOP_MESSAGE, stop.message)
-            .putLong(KEY_STOP_AT, stop.at)
-            .apply()
+        prefs.edit {
+            putString(KEY_STOP_AGENTS, stop.agentIds.joinToString(","))
+            putString(KEY_STOP_CAUSE, stop.cause.name)
+            putString(KEY_STOP_MESSAGE, stop.message)
+            putLong(KEY_STOP_AT, stop.at)
+        }
     }
 
     private fun stored(): RoomStop? {

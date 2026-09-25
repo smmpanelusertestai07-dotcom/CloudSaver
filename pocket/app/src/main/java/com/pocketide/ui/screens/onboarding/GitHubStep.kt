@@ -12,7 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.github.GitHubAccount
-import com.pocketide.ui.components.Tone
+import com.pocketide.github.gitHubAppChoice
 import com.pocketide.ui.shell.CheckCard
 import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.DeviceSignIn
@@ -44,6 +44,15 @@ fun GitHubStepScreen(onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val auth = graph.gitHubAuth
     val account by auth.account.collectAsStateWithLifecycle()
+    val appChoice = remember(graph) { gitHubAppChoice(graph) }
+    val appForm = remember { GitHubAppForm() }
+    val signIn = DeviceSignIn.of(graph)
+    // An App the owner enters below lands in the settings; reading them here redraws the step then.
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val configured = remember(settings.gitHubAppClientId) { auth.configured }
+    val appEntered = remember(settings.gitHubAppClientId) { appChoice.entered() != null }
+    // A typo GitHub rejects must be fixable here: Settings is not reachable before set-up ends.
+    var editingApp by remember { mutableStateOf(false) }
     // The poll's answer shows at once, even before the module publishes the account.
     var justConnected by remember { mutableStateOf<GitHubAccount?>(null) }
     val shown = account ?: justConnected
@@ -73,11 +82,14 @@ fun GitHubStepScreen(onDone: () -> Unit) {
         Gap(24.dp)
 
         when {
-            !auth.configured -> NoticeCard(
-                title = "GitHub sign-in is not set up in this copy",
-                text = "The app's owner adds the PocketIDE GitHub App's client ID when building the app. " +
-                    "This copy was built without it, so it cannot connect to GitHub. Install a release build instead.",
-                tone = Tone.WARN,
+            !configured || editingApp -> GitHubAppSetUp(
+                form = appForm,
+                choice = appChoice,
+                openUrl = { External.openUrl(context, it) },
+                onSaved = {
+                    editingApp = false
+                    signIn.start()
+                },
             )
             shown != null -> {
                 SectionLabel("Check before you go on")
@@ -110,11 +122,26 @@ fun GitHubStepScreen(onDone: () -> Unit) {
                     },
                 )
             }
-            else -> GitHubConnectPanel(
-                signIn = DeviceSignIn.of(graph),
-                openUrl = { External.openUrl(context, it) },
-                onConnected = { justConnected = it },
-            )
+            else -> {
+                GitHubConnectPanel(
+                    signIn = signIn,
+                    openUrl = { External.openUrl(context, it) },
+                    onConnected = { justConnected = it },
+                )
+                if (appEntered) {
+                    QuietAction(
+                        "Change the GitHub App's details",
+                        onClick = {
+                            signIn.reset()
+                            appChoice.current().let { app ->
+                                appForm.clientId = app.clientId
+                                appForm.slug = app.slug
+                            }
+                            editingApp = true
+                        },
+                    )
+                }
+            }
         }
     }
 }

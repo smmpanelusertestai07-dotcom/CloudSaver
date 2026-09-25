@@ -59,6 +59,61 @@ class AccountTest {
     }
 
     @Test
+    fun piecesStillWaitingForTheirRecordAreSentToTheNewAccount() = runBlocking {
+        val phone = syncedPhone()
+        phone.homeFile("claude", path).appendText("more\n")
+        // Same bytes as a screenshot Drive already has: queued as a reference to that file.
+        phone.mediaFile("claude", "owner/app", "s1", "copy.png").writeBytes(ByteArray(40) { 9 })
+        clock.advance(Durations.MINUTE)
+        // The new piece reaches the old account, but its record there fails.
+        phone.drive.failIndexWrites = 1
+        phone.engine.syncNow()
+        assertEquals(1, phone.queued().count { it.blob && it.driveId != null })
+        assertEquals(1, phone.queued().count { !it.blob })
+
+        phone.newAccount = DriveAuthResult.Authorized(newEmail)
+        phone.onAuthorize = { phone.account = newEmail }
+        phone.engine.moveToAnotherAccount()
+        phone.engine.eraseOldAccountCopy()
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+
+        val target = accounts[newEmail]
+        val index = RemoteIndex().decode(phone.cipher, target.named(RemoteIndex.NAME).single().bytes)
+        assertEquals(listOf(0L, 5L), index.objects.filter { it.path == path }.map { it.offset }.sorted())
+        assertTrue("every entry names its own file in the new account", index.objects.all { o -> target.files[o.driveId]?.name == o.name })
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader", account = newEmail)
+        reader.engine.fetchSession("s1")
+        assertEquals("chat\nmore\n", reader.homeFile("claude", path).readText())
+        assertEquals(40, reader.mediaFile("claude", "owner/app", "s1", "copy.png").length().toInt())
+    }
+
+    @Test
+    fun signingInToAnotherAccountSendsThePhonesFilesWholeToItsVault() = runBlocking {
+        val phone = syncedPhone()
+        phone.homeFile("claude", path).appendText("more\n")
+        clock.advance(Durations.MINUTE)
+        // The new piece reaches the old account, but its record there fails.
+        phone.drive.failIndexWrites = 1
+        phone.engine.syncNow()
+        assertEquals(1, phone.queued().count { it.blob && it.driveId != null })
+
+        // The owner signs in to another account, not through a move: a vault of its own.
+        phone.account = newEmail
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+
+        val target = accounts[newEmail]
+        val index = RemoteIndex().decode(phone.cipher, target.named(RemoteIndex.NAME).single().bytes)
+        assertTrue("every entry names its own file in the new account", index.objects.all { o -> target.files[o.driveId]?.name == o.name })
+        assertEquals(listOf(0L), index.objects.filter { it.path == path }.map { it.offset })
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader", account = newEmail)
+        reader.engine.fetchSession("s1")
+        assertEquals("chat\nmore\n", reader.homeFile("claude", path).readText())
+        assertEquals(40, reader.mediaFile("claude", "owner/app", "s1", "shot.png").length().toInt())
+    }
+
+    @Test
     fun aMoveCutOffHalfwayContinuesWithoutCopyingTwice() = runBlocking {
         val phone = syncedPhone()
         phone.onAuthorize = { phone.account = newEmail }

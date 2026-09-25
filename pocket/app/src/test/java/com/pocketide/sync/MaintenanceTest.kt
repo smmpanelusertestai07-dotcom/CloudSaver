@@ -78,6 +78,29 @@ class MaintenanceTest {
     }
 
     @Test
+    fun cleanNowFreesWhatIsRebuiltWhenNeededAtAnyLevelButNeverAnOpenSession() = runBlocking {
+        val phone = phone()
+        phone.projects += Project(id = "owner/app", owner = "owner", repo = "app", addedAt = 0, lastActivityAt = clock.now)
+        val recent = phone.dirs.worktree("claude", "owner/app", "s-recent").apply { mkdirs() }
+        File(recent, ".gitignore").writeText("node_modules/\n")
+        File(recent, "node_modules/pkg.js").apply { parentFile?.mkdirs(); writeText("x".repeat(100)) }
+        val open = phone.dirs.worktree("claude", "owner/app", "s-open").apply { mkdirs() }
+        File(open, ".gitignore").writeText("node_modules/\n")
+        File(open, "node_modules/a.js").apply { parentFile?.mkdirs(); writeText("z") }
+        phone.active += "s-open"
+        val log = File(phone.dirs.logs, "yesterday.log").apply { parentFile?.mkdirs(); writeText("log"); setLastModified(clock.now - 2 * day) }
+
+        val freed = phone.engine.cleanNow()
+
+        assertEquals(103L, freed)
+        assertFalse("a cache of a project worked on today goes too", File(recent, "node_modules").exists())
+        assertFalse(log.exists())
+        assertTrue(File(open, "node_modules/a.js").exists())
+        assertTrue(phone.engine.storage.value.phoneLimitBytes > 0)
+        assertTrue("the phone's clean-up is never a notice of its own", phone.notifier.posted.isEmpty())
+    }
+
+    @Test
     fun onlyTheLastThreeBuildsAndSevenDaysOfTempAndLogsAreKept() {
         val phone = phone()
         val cleaner = LocalCleaner(phone.dirs)
@@ -125,7 +148,9 @@ class MaintenanceTest {
 
         phone.network.online = true
         phone.engine.syncNow()
+        assertEquals(0, phone.computerRemovals)
         phone.engine.runMaintenance()
+        assertEquals("the computer module removes it, so it stops its programs and says it is not set up", 1, phone.computerRemovals)
         assertFalse(phone.dirs.rootfs.exists())
         assertNull(phone.engine.computerRemovalAt.value)
         assertTrue(phone.notifier.posted.any { it.title == "The computer was removed" })

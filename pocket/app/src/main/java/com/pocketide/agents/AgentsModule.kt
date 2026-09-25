@@ -10,6 +10,7 @@ import com.pocketide.R
 import com.pocketide.core.AppDirs
 import com.pocketide.core.AppJson
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.core.Clock
 import com.pocketide.core.Http
 import com.pocketide.linux.ComputerState
@@ -17,8 +18,10 @@ import com.pocketide.linux.GuestRoot
 import com.pocketide.linux.LinuxCommand
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.Decision
+import com.pocketide.model.SessionRecord
 import com.pocketide.rooms.RoomLayout
 import com.pocketide.rooms.RoomState
+import com.pocketide.sync.SessionBackup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -94,6 +97,8 @@ private class GraphAgentsEnv(private val graph: AppGraph) : AgentsEnv {
 
     override suspend fun configureRoom(agentId: String) = graph.rooms.configure(agentId)
 
+    override suspend fun saveBeforeRemoving(agentId: String): List<String> = AgentRemoval(RemovalPorts(graph)).saveFirst(agentId)
+
     override suspend fun deleteRoom(agentId: String) = graph.rooms.delete(agentId)
 
     override fun allowDownload(bytes: Long): Decision = graph.dataBudget.allow(bytes, DATA_KIND, big = true)
@@ -122,9 +127,22 @@ private class GraphAgentsEnv(private val graph: AppGraph) : AgentsEnv {
     }
 }
 
+/** Saving a room's sessions before it is removed, through the rooms, sessions and sync modules. */
+private class RemovalPorts(private val graph: AppGraph) : AgentRemoval.Ports {
+    override suspend fun stopRoom(agentId: String) = graph.rooms.stop(agentId)
+
+    override fun sessions(): List<SessionRecord> = graph.sessions.all.value
+
+    override suspend fun saveNow(sessionId: String): String? = graph.sessions.saveNow(sessionId)
+
+    override suspend fun upload(sessionIds: List<String>) = graph.sync.uploadNow(sessionIds)
+
+    override fun backup(sessionId: String): SessionBackup? = graph.sync.backups.value[sessionId]
+}
+
 /** "New agents on Open VSX", on the agents channel. Names come from the registry, so they are shown as plain, short text. */
 internal object AgentNotices {
-    private const val NOTIFICATION_ID = 4400
+    private const val NOTIFICATION_ID = NotificationIds.NEW_AGENTS
     private const val MAX_NAME = 60
 
     fun newAgents(context: Context, candidates: List<AgentCandidate>) {

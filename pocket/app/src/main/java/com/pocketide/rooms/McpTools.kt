@@ -14,6 +14,9 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.model.Thermal
 import com.pocketide.sessions.PutOnMainResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -22,6 +25,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.nio.channels.Channels
 import java.util.Locale
 
 /** What the MCP tools need from the rest of the app. */
@@ -235,12 +241,50 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         val secret = AgentFiles.isSecret(guestPath.trimStart('/')) ||
             RoomLayout.homeRelative(guestPath)?.let(AgentFiles::isSecret) == true
         require(!secret) { "That looks like a sign-in or key file; it is never saved to Media." }
-        // Every folder on the way must be a real one: a link could point anywhere in the app's storage.
-        require(RoomFiles(path.root, guardSecrets = false).isFile(path.relative)) { "$guestPath is not a file (or it is a link)." }
-        val bytes = RoomFiles.attributes(path.file.toPath())?.size() ?: 0L
-        require(bytes <= MAX_MEDIA_BYTES) { "That file is too big for Media (over ${MAX_MEDIA_BYTES / 1_000_000} MB)." }
-        val item = ports.addMedia(session.id, path.file, mediaName(input.string("title"), path.file.name))
-        return "Saved to this session's Media as \"${item.name}\". The owner sees it there whenever this chat is reopened."
+        val copy = withContext(Dispatchers.IO) { copyOut(path, guestPath) }
+        try {
+            val item = ports.addMedia(session.id, copy, mediaName(input.string("title"), path.file.name))
+            return "Saved to this session's Media as \"${item.name}\". The owner sees it there whenever this chat is reopened."
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { copy.delete() }
+        }
+    }
+
+    /**
+     * A copy, in the app's own scratch folder, of the file the room named: opened once from the
+     * room's folder without following a link anywhere on the way, so Media gets exactly that
+     * file even if the room swaps a link in right after (a link could point anywhere in the
+     * app's storage, or into another room).
+     */
+    private fun copyOut(path: RoomPath, guestPath: String): File {
+        val channel = RoomFiles(path.root, guardSecrets = false).open(path.relative)
+            ?: throw IllegalArgumentException("$guestPath is not a file (or it is a link).")
+        return channel.use { source ->
+            require(source.size() <= MAX_MEDIA_BYTES) { TOO_BIG }
+            val folder = File(dirs.downloads, STAGING).apply { mkdirs() }
+            val copy = File.createTempFile("room-", ".part", folder)
+            var copied = false
+            try {
+                copy.outputStream().use { out -> copyCapped(Channels.newInputStream(source), out) }
+                copied = true
+            } finally {
+                if (!copied) copy.delete()
+            }
+            copy
+        }
+    }
+
+    /** Copies at most [MAX_MEDIA_BYTES]; a file that grew past that while copied is refused. */
+    private fun copyCapped(input: InputStream, out: OutputStream) {
+        val buffer = ByteArray(COPY_BUFFER)
+        var total = 0L
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) return
+            total += n
+            require(total <= MAX_MEDIA_BYTES) { TOO_BIG }
+            out.write(buffer, 0, n)
+        }
     }
 
     private fun previewPort(session: SessionRecord, input: JsonObject): String {
@@ -275,6 +319,9 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         private const val MAX_LISTED = 20
         private const val FAILURE_LINES = 30
         const val MAX_MEDIA_BYTES = 200_000_000L
+        private const val TOO_BIG = "That file is too big for Media (over ${MAX_MEDIA_BYTES / 1_000_000} MB)."
+        private const val STAGING = "room-media"
+        private const val COPY_BUFFER = 64 * 1024
         private val UNSAFE_NAME = Regex("[^A-Za-z0-9 ._()-]")
 
         /** Tools that push or write for the owner while they run: the room must not close under them. */

@@ -5,6 +5,7 @@ import com.pocketide.google.DriveStore
 import com.pocketide.model.Lease
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.VaultIndex
+import com.pocketide.model.VaultObject
 import com.pocketide.sessions.Sessions
 import kotlinx.coroutines.CancellationException
 
@@ -56,9 +57,7 @@ internal class SyncPass(
         if (snapshot == null) return offline(run)
         LeasePolicy.heldByOther(snapshot.index, ports.device, run.now)?.let { return locked(run, drive, snapshot, it, book) }
         kit.flows.leaseHolder.value = null
-        val remoteIndex = snapshot.index
-        if (remoteIndex != null && remoteIndex.revision != run.state.alignedRevision) reconciler.reconcile(run, remoteIndex, drive, book)
-        adoptRemote(run, snapshot)
+        catchUp(run, drive, snapshot, book)
         val report = upload(run, drive, opts, book, onlyConflicts = false)
         val removals = removals(run, book)
         val erase = run.state.eraseQueue + book.erasingNow()
@@ -98,8 +97,24 @@ internal class SyncPass(
 
     fun book(run: Run) = SessionBook(ports.localSessions(), run.index?.sessions.orEmpty(), run.state.erased.keys)
 
-    /** Queues every new byte and changed file, and notes files that disappeared. */
-    fun collect(run: Run, book: SessionBook, index: VaultIndex?) {
+    /**
+     * Queues every new byte now, online or not, and returns the sessions with bytes Drive has not
+     * confirmed yet: those in the queue, and those with a database still too fresh to copy.
+     */
+    fun queueOnly(run: Run): Set<String> {
+        kit.queue.recover()
+        val book = book(run)
+        val deferred = collect(run, book, run.index)
+        run.save()
+        Views.publishWaiting(run, book)
+        return deferred + run.entries().filter { !it.conflict }.mapNotNull { it.sessionId }
+    }
+
+    /**
+     * Queues every new byte and changed file, and notes files that disappeared. Returns the
+     * sessions whose databases were left for a later run because they changed within [QUIET_MS].
+     */
+    fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
         val maker = run.maker()
         val entries = run.entries().filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
@@ -110,13 +125,30 @@ internal class SyncPass(
         val compactAllowed = !ports.network.metered()
         val tracks = run.state.tracks.toMutableMap()
         val seen = HashSet<String>()
+        val deferred = HashSet<String>()
         for (c in kit.scanner.scan(book.matcher, tracks, ports::roomRunning)) {
             seen += c.key
             if (!book.uploadable(c.sessionId)) continue
-            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) continue
+            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) {
+                c.sessionId?.let(deferred::add)
+                continue
+            }
             val waiting = queued[c.key].orEmpty()
             var track = tracks[c.key]
-            if (track == null && waiting.isEmpty()) track = reconciler.adopt(index, c)?.also { tracks[c.key] = it }
+            // Drive's version comes in first; nothing is sent against the phone's copy meanwhile.
+            if (track?.behindDrive == true) continue
+            if (track == null && waiting.isEmpty()) {
+                track = reconciler.adopt(index, c)
+                val inDrive = if (track == null && index != null) Chains.chain(index.objects, c.key) else emptyList()
+                if (inDrive.isNotEmpty()) {
+                    // Drive holds this file and the phone's copy went another way (it was here before
+                    // a restore): it must never replace Drive's. Reconcile keeps it as a conflict copy.
+                    val session = c.sessionId ?: inDrive.first().sessionId
+                    tracks[c.key] = FileTrack(kind = c.kind, agentId = c.agentId, path = c.path, sessionId = session, headCwd = c.headCwd, behindDrive = true)
+                    continue
+                }
+                track?.let { tracks[c.key] = it }
+            }
             if (track != null && track.sessionId == null && c.sessionId != null) track = track.copy(sessionId = c.sessionId)
             val known = Known.of(track, waiting)
             val result = if (c.kind.appendOnly) {
@@ -145,6 +177,7 @@ internal class SyncPass(
         }
         noteMissing(run, tracks, seen, book)
         run.state = run.state.copy(tracks = tracks)
+        return deferred
     }
 
     /**
@@ -158,7 +191,7 @@ internal class SyncPass(
             if (key in seen || key == SECRETS_KEY || !t.onPhone) continue
             val file = kit.scanner.locate(t.kind, t.agentId, t.path)
             if (file != null && factsOf(file) != null) continue
-            tracks[key] = if (removable(t, book)) {
+            tracks[key] = if (removedOnPurpose(t, book)) {
                 t.copy(missingSince = if (t.missingSince < 0) run.now else t.missingSince)
             } else {
                 t.copy(onPhone = false, missingSince = -1)
@@ -166,8 +199,14 @@ internal class SyncPass(
         }
     }
 
-    private fun removable(t: FileTrack, book: SessionBook): Boolean = when {
-        t.kind.appendOnly -> false
+    /**
+     * Only a file that could be removed on purpose, from a room that is still there: when the
+     * whole room went (its agent was removed), its chats and memory stay in Drive. Nor is Drive's
+     * version of a file this phone never had removed because the phone's own copy went.
+     */
+    private fun removedOnPurpose(t: FileTrack, book: SessionBook): Boolean = when {
+        t.kind.appendOnly || t.behindDrive -> false
+        !kit.scanner.roomExists(t.kind, t.agentId, t.path) -> false
         t.sessionId == null -> true
         t.kind == ObjectKind.MEDIA || t.kind == ObjectKind.MEMORY -> book.alive(t.sessionId)
         else -> false
@@ -175,14 +214,14 @@ internal class SyncPass(
 
     /** Files removed on purpose, past their grace period: they leave the index in this commit. */
     private fun removals(run: Run, book: SessionBook): Set<String> {
-        val due = run.state.tracks.filter { (_, t) -> t.missingSince >= 0 && run.now - t.missingSince >= REMOVAL_GRACE_MS && removable(t, book) }.keys
+        val due = run.state.tracks.filter { (_, t) -> t.missingSince >= 0 && run.now - t.missingSince >= REMOVAL_GRACE_MS && removedOnPurpose(t, book) }.keys
         if (due.isEmpty()) return due
         run.discard(run.entries().filter { it.trackKey in due })
         return due
     }
 
     private suspend fun queueSecrets(run: Run, index: VaultIndex?) {
-        val bytes = runCatching { ports.exportSecrets() }.getOrNull() ?: return
+        val bytes = localSecrets() ?: return
         try {
             val queued = run.entries().filter { it.kind == ObjectKind.SECRETS }
             val known = queued.maxByOrNull { it.createdAt }?.sha256
@@ -194,13 +233,84 @@ internal class SyncPass(
         }
     }
 
-    /** Takes what another phone (or a restore) brought into the index: settings, sessions, projects. */
-    suspend fun adoptRemote(run: Run, snapshot: RemoteSnapshot) {
+    /**
+     * Brings in what another phone wrote since this phone's files last matched Drive: its changes
+     * to files first, then its records. Every path that writes the index as the lease holder calls
+     * this first, so none of them can record this phone's work over the other phone's unseen.
+     */
+    suspend fun catchUp(run: Run, drive: DriveStore, snapshot: RemoteSnapshot, book: SessionBook) {
+        val index = snapshot.index
+        if (index != null && (index.revision != run.state.alignedRevision || run.state.tracks.values.any { it.behindDrive })) {
+            reconciler.reconcile(run, index, drive, book)
+        }
+        adoptRemote(run, drive, snapshot)
+    }
+
+    /**
+     * Takes what another phone (or a restore) brought into the index: settings, sessions,
+     * projects, Variables and Secrets.
+     */
+    suspend fun adoptRemote(run: Run, drive: DriveStore, snapshot: RemoteSnapshot) {
         run.keepIndex(snapshot)
         val index = snapshot.index ?: return
         adoptSettings(run, index)
         adoptSessions(run, index)
         adoptProjects(run, index)
+        adoptSecrets(run, drive, index)
+    }
+
+    /**
+     * Variables and Secrets that changed in Drive since this phone last synced them come in before
+     * this phone's go up; uploading its own whole set instead would drop the other phone's changes.
+     * When this phone changed nothing meanwhile, Drive's copy replaces its own; when both changed,
+     * they are merged value by value. The result goes up with this pass if it differs from Drive's.
+     * When Drive's copy cannot be brought in, this phone's waits too, and the next pass tries again.
+     */
+    private suspend fun adoptSecrets(run: Run, drive: DriveStore, index: VaultIndex) {
+        val remote = index.objects.filter { it.kind == ObjectKind.SECRETS }.maxByOrNull { it.createdAt } ?: return
+        val track = run.state.tracks[SECRETS_KEY]
+        if (track?.prefixSha256 == remote.sha256) return
+        val queued = run.entries().filter { it.kind == ObjectKind.SECRETS }
+        val broughtIn = try {
+            bringInSecrets(run, drive, remote, track)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+        // Queued without Drive's copy: never sent. The merged set is queued again below.
+        run.discard(queued)
+        if (!broughtIn) return
+        val synced = FileTrack(kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name))
+        run.state = run.state.copy(tracks = run.state.tracks + (SECRETS_KEY to synced))
+        queueSecrets(run, index)
+        run.save()
+    }
+
+    private suspend fun bringInSecrets(run: Run, drive: DriveStore, remote: VaultObject, track: FileTrack?) {
+        val local = localSecrets()
+        try {
+            val localSha = local?.let(Codec::sha256)
+            if (localSha == remote.sha256) return
+            val bytes = kit.materializer.bytes(drive, run.cipher, remote, MeteredDataBudget.KIND_SYNC)
+            try {
+                if (local == null || localSha == track?.prefixSha256) ports.importSecrets(bytes) else ports.mergeSecrets(bytes)
+            } finally {
+                bytes.fill(0)
+            }
+        } finally {
+            local?.fill(0)
+        }
+    }
+
+    /** This phone's Variables and Secrets, serialized; null when its store is not available. */
+    private suspend fun localSecrets(): ByteArray? = try {
+        ports.exportSecrets()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     /** Settings another phone changed come here, unless this phone changed them too (then its own win). */

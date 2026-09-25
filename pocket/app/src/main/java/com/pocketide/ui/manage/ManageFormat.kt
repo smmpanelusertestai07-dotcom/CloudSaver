@@ -52,7 +52,10 @@ object ManageFormat {
     fun usd(amount: Double): String = String.format(Locale.ENGLISH, "$%.2f", amount)
 
     /** Download counts on agent cards: "52K", "1.3M". */
-    fun downloads(count: Long): String = when {
+    fun downloads(count: Long): String = compact(count)
+
+    /** Large counts in a few characters: "52K", "1.3M". */
+    fun compact(count: Long): String = when {
         count >= 1_000_000 -> trimmed(count / 1_000_000.0) + "M"
         count >= 1_000 -> trimmed(count / 1_000.0) + "K"
         else -> count.coerceAtLeast(0).toString()
@@ -65,6 +68,19 @@ object ManageFormat {
         hours == 168 -> "Every week"
         hours % 24 == 0 -> "Every ${hours / 24} days"
         else -> "Every $hours hours"
+    }
+
+    /** "under 1 min", "45 min", "2 h", "3 h 20 min". */
+    fun duration(ms: Long): String {
+        val minutes = ms.coerceAtLeast(0) / 60_000
+        val hours = minutes / 60
+        val rest = minutes % 60
+        return when {
+            minutes < 1 -> "under 1 min"
+            hours == 0L -> "$minutes min"
+            rest == 0L -> String.format(Locale.ENGLISH, "%,d h", hours)
+            else -> String.format(Locale.ENGLISH, "%,d h %d min", hours, rest)
+        }
     }
 
     /** "in 5 min", "in 3 h", "in 2 days"; "now" for anything due. */

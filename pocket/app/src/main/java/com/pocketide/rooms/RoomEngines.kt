@@ -13,7 +13,8 @@ import java.security.MessageDigest
  * A launch's secret never goes in arguments or in the environment: every program of this app,
  * those of the other rooms included, can read another's /proc/<pid>/cmdline and environ. It goes
  * in a file in the room's bridge folder (written owner-only by the app just before the start),
- * which the program reads at start-up and which is deleted right after.
+ * which the program reads at start-up and which is deleted right after. The one exception is
+ * the hub's token, which agy takes only as an argument ([hub] says why that is still enough).
  */
 internal object RoomEngines {
     const val CODE_SERVER = "/opt/code-server/bin/code-server"
@@ -82,17 +83,22 @@ internal object RoomEngines {
 
     /**
      * Antigravity's hub (agy) on [port] for the session's worktree, as its VS Code extension starts
-     * it, with agy's own self-updater off (PocketIDE installs and checks agy). The extension also
-     * passes a CSRF token, but agy takes it only as an argument, where every room could read it:
-     * none is given, and the WebView reaches the hub only through the bridge's per-launch cookie.
+     * it, with agy's own self-updater off (PocketIDE installs and checks agy), and with this
+     * launch's [token]: the hub answers its API only to requests that carry it
+     * ([HUB_TOKEN_HEADER]), which the port bridge adds. The hub listens on 127.0.0.1, which every
+     * app on the phone can reach, so the token is what keeps other apps out; they cannot read it
+     * from the arguments, because Android hides this app's processes from them. Other rooms can
+     * (one Android user runs them all), but they reach the port directly anyway. Whether the hub
+     * keeps the token to itself is checked at every start ([hubGuard]).
      */
-    fun hub(dirs: AppDirs, profile: RoomProfile, guestWorktree: String, port: Int, environment: Map<String, String>): LinuxCommand =
+    fun hub(dirs: AppDirs, profile: RoomProfile, guestWorktree: String, port: Int, environment: Map<String, String>, token: String): LinuxCommand =
         LinuxCommand(
             argv = launcher(profile.agentId) + listOf(
                 AGY,
                 "--hub",
                 "--hub-port=$port",
                 "--app_data_dir=antigravity",
+                "--csrf_token=$token",
                 "--add-dir=$guestWorktree",
             ),
             binds = RoomLayout.binds(dirs, profile.agentId),
@@ -120,6 +126,18 @@ internal object RoomEngines {
             workDir = guestWorktree,
         )
 
+    /**
+     * A program run to its end in the room of [agentId] (a scheduled task), through room.py like
+     * the engines, so what it writes is private to the room as well.
+     */
+    fun headless(dirs: AppDirs, agentId: String, argv: List<String>, workDir: String, environment: Map<String, String>): LinuxCommand =
+        LinuxCommand(
+            argv = launcher(agentId) + argv,
+            binds = RoomLayout.binds(dirs, agentId),
+            env = environment,
+            workDir = workDir,
+        )
+
     /** Runs room.py's set-up steps in the room and nothing else (a registration without a start). */
     fun setUpOnly(dirs: AppDirs, agentId: String, environment: Map<String, String>): LinuxCommand = LinuxCommand(
         argv = launcher(agentId) + "/bin/true",
@@ -140,6 +158,28 @@ internal object RoomEngines {
 
     fun readyPath(engine: Engine) = if (engine == Engine.CODE_SERVER) "/healthz" else "/"
 
+    /**
+     * Whether the hub refuses a caller that does not have its [token], as the terminal refuses
+     * one without its secret. agy puts the token in its page for its own scripts, and some
+     * versions serve that page to anyone: then any app on the phone could read it there and use
+     * the agent ([HubGuard.GIVES_TOKEN_AWAY]); one that answers without the token at all does not
+     * enforce it ([HubGuard.ANSWERS_WITHOUT_TOKEN]). [withoutToken] and [withToken] are the hub's
+     * answers to its page without and with the token.
+     */
+    fun hubGuard(withoutToken: HttpAnswer?, withToken: HttpAnswer?, token: String): HubGuard = when {
+        withoutToken == null || withToken == null -> HubGuard.NO_ANSWER
+        withoutToken.body.contains(token) || withoutToken.head.contains(token) -> HubGuard.GIVES_TOKEN_AWAY
+        withoutToken.status !in 400..499 -> HubGuard.ANSWERS_WITHOUT_TOKEN
+        withToken.status !in 200..399 -> HubGuard.REFUSES_TOKEN
+        else -> HubGuard.GUARDED
+    }
+
+    /**
+     * The header agy's hub reads its token from: its own page's scripts send it on every call
+     * (read from agy 1.2.10's page, which the pinned VS Code extension also starts it for).
+     */
+    const val HUB_TOKEN_HEADER = "x-codeium-csrf-token"
+
     private fun launcher(agentId: String) = listOf(RoomLayout.PYTHON, RoomLayout.ROOM_LAUNCHER, agentId, "--")
 
     fun sha256Hex(text: String): String =
@@ -147,4 +187,22 @@ internal object RoomEngines {
 
     const val CODE_SERVER_KIND = "code-server"
     const val TERMINAL_KIND = "terminal"
+}
+
+/** What a started hub does with its token, checked before its port is handed to the bridge. */
+internal enum class HubGuard {
+    /** Only a request with the token gets the agent. */
+    GUARDED,
+
+    /** Its page, and with it the token, goes to any caller: any app on the phone could use the agent. */
+    GIVES_TOKEN_AWAY,
+
+    /** It answers a caller without the token: it does not enforce it, so any app on the phone could use the agent. */
+    ANSWERS_WITHOUT_TOKEN,
+
+    /** It refuses even the token it was started with (a newer agy may read it from elsewhere). */
+    REFUSES_TOKEN,
+
+    /** It stopped answering while it was checked. */
+    NO_ANSWER,
 }

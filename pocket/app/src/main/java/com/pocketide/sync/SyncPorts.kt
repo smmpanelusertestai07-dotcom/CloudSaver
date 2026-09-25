@@ -100,12 +100,22 @@ internal interface SyncPorts {
     /** Every Variable and Secret, serialized; null when the secrets store is not available. */
     suspend fun exportSecrets(): ByteArray?
 
+    /** Replaces this phone's Variables and Secrets with Drive's copy. */
     suspend fun importSecrets(bytes: ByteArray)
+
+    /** Merges Drive's copy into this phone's Variables and Secrets (both changed since the last sync). */
+    suspend fun mergeSecrets(bytes: ByteArray)
 
     fun phone(): PhoneSnapshot
 
     /** True while the computer is neither installing nor updating. */
     fun computerIdle(): Boolean
+
+    /**
+     * Removes the unused computer through its own module, which stops its programs, clears its
+     * set-up record and shows it as not set up, so it is set up again on the next use.
+     */
+    suspend fun removeComputer()
 
     suspend fun authorizeNewAccount(): DriveAuthResult
 

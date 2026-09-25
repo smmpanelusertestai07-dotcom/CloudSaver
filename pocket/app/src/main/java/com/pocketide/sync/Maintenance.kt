@@ -32,9 +32,8 @@ internal class Maintenance(
      */
     suspend fun run(run: Run): List<String> {
         val settings = ports.settings.settings.value
-        val book = pass.book(run)
-        cleanPhone(run, settings, book, force = false)
-        computer(run, settings, book)
+        cleanPhone(run, settings, pass.book(run))
+        computer(run, settings, pass.book(run))
         run.save()
         if (!ports.network.online()) return emptyList()
         val drive = run.drive()
@@ -45,6 +44,9 @@ internal class Maintenance(
             run.save()
             return emptyList()
         }
+        // An expired lease is taken below: what the other phone did before it went quiet comes in first.
+        pass.catchUp(run, drive, snapshot, pass.book(run))
+        val book = pass.book(run)
         val extras = retention(run, index, settings, book)
         var latest = committer.commit(run, drive, snapshot, CommitMode.HOLDER, extras)
         phoneCopies(run, latest.index ?: index, settings, book)
@@ -57,24 +59,44 @@ internal class Maintenance(
     }
 
     /** Temp files, logs, old build outputs and idle caches; at 90 % of the phone limit, more. */
-    fun cleanPhone(run: Run, settings: Settings, book: SessionBook, force: Boolean) {
-        val now = run.now
-        val active = ports.activeSessionIds()
-        cleaner.oldFiles(now, Durations.days(TEMP_DAYS), ports.roomsRunning())
-        cleaner.builds()
-        cleaner.caches(now, settings.cacheDays, activity(book), active, force = false)
+    fun cleanPhone(run: Run, settings: Settings, book: SessionBook) {
+        routineClean(run, settings, book)
         val appBytes = measuredAppBytes()
         val free = ports.dirs.base.usableSpace
-        val limit = Limits.gb(settings.phoneLimitGb)
         when (Limits.phoneSpace(appBytes, free, settings.phoneLimitGb)) {
             PhoneSpace.FULL -> {
-                val freed = cleaner.caches(now, settings.cacheDays, activity(book), active, force = true) +
-                    cleaner.oldFiles(now, Durations.DAY, ports.roomsRunning())
+                val freed = deepClean(run, settings, book)
                 if (freed > 0) notices.phoneCleaned(run, freed)
             }
-            PhoneSpace.NEARLY_FULL -> if (!force) notices.phoneNearlyFull(run, appBytes, limit)
+            PhoneSpace.NEARLY_FULL -> notices.phoneNearlyFull(run, appBytes, Limits.gb(settings.phoneLimitGb))
             PhoneSpace.OK -> Unit
         }
+        publishStorage(run, settings)
+    }
+
+    /**
+     * "Clean now" (§6.5): everything the 90 % clean-up removes goes now, whatever the level: idle
+     * caches that are rebuilt when needed, temp files and logs, old build outputs. Sessions open in
+     * a room are never touched. Returns the bytes freed.
+     */
+    fun cleanNow(run: Run): Long {
+        val settings = ports.settings.settings.value
+        val book = pass.book(run)
+        val freed = routineClean(run, settings, book) + deepClean(run, settings, book)
+        publishStorage(run, settings)
+        return freed
+    }
+
+    private fun routineClean(run: Run, settings: Settings, book: SessionBook): Long =
+        cleaner.oldFiles(run.now, Durations.days(TEMP_DAYS), ports.roomsRunning()) +
+            cleaner.builds() +
+            cleaner.caches(run.now, settings.cacheDays, activity(book), ports.activeSessionIds(), force = false)
+
+    private fun deepClean(run: Run, settings: Settings, book: SessionBook): Long =
+        cleaner.caches(run.now, settings.cacheDays, activity(book), ports.activeSessionIds(), force = true) +
+            cleaner.oldFiles(run.now, Durations.DAY, ports.roomsRunning())
+
+    private fun publishStorage(run: Run, settings: Settings) {
         kit.flows.storage.value = Views.storage(run, run.index, settings, kit.flows.storage.value, measuredAppBytes())
     }
 
@@ -94,10 +116,11 @@ internal class Maintenance(
 
     /**
      * The whole computer after [Settings.computerUnusedDays] without agent activity: a 7-day
-     * notice first, then removed only when everything is synced and nothing runs. Only the
-     * rootfs goes; it is rebuilt on the next use.
+     * notice first, then removed only when everything is synced and nothing runs. The computer
+     * module removes it, so it also stops its programs and shows it as not set up; it is set up
+     * again on the next use.
      */
-    private fun computer(run: Run, settings: Settings, book: SessionBook) {
+    private suspend fun computer(run: Run, settings: Settings, book: SessionBook) {
         val days = settings.computerUnusedDays
         val rootfs = ports.dirs.rootfs
         val lastWork = (book.all.map { it.lastActivityAt } + ports.localProjects().map { it.lastActivityAt }).maxOrNull() ?: 0L
@@ -112,9 +135,10 @@ internal class Maintenance(
                 notices.computerNotice(run, days, at)
             }
             run.now >= due && everythingSynced(run) && !ports.roomsRunning() && ports.computerIdle() -> {
-                deleteTree(rootfs)
+                ports.removeComputer()
                 run.state = run.state.copy(computerNoticeDue = null, computerDayBeforeSent = false)
-                notices.computerRemoved(run)
+                // A removal that failed shows on the computer's own card, with what to do.
+                if (!isRealDirectory(rootfs)) notices.computerRemoved(run)
             }
             run.now >= due - Durations.DAY && !run.state.computerDayBeforeSent -> {
                 notices.computerTomorrow(run, due)
@@ -134,7 +158,9 @@ internal class Maintenance(
      */
     private suspend fun retention(run: Run, index: VaultIndex, settings: Settings, book: SessionBook): CommitExtras {
         val now = run.now
-        val erase = Retention.dueForErase(index, now) + run.state.eraseQueue
+        // Restored on this phone but not yet in Drive: the restore goes out first, nothing is erased.
+        val restoredHere = ports.localSessions().filter { it.deletedAt == null }.map { it.id }.toSet()
+        val erase = Retention.dueForErase(index, now) - restoredHere + run.state.eraseQueue
         val inDrive = index.sessions.map { s -> book[s.id]?.takeIf { it.lastActivityAt > s.lastActivityAt } ?: s }
         val keep = Retention.plan(inDrive, run.state.notices, Retention.RULE_KEEP, settings.keepChatsMonths, now)
         val shareFull = Chains.storedBytes(index.objects) >= Limits.gb(settings.driveLimitGb)

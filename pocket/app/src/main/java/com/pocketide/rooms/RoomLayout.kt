@@ -66,10 +66,11 @@ internal object RoomLayout {
     }
 
     /**
-     * The room's environment: who it is, where media goes, the project's Variables, then the
-     * engine's own settings ([engine] wins over Variables). Variables that would change how the
-     * room itself runs, or that name a credential the app holds, are left out and reported in
-     * [dropped]. Never a token: the app's GitHub and Drive credentials are not Variables.
+     * The room's environment, the same for every program in it (engine, `>_` terminal, scheduled
+     * run): who it is, where media goes, the project's Variables, the agent's own self-updater off,
+     * then the program's own settings ([engine] wins over Variables). Variables that would change
+     * how the room itself runs, or that name a credential the app holds, are left out and reported
+     * in [dropped]. Never a token: the app's GitHub and Drive credentials are not Variables.
      */
     fun environment(
         agentId: String,
@@ -85,8 +86,18 @@ internal object RoomLayout {
         env["POCKETIDE_MEDIA_ROOT"] = AppDirs.GUEST_WORK
         env["BROWSER"] = XDG_OPEN
         env["PLAYWRIGHT_BROWSERS_PATH"] = BrowserTools.BROWSERS
+        env.putAll(updatesOff(agentId))
         env.putAll(engine)
         return env
+    }
+
+    /**
+     * PocketIDE installs and checks each agent's pinned binary, so no program in the room may
+     * replace it: agy updates itself unless told not to, wherever it is started.
+     */
+    private fun updatesOff(agentId: String): Map<String, String> = when (agentId) {
+        RoomProfiles.ANTIGRAVITY -> mapOf("AGY_CLI_DISABLE_AUTO_UPDATE" to "true")
+        else -> emptyMap()
     }
 
     fun isReserved(name: String): Boolean =

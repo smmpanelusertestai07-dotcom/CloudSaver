@@ -26,6 +26,8 @@ internal class RoomTerminals(
     private val output: (agentId: String) -> OutputRing,
     private val environment: suspend (agentId: String, projectId: String) -> Map<String, String>,
     private val newSecret: () -> String,
+    /** Rebuilds the room's settings for a terminal about to start: the agents' programs it runs read them too. */
+    private val rebuildSettings: suspend (session: SessionRecord) -> Unit = {},
 ) {
     private class Terminal(
         val sessionId: String,
@@ -43,6 +45,8 @@ internal class RoomTerminals(
     private val lock = Mutex()
 
     fun isEmpty() = live.isEmpty()
+
+    fun hasAny(agentId: String) = live.values.any { it.agentId == agentId }
 
     fun ports(): Set<Int> = live.values.map { it.port }.toSet()
 
@@ -92,8 +96,9 @@ internal class RoomTerminals(
         withContext(Dispatchers.IO) {
             RoomLayout.hostFolders(dirs, agentId).forEach { it.mkdirs() }
             configurator.installTools()
-            bridgeFiles.write(secretFile, secret)
         }
+        rebuildSettings(session)
+        withContext(Dispatchers.IO) { bridgeFiles.write(secretFile, secret) }
         env.phoneBridge.start(agentId)
         val command = RoomEngines.terminal(
             dirs, agentId, AppDirs.guestWorktree(session.projectId, session.id), port, environment(agentId, session.projectId),

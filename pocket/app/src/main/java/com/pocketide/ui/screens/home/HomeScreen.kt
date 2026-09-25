@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,16 +32,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,7 +50,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,11 +61,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.limiter.Condition
@@ -79,18 +78,22 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.DataUsage
+import com.pocketide.sync.PhoneSpace
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.manage.BackgroundLimitNote
+import com.pocketide.ui.manage.PhoneSpaceNotice
 import com.pocketide.ui.manage.StopBanner
 import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.shell.External
+import com.pocketide.ui.screens.onboarding.SetUpComputerCard
+import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.screens.project.AgentMark
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -106,7 +109,6 @@ import kotlinx.coroutines.launch
  * Home: banners that need the owner, the phone strip, projects (New / Import) and the agents
  * with their live state.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(nav: PocketNav) {
     val graph = rememberGraph()
@@ -119,53 +121,27 @@ fun HomeScreen(nav: PocketNav) {
     val phone by graph.phone.snapshot.collectAsStateWithLifecycle()
     val usage by graph.sync.usage.collectAsStateWithLifecycle()
     val sync by graph.sync.status.collectAsStateWithLifecycle()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     val conditions by graph.limiter.conditions.collectAsStateWithLifecycle()
-    val access by graph.access.state.collectAsStateWithLifecycle()
     val lastStop by graph.limiter.lastStop.collectAsStateWithLifecycle()
     val work by graph.limiter.work.collectAsStateWithLifecycle()
-    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
+    val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
 
     var newProject by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var agentSheet by remember { mutableStateOf<AgentInfo?>(null) }
     var removing by remember { mutableStateOf<Project?>(null) }
-    var menu by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("PocketIDE", fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(10.dp))
-                        SyncDot(sync, backups.values, onClick = nav::waitingUploads)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = nav::settings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Chats") }, onClick = { menu = false; nav.chats() })
-                        DropdownMenuItem(text = { Text("Activity") }, onClick = { menu = false; nav.activity() })
-                        DropdownMenuItem(text = { Text("Computer") }, onClick = { menu = false; nav.computer() })
-                        DropdownMenuItem(text = { Text("Your data") }, onClick = { menu = false; nav.yourData() })
-                        DropdownMenuItem(text = { Text("Usage") }, onClick = { menu = false; nav.usage() })
-                        DropdownMenuItem(text = { Text("Help") }, onClick = { menu = false; nav.help() })
-                    }
-                },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
+    // The shell draws the title bar (with [HomeBarActions]) and the access banner.
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0)) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            access.banner?.let { text -> item(key = "access") { Banner(Icons.Filled.Info, text, Tone.NEUTRAL) } }
             lastStop?.let { stop ->
                 item(key = "stop") {
                     StopBanner(
@@ -201,6 +177,18 @@ fun HomeScreen(nav: PocketNav) {
                     }
                 }
             }
+            if (storage.phone != PhoneSpace.OK) {
+                item(key = "phone-space") {
+                    PhoneSpaceNotice(
+                        storage,
+                        clean = graph.sync::cleanNow,
+                        onRaise = nav::settings,
+                        onLargest = nav::yourData,
+                        say = { text -> scope.launch { snackbar.showSnackbar(text) } },
+                    )
+                }
+            }
+            if (SetUpOffer.shows(computer)) item(key = "computer-setup") { SetUpComputerCard() }
             item(key = "phone") { PhoneStrip(phone, usage, onOpen = nav::computer) }
 
             item(key = "projects-label") {
@@ -293,17 +281,38 @@ private fun syncBanner(status: SyncStatus): Pair<String, Tone>? = when (status) 
 /** Opens a condition's fix; returns a message when the phone has no such page. */
 private fun openSettings(context: Context, action: String): String? {
     val intent = Intent(action)
-    if (needsPackageUri(action)) intent.data = Uri.parse("package:${context.packageName}")
+    if (needsPackageUri(action)) intent.data = "package:${context.packageName}".toUri()
     External.leaving(context)
     return try {
         context.startActivity(intent)
         null
     } catch (_: ActivityNotFoundException) {
         try {
-            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri()))
             null
         } catch (_: ActivityNotFoundException) {
             "This phone has no settings page for that."
+        }
+    }
+}
+
+/**
+ * Home's part of the shell's title bar: the backup dot, and the places the bottom bar does not
+ * reach (Chats, Activity, Settings and Help each have their own button already).
+ */
+@Composable
+fun HomeBarActions(nav: PocketNav) {
+    val graph = rememberGraph()
+    val sync by graph.sync.status.collectAsStateWithLifecycle()
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
+    var menu by remember { mutableStateOf(false) }
+    SyncDot(sync, backups.values, onClick = nav::waitingUploads)
+    Box {
+        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Computer") }, onClick = { menu = false; nav.computer() })
+            DropdownMenuItem(text = { Text("Your data") }, onClick = { menu = false; nav.yourData() })
+            DropdownMenuItem(text = { Text("Usage") }, onClick = { menu = false; nav.usage() })
         }
     }
 }
@@ -313,8 +322,10 @@ private fun openSettings(context: Context, action: String): String? {
 private fun SyncDot(status: SyncStatus, backups: Collection<SessionBackup>, onClick: () -> Unit) {
     val (tone, meaning) = syncDot(status, backups)
     val color = if (tone == Tone.NEUTRAL) MaterialTheme.colorScheme.primary else toneColor(tone)
+    // The dot is small; the place to tap is a full touch target around it.
     Box(
-        Modifier.size(28.dp).clip(CircleShape).clickable(onClickLabel = "See what's waiting", onClick = onClick)
+        Modifier.size(48.dp).clip(CircleShape)
+            .clickable(onClickLabel = "See what's waiting", role = Role.Button, onClick = onClick)
             .semantics { contentDescription = meaning },
         contentAlignment = Alignment.Center,
     ) {

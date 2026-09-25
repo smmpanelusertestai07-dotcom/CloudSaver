@@ -79,6 +79,11 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
     }
 
+    override suspend fun queueNow(sessionIds: List<String>): Set<String> = act { run ->
+        requireReady()
+        pass.queueOnly(run).intersect(sessionIds.toSet())
+    }
+
     override suspend fun restorePlan(): RestorePlan = act { run ->
         if (!ports.network.online()) throw SyncException(Plain.OFFLINE)
         restorer.plan(run)
@@ -102,9 +107,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             if (!ports.network.online()) throw SyncException(Plain.OFFLINE)
             val drive = run.drive()
             val snapshot = kit.remote.fetch(drive, run.cipher, run.state.remote, run.index)
-            val index = snapshot.index
-            if (index != null && index.revision != run.state.alignedRevision) reconciler.reconcile(run, index, drive, pass.book(run))
-            pass.adoptRemote(run, snapshot)
+            pass.catchUp(run, drive, snapshot, pass.book(run))
             committer.commit(run, drive, snapshot, CommitMode.TAKEOVER)
             flows.leaseHolder.value = null
             pass.run(run, PassOptions())
@@ -122,6 +125,8 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     override suspend fun eraseOldAccountCopy() {
         act { run -> mover.eraseOld(run) }
     }
+
+    override suspend fun cleanNow(): Long = act { run -> maintenance.cleanNow(run) }
 
     override suspend fun eraseForever(sessionIds: List<String>) {
         act { run ->

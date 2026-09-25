@@ -24,6 +24,13 @@ internal data class IndexDelta(
     val isEmpty: Boolean
         get() = addObjects.isEmpty() && removeEntries.isEmpty() && replaceFiles.isEmpty() && sessions.isEmpty() &&
             eraseSessions.isEmpty() && projects.isEmpty() && settingsJson == null && lease == null
+
+    /**
+     * The sessions this write really erases: never one it also restores, as when the owner restored
+     * a chat on its last day and the daily job's erase goes out in the same write.
+     */
+    val erased: Set<String>
+        get() = eraseSessions - sessions.filterIsInstance<SessionChange.Restore>().map { it.id }.toSet()
 }
 
 /** A change to one session record, as this phone saw it happen. */
@@ -45,16 +52,17 @@ internal object IndexMerge {
     /** Applies [delta] on top of [base], the newest index read from Drive. */
     fun apply(base: VaultIndex, delta: IndexDelta, now: Long, keyGeneration: Int): VaultIndex {
         val replacedFiles = delta.replaceFiles
+        val erased = delta.erased
         val newKeys = delta.addObjects.map { it.entryKey }.toSet()
         val kept = base.objects.filterNot { o ->
             o.entryKey in delta.removeEntries ||
-                o.sessionId in delta.eraseSessions ||
+                o.sessionId in erased ||
                 (o.fileKey in replacedFiles && o.entryKey !in newKeys)
         }
-        val added = delta.addObjects.filterNot { it.sessionId in delta.eraseSessions }
-        var sessions = base.sessions.filterNot { it.id in delta.eraseSessions }
+        val added = delta.addObjects.filterNot { it.sessionId in erased }
+        var sessions = base.sessions.filterNot { it.id in erased }
         for (change in delta.sessions) {
-            if (change.id !in delta.eraseSessions) sessions = applySession(sessions, change)
+            if (change.id !in erased) sessions = applySession(sessions, change)
         }
         return base.copy(
             updatedAt = now,

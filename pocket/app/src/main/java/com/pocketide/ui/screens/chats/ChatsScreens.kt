@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -73,6 +74,7 @@ import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
 import com.pocketide.ui.screens.project.MediaStrip
 import com.pocketide.ui.screens.project.SectionLabel
+import com.pocketide.ui.screens.project.SessionPullRows
 import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.agentName
@@ -89,7 +91,6 @@ import java.util.Locale
  * All chat sessions, on the phone and in Drive, with search and filters. Reading is read-only;
  * a chat can be renamed, continued in its agent, put on main or deleted (to Recently deleted).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatsScreen(nav: PocketNav) {
     val graph = rememberGraph()
@@ -116,15 +117,8 @@ fun ChatsScreen(nav: PocketNav) {
 
     LaunchedEffect(Unit) { attempt { graph.sessions.refresh() } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Chats") },
-                navigationIcon = { IconButton(onClick = nav::back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
+    // Chats is a tab: the shell draws its title bar, and there is nothing to go back to.
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0)) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
@@ -276,7 +270,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (session != null) {
-                item(key = "details") { SessionDetails(session, agentLabel, backups[session.id]) }
+                item(key = "details") { SessionDetails(session, agentLabel, backups[session.id], onOpen = nav::openExternal) }
                 item(key = "media") { MediaStrip(sessionId) }
             }
             item(key = "label") {
@@ -306,7 +300,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
 }
 
 @Composable
-private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: SessionBackup?) {
+private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: SessionBackup?, onOpen: (String) -> Unit) {
     val (status, _) = sessionStatusLabel(session.status, running = false)
     SectionCard(title = "Details") {
         InfoRow("Agent", agentLabel)
@@ -322,6 +316,7 @@ private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: S
         }
         InfoRow("Size", WorkFormat.bytes(sessionBytes(session)))
         InfoRow("Backup", backupState(session, backup).first)
+        SessionPullRows(session, onOpen)
     }
 }
 

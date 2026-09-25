@@ -37,7 +37,10 @@ class DeviceFlowAuthTest {
         clientId: String = "Iv23liTESTCLIENT",
         slug: String = "pocketide-test",
         oauth: HttpUrl = server.url("/"),
-    ) = DeviceFlowAuth(clientId, slug, TokenStore(store), testHttp, oauth, server.url("/"), clock, Dispatchers.IO, pause = {})
+    ) = authFor({ GitHubApp(clientId, slug) }, oauth)
+
+    private fun authFor(app: () -> GitHubApp, oauth: HttpUrl = server.url("/")) =
+        DeviceFlowAuth(app, TokenStore(store), testHttp, oauth, server.url("/"), clock, Dispatchers.IO, pause = {})
 
     private fun signedIn(expiresInMs: Long? = 8 * 3_600_000L, refresh: String? = "ghr_old") {
         TokenStore(store).save(
@@ -73,6 +76,23 @@ class DeviceFlowAuthTest {
         }
         assertEquals(LinkHealth.NOT_CONNECTED, auth.health())
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `an App entered while the app runs is used at once`() = runBlocking {
+        var app = GitHubApp("", "")
+        val auth = authFor({ app })
+        assertFalse(auth.configured)
+        assertEquals("https://github.com/settings/installations", auth.installUrl())
+
+        app = GitHubApp("Iv23liENTERED00000", "owners-pocketide")
+        assertTrue(auth.configured)
+        assertEquals("https://github.com/apps/owners-pocketide/installations/new", auth.installUrl())
+        server.enqueue(
+            json("""{"device_code":"d","user_code":"WDJB-MJHT","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}"""),
+        )
+        auth.startDeviceFlow()
+        assertEquals(mapOf("client_id" to "Iv23liENTERED00000"), server.next().form())
     }
 
     @Test
@@ -209,7 +229,7 @@ class DeviceFlowAuthTest {
         assertEquals("Octo Renamed", auth.account.value?.name)
 
         val closed = MockWebServer().apply { start() }
-        val offlineAuth = DeviceFlowAuth("Iv23li", "", TokenStore(store), testHttp, closed.url("/"), closed.url("/"), clock, Dispatchers.IO, pause = {})
+        val offlineAuth = DeviceFlowAuth({ GitHubApp("Iv23li", "") }, TokenStore(store), testHttp, closed.url("/"), closed.url("/"), clock, Dispatchers.IO, pause = {})
         closed.close()
         assertEquals(LinkHealth.OFFLINE, offlineAuth.health())
     }

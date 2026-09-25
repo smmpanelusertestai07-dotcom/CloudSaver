@@ -94,7 +94,12 @@ internal class OpenVsxCatalog(
 
     override suspend fun remove(agentId: String) {
         check(OfficialAgents.find(agentId) == null) { "The official agents stay. \"Only official agents\" hides the others instead." }
-        installLock.withLock { forget(agentId) }
+        installLock.withLock {
+            // Deleting the room deletes its sessions' worktrees and chats too: save them first.
+            val unsaved = env.saveBeforeRemoving(agentId)
+            check(unsaved.isEmpty()) { AgentRemoval.refusal(find(agentId)?.displayName ?: agentId, unsaved) }
+            forget(agentId)
+        }
     }
 
     /**

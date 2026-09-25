@@ -44,7 +44,14 @@ internal interface AgentsEnv {
     /** Writes the room's settings, rules and companion again (after an install). */
     suspend fun configureRoom(agentId: String)
 
-    /** Stops and deletes a room with everything in its home. */
+    /**
+     * Before a room is deleted: stops it, pushes its sessions' work to GitHub and uploads its
+     * chats to Drive ([AgentRemoval]). Returns what is still only on this phone, in plain
+     * sentences; empty when deleting the room loses nothing.
+     */
+    suspend fun saveBeforeRemoving(agentId: String): List<String>
+
+    /** Stops and deletes a room with everything in its home and its sessions' work folders. */
     suspend fun deleteRoom(agentId: String)
 
     /** The data rules for a package of [bytes]: big downloads wait for Wi-Fi by default. */

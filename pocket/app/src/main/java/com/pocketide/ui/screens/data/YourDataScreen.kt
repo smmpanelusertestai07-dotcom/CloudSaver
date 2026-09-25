@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.HideImage
@@ -60,6 +61,7 @@ import com.pocketide.model.AgentInfo
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import com.pocketide.sync.MoveState
+import com.pocketide.sync.PhoneSpace
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
@@ -78,6 +80,7 @@ import com.pocketide.ui.manage.ManageText
 import com.pocketide.ui.manage.MemoryFile
 import com.pocketide.ui.manage.MemoryFiles
 import com.pocketide.ui.manage.NavRow
+import com.pocketide.ui.manage.PhoneSpaceNotice
 import com.pocketide.ui.manage.SectionLabel
 import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.attempt
@@ -85,6 +88,7 @@ import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.manage.rememberLoad
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.project.DELETE_CHAT_TEXT
 import com.pocketide.ui.screens.project.SessionShortcut
 import com.pocketide.ui.shell.External
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +109,7 @@ private data class PhoneSizes(
 }
 
 private const val DELETE_EVERYTHING = "delete-everything"
+private const val CHECK_CODE = "check-code-before-delete"
 private const val MOVE = "move-account"
 private const val ERASE_OLD = "erase-old-account"
 
@@ -140,10 +145,17 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     val sizes = rememberLoad(agents, now) { readSizes(graph, agents) }
     val drive = rememberLoad("drive", now) { graph.usage.google() }
     var removeMediaOf by remember { mutableStateOf<SessionRecord?>(null) }
+    var deleting by remember { mutableStateOf<SessionRecord?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var codeAtRisk by remember { mutableStateOf<List<String>?>(null) }
     val largest = remember(sessions) { DataMath.largestSessions(sessions) }
 
     ManagePage("Your data", nav, runner) {
+        if (storage.phone != PhoneSpace.OK) {
+            item {
+                PhoneSpaceNotice(storage, clean = graph.sync::cleanNow, onRaise = nav::settings, onLargest = null, say = runner::say)
+            }
+        }
         item { SectionLabel("Where it lives") }
         item {
             SectionCard(null) {
@@ -163,9 +175,11 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { SectionLabel("By type") }
         item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
         item { SectionLabel("Largest sessions") }
-        item { LargestCard(largest, nav) { removeMediaOf = it } }
+        item { LargestCard(largest, agents, nav, onRemoveMedia = { removeMediaOf = it }, onDelete = { deleting = it }) }
         item { SectionLabel("Memory and instructions") }
         item { MemoryCard(agents, sizes.value?.memory, sizes.loading, onEdit) }
+        item { SectionLabel("Settings that can run code") }
+        item { ConfigChangesCard(graph, agents, runner) }
         item {
             SectionCard(null) {
                 NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
@@ -188,12 +202,14 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             SectionCard(null) {
                 Hint(
                     "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, " +
-                        "and the agents' sign-ins on this phone. Your code and the pocketide-keyring repository stay in GitHub. " +
+                        "and the agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first; " +
+                        "code that cannot be pushed is named before it goes. Your GitHub repositories and pocketide-keyring stay. " +
                         "This cannot be undone.",
                 )
+                val checking = runner.isBusy(CHECK_CODE)
                 Button(
                     onClick = { confirmDelete = true },
-                    enabled = !runner.isBusy(DELETE_EVERYTHING),
+                    enabled = !runner.isBusy(DELETE_EVERYTHING) && !checking,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError,
@@ -201,7 +217,13 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
                 ) {
                     Icon(Icons.Outlined.DeleteForever, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (runner.isBusy(DELETE_EVERYTHING)) "Deleting…" else "Delete everything")
+                    Text(
+                        when {
+                            checking -> "Saving your code…"
+                            runner.isBusy(DELETE_EVERYTHING) -> "Deleting…"
+                            else -> "Delete everything"
+                        },
+                    )
                 }
             }
         }
@@ -218,7 +240,21 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             onDismiss = { removeMediaOf = null },
         )
     }
-    if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
+    deleting?.let { session ->
+        ConfirmDialog(
+            title = "Delete \"${session.title}\"?",
+            text = DELETE_CHAT_TEXT,
+            confirmLabel = "Delete",
+            destructive = true,
+            onConfirm = {
+                runner.run("delete:${session.id}", done = "Moved to Recently deleted. Delete it forever there to free Drive space now.") {
+                    graph.sessions.delete(session.id)
+                }
+            },
+            onDismiss = { deleting = null },
+        )
+    }
+    fun deleteEverything() {
         runner.run(
             DELETE_EVERYTHING,
             outlivesScreen = true,
@@ -232,6 +268,28 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             clearAppTraces(graph.context, shortcuts)
             signOuts
         }
+    }
+    // The phone's clones and worktrees go too: code GitHub does not have yet is pushed first,
+    // and what still cannot be is named, so it is never lost without the owner saying so.
+    if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
+        runner.run(
+            CHECK_CODE,
+            onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
+        ) {
+            graph.rooms.stopAll()
+            graph.sessions.codeOnlyOnPhone()
+        }
+    }
+    codeAtRisk?.let { left ->
+        ConfirmDialog(
+            title = "Some code is only on this phone",
+            text = "It could not be pushed to GitHub, so deleting everything erases it for good:\n" +
+                left.joinToString("\n") { "• $it" } + "\n\nCancel to keep everything, then save it from its chat.",
+            confirmLabel = "Delete unpushed code too",
+            destructive = true,
+            onConfirm = ::deleteEverything,
+            onDismiss = { codeAtRisk = null },
+        )
     }
 }
 
@@ -312,20 +370,31 @@ private fun ByTypeCard(
     }
 }
 
+/**
+ * The largest chats, each with its own ways to free space. This is where the storage-full lock
+ * sends the owner, so everything here works without opening Chats.
+ */
 @Composable
-private fun LargestCard(largest: List<SessionRecord>, nav: PocketNav, onRemoveMedia: (SessionRecord) -> Unit) {
+private fun LargestCard(
+    largest: List<SessionRecord>,
+    agents: List<AgentInfo>,
+    nav: PocketNav,
+    onRemoveMedia: (SessionRecord) -> Unit,
+    onDelete: (SessionRecord) -> Unit,
+) {
     SectionCard(null) {
         if (largest.isEmpty()) Hint("No sessions yet.")
         largest.forEachIndexed { index, session ->
             if (index > 0) HorizontalDivider()
             Column(Modifier.fillMaxWidth()) {
+                val open = if (nav.opensChats) Modifier.clickable { nav.transcript(session.id) } else Modifier
                 Row(
-                    Modifier.fillMaxWidth().clickable { nav.transcript(session.id) }.padding(vertical = 4.dp),
+                    Modifier.fillMaxWidth().then(open).padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(session.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Hint("${session.projectId.substringAfter('/')} · ${session.agentId}")
+                        Hint(DataMath.sessionOrigin(session, agents))
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(ManageFormat.bytes(DataMath.sizeOf(session)), style = MaterialTheme.typography.bodyMedium)
@@ -337,11 +406,23 @@ private fun LargestCard(largest: List<SessionRecord>, nav: PocketNav, onRemoveMe
                         Text("Remove media, keep chat (${ManageFormat.bytes(session.mediaBytes)})")
                     }
                 }
+                TextButton(onClick = { onDelete(session) }) {
+                    Icon(Icons.Outlined.Delete, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Delete chat")
+                }
             }
         }
-        if (largest.isNotEmpty()) Hint("Deleting a whole session is in Chats; it goes to Recently deleted for 30 days.")
+        if (largest.isNotEmpty()) {
+            Hint(FREE_DRIVE_SPACE)
+            NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Delete forever to free Drive space") { nav.recentlyDeleted() }
+        }
     }
 }
+
+/** A deleted chat waits in Recently deleted, still in Drive; only "Delete forever" frees the space at once. */
+internal const val FREE_DRIVE_SPACE =
+    "A deleted chat stays in Recently deleted for 30 days and keeps its Drive space until then. Delete it forever there to free the space now."
 
 @Composable
 private fun MemoryCard(agents: List<AgentInfo>, memory: Map<String, List<MemoryFile>>?, loading: Boolean, onEdit: (MemoryFile) -> Unit) {
@@ -523,7 +604,8 @@ private fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit)
     ConfirmDialog(
         title = "Delete everything?",
         text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive, with the " +
-            "agents' sign-ins on this phone. Your GitHub repositories are not touched. Type DELETE to confirm.",
+            "agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first. Your GitHub " +
+            "repositories are not touched. Type DELETE to confirm.",
         confirmLabel = "Delete everything",
         destructive = true,
         confirmEnabled = DataMath.deleteConfirmed(typed),

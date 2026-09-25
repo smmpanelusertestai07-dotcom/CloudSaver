@@ -1,9 +1,13 @@
 package com.pocketide.ui.web
 
+import com.pocketide.media.KeyFrames
 import java.net.URI
 
 /** The photo picker mode an agent page's file input asks for. */
 enum class PickerKind { IMAGES, VIDEOS, IMAGES_AND_VIDEOS }
+
+/** The picker to open for a file input; [framesPerVideo] is 0 when videos go to the page as they are. */
+data class FilePick(val picker: PickerKind, val framesPerVideo: Int)
 
 enum class ExternalOpen { OPEN, ASK, IGNORE }
 
@@ -65,6 +69,23 @@ object WebPolicy {
             videos -> PickerKind.VIDEOS
             else -> PickerKind.IMAGES_AND_VIDEOS
         }
+    }
+
+    /**
+     * How a file input is served (§8): an input that takes only pictures still offers videos,
+     * and each picked video reaches the page as [FilePick.framesPerVideo] key frames.
+     */
+    fun filePick(acceptTypes: List<String>, multiple: Boolean): FilePick =
+        when (val accepts = pickerKind(acceptTypes)) {
+            PickerKind.IMAGES -> FilePick(PickerKind.IMAGES_AND_VIDEOS, KeyFrames.perVideo(multiple))
+            else -> FilePick(accepts, framesPerVideo = 0)
+        }
+
+    /** What the owner is told when picked videos gave no frame to send, or null when all did. */
+    fun unreadableVideos(count: Int): String? = when {
+        count <= 0 -> null
+        count == 1 -> "The video could not be read, so it was not sent."
+        else -> "$count videos could not be read, so they were not sent."
     }
 
     private val IMAGE_EXTENSIONS = setOf(".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif", ".bmp")

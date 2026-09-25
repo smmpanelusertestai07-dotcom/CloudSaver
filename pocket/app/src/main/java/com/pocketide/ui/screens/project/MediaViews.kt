@@ -97,10 +97,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
+import com.pocketide.media.MediaException
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
+import com.pocketide.media.PrivateCopy
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -295,7 +299,7 @@ private class PdfDocument(file: File) : Closeable {
         renderer.openPage(index).use { page ->
             val width = widthPx.coerceIn(1, MediaLimits.VIEW_SIDE_PX)
             val height = (page.height.toLong() * width / page.width.coerceAtLeast(1)).toInt().coerceIn(1, MediaLimits.VIEW_SIDE_PX * 2)
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            createBitmap(width, height).also { bitmap ->
                 bitmap.eraseColor(AndroidColor.WHITE)
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             }
@@ -575,16 +579,25 @@ private fun ApkBody(item: MediaItem, snackbar: SnackbarHostState) {
     val context = LocalContext.current
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
-    val facts by produceState<Result<ApkFacts>?>(null, item.file.path) {
-        value = withContext(Dispatchers.IO) { runCatching { readApk(context, item.file) } }
+    // One private copy is read and installed: the media folder is writable from Linux.
+    val staged by produceState<Result<Pair<PrivateCopy, ApkFacts>>?>(null, item.file.path) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val copy = graph.media.stageApk(item)
+                copy to readApk(context, copy.file)
+            }
+        }
     }
-    val result = facts
+    val result = staged
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when {
             result == null -> CircularProgressIndicator()
-            result.isFailure -> Notice("This APK could not be read. It may be damaged, so it will not be installed.")
+            result.isFailure -> Notice(
+                (result.exceptionOrNull() as? MediaException)?.message
+                    ?: "This APK could not be read. It may be damaged, so it will not be installed.",
+            )
             else -> {
-                val apk = result.getOrThrow()
+                val (copy, apk) = result.getOrThrow()
                 Text(apk.label ?: apk.packageName, style = MaterialTheme.typography.headlineSmall)
                 FactLine("Package", apk.packageName)
                 FactLine("Version", "${apk.versionName ?: "?"} (${apk.versionCode})")
@@ -600,14 +613,10 @@ private fun ApkBody(item: MediaItem, snackbar: SnackbarHostState) {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(enabled = apk.signers.isNotEmpty(), onClick = {
-                        scope.launch {
-                            attempt { withContext(Dispatchers.IO) { graph.media.shareUri(item) } }
-                                .onSuccess { uri -> install(context, uri)?.let { snackbar.showSnackbar(it) } }
-                                .onFailure { snackbar.showSnackbar("Could not start the install: ${plainReason(it)}") }
-                        }
+                        install(context, copy.uri)?.let { message -> scope.launch { snackbar.showSnackbar(message) } }
                     }) { Text("Install") }
                     OutlinedButton(onClick = {
-                        scope.act(snackbar, "Could not share") { shareItem(context, withContext(Dispatchers.IO) { graph.media.shareUri(item) }, item) }
+                        scope.act(snackbar, "Could not share") { shareItem(context, copy.uri, item) }
                     }) { Text("Share") }
                 }
             }
@@ -652,7 +661,7 @@ private fun readApk(context: Context, file: File): ApkFacts {
 private fun install(context: Context, uri: Uri): String? {
     if (uri == Uri.EMPTY) return "This file is not ready to install yet."
     if (!context.packageManager.canRequestPackageInstalls()) {
-        val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+        val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${context.packageName}".toUri())
         return try {
             External.leaving(context)
             context.startActivity(settings)

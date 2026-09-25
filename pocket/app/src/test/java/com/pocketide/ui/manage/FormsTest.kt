@@ -1,5 +1,7 @@
 package com.pocketide.ui.manage
 
+import com.pocketide.model.AgentInfo
+import com.pocketide.model.AgentSurface
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.schedule.ScheduledTask
@@ -70,6 +72,18 @@ class FormsTest {
         id = id, agentId = "claude", projectId = "me/app", title = id, branch = "pocket/claude/x", startedAt = 0,
         lastActivityAt = 0, status = status, transcriptBytes = chat, mediaBytes = media, mediaCount = count, deviceId = "d",
     )
+
+    @Test
+    fun `a session's origin names the agent as the owner knows it`() {
+        val claude = AgentInfo(
+            id = "claude", displayName = "Claude Code", publisher = "Anthropic", extensionId = "anthropic.claude-code",
+            surface = AgentSurface.CODE_SERVER_EXTENSION, official = true, verifiedPublisher = true,
+            dataGoesTo = "Anthropic.", signIn = "Sign in with Claude.", instructionsFile = "CLAUDE.md",
+        )
+        assertEquals("app · Claude Code", DataMath.sessionOrigin(session("s", 1, 0), listOf(claude)))
+        // An agent no longer installed still shows something the owner can recognise.
+        assertEquals("app · claude", DataMath.sessionOrigin(session("s", 1, 0), emptyList()))
+    }
 
     @Test
     fun `largest sessions skip deleted and empty ones`() {

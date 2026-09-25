@@ -9,9 +9,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 private val OAUTH_BASE = "https://github.com/".toHttpUrl()
 private val API_BASE = "https://api.github.com/".toHttpUrl()
 
+/** The owner's GitHub App: the one entered in the app first, the build's otherwise. Cheap; make one per use. */
+fun gitHubAppChoice(graph: AppGraph): GitHubAppChoice =
+    GitHubAppChoice(graph.settings, GitHubApp(BuildConfig.GITHUB_APP_CLIENT_ID, BuildConfig.GITHUB_APP_SLUG))
+
 fun createGitHubAuth(graph: AppGraph): GitHubAuth = DeviceFlowAuth(
-    clientId = BuildConfig.GITHUB_APP_CLIENT_ID.trim(),
-    appSlug = BuildConfig.GITHUB_APP_SLUG.trim(),
+    app = gitHubAppChoice(graph)::current,
     tokenStore = TokenStore(graph.secureStore),
     http = Http.client,
     oauthBase = OAUTH_BASE,

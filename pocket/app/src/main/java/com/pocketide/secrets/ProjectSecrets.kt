@@ -53,9 +53,20 @@ interface ProjectSecrets {
     /** Writes a Secret as a GitHub Actions secret of the project (owner's tap). */
     suspend fun pushToGitHub(projectId: String, name: String)
 
-    /** Everything, serialized, for the encrypted vault (the sync engine encrypts and uploads it). */
+    /**
+     * Everything, serialized, for the encrypted vault (the sync engine encrypts and uploads it).
+     * A removed name stays in it without its value, so the removal reaches other phones.
+     */
     suspend fun exportBlob(): ByteArray
 
     /** Replaces the local set with the vault's copy (restore on a new phone). */
     suspend fun importBlob(bytes: ByteArray)
+
+    /**
+     * Merges the vault's copy into the local set when both phones changed it since they last
+     * synced: value by value, the later change wins, a removal included.
+     */
+    suspend fun mergeBlob(bytes: ByteArray) {
+        throw UnsupportedOperationException("Merging Variables and Secrets is not available here.")
+    }
 }

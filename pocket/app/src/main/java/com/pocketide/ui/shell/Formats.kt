@@ -14,6 +14,7 @@ object Formats {
         "setup" -> "Computer set-up"
         "update" -> "Computer updates"
         "agents" -> "Agents (Open VSX and agy)"
+        "agent-traffic" -> "Agents at work (prompts and answers)"
         "app update" -> "App updates"
         "builds" -> "Build downloads"
         "browser" -> "Browser for agents"

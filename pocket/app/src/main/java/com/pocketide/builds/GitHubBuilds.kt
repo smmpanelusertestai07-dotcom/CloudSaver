@@ -96,11 +96,16 @@ internal class GitHubBuilds(
         val session = sessionOf(projectId, sessionId)
         val worktree = ports.worktree(session)
         val path = TemplateCatalog.repoPath(template)
-        withContext(ports.io) {
+        val addDependabot = withContext(ports.io) {
             if (!File(worktree, ".git").exists()) throw BuildsException("This session's files are not on this phone. Open the session first.")
             writeInside(worktree, path, ports.templateBytes(template))
+            // The owner's own Dependabot file, or a link in its place, is left as it is.
+            val absent = TemplateCatalog.dependabotPaths.none { Files.exists(File(worktree, it).toPath(), LinkOption.NOFOLLOW_LINKS) }
+            if (absent) writeInside(worktree, TemplateCatalog.DEPENDABOT_PATH, TemplateCatalog.dependabot.toByteArray())
+            absent
         }
         ports.commit(session, path, "Add the ${template.title} build (PocketIDE)")
+        if (addDependabot) ports.commit(session, TemplateCatalog.DEPENDABOT_PATH, "Keep the build actions up to date with Dependabot (PocketIDE)")
     }
 
     override suspend fun run(projectId: String, templateId: String, ref: String): Long? {
