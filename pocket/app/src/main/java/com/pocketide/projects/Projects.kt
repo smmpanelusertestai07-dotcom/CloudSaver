@@ -61,7 +61,11 @@ data class RepoAddress(val owner: String, val repo: String) {
  * (made on first open, not all at once); sessions add worktrees to it.
  */
 interface Projects {
+    /** What is known so far: empty until `vault/projects.json` is read, so a job in a fresh process uses [loaded]. */
     val all: StateFlow<List<Project>>
+
+    /** The projects once this phone's list is read from the disk. Background jobs read this, not [all]. */
+    suspend fun loaded(): List<Project> = all.value
 
     /** Creates a new private repository on GitHub and adds it. */
     suspend fun create(name: String, description: String): Project

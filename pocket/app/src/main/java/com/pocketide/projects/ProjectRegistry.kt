@@ -46,6 +46,8 @@ internal class ProjectRegistry(
 
     override val trust: StateFlow<Map<String, ProjectTrust>> = trustState.flow
 
+    override suspend fun loaded(): List<Project> = state.current()
+
     init {
         scope.launch {
             quietly {

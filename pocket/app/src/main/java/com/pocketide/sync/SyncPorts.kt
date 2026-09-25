@@ -66,6 +66,13 @@ internal interface SyncPorts {
 
     fun keyGeneration(): Int
 
+    /**
+     * Waits until the phone's own chat and project lists are read from the disk. Android often
+     * starts the process just for a sync; until then [localSessions], [localProjects] and
+     * [activeSessionIds] would say the phone has nothing.
+     */
+    suspend fun loadLocal() = Unit
+
     fun localSessions(): List<SessionRecord>
 
     fun localProjects(): List<Project>

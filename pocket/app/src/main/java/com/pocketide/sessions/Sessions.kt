@@ -48,7 +48,14 @@ data class AddedFile(val guestPath: String, val bytes: Long)
  * the date stored in Drive), then it is erased; "Delete forever" erases now.
  */
 interface Sessions {
+    /** What is known so far: empty until `vault/sessions.json` is read, so a job in a fresh process uses [loaded]. */
     val all: StateFlow<List<SessionRecord>>
+
+    /**
+     * The sessions once this phone's list, and which session each room has open, are read from
+     * the disk. Background jobs in a process Android has just started read this, not [all].
+     */
+    suspend fun loaded(): List<SessionRecord> = all.value
 
     suspend fun start(projectId: String, agentId: String, title: String? = null): SessionRecord
 

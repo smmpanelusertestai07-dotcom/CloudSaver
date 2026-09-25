@@ -129,6 +129,11 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
 
     override fun keyGeneration(): Int = graph.vault.generation()
 
+    override suspend fun loadLocal() {
+        graph.projects.loaded()
+        graph.sessions.loaded()
+    }
+
     override fun localSessions(): List<SessionRecord> = graph.sessions.all.value
 
     override fun localProjects(): List<Project> = graph.projects.all.value

@@ -162,6 +162,23 @@ class ScheduledRunTest {
     }
 
     @Test
+    fun runNowUsesTheSessionItShowedOrNone() = runTest {
+        val outcome = ScheduledRun(ports).run(task(), existingSessionId = "s-shown")
+        assertEquals("s-shown", outcome.sessionId)
+
+        ports.known = emptySet()
+        try {
+            ScheduledRun(ports).run(task(), existingSessionId = "s-gone")
+            fail("a missing session is not replaced by a new one")
+        } catch (expected: ScheduleException) {
+            assertEquals(ScheduledRun.SESSION_GONE, expected.message)
+            assertNull(ports.started)
+            assertEquals(1, ports.runs.size)
+            assertEquals("Scheduled task needs a look", ports.notices.last().first)
+        }
+    }
+
+    @Test
     fun anAgentWithoutAHeadlessModeIsRefused() = runTest {
         try {
             ScheduledRun(ports).run(task(agentId = "kilocode.kilo-code"))
@@ -194,7 +211,9 @@ class ScheduledRunTest {
             started = title
             return record("s-new")
         }
-        override fun session(sessionId: String) = record(sessionId)
+        /** Sessions this phone knows; null knows every id. */
+        var known: Set<String>? = null
+        override suspend fun session(sessionId: String) = record(sessionId).takeIf { known?.contains(sessionId) ?: true }
         override suspend fun runInRoom(
             agentId: String,
             projectId: String,

@@ -256,6 +256,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             }
             val run = Run(kit, cipher)
             try {
+                ports.loadLocal()
                 block(run).also { retryable = false }
             } catch (e: CancellationException) {
                 throw e
@@ -273,6 +274,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             val cipher = ports.cipher() ?: throw SyncException(Plain.KEY_NOT_READY)
             val run = Run(kit, cipher)
             try {
+                ports.loadLocal()
                 block(run)
             } catch (e: CancellationException) {
                 throw e

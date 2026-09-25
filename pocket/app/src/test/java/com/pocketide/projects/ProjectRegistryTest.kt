@@ -8,6 +8,7 @@ import com.pocketide.sync.MeteredDataBudget
 import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -36,7 +37,7 @@ class ProjectRegistryTest {
     @After
     fun tearDown() = scope.cancel()
 
-    private fun registry() = ProjectRegistry(
+    private fun registry(scope: CoroutineScope = this.scope) = ProjectRegistry(
         env = env,
         dirs = dirs,
         file = JsonFile(File(dirs.vault, "projects.json"), ListSerializer(Project.serializer())),
@@ -69,6 +70,16 @@ class ProjectRegistryTest {
         assertEquals(listOf(project), projects.all.value)
         assertEquals(ProjectTrust.YOURS, projects.trustOf(project.id))
         failsWith<ProjectException> { runBlocking { projects.create("bad/name", "") } }
+    }
+
+    @Test
+    fun `a fresh process reads the projects from the disk before answering`() = runBlocking<Unit> {
+        val project = registry().create("app", "")
+        // A scope that never runs the start-up load, like a background job that asks first.
+        val cold = registry(CoroutineScope(Job().apply { cancel() }))
+
+        assertTrue(cold.all.value.isEmpty())
+        assertEquals(listOf(project.id), cold.loaded().map { it.id })
     }
 
     @Test

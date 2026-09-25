@@ -7,6 +7,7 @@ import com.pocketide.sessions.transcripts.ClaudeFormat
 import com.pocketide.sessions.transcripts.Fixtures
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -310,6 +311,17 @@ class SessionLifecycleTest {
         val again = rig.manager(scope)
         again.refresh()
         assertEquals(first.id, again.activeSession("claude"))
+    }
+
+    @Test
+    fun `a fresh process reads the chats and the open ones from the disk before answering`() = runBlocking<Unit> {
+        val first = rig.manager(scope).start(PROJECT_ID, "claude", "One")
+        // A scope that never runs the start-up load, like a background job that asks first.
+        val cold = rig.manager(CoroutineScope(Job().apply { cancel() }))
+
+        assertTrue(cold.all.value.isEmpty())
+        assertEquals(listOf(first.id), cold.loaded().map { it.id })
+        assertEquals(first.id, cold.activeSession("claude"))
     }
 
     @Test

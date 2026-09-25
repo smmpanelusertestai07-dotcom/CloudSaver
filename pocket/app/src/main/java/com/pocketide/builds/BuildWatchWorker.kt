@@ -35,7 +35,7 @@ class BuildWatchWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val title = inputData.getString(KEY_TITLE) ?: "Build"
         val check = inputData.getInt(KEY_CHECK, 0)
         val graph = applicationContext.graph
-        val project = graph.projects.all.value.firstOrNull { it.id == projectId } ?: return Result.success()
+        val project = graph.projects.loaded().firstOrNull { it.id == projectId } ?: return Result.success()
         val run = try {
             graph.gitHub.run(project.owner, project.repo, runId)
         } catch (cancelled: CancellationException) {

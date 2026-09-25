@@ -47,7 +47,11 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord =
         graph.sessions.start(projectId, agentId, title)
 
-    override fun session(sessionId: String): SessionRecord? = graph.sessions.all.value.firstOrNull { it.id == sessionId }
+    override suspend fun session(sessionId: String): SessionRecord? {
+        // A task waiting for charging and Wi-Fi often starts a fresh process: the lists are read first.
+        graph.projects.loaded()
+        return graph.sessions.loaded().firstOrNull { it.id == sessionId }
+    }
 
     override suspend fun runInRoom(
         agentId: String,
