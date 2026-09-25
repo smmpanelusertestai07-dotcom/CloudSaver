@@ -9,7 +9,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
+import java.nio.channels.Channels
 import java.security.DigestInputStream
+import java.security.MessageDigest
 
 /** The newest state of a file this phone knows: what Drive has, plus anything still queued. */
 internal data class Known(
@@ -58,7 +60,8 @@ internal sealed interface MakeResult {
 
 /**
  * Turns changed files into queue entries. A transcript's new bytes [end, size) become one piece
- * after the already-synced prefix is checked against its SHA-256 in the same read; when the file
+ * after the already-synced prefix is checked against its SHA-256 in the same read, or, when
+ * [prefixes] shows the file still holds that prefix, without reading it again; when the file
  * shrank or its prefix changed, the whole file becomes a new base piece that supersedes the old
  * ones. Other files are whole, content-addressed objects: identical content is stored once.
  */
@@ -67,6 +70,7 @@ internal class PieceMaker(
     private val cipher: VaultCipher,
     private val keyGeneration: Int,
     private val clock: Clock,
+    private val prefixes: PrefixMemory = PrefixMemory(),
 ) {
 
     /** New bytes of a transcript as a piece; with [compact], the whole file as one base piece even when unchanged. */
@@ -111,16 +115,23 @@ internal class PieceMaker(
         }
     }
 
+    /**
+     * The bytes after the synced prefix as one piece. The prefix is hashed on the way, unless
+     * [prefixes] still holds its hash state: then reading starts where the last piece ended.
+     */
     private fun appendOrRewrite(c: Candidate, known: Known, end: Long): MakeResult {
-        val prefix = Codec.newDigest()
-        val raw = c.readInRoom()
-        raw.use {
-            val bounded = BoundedInputStream(raw, end)
-            val prefixed = DigestInputStream(bounded, prefix)
-            if (!prefixed.consume(known.end)) return MakeResult.Changing
+        val resumed = prefixes.resume(c, known)
+        val prefix = resumed ?: Codec.newDigest()
+        val from = if (resumed != null) known.end else 0L
+        val channel = c.openInRoom()
+        Channels.newInputStream(channel).use { raw ->
+            channel.position(from)
+            val prefixed = DigestInputStream(BoundedInputStream(raw, end - from), prefix)
+            if (!prefixed.consume(known.end - from)) return MakeResult.Changing
             if (known.end > 0 && Codec.peek(prefix) != known.sha) return base(c, known, end)
             if (end == known.end) return MakeResult.Touched
             val id = Codec.objectName()
+            var state: MessageDigest? = null
             val entry = queue.addBlob(cipher, id) { out ->
                 val piece = Codec.newDigest()
                 val counted = BoundedInputStream(prefixed, Long.MAX_VALUE)
@@ -128,6 +139,7 @@ internal class PieceMaker(
                 if (known.end + counted.count != end) {
                     null
                 } else {
+                    state = prefix.clone() as MessageDigest
                     draft(c, known, id, offset = known.end, length = counted.count).copy(
                         sha256 = Codec.hex(piece.digest()),
                         prefixSha256 = Codec.hex(prefix.digest()),
@@ -135,6 +147,7 @@ internal class PieceMaker(
                     )
                 }
             } ?: return MakeResult.Changing
+            remember(c, entry, state)
             return MakeResult.Queued(entry)
         }
     }
@@ -142,6 +155,7 @@ internal class PieceMaker(
     /** The whole file (up to [end]) as a new base piece. */
     private fun base(c: Candidate, known: Known, end: Long): MakeResult = try {
         val id = Codec.objectName()
+        var state: MessageDigest? = null
         val entry = queue.addBlob(cipher, id) { out ->
             c.readInRoom().use { raw ->
                 val local = Codec.newDigest()
@@ -151,15 +165,22 @@ internal class PieceMaker(
                 if (bounded.count != end) {
                     null
                 } else {
+                    state = local.clone() as MessageDigest
                     // The piece is checked by what was sent; the file on the phone by its own bytes.
                     draft(c, known, id, offset = 0, length = bounded.count)
                         .copy(sha256 = Codec.hex(sent.digest()), prefixSha256 = Codec.hex(local.digest()), base = true)
                 }
             }
         }
-        if (entry == null) MakeResult.Changing else MakeResult.Queued(entry)
+        if (entry == null) MakeResult.Changing else MakeResult.Queued(entry).also { remember(c, entry, state) }
     } catch (_: IOException) {
         MakeResult.Changing
+    }
+
+    /** The hash state after the bytes [entry] ends at, so the next piece can start there. */
+    private fun remember(c: Candidate, entry: QueueEntry, state: MessageDigest?) {
+        val sha = entry.prefixSha256 ?: return
+        if (state != null) prefixes.remember(c, entry.offset + entry.length, sha, state)
     }
 
     /**

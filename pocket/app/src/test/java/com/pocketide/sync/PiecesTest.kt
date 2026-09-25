@@ -9,6 +9,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.io.RandomAccessFile
 
 class PiecesTest {
     private val clock = FakeClock()
@@ -18,6 +20,15 @@ class PiecesTest {
     private fun phone() = TestPhone(accounts, clock).apply { sessions += session("s1", at = clock.now, ref = "c0ffee00-1111") }
 
     private fun TestPhone.pieces() = remoteIndex()!!.objects.filter { it.kind == ObjectKind.CHAT_PIECE && it.path == path }.sortedBy { it.offset }
+
+    /** A chat of 200 KB, longer than the parts of its start that are checked without reading it all. */
+    private val longChat = "x".repeat(LINE - 1).plus("\n").repeat(LINES)
+
+    /** Changes one byte in place: same size, same file. */
+    private fun File.patch(at: Long, char: Char) = RandomAccessFile(this, "rw").use {
+        it.seek(at)
+        it.write(char.code)
+    }
 
     /** The chat as a new phone rebuilds it from Drive alone. */
     private suspend fun rebuilt(): String {
@@ -144,6 +155,50 @@ class PiecesTest {
     }
 
     @Test
+    fun aLongChatsNextPieceIsReadFromWhereTheLastEndedAndARestartChecksItAll() = runBlocking {
+        val phone = phone()
+        val file = phone.homeFile("claude", path)
+        file.writeText(longChat)
+        phone.engine.syncNow()
+
+        // A byte deep inside what Drive already has changes (no agent does this to its chat). The
+        // next piece is read from where the last one ended, so it goes unseen for now...
+        file.patch(LINES * LINE / 2L, 'y')
+        file.appendText("next\n")
+        clock.advance(60_000)
+        phone.engine.syncNow()
+        assertEquals(listOf(0L, longChat.length.toLong()), phone.pieces().map { it.offset })
+
+        // ...until the app starts again: the first piece after that checks the whole start.
+        file.appendText("after a restart\n")
+        clock.advance(60_000)
+        DriveSyncEngine(phone).syncNow()
+        assertEquals(listOf(0L), phone.pieces().map { it.offset })
+        assertEquals(file.readText(), rebuilt())
+    }
+
+    @Test
+    fun aLongChatWhoseStartOrNewestSyncedBytesChangedIsSentWholeAtOnce() = runBlocking {
+        val phone = phone()
+        val file = phone.homeFile("claude", path)
+        file.writeText(longChat)
+        phone.engine.syncNow()
+
+        file.patch(10, 'y')
+        file.appendText("next\n")
+        clock.advance(60_000)
+        phone.engine.syncNow()
+        assertEquals("a changed start", listOf(0L), phone.pieces().map { it.offset })
+
+        file.patch(file.length() - 100, 'z')
+        file.appendText("more\n")
+        clock.advance(60_000)
+        phone.engine.syncNow()
+        assertEquals("a change just before the end Drive has", listOf(0L), phone.pieces().map { it.offset })
+        assertEquals(file.readText(), rebuilt())
+    }
+
+    @Test
     fun everythingInDriveIsCompressedThenEncryptedUnderOpaqueNames() = runBlocking {
         val phone = phone()
         phone.homeFile("claude", path).writeText("{\"secret project\":true}\n".repeat(50))
@@ -261,5 +316,10 @@ class PiecesTest {
         assertEquals(2, media.size)
         assertEquals(1, media.map { it.name }.toSet().size)
         assertEquals(1, phone.drive.objectNames().size)
+    }
+
+    private companion object {
+        const val LINE = 100
+        const val LINES = 2048
     }
 }

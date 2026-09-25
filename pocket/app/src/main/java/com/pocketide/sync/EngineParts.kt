@@ -20,6 +20,7 @@ internal class SyncKit(val ports: SyncPorts) {
     val remote = RemoteIndex(ports.budget)
     val scanner = Scanner(ports.dirs)
     val materializer = Materializer(queue, ports.budget)
+    val prefixes = PrefixMemory()
     val flows = SyncFlows()
 }
 
@@ -66,7 +67,7 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
 
     fun entries(): List<QueueEntry> = kit.queue.entries(cipher)
 
-    fun maker() = PieceMaker(kit.queue, cipher, ports.keyGeneration(), ports.clock)
+    fun maker() = PieceMaker(kit.queue, cipher, ports.keyGeneration(), ports.clock, kit.prefixes)
 
     /** The account whose index this phone holds; a different sign-in starts over with that account. */
     fun account(): String? {
