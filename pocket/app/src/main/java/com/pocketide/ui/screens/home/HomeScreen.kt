@@ -535,12 +535,6 @@ private fun AgentCard(
                         agent.official -> StatusChip("Official", Tone.OK)
                         agent.verifiedPublisher -> StatusChip("Verified publisher", Tone.NEUTRAL)
                     }
-                    // Google's Remote Control runs in the room while its own screen may be closed.
-                    when (remoteControl) {
-                        RemoteControlState.Starting -> StatusChip("Remote Control starting", Tone.WARN)
-                        RemoteControlState.On -> StatusChip("Remote Control on", Tone.OK)
-                        null, is RemoteControlState.Off -> Unit
-                    }
                 }
                 Text(
                     "${agent.publisher} · $state",
@@ -556,6 +550,13 @@ private fun AgentCard(
                         StatusChip(label, tone)
                         if (signedIn == false) TextButton(onClick = onClick) { Text("Sign in") }
                     }
+                }
+                // Google's Remote Control runs in the room while its own screen may be closed. On its own
+                // line, like the work chips: beside the name and Official it leaves the name no room.
+                when (remoteControl) {
+                    RemoteControlState.Starting -> StatusChip("Remote Control starting", Tone.WARN)
+                    RemoteControlState.On -> StatusChip("Remote Control on", Tone.OK)
+                    null, is RemoteControlState.Off -> Unit
                 }
                 chips.forEach { StatusChip(it.text, it.tone) }
             }
