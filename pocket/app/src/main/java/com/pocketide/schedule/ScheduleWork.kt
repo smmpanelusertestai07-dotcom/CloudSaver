@@ -30,8 +30,11 @@ import java.util.concurrent.TimeUnit
 
 /** Puts scheduled tasks into WorkManager and takes them out. */
 internal interface TaskScheduler {
-    /** [update] replaces a job already there (an edited task); otherwise an existing job is kept. */
-    fun schedule(task: ScheduledTask, update: Boolean = true)
+    /**
+     * Puts the task's job in place, replacing one already there, so an edited task, and a new
+     * build's constraints, backoff and interval, reach it; WorkManager keeps its next run time.
+     */
+    fun schedule(task: ScheduledTask)
     fun cancel(taskId: String)
     fun runOnce(taskId: String, sessionId: String)
 
@@ -96,10 +99,9 @@ internal object ScheduleWork {
     class Manager(private val context: Context) : TaskScheduler {
         private val work get() = WorkManager.getInstance(context)
 
-        override fun schedule(task: ScheduledTask, update: Boolean) {
+        override fun schedule(task: ScheduledTask) {
             if (!task.enabled) return cancel(task.id)
-            val policy = if (update) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
-            work.enqueueUniquePeriodicWork(PERIODIC + task.id, policy, periodic(task))
+            work.enqueueUniquePeriodicWork(PERIODIC + task.id, ExistingPeriodicWorkPolicy.UPDATE, periodic(task))
         }
 
         override fun cancel(taskId: String) {

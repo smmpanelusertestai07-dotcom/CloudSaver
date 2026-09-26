@@ -374,7 +374,7 @@ class TaskSchedulesTest {
         val scheduled = mutableListOf<ScheduledTask>()
         val cancelled = mutableListOf<String>()
         val once = mutableListOf<Pair<String, String>>()
-        override fun schedule(task: ScheduledTask, update: Boolean) {
+        override fun schedule(task: ScheduledTask) {
             scheduled += task
         }
         override fun cancel(taskId: String) {
@@ -469,6 +469,7 @@ class TaskSchedulesTest {
         val again = schedules()
         again.load()
         assertEquals("Nightly tests", again.tasks.value.single().title)
+        assertEquals("a new start puts it in WorkManager again, as this build schedules it", 2, scheduler.scheduled.size)
 
         again.remove("t1")
         assertTrue(again.tasks.value.isEmpty())

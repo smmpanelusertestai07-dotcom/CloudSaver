@@ -43,12 +43,12 @@ internal class TaskSchedules(
 
     override val tasks: StateFlow<List<ScheduledTask>> = state.asStateFlow()
 
-    /** Reads the saved tasks and makes sure WorkManager has each enabled one. */
+    /** Reads the saved tasks and puts each enabled one in WorkManager again, as this build schedules it. */
     suspend fun load() {
         lock.withLock {
             if (loaded.isCompleted) return
             state.value = withContext(io) { store.read() }
-            state.value.forEach { scheduler.schedule(it, update = false) }
+            state.value.forEach { scheduler.schedule(it) }
             loaded.complete(Unit)
         }
     }
