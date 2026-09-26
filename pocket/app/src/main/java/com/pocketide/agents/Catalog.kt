@@ -193,7 +193,8 @@ internal class OpenVsxCatalog(
         val report = doctor.check(agent, release.version)
         if (report.ok) {
             record(agent.id, release.version, fetched.sha256, report.openCommand)
-            keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), present?.let { ExtensionInstaller.packageFile(folder, it.version) }))
+            val previous = present?.let { ExtensionInstaller.packageFile(folder, it.version) }
+            keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), previous))
             configure(agent.id)
             return report
         }

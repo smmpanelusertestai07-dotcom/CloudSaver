@@ -350,8 +350,8 @@ internal class RoomManager(
         if (remoteDaemons[agentId]?.isAlive == true) return RemoteControl.DASHBOARD
         publishRemoteControl(agentId, RemoteControlState.Starting)
         try {
-            computerProblem()?.let { throw IllegalStateException(it) }
-            engineProblem(profile)?.let { throw IllegalStateException(it) }
+            val problem = computerProblem() ?: engineProblem(profile)
+            if (problem != null) throw IllegalStateException(problem)
             return startDaemon(agentId)
         } catch (failed: IllegalStateException) {
             publishRemoteControl(agentId, RemoteControlState.Off(failed.message ?: RemoteControl.notStarted(emptyList())))
@@ -367,25 +367,25 @@ internal class RoomManager(
         // Its own folders first, its own /home among them: proot refuses a bind whose folder is missing.
         withContext(Dispatchers.IO) { RoomLayout.hostFolders(dirs, agentId).forEach { it.mkdirs() } }
         val command = RoomEngines.headless(dirs, agentId, RemoteControl.startCommand(), AppDirs.GUEST_HOME, roomEnvironment(agentId, emptyMap()))
-        val process = try {
-            withContext(Dispatchers.IO) { env.computer.start(command) }
-        } catch (failed: IOException) {
-            throw IllegalStateException(RemoteControl.notStarted(listOfNotNull(failed.message)))
-        }
+        val process = startDaemonProcess(command)
         remoteDaemons[agentId] = process
         env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
         env.scope.launch { awaitDaemonEnd(agentId, process) }
-        try {
-            delay(remoteSettleMs)
-            if (!process.isAlive) throw IllegalStateException(RemoteControl.notStarted(ring(agentId).last(LAST_WORDS)))
-            daemonPortProblem(agentId, known)?.let { throw IllegalStateException(it) }
-        } catch (failed: IllegalStateException) {
+        delay(remoteSettleMs)
+        val why = if (process.isAlive) daemonPortProblem(agentId, known) else RemoteControl.notStarted(ring(agentId).last(LAST_WORDS))
+        if (why != null) {
             endDaemon(agentId, process)
-            throw failed
+            throw IllegalStateException(why)
         }
         publishRemoteControl(agentId, RemoteControlState.On)
         env.scope.launch { watchDaemon(agentId, process, known) }
         return RemoteControl.DASHBOARD
+    }
+
+    private suspend fun startDaemonProcess(command: LinuxCommand): Process = try {
+        withContext(Dispatchers.IO) { env.computer.start(command) }
+    } catch (failed: IOException) {
+        throw IllegalStateException(RemoteControl.notStarted(listOfNotNull(failed.message)), failed)
     }
 
     /**

@@ -6,8 +6,9 @@ import com.pocketide.rooms.RoomState
 
 /**
  * What the engine's service keeps alive, and what its notification says: the rooms that run,
- * Google's Remote Control where it is on (its daemon runs with no room open), and the computer's own long work (set-up, reset, repair, an update), which must outlive the
- * screen that started it as much as any room.
+ * Google's Remote Control where it is on (its daemon runs with no room open), and the
+ * computer's own long work (set-up, reset, repair, an update), which must outlive the screen
+ * that started it as much as any room.
  */
 internal data class EngineLoad(val rooms: List<Line>, val computerWork: String?) {
 

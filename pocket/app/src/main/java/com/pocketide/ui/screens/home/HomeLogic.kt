@@ -5,7 +5,6 @@ import com.pocketide.github.RepoInfo
 import com.pocketide.model.Thermal
 import com.pocketide.projects.RepoAddress
 import com.pocketide.projects.isVaultKeyring
-import com.pocketide.rooms.RemoteControlState
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.BackupState
 import com.pocketide.sync.SessionBackup
@@ -69,13 +68,6 @@ fun roomLabel(state: RoomState?): Pair<String, Tone> = when (state) {
     is RoomState.Starting -> state.step to Tone.WARN
     is RoomState.Running -> "Running · ${WorkFormat.bytes(state.memoryBytes)}" to Tone.OK
     is RoomState.Failed -> "Stopped: ${state.why}" to Tone.ERROR
-}
-
-/** Google's Remote Control in an agent's room, as a chip on its card; null when it is off. */
-fun remoteControlChip(state: RemoteControlState?): Pair<String, Tone>? = when (state) {
-    RemoteControlState.Starting -> "Remote Control starting" to Tone.WARN
-    RemoteControlState.On -> "Remote Control on" to Tone.OK
-    null, is RemoteControlState.Off -> null
 }
 
 /** Settings pages that need "package:<app>" to open on this app's own entry. */

@@ -534,7 +534,12 @@ private fun AgentCard(
                         agent.official -> StatusChip("Official", Tone.OK)
                         agent.verifiedPublisher -> StatusChip("Verified publisher", Tone.NEUTRAL)
                     }
-                    remoteControlChip(remoteControl)?.let { (text, tone) -> StatusChip(text, tone) }
+                    // Google's Remote Control runs in the room while its own screen may be closed.
+                    when (remoteControl) {
+                        RemoteControlState.Starting -> StatusChip("Remote Control starting", Tone.WARN)
+                        RemoteControlState.On -> StatusChip("Remote Control on", Tone.OK)
+                        null, is RemoteControlState.Off -> Unit
+                    }
                 }
                 Text(
                     "${agent.publisher} · $state",
