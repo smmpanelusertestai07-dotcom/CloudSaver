@@ -165,6 +165,39 @@ class SealedProjectSecretsTest {
     }
 
     @Test
+    fun aGlobalSecretSentFromOneProjectIsMarkedForThatProjectAlone() = runTest {
+        val s = secrets()
+        s.set(null, "SHARED_TOKEN", SecretKind.SECRET, "shared".toCharArray())
+        s.pushToGitHub("alice/a", "SHARED_TOKEN")
+
+        val global = s.values.value.single()
+        assertEquals(setOf("alice/a"), global.sentTo)
+        assertFalse("B's repository does not have it", "alice/b" in global.sentTo)
+        assertFalse("a global value is never simply 'in GitHub'", global.pushedToGitHub)
+
+        s.pushToGitHub("alice/b", "SHARED_TOKEN")
+        assertEquals(setOf("alice/a", "alice/b"), s.values.value.single().sentTo)
+
+        now += 1_000
+        s.set(null, "SHARED_TOKEN", SecretKind.SECRET, "changed".toCharArray())
+        assertTrue("a changed value is in no project yet", s.values.value.single().sentTo.isEmpty())
+    }
+
+    @Test
+    fun theProjectsEachPhoneSentAGlobalSecretToAreAllKept() = runTest {
+        val one = secrets(temp.newFolder("one"))
+        one.set(null, "SHARED_TOKEN", SecretKind.SECRET, "shared".toCharArray())
+        val two = secrets(temp.newFolder("two"))
+        two.importBlob(one.exportBlob())
+
+        one.pushToGitHub("alice/a", "SHARED_TOKEN")
+        two.pushToGitHub("alice/b", "SHARED_TOKEN")
+        one.mergeBlob(two.exportBlob())
+
+        assertEquals(setOf("alice/a", "alice/b"), one.values.value.single().sentTo)
+    }
+
+    @Test
     fun exportImportRoundTripsToANewPhone() = runTest {
         val first = secrets(temp.newFolder("one"))
         first.set(null, "A", SecretKind.VARIABLE, "1-value".toCharArray())

@@ -15,9 +15,12 @@ data class ProjectValue(
     val name: String,
     val kind: SecretKind,
     val updatedAt: Long,
+    /** A project's own Secret is in its GitHub Actions. A global one is never marked so: see [sentTo]. */
     val pushedToGitHub: Boolean,
     /** A Variable only this agent's room sees (a community agent's API key); null for every room. */
     val agentId: String? = null,
+    /** A global Secret: the projects whose GitHub Actions have this value, each sent from that project. */
+    val sentTo: Set<String> = emptySet(),
 )
 
 /**
