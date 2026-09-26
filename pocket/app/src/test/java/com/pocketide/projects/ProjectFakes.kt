@@ -120,6 +120,13 @@ class FakeBudget(var decision: Decision = Decision.YES) : DataBudget {
     override fun allowOnce(kind: String, bytes: Long) {
         grants[kind] = bytes
     }
+
+    /** Kinds whose confirmed transfer ended, in order. */
+    val ended = mutableListOf<String>()
+    override fun endOnce(kind: String) {
+        grants -= kind
+        ended += kind
+    }
     override fun record(bytes: Long, kind: String) {
         recorded += bytes
     }

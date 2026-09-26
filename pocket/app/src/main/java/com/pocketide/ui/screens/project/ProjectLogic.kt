@@ -7,11 +7,14 @@ import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
+import com.pocketide.projects.Projects
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.sessions.SessionChanges
+import com.pocketide.sync.DataBudget
 import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.attempt
 import com.pocketide.usage.BuildEstimate
 import java.time.Instant
 import java.util.Locale
@@ -76,6 +79,16 @@ const val UNTRUSTED_REPO =
 fun trustText(trust: ProjectTrust): Pair<String, Tone> = when (trust) {
     ProjectTrust.YOURS -> "Your code" to Tone.OK
     ProjectTrust.SOMEONE_ELSES -> "Someone else's code" to Tone.WARN
+}
+
+/**
+ * One try at cloning [projectId]. A mobile-data yes given for it ([granted]: the kind the owner
+ * allowed) covers this try alone and ends with it, done, failed or cancelled, so a later clone asks again.
+ */
+suspend fun cloneOnce(projects: Projects, budget: DataBudget, projectId: String, granted: String?): Result<Unit> = try {
+    attempt { projects.ensureCloned(projectId) }
+} finally {
+    granted?.let(budget::endOnce)
 }
 
 /** A room's idle sleep is worth a chip only when it is close. */

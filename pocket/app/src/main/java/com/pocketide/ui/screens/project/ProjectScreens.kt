@@ -149,6 +149,8 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     val selected = sessions.firstOrNull { it.id == chosenId } ?: defaultSession(sessions)
     var cloneProblem by remember(projectId) { mutableStateOf<String?>(null) }
     var cloneTries by remember(projectId) { mutableIntStateOf(0) }
+    // The kind the owner allowed on mobile data for the next try alone.
+    var cloneGrant by remember(projectId) { mutableStateOf<String?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
@@ -156,7 +158,9 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
 
     LaunchedEffect(projectId, cloneTries) {
         cloneProblem = null
-        attempt { graph.projects.ensureCloned(projectId) }.onFailure {
+        val granted = cloneGrant
+        cloneGrant = null
+        cloneOnce(graph.projects, graph.dataBudget, projectId, granted).onFailure {
             cloneProblem = plainReason(it)
             if (it is NeedsMobileData) askMobileData = it
         }
@@ -171,6 +175,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                     onClick = {
                         askMobileData = null
                         graph.dataBudget.allowOnce(ask.kind, ask.bytes)
+                        cloneGrant = ask.kind
                         cloneTries++
                     },
                 ) { Text("Use mobile data") }
