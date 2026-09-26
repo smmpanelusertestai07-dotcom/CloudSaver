@@ -1,6 +1,6 @@
 package com.pocketide.sync
 
-import com.pocketide.core.Settings
+import com.pocketide.core.afterDeleteEverything
 import com.pocketide.google.DriveException
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
@@ -169,8 +169,9 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             ports.wipeSecureStore()
             ports.forgetVaultKey()
             // Settings are erased too, as the owner was told: no old choice reaches the next vault, and
-            // set-up starts over (the extra password belonged to the old key, which is gone).
-            ports.settings.update { Settings() }
+            // set-up starts over (the extra password belonged to the old key, which is gone). This
+            // copy's GitHub App stays, so the owner can sign in again.
+            ports.settings.update { it.afterDeleteEverything() }
             flows.status.value = SyncStatus.Idle
             flows.waiting.value = emptyList()
             flows.leaseHolder.value = null

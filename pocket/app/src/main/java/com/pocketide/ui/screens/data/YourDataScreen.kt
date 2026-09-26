@@ -217,7 +217,8 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
                 Hint(
                     "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, " +
                         "and the agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first; " +
-                        "code that cannot be pushed is named before it goes. Your GitHub repositories and pocketide-keyring stay. " +
+                        "code that cannot be pushed is named before it goes. Your GitHub repositories, pocketide-keyring and " +
+                        "the GitHub App in Settings stay, so you can sign in again. " +
                         "This cannot be undone.",
                 )
                 val checking = runner.isBusy(CHECK_CODE)
@@ -640,7 +641,7 @@ internal fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit
         title = "Delete everything?",
         text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive, with the " +
             "agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first. Your GitHub " +
-            "repositories are not touched. Type DELETE to confirm.",
+            "repositories are not touched, and the GitHub App in Settings stays, so you can sign in again. Type DELETE to confirm.",
         confirmLabel = "Delete everything",
         destructive = true,
         confirmEnabled = DataMath.deleteConfirmed(typed),

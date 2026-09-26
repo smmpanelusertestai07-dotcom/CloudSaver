@@ -61,6 +61,15 @@ data class Settings(
     val claudeChatsInAccount: Boolean = true,
 )
 
+/**
+ * The settings after "Delete everything": every choice back to its default, so none reaches the
+ * next vault and set-up starts over. What configures the app on this phone rather than holding the
+ * owner's data stays: this copy's GitHub App (without it, an owner whose build carries none could
+ * not sign in again) and the battery step done in Android's own settings, which Android keeps.
+ */
+fun Settings.afterDeleteEverything(): Settings =
+    Settings(gitHubAppClientId = gitHubAppClientId, gitHubAppSlug = gitHubAppSlug, oemStepDone = oemStepDone)
+
 /** Settings on this phone, observed by every screen and module. */
 interface SettingsStore {
     val settings: StateFlow<Settings>
