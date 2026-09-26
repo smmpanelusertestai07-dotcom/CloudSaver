@@ -49,6 +49,7 @@ import com.pocketide.ui.shell.CheckStatus
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.FinePrint
 import com.pocketide.ui.shell.Gap
+import com.pocketide.ui.shell.KeySaveOutcome
 import com.pocketide.ui.shell.Links
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OutlinedCard
@@ -60,7 +61,6 @@ import com.pocketide.ui.shell.SafetyCheck
 import com.pocketide.ui.shell.SafetyFacts
 import com.pocketide.ui.shell.SafetyFix
 import com.pocketide.ui.shell.SectionLabel
-import com.pocketide.ui.shell.KeySaveOutcome
 import com.pocketide.ui.shell.rememberKeySaver
 
 /**

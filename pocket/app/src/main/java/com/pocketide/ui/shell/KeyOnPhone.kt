@@ -13,10 +13,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.pocketide.AppGraph
 import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.manage.PlainError
+import com.pocketide.ui.manage.attempt
 import com.pocketide.vault.GitHubAppMissingException
 import com.pocketide.vault.KeyState
 import com.pocketide.vault.VaultKeys
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -74,18 +74,16 @@ internal sealed interface KeySave {
         const val NOT_SAVED = "Your chats' key is still not saved to GitHub. It is tried again at the next sync."
         const val OFFLINE = "No connection. Check the internet and try again."
 
-        suspend fun of(vault: VaultKeys): KeySave = try {
-            vault.checkKeyring()
-            if (vault.state.value == KeyState.Ready) Saved else Failed(vault.notice.value ?: NOT_SAVED)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: IOException) {
-            Failed(OFFLINE)
-        } catch (e: GitHubAppMissingException) {
-            Failed(e.message.orEmpty(), appMissing = true)
-        } catch (e: Exception) {
-            Failed(PlainError.of(e))
-        }
+        suspend fun of(vault: VaultKeys): KeySave = attempt { vault.checkKeyring() }.fold(
+            onSuccess = { if (vault.state.value == KeyState.Ready) Saved else Failed(vault.notice.value ?: NOT_SAVED) },
+            onFailure = { error ->
+                when (error) {
+                    is IOException -> Failed(OFFLINE)
+                    is GitHubAppMissingException -> Failed(error.message.orEmpty(), appMissing = true)
+                    else -> Failed(PlainError.of(error))
+                }
+            },
+        )
     }
 }
 

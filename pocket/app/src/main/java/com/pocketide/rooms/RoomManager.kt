@@ -85,10 +85,11 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         val careful: Boolean,
         val activity: ActivityClock,
         @Volatile var sessionId: String,
-        /** Started with Remote Control on: every session it shows is kept in the owner's Claude account. */
-        val accountChats: Boolean = false,
     ) {
         val pid: Int? = ProcFacts.pidOf(process)
+
+        /** Started with Remote Control on: every session it shows is kept in the owner's Claude account. */
+        @Volatile var accountChats: Boolean = false
 
         @Volatile var bridge: BridgedPort? = null
 
@@ -156,7 +157,11 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             val room = env.makeRoomFor(agentId)
             if (!room.allowed) return@async fail(agentId, room.reason ?: CANNOT_START)
         }
-        val state = lock(agentId).withLock { openLocked(agentId, sessionId, admitted) }
+        val state = lock(agentId).withLock {
+            openLocked(agentId, sessionId, admitted).also { opened ->
+                if (opened is RoomState.Running && live[agentId]?.accountChats == true) env.keptInClaudeAccount(sessionId)
+            }
+        }
         if (firstPrompt != null && state is RoomState.Running) offerPrompt(agentId, firstPrompt)
         state
     }.await()
@@ -164,12 +169,7 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     override fun takesPrompts(agentId: String): Boolean = profile(agentId)?.promptCommand != null
 
     /** [admitted]: the limiter has just made room for this room, so its phone readings may lag behind. */
-    private suspend fun openLocked(agentId: String, sessionId: String, admitted: Boolean): RoomState =
-        openRoom(agentId, sessionId, admitted).also { state ->
-            if (state is RoomState.Running && live[agentId]?.accountChats == true) env.keptInClaudeAccount(sessionId)
-        }
-
-    private suspend fun openRoom(agentId: String, sessionId: String, admitted: Boolean): RoomState {
+    private suspend fun openLocked(agentId: String, sessionId: String, admitted: Boolean): RoomState {
         val (profile, session) = when (val opening = opening(agentId, sessionId)) {
             is Opening.Refused -> return fail(agentId, opening.why)
             is Opening.Ready -> opening.profile to opening.session
@@ -471,7 +471,8 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         } catch (failed: IllegalArgumentException) {
             return couldNotStart(profile, bridgeFiles, secretFile, failed)
         }
-        val room = LiveRoom(profile, process, chosenPort, variables, careful, ActivityClock(env.now(), ::idleLimitMs), session.id, accountChats)
+        val room = LiveRoom(profile, process, chosenPort, variables, careful, ActivityClock(env.now(), ::idleLimitMs), session.id)
+        room.accountChats = accountChats
         live[agentId] = room
         env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
 

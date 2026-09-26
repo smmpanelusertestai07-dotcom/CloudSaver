@@ -46,9 +46,8 @@ interface ProjectSecrets {
     suspend fun variablesFor(projectId: String, agentId: String): Map<String, String> = variablesFor(projectId)
 
     /** Limits a Variable to one agent's room, or opens it to every room again with null. */
-    suspend fun limitToRoom(projectId: String?, name: String, agentId: String?) {
+    suspend fun limitToRoom(projectId: String?, name: String, agentId: String?): Unit =
         throw UnsupportedOperationException("Room-only Variables are not available here.")
-    }
 
     /** Every Variable and Secret value, for the check-post. */
     suspend fun allValues(): List<String>
@@ -69,7 +68,6 @@ interface ProjectSecrets {
      * Merges the vault's copy into the local set when both phones changed it since they last
      * synced: value by value, the later change wins, a removal included.
      */
-    suspend fun mergeBlob(bytes: ByteArray) {
+    suspend fun mergeBlob(bytes: ByteArray): Unit =
         throw UnsupportedOperationException("Merging Variables and Secrets is not available here.")
-    }
 }

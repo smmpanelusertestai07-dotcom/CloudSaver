@@ -81,7 +81,7 @@ class ScreenTour {
 
     @Test fun gitHubStep() = shoot("02-github-step") { GitHubStepScreen(onDone = {}) }
 
-    @Test fun driveStep() = shoot("03-drive-step") { DriveStepScreen(onDone = {}) }
+    @Test fun driveStep() = shoot("03-drive-step") { DriveStepScreen(onDone = {}, onOpenHelp = {}) }
 
     @Test fun computerStep() = shoot("04-computer-step") { ComputerStepScreen(onDone = {}) }
 

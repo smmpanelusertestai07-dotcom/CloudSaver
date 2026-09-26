@@ -35,6 +35,7 @@ private sealed interface DriveLink {
     data object Idle : DriveLink
     data object Working : DriveLink
     data object Cancelled : DriveLink
+
     /** [helpSection]: the Help page that has the fix, when the owner has something to set up. */
     data class Failed(val why: String, val helpSection: String? = null) : DriveLink
     data object Done : DriveLink
@@ -105,6 +106,13 @@ fun DriveConnectPanel(
         }
     }
 
+    DriveLinkView(link, label, enabled, onTry = { run { auth.authorize() } }, onOpenHelp = onOpenHelp)
+}
+
+/** The outcome of the last try, with its fix, and the button that tries (again). */
+@Composable
+private fun DriveLinkView(link: DriveLink, label: String, enabled: Boolean, onTry: () -> Unit, onOpenHelp: (sectionId: String) -> Unit) {
+    val context = LocalContext.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (val current = link) {
             DriveLink.Cancelled -> NoticeCard("Google's window was closed before you allowed access. Nothing changed.", Tone.WARN)
@@ -121,7 +129,7 @@ fun DriveConnectPanel(
         if (link != DriveLink.Done) {
             PrimaryAction(
                 text = if (link is DriveLink.Failed || link == DriveLink.Cancelled) "Try again" else label,
-                onClick = { run { auth.authorize() } },
+                onClick = onTry,
                 enabled = enabled,
                 busy = link == DriveLink.Working,
             )
