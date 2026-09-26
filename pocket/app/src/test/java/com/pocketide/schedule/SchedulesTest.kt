@@ -264,7 +264,7 @@ class ScheduledRunTest {
 
     @Test
     fun aLockedAppStartsNoScheduledRunAndSaysWhy() = runTest {
-        ports.lock = LockReason.GitHubDisconnected
+        ports.locked = LockReason.GitHubDisconnected
         for (existing in listOf(null, "s-queued")) {
             try {
                 ScheduledRun(ports).run(task(), existing)
@@ -279,7 +279,7 @@ class ScheduledRunTest {
         assertEquals(List(2) { "Scheduled task did not run" }, ports.notices.map { it.first })
 
         // Offline locks nothing: the guard then answers no lock, and the task runs.
-        ports.lock = null
+        ports.locked = null
         assertEquals("s-new", ScheduledRun(ports).run(task()).sessionId)
         assertEquals(1, ports.runs.size)
     }
@@ -344,11 +344,11 @@ class ScheduledRunTest {
             return 0
         }
         override fun heavyWorkRefusal() = refusal
-        var lock: LockReason? = null
+        var locked: LockReason? = null
         var lockChecks = 0
-        override suspend fun lockNow(): LockReason? {
+        override val lock = LockCheck {
             lockChecks++
-            return lock
+            locked
         }
         override suspend fun someoneElses(projectId: String) = someoneElses
         override suspend fun saveOutput(sessionId: String, file: File) {

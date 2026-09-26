@@ -15,9 +15,17 @@ import java.io.File
 /** Something the owner can act on, in one plain sentence. */
 class ScheduleException(message: String) : Exception(message)
 
+/** Asks whether the app is locked now: GitHub and Drive afresh, the other locks as they stand. */
+internal fun interface LockCheck {
+    suspend fun now(): LockReason?
+}
+
 /** What a scheduled run uses from other modules and from Android. */
 internal interface RunPorts {
     val clock: Clock
+
+    /** Why the app is locked now (access removed, another phone took over, storage full), or null. Offline locks nothing. */
+    val lock: LockCheck
 
     suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord
     suspend fun session(sessionId: String): SessionRecord?
@@ -38,12 +46,6 @@ internal interface RunPorts {
 
     /** Why heavy work may not start now (battery, heat), or null. */
     fun heavyWorkRefusal(): String?
-
-    /**
-     * Why the app is locked now, GitHub and Drive asked afresh (access removed, another phone took
-     * over, storage full), or null. Offline locks nothing.
-     */
-    suspend fun lockNow(): LockReason?
 
     /** True for a project marked "Someone else's", once this phone's project list is read. */
     suspend fun someoneElses(projectId: String): Boolean
@@ -117,7 +119,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
     private suspend fun sessionFor(task: ScheduledTask, existingSessionId: String?): SessionRecord {
         // A locked app (a revoked GitHub or Drive, say) starts no new work. Nobody is watching a
         // scheduled run, so the owner hears why nothing ran.
-        (refusal(task) ?: ports.lockNow()?.let(::lockedText))?.let { why ->
+        (refusal(task) ?: ports.lock.now()?.let(::lockedText))?.let { why ->
             ports.notify(task.id, "Scheduled task did not run", "${task.title}: $why")
             throw ScheduleException(why)
         }

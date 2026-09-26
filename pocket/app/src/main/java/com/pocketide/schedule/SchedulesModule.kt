@@ -11,7 +11,6 @@ import com.pocketide.AppGraph
 import com.pocketide.builds.BuildNotices
 import com.pocketide.core.Clock
 import com.pocketide.linux.ComputerState
-import com.pocketide.model.LockReason
 import com.pocketide.model.SessionRecord
 import com.pocketide.projects.ProjectTrust
 import kotlinx.coroutines.CancellationException
@@ -45,6 +44,11 @@ fun createSchedules(graph: AppGraph): Schedules {
 
 private class GraphRunPorts(private val graph: AppGraph, private val schedules: () -> TaskSchedules) : RunPorts {
     override val clock: Clock get() = graph.clock
+
+    override val lock = LockCheck {
+        graph.access.check()
+        graph.access.state.value.lock
+    }
 
     override suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord =
         graph.sessions.start(projectId, agentId, title)
@@ -81,11 +85,6 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override suspend fun someoneElses(projectId: String): Boolean = graph.projects.loadedTrustOf(projectId) == ProjectTrust.SOMEONE_ELSES
 
     override fun heavyWorkRefusal(): String? = graph.limiter.canStartHeavyWork("A scheduled task").let { if (it.allowed) null else it.reason }
-
-    override suspend fun lockNow(): LockReason? {
-        graph.access.check()
-        return graph.access.state.value.lock
-    }
 
     override suspend fun saveOutput(sessionId: String, file: File) {
         graph.media.add(sessionId, file, "scheduled-task-output.txt", "agent")
