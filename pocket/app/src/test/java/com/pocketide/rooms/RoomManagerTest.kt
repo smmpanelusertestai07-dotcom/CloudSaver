@@ -92,7 +92,7 @@ class RoomManagerTest {
         dirs.worktree("claude", "octo/app", "s1").mkdirs()
         dirs.worktree("claude", "octo/app", "s2").mkdirs()
         env = FakeEnv(dirs, scope, listOf(session, session.copy(id = "s2"), session.copy(id = "a1", agentId = "antigravity")))
-        rooms = RoomManager(env)
+        rooms = RoomManager(env, remoteSettleMs = REMOTE_SETTLE_MS, remoteWatchMs = REMOTE_WATCH_MS)
     }
 
     @After fun tearDown() {
@@ -235,6 +235,86 @@ class RoomManagerTest {
         assertTrue("no port of it goes to the bridge", env.ports.exposed.isEmpty())
         val claude = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("claude") } }
         assertEquals(RemoteControl.ONLY_ANTIGRAVITY, claude.message)
+        assertEquals(RemoteControlState.Off(RemoteControl.OPEN_TO_OTHER_APPS), rooms.remoteControls.value["antigravity"])
+    }
+
+    @Test fun `Remote Control whose port other devices on the network can reach is stopped again`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "guarded"
+        env.computer.daemonOnNetwork = true
+
+        val refused = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("antigravity") } }
+
+        assertEquals(RemoteControl.OPEN_TO_NETWORK, refused.message)
+        assertTrue(env.computer.stopped.contains(env.computer.processes.single()))
+    }
+
+    @Test fun `Remote Control is starting, then on, and keeps the engine's service up`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "guarded"
+
+        val start = async { rooms.startRemoteControl("antigravity") }
+        withTimeout(5_000) { while (rooms.remoteControls.value["antigravity"] != RemoteControlState.Starting) delay(20) }
+
+        assertEquals(RemoteControl.DASHBOARD, start.await())
+        assertEquals(RemoteControlState.On, rooms.remoteControls.value["antigravity"])
+        assertEquals(1, env.engineKeptAlive)
+        assertEquals("starting again while it is on starts nothing", RemoteControl.DASHBOARD, rooms.startRemoteControl("antigravity"))
+        assertEquals(1, env.computer.processes.size)
+
+        rooms.stopRemoteControl("antigravity")
+
+        assertTrue("the daemon ended", env.computer.processes.single().waitFor(5, TimeUnit.SECONDS))
+        assertEquals(null, rooms.remoteControls.value["antigravity"])
+    }
+
+    @Test fun `leaving the screen while Remote Control starts leaves it where Stop reaches it`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "guarded"
+
+        val screen = launch { rooms.startRemoteControl("antigravity") }
+        withTimeout(5_000) { while (env.computer.processes.isEmpty()) delay(20) }
+        screen.cancel()
+        val daemon = env.computer.processes.single()
+        withTimeout(10_000) { while (rooms.remoteControls.value["antigravity"] == RemoteControlState.Starting) delay(20) }
+        assertEquals("the start went on without the screen", RemoteControlState.On, rooms.remoteControls.value["antigravity"])
+
+        rooms.stop("antigravity")
+
+        assertTrue(env.computer.stopped.contains(daemon))
+        assertTrue("the daemon ended", daemon.waitFor(5, TimeUnit.SECONDS))
+    }
+
+    @Test fun `a port Remote Control opens later that answers anyone turns it off, and says so`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "guarded"
+        rooms.startRemoteControl("antigravity")
+        val daemon = env.computer.processes.single()
+        val port = Loopback.freePort()
+        val late = ProcessBuilder("python3", "-c", FakeComputer.ENGINE, port.toString(), "open", "").start()
+        try {
+            withTimeout(5_000) { while (!Loopback.isListening(port)) delay(20) }
+            env.ports.extra += com.pocketide.bridge.PortListener(port, onNetwork = false)
+
+            withTimeout(10_000) { while (rooms.remoteControls.value["antigravity"] == RemoteControlState.On) delay(20) }
+
+            assertEquals(RemoteControlState.Off(RemoteControl.OPEN_TO_OTHER_APPS), rooms.remoteControls.value["antigravity"])
+            assertTrue(env.computer.stopped.contains(daemon))
+            assertTrue(env.notices.single().startsWith("antigravity|null|Remote Control turned off|"))
+        } finally {
+            late.destroyForcibly()
+        }
+    }
+
+    @Test fun `Remote Control that ends by itself is off, and says so`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "guarded"
+        rooms.startRemoteControl("antigravity")
+
+        env.computer.processes.single().destroyForcibly()
+
+        withTimeout(10_000) { while (rooms.remoteControls.value["antigravity"] == RemoteControlState.On) delay(20) }
+        assertEquals(RemoteControlState.Off(RemoteControl.STOPPED_BY_ITSELF), rooms.remoteControls.value["antigravity"])
     }
 
     @Test fun `Remote Control starts in the room's own folders, its own home among them`() = runBlocking {
@@ -556,6 +636,10 @@ class RoomManagerTest {
         /** How the stand-in Remote Control daemon's own loopback port treats a caller without a key. */
         @Volatile var remoteControlMode = "open"
 
+        /** Whether the stand-in daemon's port shows as open to the network. */
+        @Volatile var daemonOnNetwork = false
+        val daemonPorts = CopyOnWriteArrayList<Int>()
+
         /** Runs the real room.py's steps before Claude's stand-in engine, on the room's folders here. */
         @Volatile var runsRoomSteps = false
 
@@ -578,7 +662,7 @@ class RoomManagerTest {
                     hubMode,
                     argv.firstOrNull { it.startsWith("--csrf_token=") }?.substringAfter('=').orEmpty(),
                 )
-                "pocketide-remote-control" in argv -> engine(Loopback.freePort().toString(), remoteControlMode, "a-key")
+                "pocketide-remote-control" in argv -> engine(Loopback.freePort().also { daemonPorts += it }.toString(), remoteControlMode, "a-key")
                 RoomLayout.TERMINAL_SERVER in argv -> listOf(
                     "python3", File(ASSETS, "rooms/term.py").absolutePath,
                     "--port", argv[argv.indexOf("--port") + 1],
@@ -662,7 +746,9 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         }
     }
 
-    private class FakePorts : PortBridge {
+    /** [listening] stands in for the scan of the phone's listening ports, plus [extra] ones. */
+    private class FakePorts(private val listening: () -> List<com.pocketide.bridge.PortListener>) : PortBridge {
+        val extra = CopyOnWriteArrayList<com.pocketide.bridge.PortListener>()
         override val exposed = CopyOnWriteArrayList<BridgedPort>()
         val injected = ConcurrentHashMap<Int, Map<String, String>>()
         val revoked = CopyOnWriteArrayList<Int>()
@@ -678,7 +764,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
             revoked += port
         }
         override fun isInternal(url: String) = true
-        override suspend fun listeners(candidates: Collection<Int>) = emptyList<com.pocketide.bridge.PortListener>()
+        override suspend fun listeners(candidates: Collection<Int>) = listening() + extra
         override fun shutdown() = Unit
     }
 
@@ -699,7 +785,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
 
     private class FakeEnv(override val dirs: AppDirs, override val scope: CoroutineScope, private val all: List<SessionRecord>) : RoomsEnv {
         override val computer = FakeComputer(dirs)
-        override val portBridge = FakePorts()
+        override val portBridge = FakePorts { computer.daemonPorts.map { com.pocketide.bridge.PortListener(it, computer.daemonOnNetwork) } }
         override val phoneBridge = FakePhone()
         val ports get() = portBridge
         val phone get() = phoneBridge
@@ -787,3 +873,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         assertEquals(null, rooms.signedIn("someone.else"))
     }
 }
+
+/** Remote Control's daemon gets this long to open its ports here, and they are checked again this often. */
+private const val REMOTE_SETTLE_MS = 1_500L
+private const val REMOTE_WATCH_MS = 200L

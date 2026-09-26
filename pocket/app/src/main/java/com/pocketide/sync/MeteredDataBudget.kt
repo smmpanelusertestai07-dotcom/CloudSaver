@@ -50,7 +50,10 @@ internal class MeteredDataBudget(
     private val flow = MutableStateFlow(read())
     override val usage: StateFlow<DataUsage> = flow
 
-    /** A confirmed transfer by kind: the UTC day it was allowed on, and the bytes still to come. */
+    /**
+     * A confirmed transfer by kind: the UTC day it was allowed on, and the bytes still to come. It
+     * lets through only transfers that fit in what is left, and ends with the transfer ([endOnce]).
+     */
     private class Grant(val day: String, var left: Long)
 
     private val grants = HashMap<String, Grant>()
@@ -60,7 +63,7 @@ internal class MeteredDataBudget(
 
     override fun allow(bytes: Long, kind: String, big: Boolean): Decision {
         if (!network.metered()) return Decision.YES
-        if (granted(kind)) return Decision.YES
+        if (granted(kind, bytes)) return Decision.YES
         val s = settings()
         if (big && s.wifiOnlyBigDownloads) return Decision.no(WAITS_FOR_WIFI)
         if (s.mobileDailyLimitMb <= 0) return Decision.no(MOBILE_OFF)
@@ -86,12 +89,19 @@ internal class MeteredDataBudget(
         synchronized(grants) { grants[kind] = Grant(day(clock.now()), bytes) }
     }
 
-    private fun granted(kind: String): Boolean {
+    override fun endOnce(kind: String) {
+        synchronized(grants) { grants.remove(kind) }
+    }
+
+    /** True when a confirmed transfer of [kind] is under way today and [bytes] fit in what it has left. */
+    private fun granted(kind: String, bytes: Long): Boolean {
         synchronized(grants) {
             val grant = grants[kind] ?: return false
-            if (grant.day == day(clock.now()) && grant.left > 0) return true
-            grants.remove(kind)
-            return false
+            if (grant.day != day(clock.now()) || grant.left <= 0) {
+                grants.remove(kind)
+                return false
+            }
+            return bytes <= grant.left
         }
     }
 

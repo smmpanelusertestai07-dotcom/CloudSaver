@@ -291,8 +291,12 @@ interface DataBudget {
 
     /**
      * The owner saw the size of one big transfer of [kind] and confirmed it on mobile data (set-up
-     * on mobile data, §6.7): [allow] lets that kind through today until about [bytes] of it were
-     * recorded, without changing the owner's data settings. Kept in memory only.
+     * on mobile data, §6.7): [allow] lets transfers of that kind that fit in what is left of
+     * [bytes] through today, until about [bytes] of it were recorded or [endOnce], without
+     * changing the owner's data settings. Kept in memory only.
      */
     fun allowOnce(kind: String, bytes: Long) = Unit
+
+    /** The confirmed transfer of [kind] ended (done, failed or cancelled): what it did not use asks again. */
+    fun endOnce(kind: String) = Unit
 }

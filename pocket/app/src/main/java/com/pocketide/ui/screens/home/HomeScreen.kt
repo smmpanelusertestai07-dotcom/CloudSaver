@@ -79,6 +79,7 @@ import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.rooms.RemoteControlState
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.DataUsage
 import com.pocketide.sync.PhoneSpace
@@ -123,6 +124,7 @@ fun HomeScreen(nav: PocketNav) {
     val sessions by graph.sessions.all.collectAsStateWithLifecycle()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
+    val remoteControls by graph.rooms.remoteControls.collectAsStateWithLifecycle()
     val phone by graph.phone.snapshot.collectAsStateWithLifecycle()
     val usage by graph.sync.usage.collectAsStateWithLifecycle()
     val sync by graph.sync.status.collectAsStateWithLifecycle()
@@ -263,6 +265,7 @@ fun HomeScreen(nav: PocketNav) {
                 AgentCard(
                     agent = agent,
                     room = rooms[agent.id],
+                    remoteControl = remoteControls[agent.id],
                     signedIn = signIns[agent.id],
                     chips = WorkText.chips(agent.displayName, work[agent.id], now),
                     onUsage = nav::openExternal,
@@ -501,6 +504,7 @@ private fun ProjectCard(
 private fun AgentCard(
     agent: AgentInfo,
     room: RoomState?,
+    remoteControl: RemoteControlState?,
     signedIn: Boolean?,
     chips: List<Told>,
     onUsage: (String) -> Unit,
@@ -529,6 +533,12 @@ private fun AgentCard(
                     when {
                         agent.official -> StatusChip("Official", Tone.OK)
                         agent.verifiedPublisher -> StatusChip("Verified publisher", Tone.NEUTRAL)
+                    }
+                    // Google's Remote Control runs in the room while its own screen may be closed.
+                    when (remoteControl) {
+                        RemoteControlState.Starting -> StatusChip("Remote Control starting", Tone.WARN)
+                        RemoteControlState.On -> StatusChip("Remote Control on", Tone.OK)
+                        null, is RemoteControlState.Off -> Unit
                     }
                 }
                 Text(

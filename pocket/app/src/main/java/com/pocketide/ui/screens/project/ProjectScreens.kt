@@ -97,6 +97,8 @@ import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
+import com.pocketide.rooms.RemoteControl
+import com.pocketide.rooms.RemoteControlState
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.KeepTypedInput
@@ -653,6 +655,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
     val stops by graph.rooms.stops.collectAsStateWithLifecycle()
     val sleeps by graph.rooms.sleepsAt.collectAsStateWithLifecycle()
+    val remoteControls by graph.rooms.remoteControls.collectAsStateWithLifecycle()
     val installed by graph.agents.installed.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val trusts by graph.projects.trust.collectAsStateWithLifecycle()
@@ -768,6 +771,19 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                 if (careful && panel == null && !barHidden) {
                     CarefulNote(name, onChange = { nav.project(session.projectId) })
                 }
+                val remoteControlState = remoteControls[agentId]
+                val remoteControlLive = remoteControlState == RemoteControlState.Starting || remoteControlState == RemoteControlState.On
+                if (remoteControlLive && panel == null && !barHidden) {
+                    RemoteControlBar(
+                        on = remoteControlState == RemoteControlState.On,
+                        onOpen = { nav.openExternal(RemoteControl.DASHBOARD) },
+                        onTurnOff = {
+                            scope.act(snackbar, "Could not turn Remote Control off", done = "Remote Control is off.") {
+                                graph.rooms.stopRemoteControl(agentId)
+                            }
+                        },
+                    )
+                }
                 if (isLargeTranscript(session, graph.sessions.largeTranscript(sessionId)) && !bigDismissed && panel == null && !barHidden) {
                     BigChatBanner(
                         starting = startingFresh,
@@ -791,6 +807,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onRetry = { tries++ },
                         onBack = nav::back,
                         onSetUp = nav::computer.takeIf { SetUpOffer.needsOwner(computer) },
+                        remoteControl = remoteControlState,
                         onRemoteControl = { remoteControl = true }.takeIf { agentId == com.pocketide.rooms.RoomProfiles.ANTIGRAVITY },
                     ) { url ->
                         AgentWebView(
@@ -856,8 +873,11 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
             confirmLabel = "Start",
             destructive = false,
             onConfirm = {
-                scope.act(snackbar, "Remote Control did not start") {
-                    nav.openExternal(graph.rooms.startRemoteControl(agentId))
+                // The start itself goes on when this screen is left; only opening Google's page needs it.
+                scope.launch {
+                    finish { graph.rooms.startRemoteControl(agentId) }
+                        .onSuccess(nav::openExternal)
+                        .onFailure { snackbar.showSnackbar("Remote Control did not start: ${plainReason(it)}") }
                 }
             },
             onDismiss = { remoteControl = false },
@@ -870,7 +890,39 @@ private object RemoteControlText {
     const val OFFER = "Use Antigravity Remote Control (needs a phone test)"
     const val EXPLAINED = "Antigravity's own Remote Control runs in its room here, and you use Antigravity on Google's Remote " +
         "Control page in your browser, signed in with the same Google Account. PocketIDE opens no port of it to other " +
-        "apps, and turns it off again if Antigravity does. It has not been tried on a phone yet. Stopping the room stops it."
+        "apps, keeps checking the ports it opens, and turns it off if other apps or devices could use one. It has not " +
+        "been tried on a phone yet. Stopping the room stops it."
+    const val STARTING = "Starting Remote Control…"
+    const val ON = "Remote Control is on: use Antigravity on Google's page."
+}
+
+/** Remote Control starting or on, with the way to its page and to turn it off. */
+@Composable
+private fun RemoteControlBar(on: Boolean, onOpen: () -> Unit, onTurnOff: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!on) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(if (on) RemoteControlText.ON else RemoteControlText.STARTING, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            if (on) TextButton(onClick = onOpen) { Text("Open") }
+            TextButton(onClick = onTurnOff) { Text("Turn off") }
+        }
+    }
+}
+
+/** Under the offer: why PocketIDE turned Remote Control off, while it is off. */
+@Composable
+private fun RemoteControlOffer(state: RemoteControlState?, onRemoteControl: () -> Unit) {
+    when (state) {
+        RemoteControlState.Starting, RemoteControlState.On -> Unit
+        is RemoteControlState.Off -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(state.why, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+            TextButton(onClick = onRemoteControl) { Text(RemoteControlText.OFFER) }
+        }
+        null -> TextButton(onClick = onRemoteControl) { Text(RemoteControlText.OFFER) }
+    }
 }
 
 /** Sessions whose files can be browsed: an open one, and a conflict copy, which keeps its branch. */
@@ -999,6 +1051,8 @@ private fun RoomContent(
     onBack: () -> Unit,
     /** Set while the computer is not set up (or set-up stopped): retrying cannot help, setting it up does. */
     onSetUp: (() -> Unit)?,
+    /** Antigravity's own Remote Control in this room, if any. */
+    remoteControl: RemoteControlState?,
     /** Set for Antigravity: its own Remote Control, when its screen cannot open here. */
     onRemoteControl: (() -> Unit)?,
     ready: @Composable (String) -> Unit,
@@ -1008,7 +1062,7 @@ private fun RoomContent(
         is RoomView.Opening -> CenterMessage(view.step ?: "Opening $agentName…", progress = true)
         is RoomView.Failed -> CenterMessage(
             "$agentName did not start: ${view.why}",
-            below = { if (onSetUp == null && onRemoteControl != null) TextButton(onClick = onRemoteControl) { Text(RemoteControlText.OFFER) } },
+            below = { if (onSetUp == null && onRemoteControl != null) RemoteControlOffer(remoteControl, onRemoteControl) },
         ) {
             if (onSetUp != null) {
                 Button(onClick = onSetUp) { Text(SetUpOffer.TITLE) }

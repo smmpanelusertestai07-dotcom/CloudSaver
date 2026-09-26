@@ -46,5 +46,19 @@ class RemoteControlTest {
         assertNull("no port at all: only the outbound tunnel", RemoteControl.problem(emptyMap()))
     }
 
+    @Test
+    fun `a 404 at the root proves nothing, as an RPC server answers so while its routes work`() {
+        assertEquals(RemoteControl.CANNOT_CHECK, RemoteControl.problem(mapOf(4100 to HttpAnswer(404, "404 page not found"))))
+        assertEquals(RemoteControl.CANNOT_CHECK, RemoteControl.problem(mapOf(4100 to HttpAnswer(405, ""))))
+        assertEquals(RemoteControl.CANNOT_CHECK, RemoteControl.problem(mapOf(4100 to HttpAnswer(401, ""), 4101 to HttpAnswer(404, ""))))
+    }
+
+    @Test
+    fun `a port other devices on the network can reach keeps Remote Control off, even one that asks for a key`() {
+        val refused = HttpAnswer(401, "unauthenticated")
+        assertEquals(RemoteControl.OPEN_TO_NETWORK, RemoteControl.problem(mapOf(4100 to refused), onNetwork = setOf(4100)))
+        assertNull("a port elsewhere on the network is not the daemon's", RemoteControl.problem(mapOf(4100 to refused), onNetwork = setOf(8080)))
+    }
+
     private fun createTempDirectory() = kotlin.io.path.createTempDirectory("rc-home").toFile()
 }

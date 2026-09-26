@@ -432,10 +432,14 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
     var error by remember { mutableStateOf<String?>(null) }
     var askMobileData by remember { mutableStateOf<NeedsMobileData?>(null) }
 
-    fun run(block: suspend () -> Unit) {
+    /**
+     * [outlivesScreen]: a download the owner confirmed runs in the app's scope, so leaving this
+     * screen, or the app lock closing it, does not throw away what already arrived.
+     */
+    fun run(outlivesScreen: Boolean = false, block: suspend () -> Unit) {
         busy = true
         error = null
-        scope.launch {
+        (if (outlivesScreen) graph.scope else scope).launch {
             try {
                 block()
             } catch (e: CancellationException) {
@@ -475,7 +479,7 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
                     is UpdateState.Available -> ActionRow(
                         "Download version ${state.release.version}",
                         "${Formats.bytes(state.release.apkBytes)} · waits for Wi-Fi unless you allow mobile data",
-                        onClick = { if (!busy) run { graph.updater.download() } },
+                        onClick = { if (!busy) run(outlivesScreen = true) { graph.updater.download() } },
                     )
                     is UpdateState.Downloading -> ActionRow("Downloading…", "${(state.fraction * 100).toInt()} %", onClick = {})
                     is UpdateState.Ready -> ActionRow(
@@ -510,7 +514,13 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
                     onClick = {
                         askMobileData = null
                         graph.dataBudget.allowOnce(ask.kind, ask.bytes)
-                        run { graph.updater.download() }
+                        run(outlivesScreen = true) {
+                            try {
+                                graph.updater.download()
+                            } finally {
+                                graph.dataBudget.endOnce(ask.kind)
+                            }
+                        }
                     },
                 ) { Text("Use mobile data") }
             },

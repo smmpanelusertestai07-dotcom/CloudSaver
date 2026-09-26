@@ -1,6 +1,7 @@
 package com.pocketide.limiter
 
 import com.pocketide.linux.ComputerState
+import com.pocketide.rooms.RemoteControlState
 import com.pocketide.rooms.RoomState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,5 +37,25 @@ class EngineLoadTest {
         assertEquals("Computer running", load.title)
         assertEquals("Computer: Ubuntu's security fixes · Antigravity: starting · Claude: working", load.text)
         assertFalse(EngineLoad(listOf(EngineLoad.Line("Claude", working = false, starting = false)), null).working)
+    }
+
+    @Test fun `Remote Control keeps the service up with no room running, and is named in its notification`() {
+        val names = mapOf("antigravity" to "Antigravity", "claude" to "Claude")
+        val failedRoom = mapOf("antigravity" to RoomState.Failed("Its screen could not open."))
+
+        val on = EngineLoad.of(failedRoom, emptyMap(), mapOf("antigravity" to RemoteControlState.On), ComputerState.Ready, names::getValue)
+
+        assertFalse("its daemon runs in the room while the room itself is not open", on.idle)
+        assertFalse("an idle daemon does not hold the phone awake", on.working)
+        assertEquals("Antigravity Remote Control: on", on.text)
+        val starting = EngineLoad.of(emptyMap(), emptyMap(), mapOf("antigravity" to RemoteControlState.Starting), ComputerState.Ready, names::getValue)
+        assertEquals("Antigravity Remote Control: starting", starting.text)
+        val turnedOff = mapOf("antigravity" to RemoteControlState.Off("It opened a port any app can use."))
+        assertTrue(EngineLoad.of(failedRoom, emptyMap(), turnedOff, ComputerState.Ready, names::getValue).idle)
+        val both = EngineLoad.of(
+            mapOf("claude" to RoomState.Running("u", "s1", 0)), mapOf("claude" to true), mapOf("antigravity" to RemoteControlState.On),
+            ComputerState.Ready, names::getValue,
+        )
+        assertEquals("Claude: working · Antigravity Remote Control: on", both.text)
     }
 }

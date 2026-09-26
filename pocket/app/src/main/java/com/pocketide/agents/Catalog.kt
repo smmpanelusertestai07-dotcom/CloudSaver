@@ -78,6 +78,8 @@ internal class OpenVsxCatalog(
         check(find(agent.id) == null) { "${agent.displayName} is already on this phone." }
         change { it.copy(added = it.added + agent) }
         var kept = false
+        // A download cut off (a dropped connection, the owner leaving, Wi-Fi to wait for) is kept, so the next Add continues it.
+        var resumable = false
         try {
             val report = bringUpToDate(agent) ?: doctor.check(agent)
             if (report.ok) {
@@ -87,8 +89,16 @@ internal class OpenVsxCatalog(
             } else {
                 report.copy(note = listOfNotNull(report.note, "${agent.displayName} was not added.").joinToString(" "))
             }
+        } catch (rejected: PackageRejected) {
+            throw rejected
+        } catch (cut: IOException) {
+            resumable = true
+            throw cut
+        } catch (cancelled: CancellationException) {
+            resumable = true
+            throw cancelled
         } finally {
-            if (!kept) forget(agent.id)
+            if (!kept) forget(agent.id, keepDownloads = resumable)
         }
     }
 
@@ -183,7 +193,8 @@ internal class OpenVsxCatalog(
         val report = doctor.check(agent, release.version)
         if (report.ok) {
             record(agent.id, release.version, fetched.sha256, report.openCommand)
-            keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), present?.let { ExtensionInstaller.packageFile(folder, it.version) }))
+            val previous = present?.let { ExtensionInstaller.packageFile(folder, it.version) }
+            keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), previous))
             configure(agent.id)
             return report
         }
@@ -289,12 +300,13 @@ internal class OpenVsxCatalog(
     }
 
     /**
-     * Deletes the agent's room, its kept packages and its record. Once the room starts going, the
-     * rest goes too: a cancelled caller never leaves one without the other.
+     * Deletes the agent's room, its kept packages (unless [keepDownloads]: an Add that stopped
+     * half way continues them) and its record. Once the room starts going, the rest goes too: a
+     * cancelled caller never leaves one without the other.
      */
-    private suspend fun forget(agentId: String) = withContext(NonCancellable) {
+    private suspend fun forget(agentId: String, keepDownloads: Boolean = false) = withContext(NonCancellable) {
         env.deleteRoom(agentId)
-        withContext(Dispatchers.IO) { Trees.delete(File(packages, agentId).toPath()) }
+        if (!keepDownloads) withContext(Dispatchers.IO) { Trees.delete(File(packages, agentId).toPath()) }
         change { it.withoutAgent(agentId) }
     }
 

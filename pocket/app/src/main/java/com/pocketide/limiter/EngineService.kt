@@ -11,7 +11,6 @@ import android.os.SystemClock
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.pocketide.graph
-import com.pocketide.rooms.RoomState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,12 +67,9 @@ class EngineService : Service() {
         watching = true
         val graph = applicationContext.graph
         scope.launch {
-            combine(graph.rooms.states, graph.limiter.work, graph.computer.state) { states, work, computer ->
-                val lines = EngineLoad.running(states).sorted().map { id ->
-                    val name = graph.agents.find(id)?.displayName ?: EngineNotices.defaultName(id)
-                    EngineLoad.Line(name, working = work[id]?.busy?.isNotEmpty() == true, starting = states[id] is RoomState.Starting)
-                }
-                EngineLoad(lines, EngineLoad.computerWork(computer))
+            combine(graph.rooms.states, graph.limiter.work, graph.rooms.remoteControls, graph.computer.state) { states, work, remote, computer ->
+                val busy = work.mapValues { (_, room) -> room.busy.isNotEmpty() }
+                EngineLoad.of(states, busy, remote, computer) { id -> graph.agents.find(id)?.displayName ?: EngineNotices.defaultName(id) }
             }.distinctUntilChanged().collectLatest { load ->
                 wakeBudget.update(SystemClock.elapsedRealtime(), load.working)
                 if (load.idle) {

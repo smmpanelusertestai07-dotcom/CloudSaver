@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.AppGraph
 import com.pocketide.agents.CandidateFacts
 import com.pocketide.agents.DoctorReport
 import com.pocketide.agents.mobileDataQuestion
@@ -94,15 +95,18 @@ fun MoreAgentsScreen(nav: PocketNav) {
     val official = installed.filter { it.official }
     val added = installed.filter { !it.official }
 
-    fun add(candidate: AgentCandidate) {
+    // A download the owner started: leaving the screen, or the app lock closing it, must not throw it away.
+    // [confirmed]: the owner allowed it on mobile data, for this Add alone.
+    fun add(candidate: AgentCandidate, confirmed: NeedsMobileData? = null) {
         runner.run(
             key = "add:${candidate.extensionId}",
+            outlivesScreen = true,
             onFailure = { error ->
                 val question = mobileDataQuestion(error)
                 if (question != null) askMobileData = candidate to question else runner.say(PlainError.of(error))
             },
             onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
-        ) { graph.agents.add(candidate) }
+        ) { addAgent(graph, candidate, confirmed) }
     }
 
     ManagePage("More agents", nav, runner) {
@@ -176,22 +180,41 @@ fun MoreAgentsScreen(nav: PocketNav) {
     }
     report?.let { (name, result) -> DoctorDialog(name, result) { report = null } }
     askMobileData?.let { (candidate, question) ->
-        AlertDialog(
-            onDismissRequest = { askMobileData = null },
-            title = { Text("Download ${question.size} on mobile data?") },
-            text = { Text("${candidate.displayName} is big, so it waits for Wi-Fi. It can download now on mobile data instead.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        askMobileData = null
-                        graph.dataBudget.allowOnce(question.kind, question.bytes)
-                        add(candidate)
-                    },
-                ) { Text("Use mobile data") }
+        MobileDataDialog(
+            candidate,
+            question,
+            onUse = {
+                askMobileData = null
+                graph.dataBudget.allowOnce(question.kind, question.bytes)
+                add(candidate, confirmed = question)
             },
-            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+            onDismiss = { askMobileData = null },
         )
     }
+}
+
+/** Adds [candidate]; a mobile-data yes ([confirmed]) covers this Add alone, however it ends. */
+private suspend fun addAgent(graph: AppGraph, candidate: AgentCandidate, confirmed: NeedsMobileData?): DoctorReport = try {
+    graph.agents.add(candidate)
+} finally {
+    confirmed?.let { graph.dataBudget.endOnce(it.kind) }
+}
+
+/** Nothing adds the agent later by itself, so the question says so. */
+@Composable
+private fun MobileDataDialog(candidate: AgentCandidate, question: NeedsMobileData, onUse: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Download ${question.size} on mobile data?") },
+        text = {
+            Text(
+                "${candidate.displayName} is big, so it waits for Wi-Fi. It is not added yet: tap Add again on Wi-Fi, " +
+                    "or download it now on mobile data.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onUse) { Text("Use mobile data") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    )
 }
 
 @Composable

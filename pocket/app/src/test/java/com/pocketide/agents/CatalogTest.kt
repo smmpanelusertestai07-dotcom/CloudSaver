@@ -455,6 +455,23 @@ class CatalogTest {
     }
 
     @Test
+    fun anAddThatStopsHalfWayKeepsWhatArrivedForTheNextAdd() = runBlocking<Unit> {
+        val cline = community()
+        catalog.discover()
+        val arrived = File(temp.root, "agents/packages/${cline.id}/1.0.0.vsix.part").apply {
+            parentFile!!.mkdirs()
+            writeBytes(ByteArray(100) { 7 })
+        }
+        env.allowed = Decision.no("Waiting for Wi-Fi")
+
+        assertThrows(DownloadWaits::class.java) { runBlocking { catalog.add(catalog.candidates.value.single()) } }
+
+        assertNull(catalog.find(cline.id))
+        assertEquals(listOf(cline.id), env.deleted)
+        assertTrue("the bytes that arrived stay for the next Add", arrived.isFile)
+    }
+
+    @Test
     fun onlyOfficialAgentsHidesTheOthersAndRefusesToAddOrInstallThem() = runBlocking<Unit> {
         val cline = community()
         catalog.discover()
