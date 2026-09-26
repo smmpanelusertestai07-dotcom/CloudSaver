@@ -91,7 +91,6 @@ fun backupText(backup: SessionBackup, time: (Long) -> String): Pair<String, Tone
 
 private fun recordBackupState(session: SessionRecord): Pair<String, Tone> = when {
     !session.backUp -> "Not backed up" to Tone.WARN
-    session.pendingVideos > 0 -> (waitingVideosText(session.pendingVideos) ?: "Waiting for Wi-Fi") to Tone.WARN
     session.pendingBytes > 0 -> "Waiting to upload" to Tone.WARN
     else -> "Backed up" to Tone.OK
 }

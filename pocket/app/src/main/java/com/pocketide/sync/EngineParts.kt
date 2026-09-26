@@ -183,7 +183,7 @@ internal data class SyncedSettings(
 
 /** Only real changes are pushed: each record is compared with the version this phone last sent. */
 internal object Diffs {
-    fun sanitized(r: SessionRecord) = r.copy(pendingBytes = 0, pendingVideos = 0)
+    fun sanitized(r: SessionRecord) = r.copy(pendingBytes = 0)
 
     fun hash(r: SessionRecord): String =
         Codec.sha256(AppJson.encodeToString(SessionRecord.serializer(), sanitized(r)).toByteArray(Charsets.UTF_8))

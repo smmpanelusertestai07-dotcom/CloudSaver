@@ -437,7 +437,7 @@ internal class SessionManager(
         withContext(io) {
             SafeFiles.children(dirs.sessionMedia(session.agentId, session.projectId, session.id)).forEach(SafeFiles::delete)
         }
-        change(sessionId) { it.copy(mediaBytes = 0, mediaCount = 0, pendingVideos = 0) }
+        change(sessionId) { it.copy(mediaBytes = 0, mediaCount = 0) }
         env.sync.requestSync("media removed")
     }
 

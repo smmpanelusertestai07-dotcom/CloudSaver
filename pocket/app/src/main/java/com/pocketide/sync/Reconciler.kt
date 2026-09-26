@@ -90,7 +90,6 @@ internal class Conflicts(private val kit: SyncKit) {
             deviceId = device.id,
             backUp = true,
             pendingBytes = 0,
-            pendingVideos = 0,
             agentSessionRef = null,
         )
     }

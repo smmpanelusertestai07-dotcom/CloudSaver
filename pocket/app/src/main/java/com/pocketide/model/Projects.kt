@@ -55,8 +55,6 @@ data class SessionRecord(
      * Drive. The live figure is the sync engine's `backups` (and `queueNow` before a phone copy goes).
      */
     val pendingBytes: Long = 0,
-    /** Videos waiting for Wi-Fi. */
-    val pendingVideos: Int = 0,
     /** For a conflict copy: the session it diverged from. */
     val conflictOf: String? = null,
     /** The phone that created it. */

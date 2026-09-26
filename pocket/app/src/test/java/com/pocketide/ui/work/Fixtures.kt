@@ -14,7 +14,6 @@ internal fun session(
     deletedAt: Long? = null,
     backUp: Boolean = true,
     pendingBytes: Long = 0,
-    pendingVideos: Int = 0,
     transcriptBytes: Long = 0,
     mediaBytes: Long = 0,
 ): SessionRecord = SessionRecord(
@@ -29,7 +28,6 @@ internal fun session(
     deletedAt = deletedAt,
     backUp = backUp,
     pendingBytes = pendingBytes,
-    pendingVideos = pendingVideos,
     transcriptBytes = transcriptBytes,
     mediaBytes = mediaBytes,
     deviceId = "phone",
