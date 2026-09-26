@@ -51,18 +51,21 @@ internal object Guide {
         ),
         bullets(
             "It runs only while it is used, and stops by itself after 30 minutes idle (choose 15 minutes to 4 hours in Settings). " +
-                "An agent's work counts as use: GitHub counts file changes and terminal output as activity.",
+                "GitHub counts typing, taps and terminal output as use; an agent working alone in its panel may not count, so " +
+                "choose a longer idle time for long tasks.",
             "Stopped, it keeps its files. Starting it again takes about a minute.",
             "GitHub deletes a computer left unused for 30 days (choose 7, 14 or 30). Your code on GitHub stays: push your " +
                 "work, and nothing is lost.",
             "PocketIDE adds three files in ${ComputerConfig.FOLDER}/ to the project: GitHub's default image, the three " +
-                "agents, and settings for a phone screen. Your own dev container set-up is not touched.",
+                "agents, a desktop you can watch, browser tools for the agents, and settings for a phone screen. Your own dev " +
+                "container set-up is not touched.",
             "Each time the computer starts, PocketIDE's settings are put back, so a change made in a browser, or synced from " +
                 "another device, does not stick.",
         ),
         tip(
             "On the computer screen, the key bar has Esc, Tab, Ctrl, the arrows, Ctrl C and Send. ⋯ opens the menu: the agents, " +
-                "the terminal, the command palette, Reload, Open in Chrome and Stop computer.",
+                "the terminal, the command palette, Desktop (watch the agents' browser live), Web preview (your app's port), " +
+                "Reload, Open in Chrome and Stop computer.",
         ),
         link("Codespaces security, by GitHub", DocLinks.CODESPACES_SECURITY),
     )
@@ -84,6 +87,11 @@ internal object Guide {
             "Enter makes a new line; Send on the key bar sends.",
             "Sign-in pages open in Chrome. If a page cannot come back to the computer by itself, the agent's screen shows how " +
                 "to finish, often with a code to paste.",
+            "Codex: its \"Sign in with ChatGPT\" button cannot finish in a cloud computer. Open ⋯ > Terminal and type " +
+                "codex login --device-auth, then enter the code in Chrome (first turn on device code sign-in in ChatGPT's " +
+                "security settings). An OpenAI API key works too.",
+            "Each agent has two browser tools, Playwright and Chrome DevTools. They open Chrome on the computer's desktop, " +
+                "which you watch with ⋯ > Desktop.",
             "Chats stay in the computer, so they are there on your next visit, and go when the computer is deleted.",
         ),
         warn(
@@ -102,6 +110,9 @@ internal object Guide {
                 "uploads the APK.\"",
         ),
         bullets(
+            "Web apps: an agent starts the app, and ⋯ > Web preview opens its port. ⋯ > Desktop shows the agents' browser live.",
+            "Android apps: a cloud computer has no Android emulator. Agents test on GitHub Actions, whose Linux machines " +
+                "have one, and can publish the APK as a GitHub release for you to install on this phone.",
             "Builds of public repositories are free on GitHub's standard machines.",
             "Private repositories use your free minutes (2,000 a month on GitHub Free, as of ${Allowance.CHECKED_ON}). " +
                 "Windows counts twice, macOS ten times.",

@@ -15,6 +15,8 @@ internal object DocLinks {
     const val CODESPACES_LIST = "https://github.com/codespaces"
     const val ACTIONS_BILLING = "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
     const val BILLING_USAGE = "https://github.com/settings/billing/usage"
+    const val BUDGETS = "https://github.com/settings/billing/budgets"
+    const val GITHUB_EMAILS = "https://github.com/settings/emails"
 
     const val GITHUB_TERMS = "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service"
     const val GITHUB_ADDITIONAL_TERMS =

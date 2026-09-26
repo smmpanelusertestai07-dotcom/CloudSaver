@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -28,11 +29,12 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.SyncDisabled
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -64,6 +66,7 @@ import com.pocketide.BuildConfig
 import com.pocketide.PocketApp
 import com.pocketide.cloud.ComputerService
 import com.pocketide.core.ThemeMode
+import com.pocketide.docs.DocLinks
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
 import com.pocketide.ui.components.DialogBody
@@ -174,8 +177,8 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
                 update { it.copy(appLock = on) }
             }
             Link(Icons.Outlined.Storage, "Your data", "Where everything is, and deleting it", onYourData)
-            Link(Icons.Outlined.SyncDisabled, "GitHub's Settings Sync", "Keep it off for Codespaces, so no other device changes the computer", {
-                Browser.open(context, CODESPACES_SETTINGS)
+            Link(Icons.Outlined.AlternateEmail, "Keep your email private", "On GitHub, so your commits do not show it", {
+                Browser.open(context, DocLinks.GITHUB_EMAILS)
             })
         }
 
@@ -193,6 +196,12 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
                 Browser.open(context, graph.gitHubAuth.authorizationsUrl())
             })
             Link(Icons.Outlined.Key, "GitHub App", "The App PocketIDE signs in through", { changingApp = true })
+            Link(Icons.Outlined.Password, "Codespaces secrets and Settings Sync", "Keys your tools need; keep Settings Sync off", {
+                Browser.open(context, DocLinks.CODESPACES_SETTINGS)
+            })
+            Link(Icons.Outlined.Savings, "Spending limit", "Keep GitHub's budget at \$0 so you are never charged", {
+                Browser.open(context, DocLinks.BUDGETS)
+            })
             Link(Icons.AutoMirrored.Outlined.Logout, "Sign out", "The cloud computers keep running until GitHub stops them", { signingOut = true })
         }
 
@@ -322,8 +331,6 @@ private fun <T, V> Choice(
         )
     }
 }
-
-private const val CODESPACES_SETTINGS = "https://github.com/settings/codespaces"
 
 /** GitHub's machine names; the empty name lets GitHub pick its smallest, which is the default. */
 private val MACHINES = listOf(
