@@ -60,7 +60,7 @@ internal object RoomEngines {
             // parses it as a URL on every connect, and one with {{port}} where a port number goes
             // stops the workbench, so no agent screen opens. Its own default, <base>/proxy/{{port}}/,
             // parses; that route is off here, and the agent screen sends such an address to Chrome
-            // as http://localhost:<port>/ instead (WebPolicy.withoutEngineProxy).
+            // as http://localhost:<port>/ instead (EngineProxy.unwrap).
             env = (environment - PROXY_URI_VARIABLE) + mapOf(
                 "POCKETIDE_OPEN_COMMAND" to profile.openCommand.orEmpty(),
                 "POCKETIDE_OPEN_PLACE" to profile.place.word,

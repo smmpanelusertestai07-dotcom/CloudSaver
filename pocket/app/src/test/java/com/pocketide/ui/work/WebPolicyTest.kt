@@ -1,5 +1,6 @@
 package com.pocketide.ui.work
 
+import com.pocketide.ui.web.EngineProxy
 import com.pocketide.ui.web.ExternalOpen
 import com.pocketide.ui.web.FilePick
 import com.pocketide.ui.web.PickerKind
@@ -63,12 +64,12 @@ class WebPolicyTest {
     fun codeServersPortAddressGoesToThePortItself() {
         assertEquals(
             "http://localhost:1455/auth/callback?code=a%2Fb&state=s#done",
-            WebPolicy.withoutEngineProxy("http://127.0.0.1:41234/proxy/1455/auth/callback?code=a%2Fb&state=s#done"),
+            EngineProxy.unwrap("http://127.0.0.1:41234/proxy/1455/auth/callback?code=a%2Fb&state=s#done"),
         )
-        assertEquals("http://localhost:3000/", WebPolicy.withoutEngineProxy("http://localhost:41234/proxy/3000/"))
-        assertEquals("http://localhost:3000/", WebPolicy.withoutEngineProxy("http://LOCALHOST:41234/proxy/3000"))
-        assertEquals("http://localhost:65535/x", WebPolicy.withoutEngineProxy("http://127.0.0.1:41234/proxy/65535/x"))
-        assertEquals("http://localhost:1/a%20b/c", WebPolicy.withoutEngineProxy("http://127.0.0.1:41234/proxy/1/a%20b/c"))
+        assertEquals("http://localhost:3000/", EngineProxy.unwrap("http://localhost:41234/proxy/3000/"))
+        assertEquals("http://localhost:3000/", EngineProxy.unwrap("http://LOCALHOST:41234/proxy/3000"))
+        assertEquals("http://localhost:65535/x", EngineProxy.unwrap("http://127.0.0.1:41234/proxy/65535/x"))
+        assertEquals("http://localhost:1/a%20b/c", EngineProxy.unwrap("http://127.0.0.1:41234/proxy/1/a%20b/c"))
     }
 
     @Test
@@ -93,7 +94,7 @@ class WebPolicyTest {
             "intent://x#Intent;end",
             "::not a url::",
         )
-        for (url in unchanged) assertEquals(url, url, WebPolicy.withoutEngineProxy(url))
+        for (url in unchanged) assertEquals(url, url, EngineProxy.unwrap(url))
     }
 
     @Test

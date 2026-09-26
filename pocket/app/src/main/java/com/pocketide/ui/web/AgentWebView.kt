@@ -135,7 +135,7 @@ class WebViewHolder internal constructor() {
      * off), so Chrome gets the port itself.
      */
     internal fun leave(url: String, userGesture: Boolean) {
-        val target = WebPolicy.withoutEngineProxy(url)
+        val target = EngineProxy.unwrap(url)
         if (callbacks.isInternal(target)) return
         when (WebPolicy.externalOpen(target, userGesture)) {
             ExternalOpen.OPEN -> callbacks.openExternal(target)
