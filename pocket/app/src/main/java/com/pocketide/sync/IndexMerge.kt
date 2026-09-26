@@ -176,7 +176,9 @@ internal object IndexMerge {
             is SessionChange.Restore -> {
                 val newer = if (old != null && old.lastActivityAt > change.record.lastActivityAt) old else change.record
                 val status = change.record.status.takeUnless { it == SessionStatus.DELETED } ?: SessionStatus.OPEN
-                newer.copy(deletedAt = null, status = status)
+                // As in mergeSession: a chat either side saw kept in the Claude account stays marked so.
+                val claudeAccount = change.record.claudeAccount || old?.claudeAccount == true
+                newer.copy(deletedAt = null, status = status, claudeAccount = claudeAccount)
             }
         }
         return if (old == null) sessions + next else sessions.map { if (it.id == change.id) next else it }

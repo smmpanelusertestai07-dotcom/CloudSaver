@@ -127,6 +127,24 @@ class IndexMergeTest {
     }
 
     @Test
+    fun aRestoreKeepsTheClaudeAccountMarkWhicheverSideIsNewer() {
+        val t = clock.now
+        // Another phone marked the chat; this phone's restore has newer activity and no mark.
+        val marked = VaultIndex(updatedAt = t, sessions = listOf(session("s1", at = t, deletedAt = t - day).copy(claudeAccount = true)))
+        val restored = IndexMerge.apply(marked, IndexDelta(sessions = listOf(SessionChange.Restore(session("s1", at = t + day)))), t, 1)
+        assertTrue(restored.sessions.single().claudeAccount)
+        assertEquals(t + day, restored.sessions.single().lastActivityAt)
+
+        // This phone restores a marked chat; the index has newer activity and no mark.
+        val newer = VaultIndex(updatedAt = t, sessions = listOf(session("s2", at = t + day, deletedAt = t - day)))
+        val restore = SessionChange.Restore(session("s2", at = t).copy(claudeAccount = true))
+        val restoredMarked = IndexMerge.apply(newer, IndexDelta(sessions = listOf(restore)), t, 1).sessions.single()
+        assertTrue(restoredMarked.claudeAccount)
+        assertEquals(t + day, restoredMarked.lastActivityAt)
+        assertEquals(null, restoredMarked.deletedAt)
+    }
+
+    @Test
     fun onlyARestoreClearsADeletion() {
         val t = clock.now
         val base = VaultIndex(updatedAt = t, sessions = listOf(session("s1", at = t, deletedAt = t - day)))
