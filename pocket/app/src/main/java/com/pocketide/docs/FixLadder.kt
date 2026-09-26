@@ -22,9 +22,9 @@ internal object FixLadder {
     val rungs = listOf(
         Rung(
             "Reload the agent screen",
-            "For a blank or frozen agent screen.",
+            "For a blank or frozen screen.",
             "Takes seconds.",
-            how = "The agent's menu → $RELOAD_ITEM.",
+            how = "Its menu → $RELOAD_ITEM.",
         ),
         Rung("Restart the agent", "For an agent that stopped answering.", "The chat is kept.", how = "Its menu → $RESTART_ITEM."),
         Rung(

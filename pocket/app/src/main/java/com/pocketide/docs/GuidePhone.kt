@@ -59,7 +59,7 @@ internal object GuidePhone {
             row("Restart, or the app is closed", "Sync finishes later from an encrypted queue."),
         ),
         p(
-            "If Android restricts the app, or you force-stop it, the daily job runs late, so the 30-day erase " +
+            "If the app is restricted or force-stopped, the daily job runs late, so the 30-day erase " +
                 "and the 90-day computer rule can happen later, never earlier.",
         ),
         p(
@@ -105,7 +105,7 @@ internal object GuidePhone {
             row("Local AI models good enough for agent work", "The agents' own cloud models"),
         ),
         p(
-            "Offline, the computer, your files and Preview still work; the agents wait and sync catches up later.",
+            "Offline, the computer, your files and Preview still work; the agents wait and sync catches up.",
         ),
     )
 
@@ -162,7 +162,7 @@ internal object GuidePhone {
             row("ACCESS_NETWORK_STATE", "Tells Wi-Fi from mobile data, and offline from signed out."),
             row("FOREGROUND_SERVICE", "Keeps the computer running while agents work, with a notice and a Stop button."),
             row("FOREGROUND_SERVICE_SPECIAL_USE", "The service type Android requires for running a computer."),
-            row("FOREGROUND_SERVICE_DATA_SYNC", "So a long upload to Drive is not cut off halfway."),
+            row("FOREGROUND_SERVICE_DATA_SYNC", "So long Drive uploads and update downloads are not cut off."),
             row(
                 "POST_NOTIFICATIONS",
                 "Asked once: the running notice, finished builds, limits reached, access removed, new agents.",

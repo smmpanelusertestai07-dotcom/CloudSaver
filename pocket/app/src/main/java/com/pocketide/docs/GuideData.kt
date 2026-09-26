@@ -82,7 +82,7 @@ internal object GuideData {
             row("Want everything gone", "Your data → Delete everything."),
         ),
         warn(
-            "If you uninstall before the 30 days are up, nothing can run, so the marked files stay in Drive " +
+            "If you uninstall within the 30 days, nothing can run, so the marked files stay in Drive " +
                 "(encrypted and unreadable) until you reinstall or use Drive → Manage apps → Delete hidden app " +
                 "data.",
         ),
