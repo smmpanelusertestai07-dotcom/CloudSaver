@@ -94,6 +94,11 @@ internal class SessionManager(
 
     override val all: StateFlow<List<SessionRecord>> = records.flow
 
+    override suspend fun loaded(): List<SessionRecord> {
+        active.current()
+        return records.current()
+    }
+
     init {
         scope.launch {
             quietly {
@@ -336,7 +341,7 @@ internal class SessionManager(
      * commit) are removed, so it never shows as unmerged work. Returns true when removed.
      */
     private suspend fun dropIfEmpty(session: SessionRecord): Boolean {
-        val project = env.projects.all.value.find { it.id == session.projectId } ?: return false
+        val project = env.projects.loaded().find { it.id == session.projectId } ?: return false
         return try {
             val refs = BareRefs(dirs.bareRepo(project.id))
             val tip = refs.sha(HEADS + session.branch)
@@ -426,13 +431,19 @@ internal class SessionManager(
         env.sync.requestSync("backup choice changed")
     }
 
+    override suspend fun markInClaudeAccount(sessionId: String) {
+        if (records.current().find { it.id == sessionId }?.claudeAccount != false) return
+        change(sessionId) { it.copy(claudeAccount = true) }
+        env.sync.requestSync("chat kept in the Claude account")
+    }
+
     override suspend fun removeMedia(sessionId: String) {
         val session = session(sessionId)
         mediaOf(sessionId)?.forEach { env.media.delete(it) }
         withContext(io) {
             SafeFiles.children(dirs.sessionMedia(session.agentId, session.projectId, session.id)).forEach(SafeFiles::delete)
         }
-        change(sessionId) { it.copy(mediaBytes = 0, mediaCount = 0, pendingVideos = 0) }
+        change(sessionId) { it.copy(mediaBytes = 0, mediaCount = 0) }
         env.sync.requestSync("media removed")
     }
 
@@ -450,7 +461,7 @@ internal class SessionManager(
         for (session in records.current()) {
             if (session.status == SessionStatus.OPEN && session.deletedAt == null) quietly { saveNow(session.id) }
         }
-        return env.projects.all.value.mapNotNull { project ->
+        return env.projects.loaded().mapNotNull { project ->
             unsaved(project.id)?.let { "${project.owner}/${project.repo}: $it" }
         }
     }
@@ -467,7 +478,7 @@ internal class SessionManager(
     private suspend fun measureAll() {
         val sessions = records.current()
         val found = transcripts.scan(sessions)
-        val projects = env.projects.all.value.associateBy { it.id }
+        val projects = env.projects.loaded().associateBy { it.id }
         val now = clock.now()
         val measured = HashMap<String, SessionRecord>()
         val leftovers = ArrayList<SessionRecord>()
@@ -519,9 +530,9 @@ internal class SessionManager(
      * session whose branch has commits GitHub does not have yet is saved, at most once per
      * autosave window each.
      */
-    private fun saveUnpushedWork() {
-        val projects = env.projects.all.value.associateBy { it.id }
-        for (session in records.flow.value) {
+    private suspend fun saveUnpushedWork() {
+        val projects = env.projects.loaded().associateBy { it.id }
+        for (session in records.current()) {
             if (session.status != SessionStatus.OPEN || session.commits == 0 || projects[session.projectId] == null) continue
             val refs = BareRefs(dirs.bareRepo(session.projectId))
             val local = refs.sha(HEADS + session.branch) ?: continue
@@ -585,6 +596,15 @@ internal class SessionManager(
             large.remove(it.id)
             autosaver.forget(it.id)
         }
+    }
+
+    override suspend fun forgetEverything() {
+        records.current().forEach { autosaver.forget(it.id) }
+        records.clear()
+        active.clear()
+        erasing.clear()
+        transcripts.clear()
+        large.clear()
     }
 
     // ProjectWork: what removing a project must not lose.
@@ -734,7 +754,7 @@ internal class SessionManager(
     private suspend fun pushBranch(sessionId: String): String? {
         val session = records.current().find { it.id == sessionId } ?: return NOT_HERE
         if (session.status == SessionStatus.ON_MAIN || session.status == SessionStatus.CONFLICT_COPY) return null
-        val project = env.projects.all.value.find { it.id == session.projectId } ?: return "This chat's project is not on this phone."
+        val project = env.projects.loaded().find { it.id == session.projectId } ?: return "This chat's project is not on this phone."
         val bare = dirs.bareRepo(project.id)
         if (!BareRefs(bare).exists(HEADS + session.branch)) return null
         // A branch goes to GitHub with its first commit: a session without commits leaves nothing there.
@@ -784,8 +804,8 @@ internal class SessionManager(
     private suspend fun session(sessionId: String): SessionRecord =
         records.current().find { it.id == sessionId } ?: throw SessionException(NOT_HERE)
 
-    private fun project(projectId: String): Project =
-        env.projects.all.value.find { it.id == projectId } ?: throw SessionException("This chat's project is not on this phone.")
+    private suspend fun project(projectId: String): Project =
+        env.projects.loaded().find { it.id == projectId } ?: throw SessionException("This chat's project is not on this phone.")
 
     private suspend fun change(sessionId: String, edit: (SessionRecord) -> SessionRecord) {
         records.update { list ->

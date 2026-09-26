@@ -55,6 +55,27 @@ class MemoryFilesTest {
     }
 
     @Test
+    fun `claude skills, subagents, commands and output styles are listed as synced`() {
+        val home = home()
+        write(home, ".claude/skills/release-notes/SKILL.md", "skill")
+        write(home, ".claude/skills/release-notes/collect.py", "not listed")
+        write(home, ".claude/agents/reviewer.md", "agent")
+        write(home, ".claude/commands/ship.md", "command")
+        write(home, ".claude/output-styles/terse.md", "style")
+        val files = MemoryFiles.find(home, "claude", "CLAUDE.md").filter { it.exists }
+        assertEquals(
+            listOf(
+                "~/.claude/skills/release-notes/SKILL.md",
+                "~/.claude/agents/reviewer.md",
+                "~/.claude/commands/ship.md",
+                "~/.claude/output-styles/terse.md",
+            ),
+            files.map { it.label },
+        )
+        assertTrue(files.all { it.synced })
+    }
+
+    @Test
     fun `an unknown agent uses its instructions file name`() {
         val home = home()
         write(home, "KILO.md", "x")

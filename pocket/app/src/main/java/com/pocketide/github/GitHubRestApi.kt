@@ -38,12 +38,8 @@ internal class GitHubRestApi(
     override suspend fun me(): GitHubAccount = user().account()
 
     /** Repositories the owner and PocketIDE's App installations can both reach: the Import picker. */
-    override suspend fun repos(): List<RepoInfo> {
-        val installations = rest.pages(rest.url("user", "installations")) {
-            decode(InstallationsPage.serializer(), it).installations
-        }
-        return installations
-            .filter { it.suspendedAt == null }
+    override suspend fun repos(): List<RepoInfo> =
+        activeInstallations()
             .flatMap { installation ->
                 rest.pages(rest.url("user", "installations", installation.id.toString(), "repositories")) {
                     decode(InstallationReposPage.serializer(), it).repositories
@@ -51,7 +47,14 @@ internal class GitHubRestApi(
             }
             .map { it.info() }
             .distinctBy { "${it.owner}/${it.name}".lowercase(Locale.ROOT) }
-    }
+
+    override suspend fun installedOn(login: String): Boolean =
+        activeInstallations().any { it.account?.login.equals(login, ignoreCase = true) }
+
+    /** The App's installations the signed-in user can reach, suspended ones left out. */
+    private suspend fun activeInstallations(): List<InstallationJson> =
+        rest.pages(rest.url("user", "installations")) { decode(InstallationsPage.serializer(), it).installations }
+            .filter { it.suspendedAt == null }
 
     override suspend fun repo(owner: String, name: String): RepoInfo? =
         rest.getOrNull(repoUrl(owner, name))?.let { decode(RepoJson.serializer(), it.text).info() }
@@ -161,17 +164,19 @@ internal class GitHubRestApi(
     }
 
     /** The most recent runs (one page), the newest few with the runner they asked for. */
-    override suspend fun runs(owner: String, name: String, branch: String?): List<WorkflowRun> {
+    override suspend fun runs(owner: String, name: String, branch: String?): List<WorkflowRun> = runs(owner, name, branch, runners = true)
+
+    override suspend fun runs(owner: String, name: String, branch: String?, runners: Boolean): List<WorkflowRun> {
         val url = repoUrl(owner, name, "actions", "runs", query = mapOf("branch" to branch, "per_page" to RECENT_RUNS.toString()))
         val runs = decode(RunsPage.serializer(), rest.get(url).text).runs
         return runs.mapIndexed { index, run ->
-            run.run(if (index < RUNNER_LOOKUPS) runnerOf(owner, name, run.id) else null)
+            run.run(if (runners && index < RUNNER_LOOKUPS) runnerOf(owner, name, run.id) else null)
         }
     }
 
     override suspend fun run(owner: String, name: String, runId: Long): WorkflowRun? {
         val reply = rest.getOrNull(repoUrl(owner, name, "actions", "runs", runId.toString())) ?: return null
-        return decode(RunJson.serializer(), reply.text).run(runnerOf(owner, name, runId))
+        return decode(RunJson.serializer(), reply.text).run()
     }
 
     override suspend fun jobs(owner: String, name: String, runId: Long): List<WorkflowJob> =
@@ -279,7 +284,7 @@ internal class GitHubRestApi(
     private suspend fun user(): UserJson = decode(UserJson.serializer(), rest.get(rest.url("user")).text)
 
     private suspend fun runnerOf(owner: String, name: String, runId: Long): String? = try {
-        jobs(owner, name, runId).firstNotNullOfOrNull { job -> job.labels.takeIf { it.isNotEmpty() }?.joinToString(", ") }
+        runnerLabels(jobs(owner, name, runId))
     } catch (e: GitHubException) {
         // The runner is a detail: a run without it still shows.
         null
@@ -327,6 +332,7 @@ internal class GitHubRestApi(
 
     private companion object {
         const val RECENT_RUNS = 20
+
         /** Each lookup is one more call against the owner's 5,000 an hour, so only the newest runs get one. */
         const val RUNNER_LOOKUPS = 3
         const val MAX_INPUTS = 25

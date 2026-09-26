@@ -41,6 +41,29 @@ internal class Reply(val status: Int, val headers: Headers, val bytes: ByteArray
 }
 
 /**
+ * Whether GitHub still takes the REST version this build names ([RestClient.API_VERSION]). GitHub
+ * supports a version for at least 24 months after the next one ships, then refuses requests that
+ * name it. Once it has, requests go without the header (GitHub's oldest supported version),
+ * which every call here also understands, for the rest of the process.
+ */
+internal class ApiVersionChoice {
+    @Volatile
+    var retired: Boolean = false
+
+    companion object {
+        /** The one choice all of this process's clients share. */
+        val process = ApiVersionChoice()
+
+        /** GitHub's answer to a version it no longer supports: 400 or 410, naming the API version. */
+        fun refuses(status: Int, body: String): Boolean = status in STATUSES && RETIRED.containsMatchIn(body)
+
+        val STATUSES = setOf(400, 410)
+
+        private val RETIRED = Regex("api[- _]?version", RegexOption.IGNORE_CASE)
+    }
+}
+
+/**
  * GitHub's REST API with a user token: the documented headers on every call, one token renewal
  * on 401, bounded waits for rate limits and server errors, and Link-header pagination.
  * The token is only ever sent to [base]; page links and download links elsewhere are refused.
@@ -53,6 +76,7 @@ internal class RestClient(
     private val downloadClient: OkHttpClient = client,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val pause: suspend (Long) -> Unit = { delay(it) },
+    private val apiVersion: ApiVersionChoice = ApiVersionChoice.process,
 ) {
 
     /** `base` + path segments, each encoded on its own, so a name can never add a path. */
@@ -131,9 +155,15 @@ internal class RestClient(
         var retries = 0
         while (true) {
             val response = http.newCall(request(verb, url, body, accept, token)).await()
+            val versioned = response.request.header(API_VERSION_HEADER) != null
             val limited = isRateLimited(response)
             val wait = if (retries < MAX_RETRIES) retryDelay(verb, response, limited, retries) else null
             when {
+                // Refused before anything happened, so even a write is safe to send again.
+                versioned && refusesVersion(response) -> {
+                    response.close()
+                    apiVersion.retired = true
+                }
                 response.code == 401 -> {
                     response.close()
                     if (renewed) {
@@ -164,7 +194,7 @@ internal class RestClient(
         return Request.Builder()
             .url(url)
             .header("Accept", accept)
-            .header("X-GitHub-Api-Version", API_VERSION)
+            .apply { if (!apiVersion.retired) header(API_VERSION_HEADER, API_VERSION) }
             .header("Authorization", "Bearer $token")
             .method(verb.name, payload ?: if (verb == Verb.GET) null else EMPTY_BODY)
             .build()
@@ -177,6 +207,9 @@ internal class RestClient(
         if (response.code >= 500 && verb == Verb.GET) return SERVER_BACKOFF_MS shl retries
         return null
     }
+
+    private fun refusesVersion(response: Response): Boolean =
+        response.code in ApiVersionChoice.STATUSES && ApiVersionChoice.refuses(response.code, response.peekBody(PEEK_BYTES).string())
 
     private fun isRateLimited(response: Response): Boolean = when (response.code) {
         429 -> true
@@ -203,11 +236,13 @@ internal class RestClient(
 
     companion object {
         const val API_VERSION = "2026-03-10"
+        const val API_VERSION_HEADER = "X-GitHub-Api-Version"
         const val ACCEPT_JSON = "application/vnd.github+json"
         const val ACCEPT_RAW = "application/vnd.github.raw+json"
         const val PER_PAGE = 100
         const val MAX_PAGES = 50
         const val MAX_RETRIES = 2
+
         /** Longest wait worth holding a screen for; longer limits become a message with a time. */
         const val MAX_WAIT_MS = 30_000L
         private const val SERVER_BACKOFF_MS = 1_000L

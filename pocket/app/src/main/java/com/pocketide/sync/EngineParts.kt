@@ -17,9 +17,10 @@ import java.io.IOException
 internal class SyncKit(val ports: SyncPorts) {
     val repo = SyncRepository(ports.dirs)
     val queue = UploadQueue(ports.dirs.queue)
-    val remote = RemoteIndex()
+    val remote = RemoteIndex(ports.budget)
     val scanner = Scanner(ports.dirs)
     val materializer = Materializer(queue, ports.budget)
+    val prefixes = PrefixMemory()
     val flows = SyncFlows()
 }
 
@@ -35,6 +36,7 @@ internal class SyncFlows {
     val backups = MutableStateFlow<Map<String, SessionBackup>>(emptyMap())
     val computerRemovalAt = MutableStateFlow<Long?>(null)
     val backgroundLimit = MutableStateFlow<String?>(null)
+    val held = MutableStateFlow<List<HeldFile>>(emptyList())
 }
 
 /**
@@ -66,7 +68,7 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
 
     fun entries(): List<QueueEntry> = kit.queue.entries(cipher)
 
-    fun maker() = PieceMaker(kit.queue, cipher, ports.keyGeneration(), ports.clock)
+    fun maker() = PieceMaker(kit.queue, cipher, ports.keyGeneration(), ports.clock, kit.prefixes)
 
     /** The account whose index this phone holds; a different sign-in starts over with that account. */
     fun account(): String? {
@@ -94,23 +96,36 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
      * Signed in to another account (not by a move): its vault is a different one. Queued entries
      * were made against the old vault (pieces continuing its chains, files reused from it, uploads
      * with its ids), so they go and the next scan sends the phone's files to the new vault whole.
-     * Conflict copies are complete on their own and exist nowhere else: they are sent there.
+     * Conflict copies are complete on their own and exist nowhere else: they are sent there. What
+     * the owner decided about this phone's files that can run code holds for any account.
      */
     private fun startOverWith(account: String) {
         val (copies, rest) = entries().partition { it.conflict }
         rest.forEach { kit.queue.remove(it.id) }
         copies.forEach { kit.queue.update(cipher, it.copy(driveId = null, attempted = false)) }
-        state = SyncState(account = account, erased = state.erased, alerts = state.alerts, pendingConflicts = state.pendingConflicts)
+        state = SyncState(
+            account = account, erased = state.erased, alerts = state.alerts, pendingConflicts = state.pendingConflicts,
+            held = state.held, keptCode = state.keptCode,
+        )
         index = null
         kit.flows.driveSessions.value = emptyList()
         kit.flows.driveProjects.value = emptyList()
     }
 
-    /** Drops queued entries; anything already in Drive but never recorded is deleted later. */
-    fun discard(entries: Collection<QueueEntry>) {
+    /**
+     * Drops queued entries; anything already in Drive but never recorded is deleted later. An entry
+     * that reuses a dropped blob's content (identical files are stored once) could then never be
+     * recorded, so it goes too and its file is read again at the next scan. Returns those entries.
+     */
+    fun discard(entries: Collection<QueueEntry>): List<QueueEntry> {
+        if (entries.isEmpty()) return emptyList()
+        val dropped = entries.map { it.id }.toSet()
+        val blobs = entries.filter { it.blob }.map { it.name }.toSet()
+        val reusing = if (blobs.isEmpty()) emptyList() else entries().filter { !it.blob && it.driveId == null && it.name in blobs && it.id !in dropped }
         val uploaded = unrecorded(entries)
-        entries.forEach { kit.queue.remove(it.id) }
+        (entries + reusing).forEach { kit.queue.remove(it.id) }
         if (uploaded.isNotEmpty()) state = state.copy(driveDeletes = state.driveDeletes + uploaded)
+        return reusing
     }
 
     /** Drive files [entries] uploaded (name → id), to delete once the entries leave the queue unrecorded. */
@@ -128,12 +143,13 @@ internal class SessionBook(local: List<SessionRecord>, drive: List<SessionRecord
 
     /**
      * Room-level files always; a session's files unless "not backed up" or erased. A chat in
-     * Recently deleted still uploads what was waiting, so Restore brings back all of it.
+     * Recently deleted still uploads what was waiting, so Restore brings back all of it. Files of
+     * a session this phone does not know wait: it may be one the owner keeps off Drive.
      */
     fun uploadable(id: String?): Boolean {
         if (id == null) return true
         if (id in erased) return false
-        val s = byId[id] ?: return true
+        val s = byId[id] ?: return false
         return s.backUp && s.deletedAt != Sessions.ERASE_NOW
     }
 
@@ -182,7 +198,7 @@ internal data class SyncedSettings(
 
 /** Only real changes are pushed: each record is compared with the version this phone last sent. */
 internal object Diffs {
-    fun sanitized(r: SessionRecord) = r.copy(pendingBytes = 0, pendingVideos = 0)
+    fun sanitized(r: SessionRecord) = r.copy(pendingBytes = 0)
 
     fun hash(r: SessionRecord): String =
         Codec.sha256(AppJson.encodeToString(SessionRecord.serializer(), sanitized(r)).toByteArray(Charsets.UTF_8))
@@ -222,6 +238,8 @@ internal object Plain {
     const val SYNCING = "Syncing chats"
     const val RESTORING = "Restoring your data"
     const val RESTORE_WAITS = "Restore continues on Wi-Fi."
+    const val HELD_CHANGED = "The file changed since it was shown. Look at it again."
+    const val HELD_NOT_REMOVED = "PocketIDE could not remove the file. Try again."
     const val BACKGROUND_OFF =
         "Background use is turned off for PocketIDE, so chats back up only while the app is open. Turn it on in Android's settings for PocketIDE."
     const val BACKGROUND_RESTRICTED =

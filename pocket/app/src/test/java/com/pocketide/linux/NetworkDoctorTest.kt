@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.ConnectException
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
 
@@ -25,6 +26,20 @@ class NetworkDoctorTest {
     )
     private val reached = HostCheck("github.com", "GitHub", ok = true, detail = "Answered (200).")
     private val linuxFails = HostCheck("ports.ubuntu.com", "Looking up names inside Linux", ok = false, detail = "Linux could not look up ports.ubuntu.com.")
+
+    @Test
+    fun everyPinnedDownloadAndTheHostItRedirectsToIsChecked() {
+        val checked = NeededHosts.all.map { it.host }.toSet()
+        for (url in listOf(LinuxPins.ubuntuBase.url, LinuxPins.codeServer.url)) {
+            val host = URI(url).host
+            assertTrue("$host is checked", host in checked)
+            // A GitHub release download answers 302 to GitHub's asset host.
+            if (host == "github.com" && "/releases/download/" in url) {
+                assertTrue("${NeededHosts.GITHUB_DOWNLOADS} is checked", NeededHosts.GITHUB_DOWNLOADS in checked)
+            }
+        }
+        assertEquals(checked.size, NeededHosts.all.size)
+    }
 
     @Test
     fun anyHttpAnswerMeansTheHostWasReached() {

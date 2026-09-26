@@ -1,6 +1,9 @@
 package com.pocketide.sync
 
+import com.pocketide.core.Settings
+import com.pocketide.core.ThemeMode
 import com.pocketide.google.DriveAuthResult
+import com.pocketide.model.Project
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -175,6 +178,61 @@ class AccountTest {
         assertEquals(1, phone.scheduler.cancelled)
         assertEquals(SyncStatus.Idle, phone.engine.status.value)
         assertTrue(phone.engine.driveSessions.value.isEmpty())
+    }
+
+    @Test
+    fun noChatOrProjectReachesTheNextVaultAfterDeleteEverything() = runBlocking {
+        val phone = syncedPhone()
+        phone.projects += Project("owner/app", "owner", "app", addedAt = clock.now, lastActivityAt = clock.now)
+        phone.engine.syncNow()
+        assertEquals(listOf("owner/app"), phone.remoteIndex()!!.projects.map { it.id })
+
+        phone.engine.deleteEverything()
+        phone.settings.update { it.copy(onboardingDone = true) }
+        phone.engine.syncNow()
+
+        val index = phone.remoteIndex()!!
+        assertTrue(index.sessions.isEmpty())
+        assertTrue(index.projects.isEmpty())
+    }
+
+    @Test
+    fun noOldSettingReachesTheNextVaultAfterDeleteEverything() = runBlocking {
+        val phone = syncedPhone()
+        phone.settings.update {
+            it.copy(keepChatsMonths = 12, driveLimitGb = 5, onlyOfficialAgents = true, extraPassword = true, privacyChecklistDone = true)
+        }
+        phone.engine.syncNow()
+        assertEquals(12, SyncedSettings.parse(phone.remoteIndex()!!.settingsJson!!)!!.keepChatsMonths)
+
+        phone.engine.deleteEverything()
+        // Erased as the owner was told: set-up starts over, with no extra password on a key that is gone.
+        assertEquals(Settings(), phone.settings.settings.value)
+        phone.settings.update { it.copy(onboardingDone = true) }
+        phone.engine.syncNow()
+
+        assertEquals(SyncedSettings.of(Settings()), SyncedSettings.parse(phone.remoteIndex()!!.settingsJson!!))
+    }
+
+    @Test
+    fun theAppsOwnConfigurationOnThisPhoneStaysAfterDeleteEverything() = runBlocking {
+        val phone = syncedPhone()
+        phone.settings.update {
+            it.copy(
+                gitHubAppClientId = "owners-client-id",
+                gitHubAppSlug = "owners-pocketide",
+                oemStepDone = true,
+                theme = ThemeMode.DARK,
+                claudeChatsInAccount = false,
+            )
+        }
+
+        phone.engine.deleteEverything()
+
+        // Without its GitHub App, a copy built without one could not even sign in again; the battery
+        // step lives in Android's settings, which Delete everything does not touch. The rest resets.
+        val kept = Settings(gitHubAppClientId = "owners-client-id", gitHubAppSlug = "owners-pocketide", oemStepDone = true)
+        assertEquals(kept, phone.settings.settings.value)
     }
 
     @Test

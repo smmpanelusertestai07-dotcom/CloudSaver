@@ -22,18 +22,23 @@ class GitHubAppChoiceTest {
     private val built = GitHubApp("Iv1.0123456789abcdef", "pocketide-built")
 
     @Test
-    fun `client IDs are GitHub App client IDs, trimmed`() {
+    fun `client IDs of today's formats and of a later one are taken, trimmed`() {
         assertEquals("Iv1.0123456789abcdef", GitHubAppChoice.clientId("  Iv1.0123456789abcdef\n"))
         assertEquals("Iv23liAbC0123456789z", GitHubAppChoice.clientId("Iv23liAbC0123456789z"))
+        // A format GitHub may bring later: GitHub's own answer to sign-in decides whether it is real.
+        assertEquals("Iv24abcDEF0123456789xy", GitHubAppChoice.clientId("Iv24abcDEF0123456789xy"))
+        assertEquals("Iv25_new-id.0000", GitHubAppChoice.clientId("Iv25_new-id.0000"))
+    }
+
+    @Test
+    fun `what cannot be a client ID is refused before GitHub is asked`() {
         listOf(
             "",
-            "Iv1.0123456789abcdeg", // not hex
-            "Iv1.0123456789abcde", // 19 characters
-            "Iv23liAbC0123456789zz", // 21 characters
-            "Iv23liAbC012345-789z", // not alphanumeric
-            "Ov23liAbC0123456789z", // an OAuth app, not a GitHub App
             "123456", // the App ID, not its client ID
-            "Iv1.0123 456789abcdef",
+            "Iv1.0123 456789abcdef", // two words
+            "Iv23li/../x0000", // a path
+            "Iv23li\"x0000000", // a quote
+            "a".repeat(101),
         ).forEach { assertNull(it, GitHubAppChoice.clientId(it)) }
     }
 

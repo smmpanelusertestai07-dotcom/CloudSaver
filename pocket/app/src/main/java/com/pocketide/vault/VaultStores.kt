@@ -123,6 +123,8 @@ internal class RemoteKeys(private val drive: DriveStore, private val gitHub: Git
 
     suspend fun createKeyring(): RepoInfo = gitHub.createPrivateRepo(VaultKeyFiles.KEYRING_REPO, KEYRING_DESCRIPTION)
 
+    suspend fun appInstalled(login: String): Boolean = gitHub.installedOn(login)
+
     /** Everyone with access except the owner (GitHub lists the owner too). */
     suspend fun otherCollaborators(login: String): List<String> =
         gitHub.collaborators(login, VaultKeyFiles.KEYRING_REPO).filterNot { it.equals(login, ignoreCase = true) }

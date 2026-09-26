@@ -25,6 +25,7 @@ internal object AccessRules {
     const val STORAGE_LOCK_BYTES = 200L * 1024 * 1024
 
     const val KEY_BANNER = "Your chats' key is only on this phone. Reconnect GitHub to protect it."
+    const val KEY_SAVING_BANNER = "Your chats' key is not saved to GitHub yet. It is tried again at the next sync."
 
     fun lock(facts: AccessFacts, now: Long): LockReason? = when {
         facts.unsupported != null -> LockReason.Unsupported(facts.unsupported)
@@ -35,7 +36,16 @@ internal object AccessRules {
         else -> null
     }
 
-    fun banner(facts: AccessFacts): String? = if (facts.keyOnlyOnPhone) KEY_BANNER else null
+    /**
+     * The key's halves wait to be saved: without GitHub the owner must reconnect it; with GitHub
+     * connected they are only pending (a re-key, a keyring made again, a write that failed
+     * offline), and the next sync saves them.
+     */
+    fun banner(facts: AccessFacts): String? = when {
+        !facts.keyOnlyOnPhone -> null
+        facts.github == LinkHealth.NOT_CONNECTED || facts.github == LinkHealth.REVOKED -> KEY_BANNER
+        else -> KEY_SAVING_BANNER
+    }
 
     /**
      * New chats have waited for Drive space for a day, or 200 MB of them wait: the app locks

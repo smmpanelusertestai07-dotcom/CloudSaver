@@ -216,8 +216,16 @@ class OpenVsxFixture {
 
         fun sha512(bytes: ByteArray): String = MessageDigest.getInstance("SHA-512").digest(bytes).joinToString("") { "%02x".format(it) }
 
-        /** A package.json with a webview agent screen and the given commands. */
-        fun packageJson(publisher: String, name: String, version: String, engine: String = "^1.94.0", commands: List<String> = emptyList()): String {
+        /** A package.json with the given commands and, when [screen], a webview agent screen `<name>.chat`. */
+        fun packageJson(
+            publisher: String,
+            name: String,
+            version: String,
+            engine: String = "^1.94.0",
+            commands: List<String> = emptyList(),
+            screen: Boolean = true,
+        ): String {
+            val view = if (screen) "webview" else "tree"
             val json = buildJsonObject {
                 put("publisher", publisher)
                 put("name", name)
@@ -234,7 +242,7 @@ class OpenVsxFixture {
                         put(
                             "views",
                             buildJsonObject {
-                                put("$name-side", buildJsonArray { add(buildJsonObject { put("id", "$name.chat"); put("type", "webview") }) })
+                                put("$name-side", buildJsonArray { add(buildJsonObject { put("id", "$name.chat"); put("type", view) }) })
                             },
                         )
                     },

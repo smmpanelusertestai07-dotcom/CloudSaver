@@ -10,6 +10,13 @@ internal object AgentPages {
     private const val OPEN_VSX_NOTE =
         "Open VSX confirms who owns a publisher name. It cannot confirm who makes the model."
 
+    private const val REMOTE_CONTROL =
+        "Remote Control (needs a phone test): while this version's own screen stays closed in PocketIDE, the Antigravity " +
+            "room offers Google's own Remote Control. It runs in the room, and you use Antigravity on Google's Remote " +
+            "Control page in your browser, signed in with the same Google Account; the page can go on your home screen " +
+            "and send notifications. PocketIDE keeps checking the ports it opens, and turns it off if other apps on the " +
+            "phone or devices on the same Wi-Fi could use one. Stopping the room stops it."
+
     private const val SIGN_IN_STAYS = "Sign-ins stay only on this phone, so on a new phone you sign in again."
 
     /** Longest name or version shown; publishers write these, and a page must stay readable. */
@@ -44,10 +51,15 @@ internal object AgentPages {
             add(detailsTable(details))
             add(labelNote(details))
             add(p("Where your data goes: ${details.dataGoesTo} ${companyKeepsLine(details)}"))
+            addAll(chatsLines(details))
             add(p("Signing in: ${details.signIn} $SIGN_IN_STAYS"))
             add(p(roomLine(details)))
             add(p(instructionsLine(details)))
             add(p(removeLine(details)))
+            if (details.official && details.id == "antigravity") {
+                add(p(REMOTE_CONTROL))
+                add(link("Antigravity Remote Control", DocLinks.ANTIGRAVITY_REMOTE_CONTROL))
+            }
             addAll(dataLinks(details))
         }
         return DocSection(
@@ -146,6 +158,12 @@ internal object AgentPages {
         } else {
             "The publisher and the model service it uses keep it under their own policies."
         }
+
+    /** Where an official agent's chats can be opened again, and the company pages that show them. */
+    private fun chatsLines(agent: Details): List<DocBlock> {
+        val home = ChatHomes.of(agent.id)?.takeIf { agent.official } ?: return emptyList()
+        return listOfNotNull(p("Where you can open its chats again: ${home.kept}"), home.note?.let(::p), home.open) + home.sources
+    }
 
     private fun roomLine(agent: Details) =
         "Room: ${agent.name} runs in its own room, with its own home folder and the working folders of its " +

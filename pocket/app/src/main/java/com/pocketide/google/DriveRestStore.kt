@@ -73,12 +73,23 @@ internal class DriveRestStore(
     override suspend fun uploadBytes(name: String, bytes: ByteArray, existingId: String?): DriveFile =
         store(name, BytesPayload(bytes), existingId)
 
-    override suspend fun download(id: String, sink: OutputStream): Unit = withContext(Dispatchers.IO) {
+    override suspend fun download(id: String, sink: OutputStream): Unit = downloadFrom(media(id), sink)
+
+    override val revisions: DriveRevisions = object : DriveRevisions {
+        override suspend fun revisionsOf(id: String): List<DriveRevision> = withContext(Dispatchers.IO) {
+            listRevisions(id, "id,md5Checksum").filter { it.id.isNotEmpty() }.map { DriveRevision(it.id, it.md5Checksum) }
+        }
+
+        override suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream) =
+            downloadFrom(revisionsUrl(id).addPathSegment(revisionId).addQueryParameter("alt", "media").build(), sink)
+    }
+
+    private suspend fun downloadFrom(content: HttpUrl, sink: OutputStream): Unit = withContext(Dispatchers.IO) {
         var written = 0L
         var failures = 0
         while (true) {
             val response = calls.exchange {
-                url(media(id))
+                url(content)
                 if (written > 0) header("Range", "bytes=$written-")
             }
             // A server that ignores Range sends everything again: skip what the sink already has.
@@ -122,7 +133,7 @@ internal class DriveRestStore(
             if (revision == head) continue
             try {
                 calls.exchange {
-                    url(revisions(id).addPathSegment(revision).build())
+                    url(revisionsUrl(id).addPathSegment(revision).build())
                     delete()
                 }.close()
             } catch (_: DriveException.NotFound) {
@@ -163,17 +174,20 @@ internal class DriveRestStore(
         all
     }
 
-    private suspend fun revisionIds(id: String): List<String> {
-        val all = ArrayList<String>()
+    private suspend fun revisionIds(id: String): List<String> = listRevisions(id, "id").map { it.id }.filter { it.isNotEmpty() }
+
+    /** Every revision of [id] with [fields], every page, in Drive's order (oldest first). */
+    private suspend fun listRevisions(id: String, fields: String): List<RevisionJson> {
+        val all = ArrayList<RevisionJson>()
         var page: String? = null
         do {
-            val url = revisions(id)
+            val url = revisionsUrl(id)
                 .addQueryParameter("pageSize", REVISION_PAGE.toString())
-                .addQueryParameter("fields", "nextPageToken,revisions(id)")
+                .addQueryParameter("fields", "nextPageToken,revisions($fields)")
                 .apply { page?.let { addQueryParameter("pageToken", it) } }
                 .build()
             val result = calls.json(url, RevisionListJson.serializer())
-            all += result.revisions.map { it.id }.filter { it.isNotEmpty() }
+            all += result.revisions
             page = result.nextPageToken?.takeIf { it.isNotEmpty() && it != page }
         } while (page != null)
         return all
@@ -241,7 +255,7 @@ internal class DriveRestStore(
 
     private fun files(): HttpUrl.Builder = api.newBuilder().addPathSegment("files")
 
-    private fun revisions(id: String): HttpUrl.Builder = files().addPathSegment(id).addPathSegment("revisions")
+    private fun revisionsUrl(id: String): HttpUrl.Builder = files().addPathSegment(id).addPathSegment("revisions")
 
     private fun media(id: String): HttpUrl = files().addPathSegment(id).addQueryParameter("alt", "media").build()
 

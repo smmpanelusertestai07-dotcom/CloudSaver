@@ -9,10 +9,7 @@ internal object GuidePhone {
         "github-actions",
         "GitHub Actions: plans and limits",
         "What your GitHub plan includes for builds, what extra use costs, and why PocketIDE uses only Actions.",
-        info(
-            "Prices and limits below are GitHub's, $AS_OF, in US dollars. GitHub can " +
-                "change them; its pages are linked below.",
-        ),
+        info("Prices and limits below are GitHub's, $AS_OF, in US dollars. GitHub can change them."),
         table(
             listOf("Plan", "Price", "Private repos, each month", "Public repos"),
             row("Free", "$0", "2,000 minutes, 500 MB storage", "Free and unlimited on standard runners"),
@@ -21,9 +18,8 @@ internal object GuidePhone {
             row("Enterprise", "$21 per user a month (first year)", "50,000 minutes, 50 GB", "Free"),
         ),
         bullets(
-            "A macOS minute costs about ten times a Linux one, and Windows costs more too ($AS_OF).",
             "Pay-as-you-go, only with a payment method: Linux $0.006 a minute, Linux arm64 $0.005, Windows " +
-                "$0.010, macOS $0.062 ($AS_OF).",
+                "$0.010, macOS $0.062, about ten times Linux ($AS_OF).",
             "Without a payment method, Actions stop at the limit: no surprise bill. Minutes reset each month.",
         ),
         p(
@@ -59,7 +55,7 @@ internal object GuidePhone {
             row("Restart, or the app is closed", "Sync finishes later from an encrypted queue."),
         ),
         p(
-            "If Android restricts the app, or you force-stop it, the daily job runs late, so the 30-day erase " +
+            "If the app is restricted or force-stopped, the daily job runs late, so the 30-day erase " +
                 "and the 90-day computer rule can happen later, never earlier.",
         ),
         p(
@@ -104,9 +100,7 @@ internal object GuidePhone {
             row("Computer use (an AI clicking a desktop)", "Browser automation; Android UI tests on the emulator"),
             row("Local AI models good enough for agent work", "The agents' own cloud models"),
         ),
-        p(
-            "Offline, the computer, your files and Preview still work; the agents wait and sync catches up later.",
-        ),
+        p("Offline, the computer, your files and Preview still work."),
     )
 
     val somethingBreaks = section(
@@ -162,7 +156,7 @@ internal object GuidePhone {
             row("ACCESS_NETWORK_STATE", "Tells Wi-Fi from mobile data, and offline from signed out."),
             row("FOREGROUND_SERVICE", "Keeps the computer running while agents work, with a notice and a Stop button."),
             row("FOREGROUND_SERVICE_SPECIAL_USE", "The service type Android requires for running a computer."),
-            row("FOREGROUND_SERVICE_DATA_SYNC", "So a long upload to Drive is not cut off halfway."),
+            row("FOREGROUND_SERVICE_DATA_SYNC", "So long Drive uploads and update downloads are not cut off."),
             row(
                 "POST_NOTIFICATIONS",
                 "Asked once: the running notice, finished builds, limits reached, access removed, new agents.",

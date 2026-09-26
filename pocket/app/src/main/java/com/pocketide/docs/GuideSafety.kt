@@ -8,14 +8,12 @@ internal object GuideSafety {
         "Security",
         "The locks on your accounts, code and chats, and what a harmful agent could reach.",
         p(
-            "PocketIDE is a GitHub App signed in with a device code. It works only on the repos you choose, " +
-                "never deletes a repo, and keeps its token in the Android Keystore. In Drive it can use only its " +
-                "own hidden folder.",
+            "PocketIDE is a GitHub App that works only on the repos you choose, never deletes a repo, and " +
+                "keeps its token in the Android Keystore. In Drive it can use only its own hidden folder.",
         ),
         p(
             "The check-post runs before every push. If it finds secrets, AI data or very large files, nothing " +
-                "is pushed and you see what it found. APK, AAB and other build outputs are held too; builds live " +
-                "in Media.",
+                "is pushed and you see why. Build outputs are held too; they live in Media.",
         ),
         p(
             "Changes to .github/workflows or .github/actions wait for you to read the diff and tap Approve: " +
@@ -23,8 +21,9 @@ internal object GuideSafety {
         ),
         p(
             "The app never takes a token, key or setting from the computer; only Variables enter a room. " +
-                "Settings that can run code, such as hooks, are rewritten at each room start, and an agent's " +
-                "change to them is kept only after you approve it.",
+                "Settings that can run code, such as hooks, are rewritten at each room start; an agent's " +
+                "change stays only once you approve it. A skill, subagent, command or command rule that can " +
+                "run code stays out of the Drive backup until you keep it in Your data → Settings that can run code.",
         ),
         p(
             "The agents' screens listen only on this phone, with a new secret each launch. App lock uses your " +
@@ -43,8 +42,9 @@ internal object GuideSafety {
             row("Your phone's files, photos and apps", "No: Android keeps the app apart"),
         ),
         p(
-            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex may run " +
-                "without its own sandbox inside its room ($BEING_TESTED). That is why only checked agents run.",
+            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex runs " +
+                "without its own sandbox here, scheduled tasks too: PRoot lacks what it needs. That is why only " +
+                "checked agents run.",
         ),
         table(
             listOf("Risk", "Safeguard"),
@@ -52,28 +52,21 @@ internal object GuideSafety {
             row("HTML or PDF from agents", "Opened with JavaScript off and no file or network access."),
             row("Built APKs", "Installed only on your tap, after showing the package and signer."),
             row("Saving or sharing", "Only through Android's share sheet, when you tap."),
-            row("Viruses", "No phone antivirus scans Linux files reliably, so files are contained instead."),
+            row("Agents' test browser", "No Chromium sandbox under PRoot, so a page reaches only its room."),
         ),
     )
 
     val privacy = section(
         "privacy",
         "Privacy",
-        "Who sees what, what each AI company keeps, and the switches that stop training on your chats.",
+        "Who sees what, what each company keeps, and the switches that stop training.",
         table(
             listOf("Who", "What they can see"),
-            row(
-                "The company whose agent you use",
-                "Your prompts, its replies, and the code and images the agent reads",
-            ),
-            row("An extra agent's publisher", "The same, and so does its model service"),
-            row("GitHub", "Your code and build logs, and Half G"),
-            row("Google", "Encrypted files and their sizes, and Half D"),
+            row("The agent's company", "Your prompts, its replies, and the code and images it reads"),
+            row("An extra agent's publisher", "The same, plus its model service"),
+            row("GitHub", "Your code, build logs and Half G"),
+            row("Google", "Encrypted files, their sizes, and Half D"),
             row("PocketIDE's developer", "Nothing: no server, no analytics"),
-        ),
-        p(
-            "Each company keeps what you send under its own policy; deleting a chat in PocketIDE does not " +
-                "delete its copy.",
         ),
         bullets(
             "Anthropic: on Free, Pro and Max, chats are kept 30 days with \"Help improve Claude\" off, and up " +
@@ -84,6 +77,8 @@ internal object GuideSafety {
                 "unless you turn off Settings → Account → Enable Telemetry.",
         ),
         info("Policies as of ${DocLinks.CHECKED_ON}. $LABELS_NOTE"),
+        ChatHomes.table(),
+        p("${ChatHomes.COMPANIES_KEEP} Deleting your copy does not delete theirs."),
         link("Claude privacy settings", DocLinks.CLAUDE_PRIVACY),
         link("Claude Code data usage", DocLinks.CLAUDE_DATA_USAGE),
         link("ChatGPT data controls", DocLinks.CHATGPT_DATA_CONTROLS),
@@ -92,7 +87,7 @@ internal object GuideSafety {
         link("Antigravity terms", DocLinks.ANTIGRAVITY_TERMS),
         warn(
             "Never paste passwords or keys into a chat: they go to the AI company. Put them in Project → " +
-                "Secrets, which only set-up steps and your Actions builds get.",
+                "Secrets, which only your Actions builds get, once sent to GitHub.",
         ),
     )
 

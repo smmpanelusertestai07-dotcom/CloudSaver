@@ -18,6 +18,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.pocketide.R
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.graph
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
@@ -35,7 +36,7 @@ class BuildWatchWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val title = inputData.getString(KEY_TITLE) ?: "Build"
         val check = inputData.getInt(KEY_CHECK, 0)
         val graph = applicationContext.graph
-        val project = graph.projects.all.value.firstOrNull { it.id == projectId } ?: return Result.success()
+        val project = graph.projects.loaded().firstOrNull { it.id == projectId } ?: return Result.success()
         val run = try {
             graph.gitHub.run(project.owner, project.repo, runId)
         } catch (cancelled: CancellationException) {
@@ -56,6 +57,7 @@ class BuildWatchWorker(context: Context, params: WorkerParameters) : CoroutineWo
         private const val KEY_TITLE = "title"
         private const val KEY_CHECK = "check"
         private const val CHECK_EVERY_MINUTES = 2L
+
         /** Two minutes apart: four hours, longer than any template's time limit. */
         private const val MAX_CHECKS = 120
 
@@ -79,10 +81,18 @@ internal object BuildNotices {
             else -> "$title failed on $repo. Open the run on GitHub to see why."
         }
         val heading = if (conclusion == "success") "Build finished" else "Build did not finish"
-        notify(context, runId.hashCode(), heading, text)
+        notify(context, "build:$runId", NotificationIds.BUILD_ENDED, heading, text)
     }
 
-    fun notify(context: Context, id: Int, heading: String, text: String) {
+    /** A scheduled task ended: one notice per task, replaced by that task's next one. */
+    fun taskEnded(context: Context, taskId: String, heading: String, text: String) =
+        notify(context, "task:$taskId", NotificationIds.SCHEDULED_TASK_ENDED, heading, text)
+
+    /**
+     * Posted under a fixed id from [NotificationIds] and a [tag] of its own, so notices of this
+     * kind stand side by side and never replace another kind's, as a hashed id could.
+     */
+    private fun notify(context: Context, tag: String, id: Int, heading: String, text: String) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -99,7 +109,7 @@ internal object BuildNotices {
             .setAutoCancel(true)
             .build()
         try {
-            manager.notify(id, notification)
+            manager.notify(tag, id, notification)
         } catch (_: SecurityException) {
             // The permission was withdrawn a moment ago.
         }

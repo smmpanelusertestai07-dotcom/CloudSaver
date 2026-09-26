@@ -8,6 +8,7 @@ import com.pocketide.sync.MeteredDataBudget
 import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -36,7 +37,7 @@ class ProjectRegistryTest {
     @After
     fun tearDown() = scope.cancel()
 
-    private fun registry() = ProjectRegistry(
+    private fun registry(scope: CoroutineScope = this.scope) = ProjectRegistry(
         env = env,
         dirs = dirs,
         file = JsonFile(File(dirs.vault, "projects.json"), ListSerializer(Project.serializer())),
@@ -69,6 +70,85 @@ class ProjectRegistryTest {
         assertEquals(listOf(project), projects.all.value)
         assertEquals(ProjectTrust.YOURS, projects.trustOf(project.id))
         failsWith<ProjectException> { runBlocking { projects.create("bad/name", "") } }
+    }
+
+    @Test
+    fun `a fresh process reads the projects from the disk before answering`() = runBlocking<Unit> {
+        val project = registry().create("app", "")
+        // A scope that never runs the start-up load, like a background job that asks first.
+        val cold = registry(CoroutineScope(Job().apply { cancel() }))
+
+        assertTrue(cold.all.value.isEmpty())
+        assertEquals(listOf(project.id), cold.loaded().map { it.id })
+    }
+
+    @Test
+    fun `a fresh process says whose code a project is only after reading the list`() = runBlocking<Unit> {
+        val project = registry().create("app", "")
+        val cold = registry(CoroutineScope(Job().apply { cancel() }))
+
+        // Unread, the list makes every project someone else's: a scheduled task would be refused.
+        assertEquals(ProjectTrust.SOMEONE_ELSES, cold.trustOf(project.id))
+        assertEquals(ProjectTrust.YOURS, cold.loadedTrustOf(project.id))
+    }
+
+    @Test
+    fun `the vault's keyring never becomes a project`() = runBlocking<Unit> {
+        val projects = registry()
+        env.gitHub.reachable["alice/pocketide-keyring"] = repoInfo("alice", "pocketide-keyring")
+
+        for (pasted in listOf("alice/pocketide-keyring", "https://github.com/Alice/PocketIDE-Keyring.git")) {
+            val refused = failsWith<ProjectException> { runBlocking { projects.import(pasted, "") } }
+            assertEquals("This repository holds half of your chats' key, so it never becomes a project.", refused.message)
+        }
+        failsWith<ProjectException> { runBlocking { projects.create("pocketide-keyring", "") } }
+        projects.adopt(listOf(Project("alice/pocketide-keyring", "alice", "pocketide-keyring", addedAt = 5, lastActivityAt = 5)))
+
+        assertTrue(projects.all.value.isEmpty())
+        assertTrue(env.gitHub.created.isEmpty())
+        assertTrue(env.git.cloned.isEmpty())
+    }
+
+    @Test
+    fun `a keyring added before it was refused leaves the phone and the key changes`() = runBlocking<Unit> {
+        val keyring = Project("alice/pocketide-keyring", "alice", "pocketide-keyring", addedAt = 5, lastActivityAt = 5)
+        val app = Project("alice/app", "alice", "app", addedAt = 5, lastActivityAt = 5)
+        JsonFile(File(dirs.vault, "projects.json"), ListSerializer(Project.serializer())).write(listOf(keyring, app))
+        val clone = dirs.bareRepo(keyring.id).apply { File(this, "objects").mkdirs() }
+        File(clone, "HEAD").writeText("ref: refs/heads/main\n")
+
+        env.rekeyFails = true
+        startedRegistry()
+        assertFalse("the clone goes even when the key cannot change yet", clone.exists())
+        assertEquals(listOf(keyring.id), env.work.released)
+        val kept = registry(CoroutineScope(Job().apply { cancel() })).loaded()
+        assertEquals("listed until the key changes", listOf(keyring.id, app.id), kept.map { it.id })
+
+        env.rekeyFails = false
+        val projects = startedRegistry()
+        assertEquals(1, env.rekeys)
+        assertEquals(listOf(app.id), projects.loaded().map { it.id })
+        startedRegistry()
+        assertEquals("asked once", 1, env.rekeys)
+    }
+
+    /** A registry whose start-up work has finished. */
+    private fun startedRegistry(): ProjectRegistry = runBlocking {
+        val job = SupervisorJob()
+        registry(CoroutineScope(job + Dispatchers.IO)).also { job.children.forEach { it.join() } }
+    }
+
+    @Test
+    fun `after delete everything no project is written back`() = runBlocking<Unit> {
+        val projects = registry()
+        val project = projects.create("app", "")
+
+        projects.forgetEverything()
+        projects.setTrust(project.id, ProjectTrust.SOMEONE_ELSES)
+        projects.adopt(emptyList())
+
+        assertTrue(projects.all.value.isEmpty())
+        assertTrue("nothing on the disk either", registry(CoroutineScope(Job().apply { cancel() })).loaded().isEmpty())
     }
 
     @Test

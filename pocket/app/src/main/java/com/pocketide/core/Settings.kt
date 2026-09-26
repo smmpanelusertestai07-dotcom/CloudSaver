@@ -54,7 +54,21 @@ data class Settings(
     val gitHubAppClientId: String = "",
     val gitHubAppSlug: String = "",
     val privacyChecklistDone: Boolean = false,
+    /**
+     * Claude Code connects each session to Remote Control, so Anthropic also keeps its chat in the
+     * owner's Claude account (the Claude app, claude.ai/code). This phone only; applied at the room's next start.
+     */
+    val claudeChatsInAccount: Boolean = true,
 )
+
+/**
+ * The settings after "Delete everything": every choice back to its default, so none reaches the
+ * next vault and set-up starts over. What configures the app on this phone rather than holding the
+ * owner's data stays: this copy's GitHub App (without it, an owner whose build carries none could
+ * not sign in again) and the battery step done in Android's own settings, which Android keeps.
+ */
+fun Settings.afterDeleteEverything(): Settings =
+    Settings(gitHubAppClientId = gitHubAppClientId, gitHubAppSlug = gitHubAppSlug, oemStepDone = oemStepDone)
 
 /** Settings on this phone, observed by every screen and module. */
 interface SettingsStore {

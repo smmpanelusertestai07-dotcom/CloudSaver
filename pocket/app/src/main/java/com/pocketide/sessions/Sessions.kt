@@ -48,7 +48,14 @@ data class AddedFile(val guestPath: String, val bytes: Long)
  * the date stored in Drive), then it is erased; "Delete forever" erases now.
  */
 interface Sessions {
+    /** What is known so far: empty until `vault/sessions.json` is read, so a job in a fresh process uses [loaded]. */
     val all: StateFlow<List<SessionRecord>>
+
+    /**
+     * The sessions once this phone's list, and which session each room has open, are read from
+     * the disk. Background jobs in a process Android has just started read this, not [all].
+     */
+    suspend fun loaded(): List<SessionRecord> = all.value
 
     suspend fun start(projectId: String, agentId: String, title: String? = null): SessionRecord
 
@@ -73,6 +80,9 @@ interface Sessions {
 
     /** Keeps this session on the phone only ("Don't back up this chat"). */
     suspend fun setBackUp(sessionId: String, backUp: Boolean)
+
+    /** Claude ran [sessionId] with Remote Control on: records that the chat is in the Claude account too. */
+    suspend fun markInClaudeAccount(sessionId: String) = Unit
 
     /** Removes media from a session but keeps the chat. */
     suspend fun removeMedia(sessionId: String)
@@ -125,6 +135,12 @@ interface Sessions {
 
     /** Called by the sync engine once these deleted sessions are erased from Drive: they go from here too. */
     suspend fun erased(sessionIds: List<String>) = Unit
+
+    /**
+     * "Delete everything" removed the phone's data: the chats, the open ones and those waiting to
+     * be erased are forgotten in memory too, so nothing writes them back or sends them to the next vault.
+     */
+    suspend fun forgetEverything() = Unit
 
     /**
      * "Continue in Codex / Antigravity" when an agent hit its usage limit, or a fork in the same

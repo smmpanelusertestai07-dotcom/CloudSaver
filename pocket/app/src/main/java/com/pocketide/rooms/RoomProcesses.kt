@@ -173,6 +173,10 @@ internal class WorkHolds(private val report: (agentId: String, what: String, bus
         }
     }
 
+    /** True while [agentId]'s room waits on work that runs elsewhere: a build on GitHub, or a write for the owner. */
+    @Synchronized
+    fun waits(agentId: String): Boolean = WAITED.any { (agentId to it) in counts }
+
     /** Rooms that hold [what] now. */
     @Synchronized
     fun holding(what: String): Set<String> = counts.keys.filter { it.second == what }.mapTo(HashSet()) { it.first }
@@ -192,5 +196,7 @@ internal class WorkHolds(private val report: (agentId: String, what: String, bus
         const val BUILD = "build"
         const val WRITE = "write"
         const val TASK = "task"
+
+        private val WAITED = listOf(BUILD, WRITE)
     }
 }

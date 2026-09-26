@@ -14,8 +14,8 @@ import java.net.URLEncoder
  * loopback ports share cookies with it, so a request whose Origin is another port, or that the
  * browser marks as same-site rather than same-origin, is refused. Each connection carries one
  * request (`Connection: close`), so every request is checked on its own. A host of the form
- * `<n>.localhost:<bridgePort>` reaches port n instead, when n is exposed too (for
- * VSCODE_PROXY_URI); that host keeps its own cookie, set through [BridgedPort.entryUrlTo].
+ * `<n>.localhost:<bridgePort>` reaches port n instead, when n is exposed too; that host keeps its
+ * own cookie, set through [BridgedPort.entryUrlTo].
  */
 interface PortBridge {
     /**

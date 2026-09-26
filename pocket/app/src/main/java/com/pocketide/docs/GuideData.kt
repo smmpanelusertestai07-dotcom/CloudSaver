@@ -31,8 +31,8 @@ internal object GuideData {
                 "Move to another Google account.",
         ),
         p(
-            "A reopened chat shows what you saw, on any phone. Sync sends only new parts, compressed; videos " +
-                "and big downloads wait for Wi-Fi unless you allow mobile data.",
+            "A reopened chat can always be read in Chats and in its agent's screen (Codex and Antigravity on a " +
+                "new phone: $BEING_TESTED). Videos and big downloads wait for Wi-Fi unless you allow mobile data.",
         ),
         link("Your Google storage", DocLinks.GOOGLE_STORAGE),
     )
@@ -82,7 +82,7 @@ internal object GuideData {
             row("Want everything gone", "Your data → Delete everything."),
         ),
         warn(
-            "If you uninstall before the 30 days are up, nothing can run, so the marked files stay in Drive " +
+            "If you uninstall within the 30 days, nothing can run, so the marked files stay in Drive " +
                 "(encrypted and unreadable) until you reinstall or use Drive → Manage apps → Delete hidden app " +
                 "data.",
         ),
@@ -153,8 +153,8 @@ internal object GuideData {
                 "chats. It is asked only on a new phone; forget it and the chats are lost.",
         ),
         p(
-            "Save a key copy (Advanced) shows the key once, for a password manager. It covers losing the phone " +
-                "and GitHub together. Anyone with the copy and your Drive can read your chats.",
+            "Save a key copy (Advanced) shows the key once, for a password manager. Anyone with the copy and " +
+                "your Drive can read your chats.",
         ),
     )
 

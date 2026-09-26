@@ -13,6 +13,12 @@ internal data class IndexDelta(
     val addObjects: List<VaultObject> = emptyList(),
     /** Entries (by [entryKey]) that are replaced, superseded or removed. */
     val removeEntries: Set<String> = emptySet(),
+    /**
+     * New versions of entries, by the [entryKey] they replace (re-encrypted, or given their
+     * session). Each applies only while that entry is still there, so one another phone removed
+     * meanwhile is never brought back.
+     */
+    val replaceEntries: Map<String, VaultObject> = emptyMap(),
     /** Files whose older entries all go (a new base piece, a new version of a whole file). */
     val replaceFiles: Set<String> = emptySet(),
     val sessions: List<SessionChange> = emptyList(),
@@ -22,8 +28,8 @@ internal data class IndexDelta(
     val lease: Lease? = null,
 ) {
     val isEmpty: Boolean
-        get() = addObjects.isEmpty() && removeEntries.isEmpty() && replaceFiles.isEmpty() && sessions.isEmpty() &&
-            eraseSessions.isEmpty() && projects.isEmpty() && settingsJson == null && lease == null
+        get() = addObjects.isEmpty() && removeEntries.isEmpty() && replaceEntries.isEmpty() && replaceFiles.isEmpty() &&
+            sessions.isEmpty() && eraseSessions.isEmpty() && projects.isEmpty() && settingsJson == null && lease == null
 
     /**
      * The sessions this write really erases: never one it also restores, as when the owner restored
@@ -51,15 +57,17 @@ internal object IndexMerge {
 
     /** Applies [delta] on top of [base], the newest index read from Drive. */
     fun apply(base: VaultIndex, delta: IndexDelta, now: Long, keyGeneration: Int): VaultIndex {
-        val replacedFiles = delta.replaceFiles
         val erased = delta.erased
-        val newKeys = delta.addObjects.map { it.entryKey }.toSet()
+        val present = base.objects.map { it.entryKey }.toSet()
+        val replacements = delta.replaceEntries.filterKeys { it in present }
+        val added = (delta.addObjects + replacements.values).filterNot { it.sessionId in erased }
+        val newKeys = added.map { it.entryKey }.toSet()
         val kept = base.objects.filterNot { o ->
             o.entryKey in delta.removeEntries ||
+                o.entryKey in replacements ||
                 o.sessionId in erased ||
-                (o.fileKey in replacedFiles && o.entryKey !in newKeys)
+                (o.fileKey in delta.replaceFiles && o.entryKey !in newKeys)
         }
-        val added = delta.addObjects.filterNot { it.sessionId in erased }
         var sessions = base.sessions.filterNot { it.id in erased }
         for (change in delta.sessions) {
             if (change.id !in erased) sessions = applySession(sessions, change)
@@ -74,6 +82,36 @@ internal object IndexMerge {
             projects = mergeProjects(base.projects, delta.projects),
             settingsJson = delta.settingsJson ?: base.settingsJson,
         )
+    }
+
+    /**
+     * The change that turns [old] into [new], to make again on top of another index: what another
+     * phone wrote over one version, re-applied to a version written after it.
+     */
+    fun diff(old: VaultIndex, new: VaultIndex): IndexDelta {
+        val before = old.objects.associateBy { it.entryKey }
+        val after = new.objects.map { it.entryKey }.toSet()
+        val oldSessions = old.sessions.associateBy { it.id }
+        val newSessions = new.sessions.map { it.id }.toSet()
+        return IndexDelta(
+            addObjects = new.objects.filter { before[it.entryKey] != it },
+            removeEntries = before.keys - after,
+            sessions = new.sessions.mapNotNull { sessionChange(oldSessions[it.id], it) },
+            eraseSessions = oldSessions.keys - newSessions,
+            projects = new.projects.filter { it !in old.projects },
+            settingsJson = new.settingsJson.takeIf { it != old.settingsJson },
+            lease = new.lease.takeIf { it != old.lease },
+        )
+    }
+
+    private fun sessionChange(old: SessionRecord?, new: SessionRecord): SessionChange? {
+        val deletedAt = new.deletedAt
+        return when {
+            old == new -> null
+            deletedAt == null && old?.deletedAt != null -> SessionChange.Restore(new)
+            deletedAt != null && old?.deletedAt == null -> SessionChange.Delete(new, deletedAt)
+            else -> SessionChange.Upsert(new)
+        }
     }
 
     /**
@@ -95,9 +133,13 @@ internal object IndexMerge {
         )
     }
 
-    /** The newer activity wins ([a] on a tie); the earliest deletion date is kept, so the 30-day count never restarts. */
+    /**
+     * The newer activity wins ([a] on a tie); the earliest deletion date is kept, so the 30-day count
+     * never restarts, and a chat either phone saw kept in the Claude account stays marked so.
+     */
     fun mergeSession(a: SessionRecord, b: SessionRecord): SessionRecord {
-        val newer = if (b.lastActivityAt > a.lastActivityAt) b else a
+        val newer = (if (b.lastActivityAt > a.lastActivityAt) b else a)
+            .let { if (a.claudeAccount || b.claudeAccount) it.copy(claudeAccount = true) else it }
         val deletions = listOfNotNull(a.deletedAt, b.deletedAt)
         if (deletions.isEmpty()) return newer
         return newer.copy(deletedAt = deletions.min(), status = SessionStatus.DELETED)
@@ -134,7 +176,9 @@ internal object IndexMerge {
             is SessionChange.Restore -> {
                 val newer = if (old != null && old.lastActivityAt > change.record.lastActivityAt) old else change.record
                 val status = change.record.status.takeUnless { it == SessionStatus.DELETED } ?: SessionStatus.OPEN
-                newer.copy(deletedAt = null, status = status)
+                // As in mergeSession: a chat either side saw kept in the Claude account stays marked so.
+                val claudeAccount = change.record.claudeAccount || old?.claudeAccount == true
+                newer.copy(deletedAt = null, status = status, claudeAccount = claudeAccount)
             }
         }
         return if (old == null) sessions + next else sessions.map { if (it.id == change.id) next else it }

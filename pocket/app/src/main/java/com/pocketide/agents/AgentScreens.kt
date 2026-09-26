@@ -18,7 +18,10 @@ internal object AgentScreens {
     private val LOCATIONS = listOf("secondarySidebar", "activitybar", "panel")
 
     /** The command that shows the extension's own webview, or null when it has none. */
-    fun openCommand(packageJson: JsonObject): String? = webviews(packageJson).firstOrNull()?.let { "$it.focus" }
+    fun openCommand(packageJson: JsonObject): String? = openCommands(packageJson).firstOrNull()
+
+    /** Every command that shows one of the extension's webviews, best first. */
+    fun openCommands(packageJson: JsonObject): List<String> = webviews(packageJson).map { "$it.focus" }
 
     /** True when [command] is one the extension declares, or one VS Code derives from its views. */
     fun commandExists(packageJson: JsonObject, command: String): Boolean {

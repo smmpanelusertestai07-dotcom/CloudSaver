@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 enum class SecretKind {
     /** The agent sees it: set in the room's environment for that project. */
     VARIABLE,
-    /** Never the agent: only PocketIDE's set-up steps and GitHub Actions builds. */
+    /** Never the agent, nor anything in Linux: only GitHub Actions builds, after the owner's [ProjectSecrets.pushToGitHub]. */
     SECRET,
 }
 
@@ -15,9 +15,12 @@ data class ProjectValue(
     val name: String,
     val kind: SecretKind,
     val updatedAt: Long,
+    /** A project's own Secret is in its GitHub Actions. A global one is never marked so: see [sentTo]. */
     val pushedToGitHub: Boolean,
     /** A Variable only this agent's room sees (a community agent's API key); null for every room. */
     val agentId: String? = null,
+    /** A global Secret: the projects whose GitHub Actions have this value, each sent from that project. */
+    val sentTo: Set<String> = emptySet(),
 )
 
 /**
@@ -43,9 +46,8 @@ interface ProjectSecrets {
     suspend fun variablesFor(projectId: String, agentId: String): Map<String, String> = variablesFor(projectId)
 
     /** Limits a Variable to one agent's room, or opens it to every room again with null. */
-    suspend fun limitToRoom(projectId: String?, name: String, agentId: String?) {
+    suspend fun limitToRoom(projectId: String?, name: String, agentId: String?): Unit =
         throw UnsupportedOperationException("Room-only Variables are not available here.")
-    }
 
     /** Every Variable and Secret value, for the check-post. */
     suspend fun allValues(): List<String>
@@ -66,7 +68,6 @@ interface ProjectSecrets {
      * Merges the vault's copy into the local set when both phones changed it since they last
      * synced: value by value, the later change wins, a removal included.
      */
-    suspend fun mergeBlob(bytes: ByteArray) {
+    suspend fun mergeBlob(bytes: ByteArray): Unit =
         throw UnsupportedOperationException("Merging Variables and Secrets is not available here.")
-    }
 }

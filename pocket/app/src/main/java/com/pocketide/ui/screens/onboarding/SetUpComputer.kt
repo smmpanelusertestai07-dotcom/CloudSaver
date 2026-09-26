@@ -36,6 +36,7 @@ import com.pocketide.core.Redact
 import com.pocketide.limiter.EngineService
 import com.pocketide.linux.ComputerSetup
 import com.pocketide.linux.ComputerState
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.shell.FinePrint
@@ -142,12 +143,21 @@ internal fun SetUpComputer(state: ComputerState, onLater: (() -> Unit)?) {
             onDismissRequest = { askMobile = false },
             title = { Text("Set up on mobile data?") },
             text = {
-                Text(
-                    "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it. " +
-                        "On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
-                        "For this set-up only, its downloads may use mobile data today, up to " +
-                        "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Your data settings do not change.",
-                )
+                // What set-up still has to fetch, when it already stopped to wait for Wi-Fi (after a reset, say).
+                val left = (state as? ComputerState.Broken)?.mobileDataBytes
+                val size = if (left != null) {
+                    "Set-up still has ${Formats.bytes(left)} to download."
+                } else {
+                    "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it."
+                }
+                DialogBody {
+                    Text(
+                        "$size On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
+                            "For the computer's set-up only, its downloads may use mobile data today, up to " +
+                            "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Each agent's first download " +
+                            "follows your data settings (Wi-Fi by default). Your data settings do not change.",
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -160,14 +170,18 @@ internal fun SetUpComputer(state: ComputerState, onLater: (() -> Unit)?) {
     }
 }
 
+/** What the set-up card says about the connection. Nothing starts by itself when it changes: the owner taps. */
+internal fun setUpAdvice(network: Network): Pair<String, Tone> = when (network) {
+    Network.WIFI -> "You're on Wi-Fi: a good time to set up." to Tone.OK
+    Network.MOBILE -> "You're on mobile data. Wi-Fi is better for a download this size." to Tone.WARN
+    Network.OFFLINE -> "No internet connection. Connect to Wi-Fi, then tap Set up now." to Tone.WARN
+}
+
 @Composable
 private fun NotInstalled(network: Network, error: String?, onStart: () -> Unit, onLater: (() -> Unit)?) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        when (network) {
-            Network.WIFI -> NoticeCard("You're on Wi-Fi: a good time to set up.", Tone.OK)
-            Network.MOBILE -> NoticeCard("You're on mobile data. Wi-Fi is better for a download this size.", Tone.WARN)
-            Network.OFFLINE -> NoticeCard("No internet connection. Set-up starts when you're online.", Tone.WARN)
-        }
+        val (advice, tone) = setUpAdvice(network)
+        NoticeCard(advice, tone)
         if (error != null) NoticeCard(error, Tone.ERROR)
         PrimaryAction(
             text = if (network == Network.MOBILE) "Set up on mobile data" else "Set up now",

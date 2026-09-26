@@ -50,6 +50,8 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
     override fun used(agentId: String) = graph.limiter.touch(agentId)
     override fun keepEngineAlive() = EngineService.start(graph.context)
     override fun idleSleepMinutes() = graph.settings.settings.value.idleSleepMinutes
+    override fun claudeChatsInAccount() = graph.settings.settings.value.claudeChatsInAccount
+    override suspend fun keptInClaudeAccount(sessionId: String) = graph.sessions.markInClaudeAccount(sessionId)
     override fun canStartHeavyWork(what: String) = graph.limiter.canStartHeavyWork(what)
     override fun allowDownload(bytes: Long, kind: String) = graph.dataBudget.allow(bytes, kind, big = true)
     override fun recordDownload(bytes: Long, kind: String) = graph.dataBudget.record(bytes, kind)
@@ -93,7 +95,7 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
     override suspend fun autosave(sessionId: String) = graph.sessions.autosave(sessionId)
     override suspend fun putOnMain(sessionId: String) = graph.sessions.putOnMain(sessionId)
     override fun templates() = graph.builds.templates()
-    override suspend fun runBuild(projectId: String, templateId: String, ref: String) = graph.builds.run(projectId, templateId, ref)
+    override suspend fun runBuild(projectId: String, templateId: String, ref: String) = graph.builds.runForAgent(projectId, templateId, ref)
     override suspend fun buildProgress(projectId: String, runId: Long) = graph.builds.progress(projectId, runId)
     override suspend fun collect(projectId: String, sessionId: String, runId: Long) = graph.builds.collect(projectId, sessionId, runId)
     override suspend fun openPullRequest(project: Project, head: String, title: String, body: String) =

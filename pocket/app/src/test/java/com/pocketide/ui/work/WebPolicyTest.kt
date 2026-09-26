@@ -1,5 +1,6 @@
 package com.pocketide.ui.work
 
+import com.pocketide.ui.web.EngineProxy
 import com.pocketide.ui.web.ExternalOpen
 import com.pocketide.ui.web.FilePick
 import com.pocketide.ui.web.PickerKind
@@ -57,6 +58,43 @@ class WebPolicyTest {
         assertEquals(ExternalOpen.IGNORE, WebPolicy.externalOpen("file:///data/data/com.pocketide/", userGesture = true))
         assertEquals("github.com", WebPolicy.hostOf("https://GitHub.com/login/device"))
         assertNull(WebPolicy.hostOf("::not a url::"))
+    }
+
+    @Test
+    fun codeServersPortAddressGoesToThePortItself() {
+        assertEquals(
+            "http://localhost:1455/auth/callback?code=a%2Fb&state=s#done",
+            EngineProxy.unwrap("http://127.0.0.1:41234/proxy/1455/auth/callback?code=a%2Fb&state=s#done"),
+        )
+        assertEquals("http://localhost:3000/", EngineProxy.unwrap("http://localhost:41234/proxy/3000/"))
+        assertEquals("http://localhost:3000/", EngineProxy.unwrap("http://LOCALHOST:41234/proxy/3000"))
+        assertEquals("http://localhost:65535/x", EngineProxy.unwrap("http://127.0.0.1:41234/proxy/65535/x"))
+        assertEquals("http://localhost:1/a%20b/c", EngineProxy.unwrap("http://127.0.0.1:41234/proxy/1/a%20b/c"))
+    }
+
+    @Test
+    fun everyOtherAddressIsLeftAsItWas() {
+        val unchanged = listOf(
+            "http://127.0.0.1:41234/proxy/0/",
+            "http://127.0.0.1:41234/proxy/65536/",
+            "http://127.0.0.1:41234/proxy/123456/",
+            "http://127.0.0.1:41234/proxy/12a/",
+            "http://127.0.0.1:41234/proxy/-1/",
+            "http://127.0.0.1:41234/proxy//x",
+            "http://127.0.0.1:41234/proxy/",
+            "http://127.0.0.1:41234/proxyx/1455/",
+            "http://127.0.0.1:41234/app/proxy/1455/",
+            "http://127.0.0.1:41234/?folder=/proxy/1455/",
+            "https://127.0.0.1:41234/proxy/1455/",
+            "http://example.com/proxy/1455/",
+            "http://localhost.example.com:41234/proxy/1455/",
+            "http://user@127.0.0.1:41234/proxy/1455/",
+            "http://[::1]:41234/proxy/1455/",
+            "https://claude.ai/oauth/authorize?x=1",
+            "intent://x#Intent;end",
+            "::not a url::",
+        )
+        for (url in unchanged) assertEquals(url, url, EngineProxy.unwrap(url))
     }
 
     @Test

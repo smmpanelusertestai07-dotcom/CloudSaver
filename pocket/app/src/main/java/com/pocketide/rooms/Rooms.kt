@@ -33,6 +33,18 @@ enum class StopReason {
     SWITCHED,
 }
 
+/** Google's Remote Control in a room ([Rooms.startRemoteControl]). */
+sealed interface RemoteControlState {
+    /** Started; its ports are not checked yet. */
+    data object Starting : RemoteControlState
+
+    /** Running, and every port it opened keeps other apps out. */
+    data object On : RemoteControlState
+
+    /** PocketIDE turned it off, or it ended by itself: [why] in a sentence for the owner. */
+    data class Off(val why: String) : RemoteControlState
+}
+
 /** The last stop of a room: why, when (UTC epoch ms), and one sentence for the owner. */
 data class RoomStop(val reason: StopReason, val at: Long, val message: String)
 
@@ -120,6 +132,30 @@ interface Rooms {
     ): Int = throw IllegalStateException("The agent's room cannot run programs yet.")
 
     /**
+     * Starts Google's own Remote Control in the Antigravity room ([RemoteControl]) and returns the
+     * page where the owner drives it, once every loopback port it opened turns away a caller
+     * without a key; otherwise stops it again and throws with a plain sentence. The start goes on
+     * when the caller leaves, and the ports are checked again while it runs. Stopping the room
+     * stops it too. Not yet tried on a phone.
+     */
+    suspend fun startRemoteControl(agentId: String): String = throw IllegalStateException(RemoteControl.ONLY_ANTIGRAVITY)
+
+    /** Turns Remote Control off in [agentId]'s room; the room's own screen is left as it is. */
+    suspend fun stopRemoteControl(agentId: String) = Unit
+
+    /**
+     * Remote Control in each room that has it starting or on, or that PocketIDE turned off, keyed
+     * by agent id. A room the owner turned it off in is left out.
+     */
+    val remoteControls: StateFlow<Map<String, RemoteControlState>> get() = NO_REMOTE_CONTROLS
+
+    /**
+     * Whether [agentId] is signed in in its room: its sign-in file is there. The file is only
+     * looked at, never read. Null for an agent whose sign-in PocketIDE cannot see.
+     */
+    suspend fun signedIn(agentId: String): Boolean? = null
+
+    /**
      * For "Delete everything": stops every room, then runs each signed-in agent's own sign-out in
      * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
      */
@@ -148,4 +184,6 @@ interface Rooms {
 private val NO_CHANGES: StateFlow<List<ConfigChange>> = MutableStateFlow<List<ConfigChange>>(emptyList()).asStateFlow()
 private val NO_STOPS: StateFlow<Map<String, RoomStop>> = MutableStateFlow<Map<String, RoomStop>>(emptyMap()).asStateFlow()
 private val NO_TIMES: StateFlow<Map<String, Long>> = MutableStateFlow<Map<String, Long>>(emptyMap()).asStateFlow()
+private val NO_REMOTE_CONTROLS: StateFlow<Map<String, RemoteControlState>> =
+    MutableStateFlow<Map<String, RemoteControlState>>(emptyMap()).asStateFlow()
 private val NO_COUNTS: StateFlow<Map<String, Int>> = MutableStateFlow<Map<String, Int>>(emptyMap()).asStateFlow()

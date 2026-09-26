@@ -25,15 +25,15 @@ object Fixtures {
         claude("user", "u1", "2026-09-24T05:00:00.000Z", """{"role":"user","content":"Fix the login bug on the settings screen"}"""),
         claude(
             "assistant", "a1", "2026-09-24T05:00:02.000Z",
-            """{"id":"msg_01A","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"thinking","thinking":"Look at the login code first.","signature":"sig"}],${usage(10, 1000, 2000, 5)}}""",
+            """{"id":"msg_01A","type":"message","role":"assistant","model":"sample-model","content":[{"type":"thinking","thinking":"Look at the login code first.","signature":"sig"}],${usage(10, 1000, 2000, 5)}}""",
         ),
         claude(
             "assistant", "a2", "2026-09-24T05:00:03.000Z",
-            """{"id":"msg_01A","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"text","text":"I'll check the login code."}],${usage(10, 1000, 2000, 40)}}""",
+            """{"id":"msg_01A","type":"message","role":"assistant","model":"sample-model","content":[{"type":"text","text":"I'll check the login code."}],${usage(10, 1000, 2000, 40)}}""",
         ),
         claude(
             "assistant", "a3", "2026-09-24T05:00:04.000Z",
-            """{"id":"msg_01A","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"$WORKTREE_A/app/Login.kt"}}],${usage(10, 1000, 2000, 60)}}""",
+            """{"id":"msg_01A","type":"message","role":"assistant","model":"sample-model","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"$WORKTREE_A/app/Login.kt"}}],${usage(10, 1000, 2000, 60)}}""",
         ),
         claude(
             "user", "u2", "2026-09-24T05:00:05.000Z",
@@ -43,7 +43,7 @@ object Fixtures {
         """{"parentUuid":"u2","type":"assistant","message":{"id":"msg_01B",""",
         claude(
             "assistant", "a4", "2026-09-24T05:00:06.000Z",
-            """{"id":"msg_01B","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"./gradlew test","description":"Run the tests"}}],${usage(5, 0, 3000, 20)}}""",
+            """{"id":"msg_01B","type":"message","role":"assistant","model":"sample-model","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"./gradlew test","description":"Run the tests"}}],${usage(5, 0, 3000, 20)}}""",
         ),
         claude(
             "user", "u3", "2026-09-24T05:01:00.000Z",
@@ -56,13 +56,16 @@ object Fixtures {
         ),
         claude(
             "user", "u5", "2026-09-24T05:02:00.000Z",
-            """{"role":"user","content":"<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>sonnet</command-args>"}""",
+            """{"role":"user","content":"<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>sample-model</command-args>"}""",
         ),
-        claude("user", "u6", "2026-09-24T05:02:01.000Z", """{"role":"user","content":"<local-command-stdout>Set model to sonnet</local-command-stdout>"}"""),
+        claude(
+            "user", "u6", "2026-09-24T05:02:01.000Z",
+            """{"role":"user","content":"<local-command-stdout>Set model to sample-model</local-command-stdout>"}""",
+        ),
         """{"isSidechain":true,"sessionId":"$CLAUDE_SESSION","type":"assistant","message":{"id":"msg_side","role":"assistant","content":[{"type":"text","text":"Subagent notes"}],${usage(1, 0, 0, 1)}},"uuid":"s1","timestamp":"2026-09-24T05:02:30.000Z"}""",
         claude(
             "assistant", "a5", "2026-09-24T05:03:00.000Z",
-            """{"id":"msg_01C","type":"message","role":"assistant","model":"claude-opus","content":[{"type":"text","text":"Fixed: the token was not refreshed."}],${usage(7, 0, 0, 12)}}""",
+            """{"id":"msg_01C","type":"message","role":"assistant","model":"sample-model","content":[{"type":"text","text":"Fixed: the token was not refreshed."}],${usage(7, 0, 0, 12)}}""",
         ),
         """{"type":"file-history-snapshot","messageId":"a5","snapshot":{"trackedFileBackups":{}},"isSnapshotUpdate":false}""",
         "",
@@ -75,7 +78,7 @@ object Fixtures {
             "2026-09-24T06:00:00.000Z", "session_meta",
             """{"session_id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b","id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b","timestamp":"2026-09-24T06:00:00.000Z","cwd":"$WORKTREE_B","originator":"codex_vscode","cli_version":"0.154.0","source":"vscode","model_provider":"openai","base_instructions":{"text":"You are Codex, a coding agent."},"git":{"commit_hash":"abc123","branch":"pocket/codex/2026-09-24-dark-theme"}}""",
         ),
-        codex("2026-09-24T06:00:00.500Z", "turn_context", """{"cwd":"$WORKTREE_B","approval_policy":"on-request","sandbox_policy":{"type":"danger-full-access"},"model":"gpt-5-codex"}"""),
+        codex("2026-09-24T06:00:00.500Z", "turn_context", """{"cwd":"$WORKTREE_B","approval_policy":"on-request","sandbox_policy":{"type":"danger-full-access"},"model":"sample-model"}"""),
         codex(
             "2026-09-24T06:00:01.000Z", "response_item",
             """{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions>Ask before running commands.</permissions instructions>"}]}""",

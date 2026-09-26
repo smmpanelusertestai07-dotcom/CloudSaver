@@ -18,14 +18,17 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +39,9 @@ import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
 import com.pocketide.core.Redact
 import com.pocketide.core.Settings
+import com.pocketide.docs.ChatHomes
 import com.pocketide.sync.DataUsage
+import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.manage.ManageText
@@ -47,6 +52,7 @@ import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.Links
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OutlinedCard
+import com.pocketide.ui.shell.ReconnectGitHubDialog
 import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.SettingChoices
 import com.pocketide.ui.shell.rememberGraph
@@ -224,6 +230,16 @@ private fun AgentsSection(settings: Settings, update: ((Settings) -> Settings) -
                     settings.onlyOfficialAgents,
                 ) { on -> update { it.copy(onlyOfficialAgents = on) } }
             },
+            {
+                SwitchRow(
+                    ChatHomes.CLAUDE_SWITCH,
+                    "Anthropic keeps each Claude Code session in your Claude account too, under its data-usage policy, " +
+                        "where the Claude app and claude.ai/code show it. ${ChatHomes.CLAUDE_CONTINUE} Needs a Claude " +
+                        "plan sign-in, Pro or higher. PocketIDE's encrypted Drive backup keeps them either way. Applies " +
+                        "from Claude's next start.",
+                    settings.claudeChatsInAccount,
+                ) { on -> update { it.copy(claudeChatsInAccount = on) } }
+            },
         ),
     )
 }
@@ -366,6 +382,7 @@ private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Sett
 private fun AccountsSection(graph: AppGraph, nav: PocketNav) {
     val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     val email by graph.driveAuth.email.collectAsStateWithLifecycle()
+    var reconnecting by rememberSaveable { mutableStateOf(false) }
     SectionLabel("Accounts")
     OutlinedCard {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -373,6 +390,21 @@ private fun AccountsSection(graph: AppGraph, nav: PocketNav) {
             InfoRow("Google Drive", email ?: "Not connected")
         }
     }
+    if (account == null) {
+        Gap(12.dp)
+        SettingsGroup(
+            listOf(
+                {
+                    ActionRow(
+                        "Reconnect GitHub",
+                        "Your chats' key keeps its second half there, and your projects live there",
+                        onClick = { reconnecting = true },
+                    )
+                },
+            ),
+        )
+    }
+    if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
     if (account != null) {
         Gap(12.dp)
         SettingsGroup(
@@ -398,15 +430,22 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
     var busy by remember { mutableStateOf(false) }
     var checked by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var askMobileData by remember { mutableStateOf<NeedsMobileData?>(null) }
 
-    fun run(block: suspend () -> Unit) {
+    /**
+     * [outlivesScreen]: a download the owner confirmed runs in the app's scope, so leaving this
+     * screen, or the app lock closing it, does not throw away what already arrived.
+     */
+    fun run(outlivesScreen: Boolean = false, block: suspend () -> Unit) {
         busy = true
         error = null
-        scope.launch {
+        (if (outlivesScreen) graph.scope else scope).launch {
             try {
                 block()
             } catch (e: CancellationException) {
                 throw e
+            } catch (ask: NeedsMobileData) {
+                askMobileData = ask
             } catch (e: Exception) {
                 error = Redact.text(e.message ?: "That didn't work. Try again.").take(200)
             } finally {
@@ -440,7 +479,7 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
                     is UpdateState.Available -> ActionRow(
                         "Download version ${state.release.version}",
                         "${Formats.bytes(state.release.apkBytes)} · waits for Wi-Fi unless you allow mobile data",
-                        onClick = { if (!busy) run { graph.updater.download() } },
+                        onClick = { if (!busy) run(outlivesScreen = true) { graph.updater.download() } },
                     )
                     is UpdateState.Downloading -> ActionRow("Downloading…", "${(state.fraction * 100).toInt()} %", onClick = {})
                     is UpdateState.Ready -> ActionRow(
@@ -464,5 +503,28 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
     error?.let {
         Gap(8.dp)
         NoticeCard(it, Tone.ERROR)
+    }
+    askMobileData?.let { ask ->
+        AlertDialog(
+            onDismissRequest = { askMobileData = null },
+            title = { Text("Download ${ask.size} on mobile data?") },
+            text = { Text("The update waits for Wi-Fi. It can download now on mobile data instead. Your data settings do not change.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        askMobileData = null
+                        graph.dataBudget.allowOnce(ask.kind, ask.bytes)
+                        run(outlivesScreen = true) {
+                            try {
+                                graph.updater.download()
+                            } finally {
+                                graph.dataBudget.endOnce(ask.kind)
+                            }
+                        }
+                    },
+                ) { Text("Use mobile data") }
+            },
+            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+        )
     }
 }

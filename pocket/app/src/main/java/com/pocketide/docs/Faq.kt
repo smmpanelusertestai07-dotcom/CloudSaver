@@ -1,5 +1,7 @@
 package com.pocketide.docs
 
+import com.pocketide.rooms.BrowserTools
+
 /** The questions people actually ask, each answered in a few short sentences and linked to its section. */
 internal object Faq {
 
@@ -97,7 +99,8 @@ internal object Faq {
             "claude-chatgpt-chats", "agents",
             "Can I see my claude.ai or ChatGPT chats here?",
             "No. The agents keep their own sessions. The Codex extension can show your Codex cloud tasks, but " +
-                "not ordinary ChatGPT chats.",
+                "not ordinary ChatGPT chats. The other way round, your Claude account can show Claude Code's " +
+                "sessions; Privacy says where each agent's chats are saved.",
         ),
         faq(
             "offline", "limits",
@@ -235,8 +238,9 @@ internal object Faq {
         faq(
             "reopen-media", "your-data",
             "When I reopen a chat, will I see the screenshots and videos again?",
-            "Yes, on any phone. Images come back in the agent's own screen, and the agent's screenshots and " +
-                "videos in the session's Media. A video still waiting for Wi-Fi shows a chip.",
+            "Yes: the chat can always be read in Chats, on any phone, and the agent's screenshots and videos " +
+                "come back in the session's Media. The agent's own screen shows it too (Codex and Antigravity on a " +
+                "new phone: $BEING_TESTED). A video still waiting for Wi-Fi shows a chip.",
         ),
         faq(
             "virus", "security",
@@ -244,6 +248,14 @@ internal object Faq {
             "It can download a harmful file inside the computer, but Android's app sandbox keeps it away from " +
                 "other apps, your photos and your files. PocketIDE shows only safe media formats and installs " +
                 "an APK only on your tap.",
+        ),
+        faq(
+            "test-browser", "security",
+            "Can the agents test my app in a browser?",
+            "Yes. An agent calls install_browser once, which downloads a test browser of about " +
+                "${BrowserTools.DOWNLOAD_BYTES / 1_000_000} MB for every room; big downloads wait for Wi-Fi unless " +
+                "you allow mobile data. That browser runs without Chromium's own sandbox, so a harmful page can " +
+                "reach that agent's room, nothing more. It stays off for someone else's projects.",
         ),
         faq(
             "minutes-left", "github-actions",

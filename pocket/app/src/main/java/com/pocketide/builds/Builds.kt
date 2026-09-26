@@ -14,6 +14,8 @@ data class BuildTemplate(
     val workflowName: String = "",
     /** How many of the plan's included minutes one runner minute counts as (Linux 1, Windows 2, macOS 10). */
     val minutesMultiplier: Int = 1,
+    /** It uses the project's Secrets (the release signing key), so only the owner starts it. */
+    val usesSecrets: Boolean = false,
 )
 
 /**
@@ -47,7 +49,30 @@ interface Builds {
      */
     suspend fun run(projectId: String, templateId: String, ref: String): Long?
 
+    /**
+     * [run] for an agent's `run_build`. A template that uses the project's Secrets starts only
+     * when the owner taps Build: an agent could otherwise have its own code signed with the
+     * owner's release key. Failures are [IllegalStateException]s with a sentence for the agent,
+     * except [WorkflowApprovalNeeded], which the caller turns into its own words.
+     */
+    suspend fun runForAgent(projectId: String, templateId: String, ref: String): Long? {
+        val signing = templates().firstOrNull { it.id == templateId && it.usesSecrets }
+        check(signing == null) {
+            "The ${signing?.title} build uses the project's Secrets, so only the owner starts it: ask the owner to tap Build in PocketIDE."
+        }
+        return try {
+            run(projectId, templateId, ref)
+        } catch (held: WorkflowApprovalNeeded) {
+            throw held
+        } catch (refused: BuildsException) {
+            throw IllegalStateException(refused.message, refused)
+        }
+    }
+
     suspend fun recentRuns(projectId: String): List<WorkflowRun>
+
+    /** [recentRuns]; with [runners] false it skips the runner lookups, for a refresh of runs already shown. */
+    suspend fun recentRuns(projectId: String, runners: Boolean): List<WorkflowRun> = recentRuns(projectId)
 
     /** Downloads the run's artifacts into the session's Media; for a failed run, the end of its log too. */
     suspend fun collect(projectId: String, sessionId: String, runId: Long): Int

@@ -49,16 +49,19 @@ import com.pocketide.ui.shell.CheckStatus
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.FinePrint
 import com.pocketide.ui.shell.Gap
+import com.pocketide.ui.shell.KeySaveOutcome
 import com.pocketide.ui.shell.Links
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OutlinedCard
 import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.PrivacyChecklist
 import com.pocketide.ui.shell.PrivacyChecklistCard
+import com.pocketide.ui.shell.ReconnectGitHubDialog
 import com.pocketide.ui.shell.SafetyCheck
 import com.pocketide.ui.shell.SafetyFacts
 import com.pocketide.ui.shell.SafetyFix
 import com.pocketide.ui.shell.SectionLabel
+import com.pocketide.ui.shell.rememberKeySaver
 
 /**
  * The standing safety check: what protects the owner's data right now, each problem with its
@@ -76,6 +79,11 @@ internal fun SafetySection(
     val key by graph.vault.state.collectAsStateWithLifecycle()
     val keyNotice by graph.vault.notice.collectAsStateWithLifecycle()
     val values by graph.secrets.values.collectAsStateWithLifecycle()
+    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
+    var reconnecting by rememberSaveable { mutableStateOf(false) }
+    if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
+    val keySaver = rememberKeySaver(graph)
+    KeySaveOutcome(keySaver, graph)
     // The owner may add a screen lock in Android's settings and come back.
     var screenLock by remember { mutableStateOf(graph.appLock.deviceSecure()) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { screenLock = graph.appLock.deviceSecure() }
@@ -89,6 +97,7 @@ internal fun SafetySection(
         keyNotice = keyNotice,
         onlyOfficialAgents = settings.onlyOfficialAgents,
         variables = values.filter { it.kind == SecretKind.VARIABLE }.map { it.projectId to it.name },
+        gitHubConnected = account != null,
     )
     val lines = SafetyCheck.lines(facts)
     val problems = lines.count { it.status == CheckStatus.PROBLEM }
@@ -96,14 +105,14 @@ internal fun SafetySection(
     SectionLabel("Safety check")
     OutlinedCard {
         Text(
-            if (problems == 0) "Everything here is as it should be." else "$problems ${if (problems == 1) "thing needs" else "things need"} you.",
+            SafetyCheck.summary(problems),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
         )
         lines.forEach { line ->
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            SafetyRow(line) {
+            SafetyRow(line, busy = line.fix == SafetyFix.SAVE_KEY_NOW && keySaver.busy) {
                 notice = null
                 when (line.fix) {
                     SafetyFix.SCREEN_LOCK -> External.openSecuritySettings(context)
@@ -111,6 +120,8 @@ internal fun SafetySection(
                     SafetyFix.PRIVACY_CHECKLIST -> onOpenPrivacyChecklist()
                     SafetyFix.VARIABLES -> nav.secrets(facts.variables.firstOrNull { SafetyCheck.looksSecret(it.second) }?.first)
                     SafetyFix.ONLY_OFFICIAL -> update { it.copy(onlyOfficialAgents = true) }
+                    SafetyFix.RECONNECT_GITHUB -> reconnecting = true
+                    SafetyFix.SAVE_KEY_NOW -> keySaver.run()
                     null -> Unit
                 }
             }
@@ -123,7 +134,7 @@ internal fun SafetySection(
 }
 
 @Composable
-private fun SafetyRow(line: CheckLine, onFix: () -> Unit) {
+private fun SafetyRow(line: CheckLine, busy: Boolean, onFix: () -> Unit) {
     val (tone, icon, spoken) = when (line.status) {
         CheckStatus.DONE -> Triple(Tone.OK, Icons.Outlined.Check, "Done")
         CheckStatus.PROBLEM -> Triple(Tone.WARN, Icons.Outlined.WarningAmber, "Needs attention")
@@ -143,7 +154,9 @@ private fun SafetyRow(line: CheckLine, onFix: () -> Unit) {
             }
         }
         if (line.fix != null && line.fixLabel != null) {
-            TextButton(onClick = onFix, modifier = Modifier.padding(start = 34.dp)) { Text(line.fixLabel) }
+            TextButton(onClick = onFix, enabled = !busy, modifier = Modifier.padding(start = 34.dp)) {
+                Text(if (busy) "Trying…" else line.fixLabel)
+            }
         }
     }
 }

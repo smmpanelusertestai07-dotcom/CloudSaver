@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import androidx.core.content.edit
 import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
 import com.pocketide.core.Http
@@ -24,13 +25,11 @@ fun createAppUpdater(graph: AppGraph): AppUpdater {
         ),
         fetcher = ApkFetcher(
             client = Http.downloads,
-            allow = { bytes -> graph.dataBudget.allow(bytes, DATA_KIND, big = true) },
-            record = { bytes -> graph.dataBudget.record(bytes, DATA_KIND) },
+            allow = { bytes -> graph.dataBudget.allow(bytes, ApkFetcher.DATA_KIND, big = true) },
+            record = { bytes -> graph.dataBudget.record(bytes, ApkFetcher.DATA_KIND) },
         ),
     )
 }
-
-private const val DATA_KIND = "app update"
 
 private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
     private val context: Context get() = graph.context
@@ -41,17 +40,16 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
     override val currentVersion: String get() = BuildConfig.VERSION_NAME
     override val pinnedSigner: String get() = BuildConfig.SIGNING_CERT_SHA256
 
-    override fun self(): ApkFacts {
-        val info = context.packageManager.getPackageInfo(context.packageName, SIGNERS)
-        return facts(info)
-    }
+    override fun self(): ApkFacts = apkFacts(context.packageManager.getPackageInfo(context.packageName, APK_FACTS_FLAGS))
 
-    /**
-     * GET_SIGNING_CERTIFICATES alone leaves signingInfo null for an archive on Android 10 and on
-     * the first Android 13 release, so GET_SIGNATURES is asked for too (brief §4, risk R24).
-     */
+    private val prefs get() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    override var passedOver: String?
+        get() = prefs.getString(PASSED_OVER, null)
+        set(tag) = prefs.edit { putString(PASSED_OVER, tag) }
+
     override fun inspect(file: File): ApkFacts? =
-        context.packageManager.getPackageArchiveInfo(file.absolutePath, SIGNERS)?.let(::facts)
+        context.packageManager.getPackageArchiveInfo(file.absolutePath, APK_FACTS_FLAGS)?.let(::apkFacts)
 
     override fun mayInstall(activity: Activity): Boolean = installer.mayInstall(activity)
 
@@ -59,18 +57,37 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
 
     override fun schedule() = AppUpdateWorker.schedule(context)
 
-    @Suppress("DEPRECATION")
-    private fun facts(info: PackageInfo): ApkFacts {
-        // The certificates that signed the contents now, not the ones a rotation proved it may replace.
-        val certificates = info.signingInfo?.apkContentsSigners ?: info.signatures
-        val signers = certificates.orEmpty().map { sha256(it.toByteArray()) }.toSet()
-        return ApkFacts(info.packageName, info.longVersionCode, info.versionName, signers)
-    }
-
-    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-
     private companion object {
-        @Suppress("DEPRECATION")
-        val SIGNERS = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+        const val PREFS = "pocketide.update"
+        const val PASSED_OVER = "passed_over_tag"
     }
 }
+
+/**
+ * What the update rules need from Android's reading of an APK or of this app. GET_SIGNING_CERTIFICATES
+ * alone leaves signingInfo null for an archive on Android 10 and on the first Android 13 release,
+ * so GET_SIGNATURES is asked for too (brief §4, risk R24).
+ */
+@Suppress("DEPRECATION")
+internal val APK_FACTS_FLAGS = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+
+@Suppress("DEPRECATION")
+internal fun apkFacts(info: PackageInfo): ApkFacts = ApkFacts(
+    packageName = info.packageName,
+    versionCode = info.longVersionCode,
+    versionName = info.versionName,
+    signers = signerDigests(
+        contentsSigners = info.signingInfo?.apkContentsSigners?.map { it.toByteArray() },
+        signatures = info.signatures?.map { it.toByteArray() },
+    ),
+)
+
+/**
+ * SHA-256 of each certificate, as lower-case hex: the form of BuildConfig.SIGNING_CERT_SHA256.
+ * The certificates that sign the contents now, never the ones a key rotation proved it may
+ * replace (signingCertificateHistory); the old signatures only where Android gave no signingInfo.
+ */
+internal fun signerDigests(contentsSigners: List<ByteArray>?, signatures: List<ByteArray>?): Set<String> =
+    (contentsSigners ?: signatures).orEmpty().map(::sha256Hex).toSet()
+
+private fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

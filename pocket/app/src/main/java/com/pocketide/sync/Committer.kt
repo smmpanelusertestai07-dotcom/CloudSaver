@@ -43,6 +43,7 @@ internal class Committer(private val kit: SyncKit) {
     ): RemoteSnapshot {
         val ports = kit.ports
         val now = run.now
+        confirmUploads(run, drive)
         val entries = run.entries()
         val ready = ready(entries, start.index, mode)
         val readyIds = ready.map { it.id }.toSet()
@@ -53,10 +54,9 @@ internal class Committer(private val kit: SyncKit) {
         val sessions = if (additive) emptyList() else Diffs.sessions(ports.localSessions(), run.state.sessionMarks)
         val projects = if (additive) emptyList() else Diffs.projects(ports.localProjects(), run.state.projectMarks)
         val settingsJson = if (additive) null else SyncedSettings.of(ports.settings.settings.value).json().takeIf { it != run.state.settingsPushed }
-        val (unattributed, attributed) = reattributions(start.index, run.state.tracks)
         val delta = IndexDelta(
-            addObjects = ready.map { it.toObject(it.driveId) } + attributed + extras.replaceObjects,
-            removeEntries = unattributed,
+            addObjects = ready.map { it.toObject(it.driveId) },
+            replaceEntries = reattributions(start.index, run.state.tracks) + extras.replaceObjects.associateBy { it.entryKey },
             replaceFiles = ready.filter { it.base || !it.kind.appendOnly }.map { fileKey(it.kind, it.agentId, it.path) }.toSet() + extras.removeFiles,
             sessions = sessions + conflicts.map { SessionChange.Upsert(it) } + extras.sessions,
             eraseSessions = extras.eraseSessions,
@@ -64,22 +64,75 @@ internal class Committer(private val kit: SyncKit) {
             settingsJson = settingsJson,
             lease = if (additive) null else LeasePolicy.lease(ports.device, now),
         )
-        val renew = mode == CommitMode.TAKEOVER || (mode == CommitMode.HOLDER && LeasePolicy.needsRenewal(start.index, ports.device, now))
-        if (delta.copy(lease = null).isEmpty && !renew) return start
+        if (delta.copy(lease = null).isEmpty && !renews(mode, run, start.index, entries)) return start
         val keyGeneration = ports.keyGeneration()
+        // The index the change was last applied to: what it removed from there leaves Drive.
+        var appliedTo: VaultIndex? = null
         val result = kit.remote.commit(
             drive = drive,
             cipher = run.cipher,
             start = start,
             requireLease = { index -> if (mode == CommitMode.HOLDER) LeasePolicy.heldByOther(index, ports.device, now) else null },
-            change = { base -> IndexMerge.apply(base, delta, now, keyGeneration) },
+            change = { base ->
+                appliedTo = base
+                IndexMerge.apply(base, delta, now, keyGeneration)
+            },
             emptyIndex = { VaultIndex(updatedAt = now) },
         )
         val erased = delta.erased
-        settle(run, start.index, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras.removeFiles, erased, mode)
+        settle(run, appliedTo, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras.removeFiles, erased, mode)
         if (erased.isNotEmpty()) ports.sessionsErased(erased.sorted())
         deleteUnused(run, drive)
         return result
+    }
+
+    /**
+     * Whether a write that changes nothing else is still due for the lease: always for a takeover;
+     * for the normal sync only while this phone works (a room runs, or something waits to go up),
+     * so an idle phone lets its lease lapse instead of rewriting the whole index twice an hour.
+     */
+    private fun renews(mode: CommitMode, run: Run, index: VaultIndex?, entries: List<QueueEntry>): Boolean = when (mode) {
+        CommitMode.TAKEOVER -> true
+        CommitMode.ADDITIVE -> false
+        CommitMode.HOLDER -> (kit.ports.roomsRunning() || entries.any { !it.conflict }) && LeasePolicy.needsRenewal(index, kit.ports.device, run.now)
+    }
+
+    /**
+     * Uploads that wait for their record, checked by the clock another phone's daily sweep goes
+     * by: how long ago the upload was made, which a successful look never moves on. The sweep
+     * cannot know they wait here and removes a file no index names once it is
+     * [Maintenance.ORPHAN_GRACE_MS] old. So one older than [RESEND_AFTER_MS] is sent again as a
+     * new file instead of trusted, and one older than [CONFIRM_AFTER_MS] is looked for at every
+     * record; one that is gone is sent again, never recorded with an id that no longer exists.
+     * An upload the index already names is recorded work, and is left alone.
+     */
+    suspend fun confirmUploads(run: Run, drive: DriveStore) {
+        val now = run.now
+        val recorded = run.index?.objects.orEmpty().map { it.name }.toSet()
+        for (e in run.entries()) {
+            if (!e.blob || e.driveId == null || e.name in recorded) continue
+            val age = now - e.uploadedAt
+            if (e.uploadedAt < 0 || age < 0 || age >= RESEND_AFTER_MS) {
+                resend(run, e)
+            } else if (age >= CONFIRM_AFTER_MS && gone(drive, e)) {
+                kit.queue.update(run.cipher, e.copy(driveId = null, attempted = false, uploadedAt = -1))
+            }
+        }
+    }
+
+    /** Drive no longer holds [e]'s upload as it was sent. */
+    private suspend fun gone(drive: DriveStore, e: QueueEntry): Boolean =
+        drive.find(e.name)?.takeIf { it.size == e.storedBytes || it.size <= 0 } == null
+
+    /**
+     * Sends [e] again under a new name, so Drive's copy is new, and lets the old copy go
+     * ([deleteUnused]). Entries that reuse its content follow it to the new name.
+     */
+    private fun resend(run: Run, e: QueueEntry) {
+        val name = Codec.objectName()
+        kit.queue.update(run.cipher, e.copy(name = name, driveId = null, attempted = false, uploadedAt = -1))
+        for (reusing in run.entries().filter { !it.blob && it.name == e.name }) kit.queue.update(run.cipher, reusing.copy(name = name))
+        run.state = run.state.copy(driveDeletes = run.state.driveDeletes + (e.name to e.driveId.orEmpty()))
     }
 
     /** Deletes Drive files the index no longer names. Stops quietly when Drive cannot be reached. */
@@ -127,19 +180,17 @@ internal class Committer(private val kit: SyncKit) {
     }
 
     /** Entries recorded before their file was matched to a session get that session now. */
-    private fun reattributions(index: VaultIndex?, tracks: Map<String, FileTrack>): Pair<Set<String>, List<VaultObject>> {
-        if (index == null) return emptySet<String>() to emptyList()
-        val removes = HashSet<String>()
-        val adds = ArrayList<VaultObject>()
+    private fun reattributions(index: VaultIndex?, tracks: Map<String, FileTrack>): Map<String, VaultObject> {
+        if (index == null) return emptyMap()
+        val out = HashMap<String, VaultObject>()
         for (o in index.objects) {
             if (o.sessionId != null) continue
             val track = tracks[o.fileKey] ?: continue
             val session = track.sessionId ?: continue
             if (o.name !in track.objects) continue
-            removes += o.entryKey
-            adds += o.copy(sessionId = session)
+            out[o.entryKey] = o.copy(sessionId = session)
         }
-        return removes to adds
+        return out
     }
 
     private data class Pushed(
@@ -205,6 +256,12 @@ internal class Committer(private val kit: SyncKit) {
 
     companion object {
         const val OBJECT_PREFIX = "o-"
+
+        /** Uploads older than this are confirmed in Drive before they are recorded. */
+        const val CONFIRM_AFTER_MS = 6 * Durations.HOUR
+
+        /** Uploads older than this are sent again rather than recorded: half the sweep's grace, so clocks may differ. */
+        const val RESEND_AFTER_MS = Maintenance.ORPHAN_GRACE_MS / 2
     }
 }
 

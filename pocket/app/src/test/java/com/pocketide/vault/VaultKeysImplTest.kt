@@ -259,6 +259,47 @@ class VaultKeysImplTest {
     }
 
     @Test
+    fun `a keyring made public while its halves do not pair leaves the key only on this phone`() = runTest {
+        val vault = keyringWithAnOlderHalfG()
+        val written = accounts.gitHub.keyring().history.size
+        accounts.gitHub.keyring().isPrivate = false
+
+        vault.checkKeyring()
+
+        assertEquals("no new key: the exposed half opens nothing", 2, vault.generation())
+        assertEquals(KeyState.OnlyOnPhone, vault.state.value)
+        assertEquals(VaultText.KEYRING_PUBLIC, vault.notice.value)
+        assertEquals("nothing is written to a public repo", written, accounts.gitHub.keyring().history.size)
+    }
+
+    @Test
+    fun `a keyring shared while its halves do not pair leaves the key only on this phone`() = runTest {
+        val vault = keyringWithAnOlderHalfG()
+        val written = accounts.gitHub.keyring().history.size
+        accounts.gitHub.keyring().collaborators += "mallory"
+
+        vault.checkKeyring()
+
+        assertEquals(2, vault.generation())
+        assertEquals(KeyState.OnlyOnPhone, vault.state.value)
+        assertEquals(VaultText.keyringShared(listOf("mallory")), vault.notice.value)
+        assertEquals(written, accounts.gitHub.keyring().history.size)
+    }
+
+    /** A Ready key at generation 2 whose keyring holds generation 1's Half G, which Drive's Half D no longer pairs with. */
+    private suspend fun keyringWithAnOlderHalfG(): VaultKeys {
+        val vault = newPhone().vault()
+        vault.setUp()
+        val first = accounts.gitHub.keyring().files.getValue(VaultKeyFiles.HALF_G_PATH)
+        vault.rekey(RekeyReason.OWNER_ASKED)
+        assertEquals(KeyState.Ready, vault.state.value)
+        assertEquals(2, halfG().generation)
+        accounts.gitHub.keyring().files[VaultKeyFiles.HALF_G_PATH] = first
+        assertEquals(1, halfG().generation)
+        return vault
+    }
+
+    @Test
     fun `someone added to the keyring gets the key changed, and the owner alone is not someone`() = runTest {
         val vault = newPhone().vault()
         vault.setUp()

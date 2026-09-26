@@ -1,6 +1,7 @@
 package com.pocketide.projects
 
 import com.pocketide.model.Project
+import com.pocketide.vault.VaultKeyFiles
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
@@ -23,6 +24,12 @@ class RepoNotReachableException(val installUrl: String, val address: RepoAddress
  */
 @Serializable
 enum class ProjectTrust { YOURS, SOMEONE_ELSES }
+
+/**
+ * The repository that holds half of the vault key. It is never a project: a clone would put that
+ * half, and every older one in its history, where each room and agent can read it.
+ */
+fun isVaultKeyring(repoName: String): Boolean = repoName.equals(VaultKeyFiles.KEYRING_REPO, ignoreCase = true)
 
 /** A GitHub repository, by owner and name. */
 data class RepoAddress(val owner: String, val repo: String) {
@@ -60,8 +67,14 @@ data class RepoAddress(val owner: String, val repo: String) {
  * The owner's projects: one private GitHub repository each. The phone keeps a bare clone
  * (made on first open, not all at once); sessions add worktrees to it.
  */
+// The module's one contract, as Sessions is: splitting it would only scatter the callers.
+@Suppress("TooManyFunctions")
 interface Projects {
+    /** What is known so far: empty until `vault/projects.json` is read, so a job in a fresh process uses [loaded]. */
     val all: StateFlow<List<Project>>
+
+    /** The projects once this phone's list is read from the disk. Background jobs read this, not [all]. */
+    suspend fun loaded(): List<Project> = all.value
 
     /** Creates a new private repository on GitHub and adds it. */
     suspend fun create(name: String, description: String): Project
@@ -96,12 +109,24 @@ interface Projects {
     suspend fun adopt(projects: List<Project>) = Unit
 
     /**
+     * "Delete everything" removed the phone's data: the projects are forgotten in memory too, so
+     * nothing writes the old list back or sends it to the next vault.
+     */
+    suspend fun forgetEverything() = Unit
+
+    /**
      * Whose code each project is, by project id. Projects made in the app and the owner's own
      * repositories are [ProjectTrust.YOURS]; anything else, and anything unknown, is not.
      */
     val trust: StateFlow<Map<String, ProjectTrust>> get() = MutableStateFlow(emptyMap())
 
     fun trustOf(projectId: String): ProjectTrust = trust.value[projectId] ?: ProjectTrust.SOMEONE_ELSES
+
+    /** [trustOf] once this phone's list is read: unread, every project would be someone else's. Background jobs ask this. */
+    suspend fun loadedTrustOf(projectId: String): ProjectTrust {
+        loaded()
+        return trustOf(projectId)
+    }
 
     /** The owner's own answer to "Is this your code?", which replaces the automatic one. */
     suspend fun setTrust(projectId: String, trust: ProjectTrust) = Unit

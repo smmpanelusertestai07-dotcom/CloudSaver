@@ -9,8 +9,9 @@ package com.pocketide.schedule
  *   permission rules, and nothing waits for a person.
  * - Codex: `codex exec` with the binary the extension bundles; the room's config.toml decides the
  *   sandbox and approvals.
- * - Antigravity: `agy -p`, JSON output, because a refused permission still exits 0 and only the
- *   JSON status tells success from failure.
+ * - Antigravity: `agy -p`, JSON output. A permission it could not get (request-review has nobody
+ *   to ask) is soft-denied: exit 0, status SUCCESS, and only a notice on stderr. On the owner's
+ *   own code the room's CLI settings pre-approve git and the usual build and test commands.
  */
 object HeadlessCommand {
     const val CLAUDE = "claude"
@@ -69,15 +70,20 @@ object HeadlessCommand {
     }
 
     /**
-     * Whether a finished run worked. agy reports a refused permission with exit code 0, so its
-     * JSON status decides; the others go by the exit code.
+     * Whether a finished run worked. agy exits 0 and may even report SUCCESS when it was refused
+     * a permission, so its JSON status must say SUCCESS and no line outside the JSON may carry a
+     * refusal notice; the others go by the exit code.
      */
     fun succeeded(agentId: String, exitCode: Int, output: List<String>): Boolean {
         if (exitCode != 0) return false
         if (agentId != ANTIGRAVITY) return true
         val status = output.asReversed().firstNotNullOfOrNull { STATUS.find(it)?.groupValues?.get(1) }
-        return status == "SUCCESS"
+        val refused = output.any { line -> !line.trimStart().startsWith("{") && REFUSED.containsMatchIn(line) }
+        return status == "SUCCESS" && !refused
     }
 
     private val STATUS = Regex("\"status\"\\s*:\\s*\"([A-Z_]+)\"")
+
+    /** agy's notice for a soft-denied tool names the rule that would permit it. */
+    private val REFUSED = Regex("(?i)soft-denied|permission denied|not permitted|permissions\\.allow|dangerously-skip-permissions")
 }

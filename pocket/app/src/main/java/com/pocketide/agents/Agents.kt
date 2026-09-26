@@ -4,8 +4,24 @@ import com.pocketide.model.AgentCandidate
 import com.pocketide.model.AgentInfo
 import kotlinx.coroutines.flow.StateFlow
 
-/** Result of testing an agent on this phone (it runs, RAM, full screen). */
-data class DoctorReport(val agentId: String, val ok: Boolean, val checks: List<Pair<String, Boolean>>, val note: String?)
+/**
+ * Result of testing an agent on this phone (it runs, RAM, full screen). [openCommand] is the
+ * command that opens the tested version full screen, when it has one.
+ */
+data class DoctorReport(
+    val agentId: String,
+    val ok: Boolean,
+    val checks: List<Pair<String, Boolean>>,
+    val note: String?,
+    val openCommand: String? = null,
+) {
+    /** True when the version itself failed (wrong code-server, no screen), not the phone's state at the time. */
+    val versionFailed: Boolean get() = checks.any { (name, passed) -> !passed && name in VERSION_CHECKS }
+
+    private companion object {
+        val VERSION_CHECKS = setOf(AgentDoctor.FITS, AgentDoctor.FULL_SCREEN)
+    }
+}
 
 /**
  * The official three are built in. Others are found weekly on Open VSX (verified publisher,

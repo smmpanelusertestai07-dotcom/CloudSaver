@@ -48,6 +48,23 @@ class ProotCommandTest {
     }
 
     @Test
+    fun aCommandWithoutItsOwnSharedMemoryGetsTheDefaultRightAfterTheSystemFolders() {
+        val argv = ProotCommand.build(
+            host, root, standIns, "UTC", LinuxCommand(listOf("python3")), sharedMemory = File(root, "tmp"),
+        ).argv
+        val at = argv.indexOf("${root.path}/tmp:/dev/shm")
+        assertEquals("-b", argv[at - 1])
+        assertEquals("/sys", argv[at - 2])
+    }
+
+    @Test
+    fun aCommandsOwnSharedMemoryWins() {
+        val command = LinuxCommand(listOf("python3"), binds = listOf(Bind("/data/data/pocketide/files/rooms/claude/shm", "/dev/shm")))
+        val argv = ProotCommand.build(host, root, standIns, "UTC", command, sharedMemory = File(root, "tmp")).argv
+        assertEquals(listOf("/data/data/pocketide/files/rooms/claude/shm:/dev/shm"), argv.filter { it.endsWith(":/dev/shm") })
+    }
+
+    @Test
     fun prootGetsOnlyItsOwnEnvironment() {
         assertEquals(
             mapOf(

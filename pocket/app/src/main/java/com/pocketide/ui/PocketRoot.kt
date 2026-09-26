@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +39,7 @@ import com.pocketide.ui.screens.onboarding.OnboardingFlow
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.RootGate
 import com.pocketide.ui.theme.PocketTheme
+import com.pocketide.vault.KeyState
 
 /**
  * The whole UI, in order: theme → app lock → phones that cannot run it → access locks (GitHub,
@@ -58,12 +60,15 @@ fun PocketRoot(activity: FragmentActivity) {
             val access by graph.access.state.collectAsStateWithLifecycle()
             // Asked once: the answer depends on hardware and Android, which do not change while running.
             val unsupported = remember { runCatching { graph.limiter.unsupportedReason() }.getOrNull() }
+            val keyOnPhone = if (settings.onboardingDone) true else rememberKeyOnPhone(graph)
+            LaunchedEffect(keyOnPhone) { if (!keyOnPhone) graph.appLock.openForSetUp() }
             val gate = RootGate.of(
                 appLockOn = settings.appLock,
                 unlocked = unlocked,
                 unsupportedReason = unsupported,
                 lock = access.lock,
                 onboardingDone = settings.onboardingDone,
+                keyOnPhone = keyOnPhone,
             )
             // Each part keeps its saved state (steps, ticks, back stack, pending results from
             // Google's sheet) while the app lock replaces it; a GitHub sign-in waiting in Chrome
@@ -123,6 +128,13 @@ private fun AppLockGate(graph: AppGraph, activity: FragmentActivity) {
         onSetScreenLock = { External.openSecuritySettings(activity) },
         prompting = prompting,
     )
+}
+
+/** Whether this phone holds the chats' key yet; read only during set-up, when it can still be missing. */
+@Composable
+private fun rememberKeyOnPhone(graph: AppGraph): Boolean {
+    val key by graph.vault.state.collectAsState()
+    return key == KeyState.Ready || key == KeyState.OnlyOnPhone
 }
 
 /** Tells the app lock when the whole app leaves and returns, not each activity or dialog. */

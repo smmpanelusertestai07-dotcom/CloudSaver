@@ -40,11 +40,15 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,6 +68,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.pocketide.AppGraph
+import com.pocketide.lock.AccessRules
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.activity.ActivityScreen
 import com.pocketide.ui.screens.agents.MoreAgentsScreen
@@ -84,8 +90,12 @@ import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.External
+import com.pocketide.ui.shell.KeySaveOutcome
+import com.pocketide.ui.shell.ReconnectGitHubDialog
 import com.pocketide.ui.shell.Routes
 import com.pocketide.ui.shell.Tab
+import com.pocketide.ui.shell.rememberGraph
+import com.pocketide.ui.shell.rememberKeySaver
 
 /**
  * [PocketNav] over the navigation graph. Tabs keep their own back stack (switching away and back
@@ -181,7 +191,7 @@ fun AppNav(
                 .imePadding(),
         ) {
             AnimatedVisibility(banner != null && pattern != Routes.AGENT, enter = fadeIn(), exit = fadeOut()) {
-                AccessBanner(banner.orEmpty())
+                AccessBanner(banner.orEmpty(), graph = rememberGraph())
             }
             NavHost(
                 navController = navController,
@@ -299,7 +309,11 @@ private fun Tab.selectedIcon(): ImageVector = when (this) {
 
 /** A calm, non-blocking notice under the title bar; TalkBack reads it when it appears. */
 @Composable
-private fun AccessBanner(text: String) {
+private fun AccessBanner(text: String, graph: AppGraph) {
+    var reconnecting by rememberSaveable { mutableStateOf(false) }
+    if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
+    val keySaver = rememberKeySaver(graph)
+    KeySaveOutcome(keySaver, graph)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier
@@ -314,7 +328,18 @@ private fun AccessBanner(text: String) {
                 modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.width(12.dp))
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+            // Each banner comes with the tap that fixes it.
+            when (text) {
+                AccessRules.KEY_BANNER -> TextButton(onClick = { reconnecting = true }) { Text("Reconnect") }
+                AccessRules.KEY_SAVING_BANNER ->
+                    TextButton(onClick = keySaver::run, enabled = !keySaver.busy) { Text(if (keySaver.busy) "Trying…" else "Try now") }
+            }
         }
     }
 }

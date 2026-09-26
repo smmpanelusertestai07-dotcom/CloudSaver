@@ -38,13 +38,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.AppGraph
 import com.pocketide.agents.CandidateFacts
 import com.pocketide.agents.DoctorReport
+import com.pocketide.agents.mobileDataQuestion
 import com.pocketide.core.Ist
 import com.pocketide.docs.DocLinks
 import com.pocketide.docs.DocsContent
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.AgentInfo
+import com.pocketide.sync.NeedsMobileData
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
@@ -58,9 +62,10 @@ import com.pocketide.ui.manage.LinkRow
 import com.pocketide.ui.manage.ManageFormat
 import com.pocketide.ui.manage.ManagePage
 import com.pocketide.ui.manage.NavRow
+import com.pocketide.ui.manage.PlainError
 import com.pocketide.ui.manage.SectionLabel
-import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.Told
+import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.rememberActionRunner
 import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.nav.PocketNav
@@ -86,8 +91,23 @@ fun MoreAgentsScreen(nav: PocketNav) {
     val onlyOfficial = settings.onlyOfficialAgents
     var removing by remember { mutableStateOf<AgentInfo?>(null) }
     var report by remember { mutableStateOf<Pair<String, DoctorReport>?>(null) }
+    var askMobileData by remember { mutableStateOf<Pair<AgentCandidate, NeedsMobileData>?>(null) }
     val official = installed.filter { it.official }
     val added = installed.filter { !it.official }
+
+    // A download the owner started: leaving the screen, or the app lock closing it, must not throw it away.
+    // [confirmed]: the owner allowed it on mobile data, for this Add alone.
+    fun add(candidate: AgentCandidate, confirmed: NeedsMobileData? = null) {
+        runner.run(
+            key = "add:${candidate.extensionId}",
+            outlivesScreen = true,
+            onFailure = { error ->
+                val question = mobileDataQuestion(error)
+                if (question != null) askMobileData = candidate to question else runner.say(PlainError.of(error))
+            },
+            onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
+        ) { addAgent(graph, candidate, confirmed) }
+    }
 
     ManagePage("More agents", nav, runner) {
         item {
@@ -124,12 +144,7 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 }
             }
             items(fresh, key = { it.extensionId }) { candidate ->
-                CandidateCard(candidate, graph.agents.facts(candidate.extensionId), runner, nav) {
-                    runner.run(
-                        key = "add:${candidate.extensionId}",
-                        onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
-                    ) { graph.agents.add(candidate) }
-                }
+                CandidateCard(candidate, graph.agents.facts(candidate.extensionId), runner, nav) { add(candidate) }
             }
         } else if (added.isNotEmpty()) {
             item { Hint("${ManageFormat.count(added.size, "agent")} you added ${if (added.size == 1) "is" else "are"} hidden while this is on.") }
@@ -158,11 +173,48 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 "your Drive until you delete them.",
             confirmLabel = "Remove",
             destructive = true,
-            onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.") { graph.agents.remove(agent.id) } },
+            // Saving and deleting take a while: leaving the screen must not stop it half way.
+            onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.", outlivesScreen = true) { graph.agents.remove(agent.id) } },
             onDismiss = { removing = null },
         )
     }
     report?.let { (name, result) -> DoctorDialog(name, result) { report = null } }
+    askMobileData?.let { (candidate, question) ->
+        MobileDataDialog(
+            candidate,
+            question,
+            onUse = {
+                askMobileData = null
+                graph.dataBudget.allowOnce(question.kind, question.bytes)
+                add(candidate, confirmed = question)
+            },
+            onDismiss = { askMobileData = null },
+        )
+    }
+}
+
+/** Adds [candidate]; a mobile-data yes ([confirmed]) covers this Add alone, however it ends. */
+private suspend fun addAgent(graph: AppGraph, candidate: AgentCandidate, confirmed: NeedsMobileData?): DoctorReport = try {
+    graph.agents.add(candidate)
+} finally {
+    confirmed?.let { graph.dataBudget.endOnce(it.kind) }
+}
+
+/** Nothing adds the agent later by itself, so the question says so. */
+@Composable
+private fun MobileDataDialog(candidate: AgentCandidate, question: NeedsMobileData, onUse: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Download ${question.size} on mobile data?") },
+        text = {
+            Text(
+                "${candidate.displayName} is big, so it waits for Wi-Fi. It is not added yet: tap Add again on Wi-Fi, " +
+                    "or download it now on mobile data.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onUse) { Text("Use mobile data") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    )
 }
 
 @Composable
@@ -262,8 +314,11 @@ private fun CandidateFactLines(facts: CandidateFacts) {
     Hint(facts.repository?.let { "Source: $it" } ?: "Source: closed source (no repository given)")
     val rating = facts.averageRating
     Hint(
-        if (rating == null || facts.reviewCount == 0L) "No reviews yet"
-        else "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating),
+        if (rating == null || facts.reviewCount == 0L) {
+            "No reviews yet"
+        } else {
+            "Rated %.1f of 5 in ${ManageFormat.count(facts.reviewCount.toInt(), "review")}".format(Locale.ENGLISH, rating)
+        },
     )
     Hint(CandidateFacts.VERIFIED_MEANS)
 }
@@ -274,7 +329,7 @@ private fun DoctorDialog(name: String, report: DoctorReport, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         title = { Text(if (report.ok) "$name works on this phone" else "$name did not pass the test") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DialogBody(spacing = 8.dp) {
                 report.checks.forEach { (check, passed) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(

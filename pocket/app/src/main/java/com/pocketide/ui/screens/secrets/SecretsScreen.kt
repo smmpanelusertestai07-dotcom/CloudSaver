@@ -54,6 +54,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.secrets.ProjectValue
 import com.pocketide.secrets.SecretKind
+import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
@@ -81,9 +83,9 @@ private data class Editing(val existing: ProjectValue?)
 private class Revealed(val name: String, val chars: CharArray)
 
 /**
- * Variables (the agent sees them) and Secrets (never the agent: only set-up steps and GitHub
- * Actions builds), for one project or the global set. Values stay masked; showing one needs
- * the fingerprint or screen lock.
+ * Variables (the agent sees them) and Secrets (never the agent: only GitHub Actions builds, once
+ * sent there), for one project or the global set. A global Secret is sent from each project that
+ * uses it. Values stay masked; showing one needs the fingerprint or screen lock.
  */
 @Composable
 fun SecretsScreen(projectId: String?, nav: PocketNav) {
@@ -95,6 +97,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
     val project = projects.firstOrNull { it.id == projectId }
     val values = remember(all, projectId) { ValueNames.scoped(all, projectId) }
     val globals = remember(all) { ValueNames.scoped(all, null) }
+    val inherited = remember(all, projectId) { projectId?.let { inheritedSecrets(all, it) }.orEmpty() }
     var editing by remember { mutableStateOf<Editing?>(null) }
     var deleting by remember { mutableStateOf<ProjectValue?>(null) }
     var pushing by remember { mutableStateOf<ProjectValue?>(null) }
@@ -125,7 +128,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
 
     val title = if (projectId == null) "Global Variables and Secrets" else "Variables and Secrets"
     ManagePage(title, nav, runner) {
-        item { Explainer(projectLabel = project?.let { "${it.owner}/${it.repo}" } ?: projectId) }
+        item { Explainer(projectLabel = project?.let { "${it.owner}/${it.repo}" } ?: projectId, global = projectId == null) }
         item {
             Button(onClick = { editing = Editing(null) }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.Add, contentDescription = null)
@@ -163,11 +166,18 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
             item {
                 SectionCard(null) {
                     Hint(
-                        if (globals.isEmpty()) "No global values. They apply to all projects; a project's own value with the same name wins."
-                        else "${globals.size} global ${if (globals.size == 1) "value applies" else "values apply"} here too; a project's own value with the same name wins.",
+                        if (globals.isEmpty()) {
+                            "No global values. They apply to all projects; a project's own value with the same name wins."
+                        } else {
+                            val applies = if (globals.size == 1) "value applies" else "values apply"
+                            "${globals.size} global $applies here too; a project's own value with the same name wins."
+                        },
                     )
                     NavRow(Icons.Outlined.Public, "Global Variables and Secrets", null) { nav.secrets(null) }
                 }
+            }
+            items(inherited, key = { "global:${it.name}" }) { value ->
+                InheritedSecretRow(value, projectId, busy = runner.isBusy("push:${value.name}"), onPush = { pushing = value })
             }
         }
     }
@@ -197,11 +207,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
     deleting?.let { value ->
         ConfirmDialog(
             title = "Delete ${value.name}?",
-            text = if (value.pushedToGitHub) {
-                "It is removed from PocketIDE and your Drive. The copy in GitHub Actions stays until you delete it in the repository's settings."
-            } else {
-                "It is removed from this phone and your Drive."
-            },
+            text = SecretsText.deleting(value),
             confirmLabel = "Delete",
             destructive = true,
             onConfirm = { runner.run("delete:${value.name}", done = "${value.name} deleted.") { graph.secrets.remove(value.projectId, value.name) } },
@@ -229,14 +235,73 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
         AlertDialog(
             onDismissRequest = { revealed = null },
             title = { Text(shown.name) },
-            text = { SelectableText(String(shown.chars), Modifier.fillMaxWidth()) },
+            // A value may be a whole key file: it scrolls rather than being cut off.
+            text = { DialogBody { SelectableText(String(shown.chars), Modifier.fillMaxWidth()) } },
             confirmButton = { TextButton(onClick = { revealed = null }) { Text("Hide") } },
         )
     }
 }
 
+/**
+ * The global Secrets a project uses and does not replace with its own: each goes to that project's
+ * GitHub Actions from here, since a global Secret has no project to go to by itself.
+ */
+internal fun inheritedSecrets(all: List<ProjectValue>, projectId: String): List<ProjectValue> {
+    val own = ValueNames.scoped(all, projectId)
+    return ValueNames.scoped(all, null).filter { global ->
+        global.kind == SecretKind.SECRET && global.agentId == null && own.none { ValueNames.sameName(it.name, global.name) }
+    }
+}
+
+/** What the Secrets screen says about where GitHub Actions has a value. */
+internal object SecretsText {
+    const val SEND_GLOBAL = "Global Secret. Send it to use it in this project's builds."
+    const val SENT_GLOBAL = "Global Secret, in this project's GitHub Actions. Send it again after you change it."
+
+    /** The chip on a value's own row: a global Secret counts the projects it was sent to. */
+    fun chip(value: ProjectValue): String? = when {
+        value.projectId != null -> "In GitHub".takeIf { value.pushedToGitHub }
+        value.sentTo.isEmpty() -> null
+        value.sentTo.size == 1 -> "In GitHub for 1 project"
+        else -> "In GitHub for ${value.sentTo.size} projects"
+    }
+
+    /** Whether a global Secret was sent from [projectId], the only project its row there speaks for. */
+    fun sentHere(value: ProjectValue, projectId: String) = projectId in value.sentTo
+
+    fun deleting(value: ProjectValue): String = when {
+        value.projectId == null && value.sentTo.isNotEmpty() ->
+            "It is removed from PocketIDE and your Drive. The copies in the GitHub Actions of " +
+                "${value.sentTo.sorted().joinToString()} stay until you delete them in each repository's settings."
+        value.projectId != null && value.pushedToGitHub ->
+            "It is removed from PocketIDE and your Drive. The copy in the GitHub Actions of ${value.projectId} stays " +
+                "until you delete it in the repository's settings."
+        else -> "It is removed from this phone and your Drive."
+    }
+}
+
 @Composable
-private fun Explainer(projectLabel: String?) {
+private fun InheritedSecretRow(value: ProjectValue, projectId: String, busy: Boolean, onPush: () -> Unit) {
+    val sent = SecretsText.sentHere(value, projectId)
+    SectionCard(null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(value.name, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace)
+                Hint(if (sent) SecretsText.SENT_GLOBAL else SecretsText.SEND_GLOBAL)
+            }
+            if (sent) StatusChip("In GitHub", Tone.OK)
+            IconButton(onClick = onPush, enabled = !busy) {
+                Icon(
+                    Icons.Outlined.CloudUpload,
+                    contentDescription = if (sent) "Send ${value.name} again" else "Send ${value.name} to GitHub Actions",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Explainer(projectLabel: String?, global: Boolean) {
     SectionCard(null) {
         Text(
             if (projectLabel != null) "For $projectLabel" else "For every project",
@@ -244,7 +309,8 @@ private fun Explainer(projectLabel: String?) {
             fontWeight = FontWeight.SemiBold,
         )
         Text(lead("Variables", "the agent sees: test keys, API addresses, feature flags."), style = MaterialTheme.typography.bodyMedium)
-        Text(lead("Secrets", "never the agent: only set-up steps and your GitHub Actions builds."), style = MaterialTheme.typography.bodyMedium)
+        Text(lead("Secrets", "never the agent: only your GitHub Actions builds, once you tap Send to GitHub."), style = MaterialTheme.typography.bodyMedium)
+        if (global) Hint("A global Secret is sent from each project that uses it: open the project's Variables and Secrets.")
         Hint("Both are encrypted on this phone and in your Drive, and never go into git.")
     }
 }
@@ -272,7 +338,7 @@ private fun ValueRow(
                 Text(MASK, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Hint("Changed ${Ist.dateTime(value.updatedAt)}")
             }
-            if (value.pushedToGitHub) StatusChip("In GitHub", Tone.OK)
+            SecretsText.chip(value)?.let { StatusChip(it, Tone.OK) }
         }
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
@@ -308,9 +374,10 @@ private fun ValueEditor(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = KeepTypedInput,
         title = { Text(if (existing == null) "Add a value" else "Change ${existing.name}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DialogBody {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.trim() },
@@ -323,7 +390,7 @@ private fun ValueEditor(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 KindChoice(SecretKind.VARIABLE, kind, "Variable", "The agent sees it in its room.") { kind = it }
-                KindChoice(SecretKind.SECRET, kind, "Secret", "Never the agent. Set-up steps and GitHub builds only.") { kind = it }
+                KindChoice(SecretKind.SECRET, kind, "Secret", "Never the agent. Only GitHub builds, once you send it.") { kind = it }
                 if (existing?.kind == SecretKind.SECRET && kind == SecretKind.VARIABLE) {
                     Text(
                         "As a Variable, the agent will see this value in its room.",

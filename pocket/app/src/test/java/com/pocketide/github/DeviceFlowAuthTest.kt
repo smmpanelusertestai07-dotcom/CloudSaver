@@ -39,8 +39,8 @@ class DeviceFlowAuthTest {
         oauth: HttpUrl = server.url("/"),
     ) = authFor({ GitHubApp(clientId, slug) }, oauth)
 
-    private fun authFor(app: () -> GitHubApp, oauth: HttpUrl = server.url("/")) =
-        DeviceFlowAuth(app, TokenStore(store), testHttp, oauth, server.url("/"), clock, Dispatchers.IO, pause = {})
+    private fun authFor(app: () -> GitHubApp, oauth: HttpUrl = server.url("/"), api: HttpUrl = server.url("/")) =
+        DeviceFlowAuth(app, TokenStore(store), testHttp, oauth, api, clock, Dispatchers.IO, pause = {})
 
     private fun signedIn(expiresInMs: Long? = 8 * 3_600_000L, refresh: String? = "ghr_old") {
         TokenStore(store).save(
@@ -144,6 +144,23 @@ class DeviceFlowAuthTest {
     }
 
     @Test
+    fun `GitHub's answer to an unknown client ID says to copy it again`() = runBlocking {
+        val auth = auth(clientId = "Iv24abcDEF0123456789xy")
+        server.enqueue(json("""{"error":"Not Found"}""", code = 404))
+        server.enqueue(json("""{"error":"incorrect_client_credentials"}"""))
+        server.enqueue(json("""{"error":"Not Found"}"""))
+        repeat(3) {
+            try {
+                auth.startDeviceFlow()
+                fail("expected GitHubException")
+            } catch (e: GitHubException) {
+                assertEquals(GitHubText.BAD_CLIENT_ID, e.message)
+            }
+        }
+        assertEquals(mapOf("client_id" to "Iv24abcDEF0123456789xy"), server.next().form())
+    }
+
+    @Test
     fun `denied and expired codes end the flow`() = runBlocking {
         val auth = auth()
         server.enqueue(json("""{"error":"access_denied"}"""))
@@ -229,7 +246,7 @@ class DeviceFlowAuthTest {
         assertEquals("Octo Renamed", auth.account.value?.name)
 
         val closed = MockWebServer().apply { start() }
-        val offlineAuth = DeviceFlowAuth({ GitHubApp("Iv23li", "") }, TokenStore(store), testHttp, closed.url("/"), closed.url("/"), clock, Dispatchers.IO, pause = {})
+        val offlineAuth = authFor({ GitHubApp("Iv23li", "") }, oauth = closed.url("/"), api = closed.url("/"))
         closed.close()
         assertEquals(LinkHealth.OFFLINE, offlineAuth.health())
     }

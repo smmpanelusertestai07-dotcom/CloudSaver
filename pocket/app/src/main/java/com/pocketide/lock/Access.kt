@@ -5,9 +5,10 @@ import com.pocketide.model.AccessState
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * GitHub and Drive are required. Checked at start, every 15 minutes and on each sync: revoked
- * access locks the app (the running step finishes, unsynced data is held encrypted); offline
- * never locks. Also holds the lease lock and the storage-full lock.
+ * GitHub and Drive are required. Checked when the app opens or comes back to the front, with
+ * every sync that goes to the network, before a scheduled task runs, and every 6 hours in the
+ * background: revoked access locks the app (the running step finishes, unsynced data is held
+ * encrypted); offline never locks. Also holds the lease lock and the storage-full lock.
  */
 interface AccessGuard {
     val state: StateFlow<AccessState>
@@ -21,8 +22,10 @@ interface AppLock {
     fun lockNow()
     fun onBackground()
     fun onForeground()
+
     /** Shows Android's own prompt; [onDone] gets true when the owner passed it. */
     fun authenticate(activity: FragmentActivity, title: String, onDone: (Boolean) -> Unit)
+
     /** True when the phone has a screen lock (required). */
     fun deviceSecure(): Boolean
 
@@ -31,4 +34,10 @@ interface AppLock {
      * expects them back: the lock waits a little longer than usual before it closes again.
      */
     fun leavingOnErrand() = Unit
+
+    /**
+     * A fresh install holds nothing to protect yet: set-up opens without a prompt, and from then on
+     * the lock counts absences as always (the Drive step asks for a screen lock before the key).
+     */
+    fun openForSetUp() = Unit
 }

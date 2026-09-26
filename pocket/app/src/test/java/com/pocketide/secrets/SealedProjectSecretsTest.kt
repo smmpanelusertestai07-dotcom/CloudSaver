@@ -136,11 +136,65 @@ class SealedProjectSecretsTest {
     }
 
     @Test
+    fun aValueSavedWhileTheOldOneIsSentIsNotMarkedOnGitHub() = runTest {
+        lateinit var s: SealedProjectSecrets
+        s = SealedProjectSecrets(
+            store = SecureStore(temp.root, FlipBox()),
+            clock = { now },
+            io = Dispatchers.Unconfined,
+            pushSecret = { _, name, _ ->
+                // The owner saves a new value while the old one is on its way.
+                now += 1_000
+                s.set("alice/demo", name, SecretKind.SECRET, "new-value".toCharArray())
+            },
+        )
+        s.set("alice/demo", "STORE_PASSWORD", SecretKind.SECRET, "old-value".toCharArray())
+
+        s.pushToGitHub("alice/demo", "STORE_PASSWORD")
+
+        assertEquals("new-value", s.reveal("alice/demo", "STORE_PASSWORD")?.concatToString())
+        assertFalse("GitHub holds the old value", s.values.value.single().pushedToGitHub)
+    }
+
+    @Test
     fun aGlobalSecretCanBePushedToAProject() = runTest {
         val s = secrets()
         s.set(null, "SHARED_TOKEN", SecretKind.SECRET, "shared".toCharArray())
         s.pushToGitHub("alice/demo", "SHARED_TOKEN")
         assertEquals("alice/demo", pushed.single().first)
+    }
+
+    @Test
+    fun aGlobalSecretSentFromOneProjectIsMarkedForThatProjectAlone() = runTest {
+        val s = secrets()
+        s.set(null, "SHARED_TOKEN", SecretKind.SECRET, "shared".toCharArray())
+        s.pushToGitHub("alice/a", "SHARED_TOKEN")
+
+        val global = s.values.value.single()
+        assertEquals(setOf("alice/a"), global.sentTo)
+        assertFalse("B's repository does not have it", "alice/b" in global.sentTo)
+        assertFalse("a global value is never simply 'in GitHub'", global.pushedToGitHub)
+
+        s.pushToGitHub("alice/b", "SHARED_TOKEN")
+        assertEquals(setOf("alice/a", "alice/b"), s.values.value.single().sentTo)
+
+        now += 1_000
+        s.set(null, "SHARED_TOKEN", SecretKind.SECRET, "changed".toCharArray())
+        assertTrue("a changed value is in no project yet", s.values.value.single().sentTo.isEmpty())
+    }
+
+    @Test
+    fun theProjectsEachPhoneSentAGlobalSecretToAreAllKept() = runTest {
+        val one = secrets(temp.newFolder("one"))
+        one.set(null, "SHARED_TOKEN", SecretKind.SECRET, "shared".toCharArray())
+        val two = secrets(temp.newFolder("two"))
+        two.importBlob(one.exportBlob())
+
+        one.pushToGitHub("alice/a", "SHARED_TOKEN")
+        two.pushToGitHub("alice/b", "SHARED_TOKEN")
+        one.mergeBlob(two.exportBlob())
+
+        assertEquals(setOf("alice/a", "alice/b"), one.values.value.single().sentTo)
     }
 
     @Test
@@ -211,10 +265,13 @@ class SealedProjectSecretsTest {
         val dir = temp.newFolder("broken")
         secrets(dir).set(null, "A", SecretKind.VARIABLE, "x-value".toCharArray())
         val broken = SealedProjectSecrets(
-            store = SecureStore(dir, object : SecretBox {
-                override fun seal(plain: ByteArray) = plain
-                override fun open(sealed: ByteArray): ByteArray = throw javax.crypto.AEADBadTagException()
-            }),
+            store = SecureStore(
+                dir,
+                object : SecretBox {
+                    override fun seal(plain: ByteArray) = plain
+                    override fun open(sealed: ByteArray): ByteArray = throw javax.crypto.AEADBadTagException()
+                },
+            ),
             clock = { now },
             io = Dispatchers.Unconfined,
             pushSecret = { _, _, _ -> },

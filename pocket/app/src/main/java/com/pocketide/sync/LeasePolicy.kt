@@ -4,13 +4,14 @@ import com.pocketide.model.Lease
 import com.pocketide.model.VaultIndex
 
 /**
- * One phone at a time (§5.4). The holder renews its lease on each sync; another phone may take an
- * expired lease freely, or an unexpired one only when the owner says "Use here?".
+ * One phone at a time (§5.4). A holder that is working renews its lease as it syncs; an idle one
+ * lets it lapse and takes it again with its next real write. Another phone may take an expired
+ * lease freely, or an unexpired one only when the owner says "Use here?".
  */
 internal object LeasePolicy {
     const val TTL_MS = 45 * 60_000L
 
-    /** Renew when less than this is left, so an idle phone writes the index about twice an hour. */
+    /** Renew when less than this is left, so a working phone writes the index about twice an hour. */
     const val RENEW_MARGIN_MS = 20 * 60_000L
 
     /** Another phone's lease that has not expired, or null. */

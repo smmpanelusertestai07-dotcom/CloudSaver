@@ -120,6 +120,13 @@ class FakeBudget(var decision: Decision = Decision.YES) : DataBudget {
     override fun allowOnce(kind: String, bytes: Long) {
         grants[kind] = bytes
     }
+
+    /** Kinds whose confirmed transfer ended, in order. */
+    val ended = mutableListOf<String>()
+    override fun endOnce(kind: String) {
+        grants -= kind
+        ended += kind
+    }
     override fun record(bytes: Long, kind: String) {
         recorded += bytes
     }
@@ -140,4 +147,13 @@ internal class FakeProjectEnv(
     override val git: FakeCloneGate = FakeCloneGate(),
     override val dataBudget: FakeBudget = FakeBudget(),
     override val work: FakeWork = FakeWork(),
-) : ProjectEnv
+) : ProjectEnv {
+    /** How many times the vault was asked for a new key; [rekeyFails] makes the next ask fail. */
+    var rekeys = 0
+    var rekeyFails = false
+
+    override suspend fun keyringCloned() {
+        if (rekeyFails) throw IOException("offline")
+        rekeys++
+    }
+}

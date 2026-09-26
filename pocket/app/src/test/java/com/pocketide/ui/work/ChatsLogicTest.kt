@@ -4,6 +4,8 @@ import com.pocketide.model.SessionStatus
 import com.pocketide.ui.screens.chats.ChatFilter
 import com.pocketide.ui.screens.chats.StatusFilter
 import com.pocketide.sessions.Sessions
+import com.pocketide.sync.BackupState
+import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.chats.backupState
 import com.pocketide.ui.screens.chats.canContinue
@@ -93,8 +95,10 @@ class ChatsLogicTest {
     @Test
     fun backupStateInWords() {
         assertEquals("Backed up" to Tone.OK, backupState(session("a")))
-        assertEquals("Not backed up" to Tone.WARN, backupState(session("a", backUp = false, pendingVideos = 2)))
-        assertEquals("1 video waiting for Wi-Fi" to Tone.WARN, backupState(session("a", pendingVideos = 1, pendingBytes = 10)))
+        assertEquals("Not backed up" to Tone.WARN, backupState(session("a", backUp = false, pendingBytes = 10)))
+        // Videos held for Wi-Fi are the sync engine's count; the record never had one.
+        val waiting = SessionBackup(BackupState.WAITING_FOR_WIFI, pendingBytes = 10, videosWaitingForWifi = 1)
+        assertEquals("1 video waiting for Wi-Fi" to Tone.WARN, backupState(session("a", pendingBytes = 10), waiting))
         assertEquals("Waiting to upload" to Tone.WARN, backupState(session("a", pendingBytes = 10)))
         assertEquals(30L, sessionBytes(session("a", transcriptBytes = 10, mediaBytes = 20)))
     }

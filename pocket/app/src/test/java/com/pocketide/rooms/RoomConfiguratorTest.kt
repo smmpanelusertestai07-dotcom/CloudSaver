@@ -75,10 +75,13 @@ class RoomConfiguratorTest {
         for (other in listOf("codex", "antigravity")) {
             assertTrue(deny.contains("Read(/${dirs.roomHome(other).absolutePath}/**)"))
             assertTrue(deny.contains("Edit(/${dirs.roomWork(other).absolutePath}/**)"))
+            assertTrue(deny.contains("Read(/${dirs.roomUserHomes(other).absolutePath}/**)"))
         }
-        assertTrue(deny.none { it.contains(dirs.roomHome("claude").absolutePath) })
+        assertTrue(deny.none { it.contains(dirs.roomHome("claude").absolutePath) || it.contains(dirs.roomUserHomes("claude").absolutePath) })
+        assertTrue(deny.none { it.contains(dirs.repos.absolutePath) })
         assertTrue(deny.contains("Read(//proc/*/root/**)"))
         assertEquals(3650, settings["cleanupPeriodDays"]!!.jsonPrimitive.content.toInt())
+        assertEquals("true", settings[ConfigFiles.CLAUDE_REMOTE_CONTROL]!!.jsonPrimitive.content)
 
         val codeServer = Json.parseToJsonElement(home("claude", RoomConfigurator.CODE_SERVER_SETTINGS).readText()).jsonObject
         assertEquals("15", codeServer["editor.fontSize"]!!.jsonPrimitive.content)
@@ -88,6 +91,20 @@ class RoomConfiguratorTest {
         assertEquals("{\"token\":\"x\"}", home("claude", ".claude/.credentials.json").readText())
         assertEquals(2, Files.getPosixFilePermissions(home("claude", ".claude/.credentials.json").toPath()).size)
         assertEquals(3, Files.getPosixFilePermissions(dirs.roomHome("claude").toPath()).size)
+    }
+
+    @Test fun `the owner's choice about Claude chats in their account is written at the next start`() {
+        var accountChats = false
+        val choosing = RoomConfigurator(dirs, FolderRoomAssets(), { 1_000L }, book, { accountChats }) { agent, line -> log += "$agent: $line" }
+        val profile = RoomProfiles.of("claude", null)!!
+        fun written() = Json.parseToJsonElement(home("claude", ".claude/settings.json").readText())
+            .jsonObject[ConfigFiles.CLAUDE_REMOTE_CONTROL]!!.jsonPrimitive.content
+        choosing.configure(profile, emptyList(), 14)
+        assertEquals("false", written())
+        accountChats = true
+        choosing.configure(profile, emptyList(), 14)
+        assertEquals("true", written())
+        assertTrue(log.isEmpty())
     }
 
     @Test fun `configuring twice changes nothing`() {
@@ -101,10 +118,10 @@ class RoomConfiguratorTest {
     @Test fun `a Codex room gets its config, and the override file when the owner has one`() {
         home("codex", ".codex").mkdirs()
         home("codex", ".codex/AGENTS.override.md").writeText("Owner's override.\n")
-        home("codex", ".codex/config.toml").writeText("model = \"gpt-5.5-codex\"\n\n[mcp_servers.github]\ncommand = \"npx\"\n")
+        home("codex", ".codex/config.toml").writeText("model = \"sample-model\"\n\n[mcp_servers.github]\ncommand = \"npx\"\n")
         configurator.configure(RoomProfiles.of("codex", null)!!, listOf("claude"), 14)
         val config = home("codex", ".codex/config.toml").readText()
-        assertTrue(config.startsWith("model = \"gpt-5.5-codex\"\n"))
+        assertTrue(config.startsWith("model = \"sample-model\"\n"))
         assertFalse("a server added in the room waits for the owner", config.contains("[mcp_servers.github]"))
         assertEquals(listOf("github"), book.pending.value.map { it.key })
         assertTrue(config.contains("[mcp_servers.pocketide]\ncommand = \"python3\"\nargs = [\"/opt/pocketide/mcp.py\"]"))

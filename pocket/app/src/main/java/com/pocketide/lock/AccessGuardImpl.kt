@@ -30,9 +30,9 @@ internal interface AccessSources {
 
 /**
  * Keeps [AccessState] current: the two links are asked on [check] (app start, back to the
- * front, every 15 minutes), while the lease, the storage wait and the key follow their modules
- * live. A link that was revoked stays revoked until it answers OK: going offline afterwards
- * proves nothing.
+ * front, each sync that goes to the network, a scheduled task's start, every 6 hours), while the
+ * lease, the storage wait and the key follow their modules live. A link that was revoked stays
+ * revoked until it answers OK: going offline afterwards proves nothing.
  */
 internal class AccessGuardImpl(
     private val sources: AccessSources,

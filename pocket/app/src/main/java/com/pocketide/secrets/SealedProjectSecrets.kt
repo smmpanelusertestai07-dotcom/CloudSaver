@@ -29,14 +29,19 @@ internal data class StoredValue(
     val agentId: String? = null,
     /** When the owner removed it. The name stays without its value, so the removal reaches other phones. */
     val removedAt: Long? = null,
+    /** A global Secret has no repository of its own: the projects this value was sent to. */
+    val sentTo: Set<String> = emptySet(),
 ) {
     val live: Boolean get() = removedAt == null
 
     fun key() = Key(projectId, name)
 
-    fun removed(at: Long) = copy(value = "", updatedAt = at, pushedToGitHub = false, agentId = null, removedAt = at)
+    fun removed(at: Long) = copy(value = "", updatedAt = at, pushedToGitHub = false, agentId = null, removedAt = at, sentTo = emptySet())
 
-    fun describe() = ProjectValue(projectId, name, kind, updatedAt, pushedToGitHub, agentId)
+    fun describe() = ProjectValue(projectId, name, kind, updatedAt, pushedToGitHub, agentId, sentTo)
+
+    /** Sent to [toProject]'s GitHub Actions: a project's own value is marked, a global one records the project. */
+    fun sent(toProject: String) = if (projectId == null) copy(sentTo = sentTo + toProject) else copy(pushedToGitHub = true)
 
     // The generated toString would print the value; a stray log line must not.
     override fun toString() = "StoredValue($projectId, $name, $kind)"
@@ -122,7 +127,8 @@ internal class SealedProjectSecrets(
         } finally {
             bytes.fill(0)
         }
-        update { list -> list.map { if (it.key() == entry.key()) it.copy(pushedToGitHub = true) else it } }
+        // Only the value sent: one saved meanwhile is not on GitHub yet.
+        update { list -> list.map { if (it == entry) it.sent(projectId) else it } }
     }
 
     override suspend fun exportBlob(): ByteArray = lock.withLock {
@@ -158,8 +164,12 @@ internal class SealedProjectSecrets(
         }
     }
 
-    private fun later(mine: StoredValue, theirs: StoredValue): StoredValue =
-        maxOf(mine, theirs, compareBy<StoredValue>({ it.updatedAt }, { it.live }, { it.pushedToGitHub }))
+    private fun later(mine: StoredValue, theirs: StoredValue): StoredValue {
+        val winner = maxOf(mine, theirs, compareBy<StoredValue>({ it.updatedAt }, { it.live }, { it.pushedToGitHub }))
+        // The same global value, sent from each phone to other projects: all of them have it.
+        val same = mine.updatedAt == theirs.updatedAt && mine.live && theirs.live && mine.value == theirs.value
+        return if (same) winner.copy(sentTo = mine.sentTo + theirs.sentTo) else winner
+    }
 
     /** The vault's copy with every name checked, one entry per name. */
     private fun parse(bytes: ByteArray): List<StoredValue> {

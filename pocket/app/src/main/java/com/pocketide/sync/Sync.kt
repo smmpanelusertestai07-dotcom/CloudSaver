@@ -28,6 +28,25 @@ sealed interface SyncStatus {
 
 data class PendingUpload(val sessionId: String, val title: String, val bytes: Long, val videos: Int)
 
+/**
+ * A file in an agent's room that can run code by itself or let its agent act without asking: a
+ * Claude skill, subagent or command with hooks, tool servers or inline commands, a file bundled
+ * with a skill, Codex's command rules. It stays on this phone, out of Drive, until the owner keeps
+ * this version ([SyncEngine.keepHeldFile]), so one an agent wrote does not follow the owner to
+ * every phone and run there unasked.
+ */
+data class HeldFile(
+    val agentId: String,
+    /** Under the room's home: ".claude/agents/helper.md". */
+    val path: String,
+    /** The version shown; keeping it lets exactly this version go to Drive. */
+    val sha256: String,
+    /** What it can do, each a phrase that follows its name: "runs commands by itself (hooks)". */
+    val reasons: List<String>,
+    /** Its text as it was found (the start of a long one); empty for an empty file or one that is not text. */
+    val text: String,
+)
+
 /** Where one session's backup stands, for the chip on its row ("Backed up · 2 min ago"). */
 enum class BackupState {
     /** Everything this phone has of the session is in Drive. */
@@ -186,6 +205,21 @@ interface SyncEngine {
      */
     val backgroundLimit: StateFlow<String?> get() = NOTHING
 
+    /** Files that can run code, waiting on this phone for the owner before they go to Drive. */
+    val heldFiles: StateFlow<List<HeldFile>> get() = NO_HELD
+
+    /**
+     * The owner keeps [file]: this version goes to Drive with the next sync, and a later change
+     * waits again. Throws [SyncException] when the file changed or went meanwhile.
+     */
+    suspend fun keepHeldFile(file: HeldFile) = Unit
+
+    /**
+     * Deletes [file] from its room, when it still holds the version shown; otherwise throws
+     * [SyncException], and the file is looked at again.
+     */
+    suspend fun removeHeldFile(file: HeldFile) = Unit
+
     /** Schedules a sync soon (end of a task, or every few minutes while agents run). */
     fun requestSync(reason: String)
 
@@ -243,6 +277,7 @@ interface SyncEngine {
 
 private val NO_BACKUPS: StateFlow<Map<String, SessionBackup>> = MutableStateFlow(emptyMap())
 private val NOTHING: StateFlow<Nothing?> = MutableStateFlow(null)
+private val NO_HELD: StateFlow<List<HeldFile>> = MutableStateFlow(emptyList())
 
 /** Metered-only accounting and the daily limit, checked before every big transfer. */
 interface DataBudget {
@@ -256,8 +291,12 @@ interface DataBudget {
 
     /**
      * The owner saw the size of one big transfer of [kind] and confirmed it on mobile data (set-up
-     * on mobile data, §6.7): [allow] lets that kind through today until about [bytes] of it were
-     * recorded, without changing the owner's data settings. Kept in memory only.
+     * on mobile data, §6.7): [allow] lets transfers of that kind that fit in what is left of
+     * [bytes] through today, until about [bytes] of it were recorded or [endOnce], without
+     * changing the owner's data settings. Kept in memory only.
      */
     fun allowOnce(kind: String, bytes: Long) = Unit
+
+    /** The confirmed transfer of [kind] ended (done, failed or cancelled): what it did not use asks again. */
+    fun endOnce(kind: String) = Unit
 }

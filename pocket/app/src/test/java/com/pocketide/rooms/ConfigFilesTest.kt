@@ -35,7 +35,7 @@ class ConfigFilesTest {
         assertEquals(JsonObject(mapOf("**/.git" to JsonPrimitive(true))), written["files.exclude"])
         assertEquals("off", written["telemetry.telemetryLevel"]!!.jsonPrimitive.content)
         assertEquals(JsonPrimitive(true), written["chat.disableAIFeatures"])
-        assertEquals(JsonPrimitive(false), written["extensions.autoUpdate"])
+        assertEquals(JsonPrimitive("off"), written["extensions.autoUpdate"])
         assertEquals(JsonPrimitive(false), written["workbench.statusBar.visible"])
         assertEquals("hidden", written["workbench.activityBar.location"]!!.jsonPrimitive.content)
         assertEquals("none", written["workbench.editor.showTabs"]!!.jsonPrimitive.content)
@@ -45,6 +45,52 @@ class ConfigFilesTest {
         assertEquals(16, written["editor.fontSize"]!!.jsonPrimitive.int)
         assertEquals(JsonPrimitive(true), written["claudeCode.useCtrlEnterToSend"])
         assertFalse(written.containsKey("terminal.integrated.enableMultiLinePasteWarning"))
+    }
+
+    @Test fun `what VS Code rewrites at its start is neither written back nor reported`() {
+        // VS Code 1.138 turns false into "off" and drops "Default " from the Modern theme names at every start.
+        val fresh = ConfigFiles.codeServerSettings(null, claude, 14)!!.text
+        val written = obj(fresh)
+        assertEquals(JsonPrimitive("off"), written["extensions.autoUpdate"])
+        assertEquals(JsonPrimitive("Dark Modern"), written["workbench.preferredDarkColorTheme"])
+        assertEquals(JsonPrimitive("Light Modern"), written["workbench.preferredLightColorTheme"])
+        val again = ConfigFiles.codeServerSettings(fresh, claude, 14)!!
+        assertEquals("a start after VS Code's own rewrite changes nothing", fresh, again.text)
+        assertTrue(again.added.isEmpty())
+
+        // The forms an earlier PocketIDE wrote are left for VS Code to rewrite, not flipped back and forth.
+        val older = Jsonc.write(
+            JsonObject(
+                written + mapOf(
+                    "extensions.autoUpdate" to JsonPrimitive(false),
+                    "workbench.preferredDarkColorTheme" to JsonPrimitive("Default Dark Modern"),
+                    "workbench.preferredLightColorTheme" to JsonPrimitive("Default Light Modern"),
+                ),
+            ),
+        )
+        val kept = ConfigFiles.codeServerSettings(older, claude, 14)!!
+        assertEquals(older, kept.text)
+        assertTrue(kept.added.isEmpty())
+
+        // Any other value is not PocketIDE's, and is set back.
+        val changed = """{ "extensions.autoUpdate": true, "workbench.preferredDarkColorTheme": "Monokai" }"""
+        val reset = obj(ConfigFiles.codeServerSettings(changed, claude, 14)?.text)
+        assertEquals(JsonPrimitive("off"), reset["extensions.autoUpdate"])
+        assertEquals(JsonPrimitive("Dark Modern"), reset["workbench.preferredDarkColorTheme"])
+    }
+
+    @Test fun `the screen's title is the agent's name, never the session's folder`() {
+        assertEquals("Claude Code", obj(ConfigFiles.codeServerSettings(null, claude, 14)?.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content)
+        val codex = RoomProfiles.of("codex", null)!!
+        assertEquals("Codex", obj(ConfigFiles.codeServerSettings(null, codex, 14)?.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content)
+        // PocketIDE's own key: whatever else the file says is set back, and it is not an agent's change.
+        val rewritten = ConfigFiles.codeServerSettings("""{ "window.title": "${'$'}{rootName}" }""", codex, 14)!!
+        assertEquals("Codex", obj(rewritten.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content)
+        assertTrue(rewritten.added.isEmpty())
+        // A discovered agent's name cannot bring in one of VS Code's title variables.
+        val discovered = RoomProfile(agentId = "acme.agent", name = "Acme ${'$'}{activeEditorLong}", engine = Engine.CODE_SERVER)
+        val title = obj(ConfigFiles.codeServerSettings(null, discovered, 14)?.text)[ConfigFiles.WINDOW_TITLE]!!.jsonPrimitive.content
+        assertFalse(title, title.contains("${'$'}"))
     }
 
     @Test fun `the Codex room gets its own enter key setting`() {
@@ -137,7 +183,7 @@ class ConfigFilesTest {
             {
               "permissions": { "deny": ["Read(./secrets/**)", "Read(//x/**)"], "ask": ["Bash(git push:*)"] },
               "env": { "DISABLE_AUTOUPDATER": "0" },
-              "model": "opus",
+              "model": "sample-model",
               "cleanupPeriodDays": 7
             }
         """.trimIndent()
@@ -150,7 +196,7 @@ class ConfigFilesTest {
         assertEquals("PocketIDE's value wins over one set in the room", "1", env["DISABLE_AUTOUPDATER"]!!.jsonPrimitive.content)
         assertEquals("1", env["DISABLE_ERROR_REPORTING"]!!.jsonPrimitive.content)
         assertFalse("telemetry off would also turn off feature flags (R6)", env.containsKey("DISABLE_TELEMETRY"))
-        assertEquals("opus", written["model"]!!.jsonPrimitive.content)
+        assertEquals("sample-model", written["model"]!!.jsonPrimitive.content)
         assertEquals(ConfigFiles.CLAUDE_KEEP_DAYS, written["cleanupPeriodDays"]!!.jsonPrimitive.int)
         val notification = written["hooks"]!!.jsonObject["Notification"]!!.jsonArray
         assertEquals(1, notification.size)
@@ -202,6 +248,24 @@ class ConfigFilesTest {
         assertEquals(again.text, ConfigFiles.claudeSettings(again.text, emptyList(), notify, kept)!!.text)
     }
 
+    @Test fun `Claude's sessions connect to Remote Control as the owner chose, and the rebuild keeps it as PocketIDE's own`() {
+        val on = ConfigFiles.claudeSettings("""{"model": "sample-model"}""", emptyList(), notify)!!
+        assertEquals("on by default", JsonPrimitive(true), obj(on.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
+        assertTrue("PocketIDE's own key is no agent's change", on.added.isEmpty())
+        val again = ConfigFiles.claudeSettings(on.text, emptyList(), notify)!!
+        assertEquals(on.text, again.text)
+        assertTrue(again.added.isEmpty())
+
+        val off = ConfigFiles.claudeSettings(on.text, emptyList(), notify, accountChats = false)!!
+        assertEquals("turned off, an earlier true does not linger", JsonPrimitive(false), obj(off.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
+        assertEquals("sample-model", obj(off.text)["model"]!!.jsonPrimitive.content)
+        assertTrue(off.added.isEmpty())
+
+        val agentTurnedOn = JsonObject(obj(off.text) + (ConfigFiles.CLAUDE_REMOTE_CONTROL to JsonPrimitive(true))).toString()
+        val rewritten = ConfigFiles.claudeSettings(agentTurnedOn, emptyList(), notify, accountChats = false)!!
+        assertEquals("the owner's choice wins over a room's", JsonPrimitive(false), obj(rewritten.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
+    }
+
     @Test fun `a longer retention the owner chose stays`() {
         val written = obj(ConfigFiles.claudeSettings("""{"cleanupPeriodDays": 99999}""", emptyList(), notify)?.text)
         assertEquals(99999, written["cleanupPeriodDays"]!!.jsonPrimitive.int)
@@ -244,6 +308,7 @@ class ConfigFilesTest {
     @Test fun `agy's CLI settings turn telemetry off, keep the rest, and rebuild allow rules and hooks`() {
         val rebuilt = ConfigFiles.antigravitySettings(
             """{"permissions": {"deny": ["read_file(/x)"], "allow": ["command(*)"]}, "hooks": {"x": {"Stop": []}}, "enableTelemetry": true}""",
+            careful = true,
         )!!
         val written = obj(rebuilt.text)
         assertEquals(JsonPrimitive(false), written["enableTelemetry"])
@@ -251,6 +316,17 @@ class ConfigFilesTest {
         assertFalse(written["permissions"]!!.jsonObject.containsKey("allow"))
         assertFalse(written.containsKey("hooks"))
         assertEquals(listOf("permissions.allow", "hooks"), rebuilt.added.map { it.place })
+    }
+
+    @Test fun `agy's CLI may run git and the usual tests on the owner's own code, and asks on someone else's`() {
+        val own = ConfigFiles.antigravitySettings("""{"permissions": {"allow": ["command(*)"]}}""")!!
+        val allowed = obj(own.text)["permissions"]!!.jsonObject["allow"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(ConfigFiles.AGY_ALLOW_RULES, allowed)
+        assertEquals("the agent's own rule is still taken out", listOf("\"command(*)\""), own.added.map { it.value })
+
+        val careful = ConfigFiles.antigravitySettings(own.text, careful = true)!!
+        assertFalse(obj(careful.text)["permissions"]!!.jsonObject.containsKey("allow"))
+        assertTrue("PocketIDE's own rules go without a card", careful.added.isEmpty())
     }
 
     @Test fun `hooks files hold only the hooks the owner kept, and go when none is left`() {
@@ -261,16 +337,27 @@ class ConfigFilesTest {
         assertFalse(keptAgy.empty)
         assertTrue(obj(keptAgy.text).containsKey("lint"))
 
-        val codex = ConfigFiles.codexHooks("""{"hooks": {"PreToolUse": [{"matcher": "^Bash$", "hooks": [{"type": "command", "command": "./gate.py"}]}]}, "other": 1}""")!!
+        val codex = ConfigFiles.codexHooks(
+            """{"hooks": {"PreToolUse": [{"matcher": "^Bash$", "hooks": [{"type": "command", "command": "./gate.py"}]}]}, "other": 1}""",
+        )!!
         assertTrue(codex.empty)
         assertEquals(listOf("hooks/PreToolUse", "/other"), codex.added.map { "${it.place}/${it.key}" })
         assertTrue(ConfigFiles.codexHooks(null)!!.empty)
     }
 
     @Test fun `the companion is listed once in code-server's extension list`() {
-        val existing = """[{"identifier":{"id":"anthropic.claude-code"},"version":"2.1.281","location":{"${'$'}mid":1,"path":"/x","scheme":"file"},"relativeLocation":"anthropic.claude-code-2.1.281-linux-arm64"},""" +
-            """{"identifier":{"id":"PocketIDE.pocketide-companion"},"version":"2.5.0","relativeLocation":"pocketide.pocketide-companion-2.5.0"}]"""
-        val written = ConfigFiles.extensionsRegistry(existing, "pocketide.pocketide-companion", "3.0.0", "pocketide.pocketide-companion-3.0.0", "/root/.local/share/code-server/extensions/pocketide.pocketide-companion-3.0.0", 42)!!
+        val existing =
+            """[{"identifier":{"id":"anthropic.claude-code"},"version":"2.1.281",""" +
+                """"location":{"${'$'}mid":1,"path":"/x","scheme":"file"},"relativeLocation":"anthropic.claude-code-2.1.281-linux-arm64"},""" +
+                """{"identifier":{"id":"PocketIDE.pocketide-companion"},"version":"2.5.0","relativeLocation":"pocketide.pocketide-companion-2.5.0"}]"""
+        val written = ConfigFiles.extensionsRegistry(
+            existing,
+            "pocketide.pocketide-companion",
+            "3.0.0",
+            "pocketide.pocketide-companion-3.0.0",
+            "/root/.local/share/code-server/extensions/pocketide.pocketide-companion-3.0.0",
+            42,
+        )!!
         val entries = Json.parseToJsonElement(written).jsonArray.map { it.jsonObject }
         assertEquals(2, entries.size)
         assertEquals("anthropic.claude-code", entries[0]["identifier"]!!.jsonObject["id"]!!.jsonPrimitive.content)

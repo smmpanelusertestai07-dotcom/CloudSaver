@@ -33,6 +33,9 @@ internal class AuthFailure(val kind: Kind, message: String) : Exception(message)
         /** The account needs signing in again, or is no longer on the phone. */
         ACCOUNT,
         CANCELLED,
+
+        /** Google does not know this build (DEVELOPER_ERROR): the owner's Google Cloud set-up is the fix. */
+        UNKNOWN_BUILD,
         OTHER,
     }
 }
@@ -128,8 +131,9 @@ internal class PlayAuthorizer(private val context: Context) : GoogleAuthorizer {
         CommonStatusCodes.CANCELED -> AuthFailure(AuthFailure.Kind.CANCELLED, CANCELLED)
         CommonStatusCodes.SIGN_IN_REQUIRED, CommonStatusCodes.INVALID_ACCOUNT ->
             AuthFailure(AuthFailure.Kind.ACCOUNT, "That Google account needs signing in again on this phone. Check it in Android Settings, Accounts.")
+        // The owner's Google Cloud project has no Android client for this package and signing key.
         CommonStatusCodes.DEVELOPER_ERROR ->
-            AuthFailure(AuthFailure.Kind.OTHER, "Google does not recognise this copy of PocketIDE. Install PocketIDE from its official release.")
+            AuthFailure(AuthFailure.Kind.UNKNOWN_BUILD, UnknownBuild.message(context.packageName, UnknownBuild.signingSha1(context)))
         else -> AuthFailure(AuthFailure.Kind.OTHER, "Google could not give access right now (code ${e.statusCode}). Try again in a minute.")
     }
 

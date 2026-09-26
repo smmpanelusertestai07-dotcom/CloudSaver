@@ -1,17 +1,18 @@
 package com.pocketide.docs
 
-import java.io.File
+import com.pocketide.agents.OfficialAgents
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class DocsContentTest {
 
     @Test
     fun `guide has the planned sections in order`() {
         assertEquals(GUIDE_IDS, DocsContent.guide.map { it.id })
-        assertEquals(GUIDE_IDS + LEGAL_IDS, DocsContent.sections.map { it.id })
+        assertEquals(GUIDE_IDS + OWNER_IDS + LEGAL_IDS, DocsContent.sections.map { it.id })
     }
 
     @Test
@@ -47,7 +48,17 @@ class DocsContentTest {
     @Test
     fun `what is still being tested on phones says so`() {
         val marked = DocsContent.guide.filter { sectionText(it).contains(BEING_TESTED) }.map { it.id }
-        assertTrue("sections marked: $marked", marked.containsAll(listOf("requirements", "security", "conditions")))
+        assertTrue("sections marked: $marked", marked.containsAll(listOf("requirements", "your-data", "conditions")))
+    }
+
+    @Test
+    fun `a chat back in the agent's own screen on a new phone is not promised for Codex and Antigravity`() {
+        val reopen = DocsContent.faq.single { it.id == "reopen-media" }.answer.flatMap(::blockLines).joinToString(" ")
+        val guide = sectionText(requireSection("your-data"))
+        for (text in listOf(reopen, guide)) {
+            assertTrue(text, text.contains("(Codex and Antigravity on a new phone: $BEING_TESTED)"))
+            assertTrue(text, text.contains("can always be read in Chats"))
+        }
     }
 
     @Test
@@ -61,6 +72,64 @@ class DocsContentTest {
         val text = sectionText(security)
         assertTrue(text.contains("prompt injection", ignoreCase = true))
         assertTrue(text.contains("PRoot is not a sandbox"))
+        // Codex's sandbox is always off here (ConfigFiles.codexConfig), so it is said plainly, not as a test.
+        assertTrue(text.contains("Codex runs without its own sandbox here"))
+        assertFalse(text.contains("Codex may run"))
+        assertTrue(text.contains("Agents' test browser") && text.contains("No Chromium sandbox under PRoot"))
+    }
+
+    @Test
+    fun `security says which files wait for the owner before Drive, in the section Your data shows`() {
+        val label = "Settings that can run code"
+        val text = sectionText(requireSection("security"))
+        assertTrue(
+            text,
+            text.contains(
+                "A skill, subagent, command or command rule that can run code stays out of the Drive backup " +
+                    "until you keep it in Your data → $label.",
+            ),
+        )
+        assertTrue("Your data shows the section by that name", yourDataSource().contains("SectionLabel(\"$label\")"))
+    }
+
+    @Test
+    fun `Privacy says where each official agent's chats are saved, and each agent's page says it too`() {
+        assertEquals(OfficialAgents.all.map { it.id }, ChatHomes.all.map { it.agentId })
+        val table = requireSection("privacy").blocks.filterIsInstance<DocBlock.Table>()
+            .single { it.header.last() == ChatHomes.TABLE_HEADER }
+        assertEquals("one row per official agent", OfficialAgents.all.map { it.displayName }, table.rows.map { it.first() })
+        assertTrue("where Claude's switch is", table.rows.first().last().contains("Settings → Agents"))
+        val claudeNote = checkNotNull(ChatHomes.claude.note)
+        assertTrue("what Anthropic stores", claudeNote.contains("transcript") && claudeNote.contains("Help improve Claude"))
+        assertTrue("how to turn it off", claudeNote.contains("turn off Settings → Agents → \"${ChatHomes.CLAUDE_SWITCH}\""))
+        assertTrue("continuing it elsewhere needs Claude running here", claudeNote.contains(ChatHomes.CLAUDE_CONTINUE))
+        assertFalse("never promised without that", claudeNote.contains("and you can continue it there."))
+        assertTrue(sectionText(requireSection("privacy-policy")).contains(claudeNote))
+        assertTrue(sectionText(DocsContent.agentPage(OfficialAgents.claude)).contains(claudeNote))
+        for (agent in OfficialAgents.all) {
+            val home = checkNotNull(ChatHomes.of(agent.id))
+            val page = DocsContent.agentPage(agent)
+            assertTrue(agent.id, sectionText(page).contains("Where you can open its chats again: ${home.kept}"))
+            assertTrue(agent.id, page.blocks.containsAll(listOfNotNull(home.open) + home.sources))
+        }
+        assertTrue("the table is followed by what companies keep", sectionText(requireSection("privacy")).contains(ChatHomes.COMPANIES_KEEP))
+        val codex = DocsContent.agentPage(OfficialAgents.codex)
+        assertTrue(sectionText(codex).contains(ChatHomes.CODEX_CLOUD_LINE))
+        val codexLinks = codex.blocks.filterIsInstance<DocBlock.Link>().map { it.url }
+        assertTrue(codexLinks.containsAll(listOf(DocLinks.CODEX_WEB, DocLinks.CODEX_LOCAL_SYNC_REQUEST)))
+        val antigravity = DocsContent.agentPage(OfficialAgents.antigravity)
+        assertTrue(sectionText(antigravity).contains(ChatHomes.JULES_LINE))
+        assertTrue(antigravity.blocks.filterIsInstance<DocBlock.Link>().any { it.url == DocLinks.JULES })
+    }
+
+    @Test
+    fun `where chats can be opened again never reads as the company keeping nothing`() {
+        val texts = ChatHomes.all.flatMap { listOfNotNull(it.kept, it.elsewhere, it.note) } + ChatHomes.TABLE_HEADER
+        for (text in texts) {
+            for (claim in listOf("cannot keep", "Nowhere", "keeps nothing", "Also kept")) {
+                assertFalse("\"$text\" says \"$claim\"", text.contains(claim, ignoreCase = true))
+            }
+        }
     }
 
     @Test
@@ -245,10 +314,15 @@ class DocsContentTest {
     }
 
     /** The agent screen's source, whose menu labels the docs quote. */
-    private fun agentMenuSource(): String {
-        val path = "src/main/java/com/pocketide/ui/screens/project/ProjectScreens.kt"
+    private fun agentMenuSource() = mainSource("ui/screens/project/ProjectScreens.kt")
+
+    /** Your data's source, whose section labels the docs name. */
+    private fun yourDataSource() = mainSource("ui/screens/data/YourDataScreen.kt")
+
+    private fun mainSource(file: String): String {
+        val path = "src/main/java/com/pocketide/$file"
         val source = listOf(File(path), File("app/$path")).firstOrNull { it.isFile }
-        return checkNotNull(source) { "ProjectScreens.kt not found" }.readText()
+        return checkNotNull(source) { "$path not found" }.readText()
     }
 
     private fun sectionText(section: DocSection) =
@@ -303,6 +377,7 @@ class DocsContentTest {
         val NOT_TOOLS = setOf("invalid_request", "invalid_client")
 
         val USES_PERMISSION = Regex("""<uses-permission[^>]*android:name="([^"]+)"[^>]*>""")
+        val OWNER_IDS = listOf("google-cloud")
         val LEGAL_IDS = listOf("terms", "privacy-policy", "open-source")
 
         val APP_WORDS = listOf(
@@ -370,6 +445,7 @@ class DocsContentTest {
             "Is this VS Code, and can I add Pylance?",
             "What if the network drops mid-answer?",
             "How do I get a file from my phone into a project?",
+            "Can the agents test my app in a browser?",
         )
     }
 }

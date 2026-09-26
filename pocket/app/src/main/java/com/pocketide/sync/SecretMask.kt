@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.git.SecretPatterns
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -11,7 +12,25 @@ import java.io.InputStream
  * keep their offsets. The phone's own copy is never changed.
  */
 internal object SecretMask {
-    private val whole = listOf(
+    /**
+     * Shapes only a history needs, then every token the check-post knows. These run first: the
+     * whole private-key block goes before the check-post's header-only match could hide it.
+     */
+    private val whole by lazy { ownShapes + SecretPatterns.tokenShapes }
+
+    /** Every private-key label the check-post knows: "OPENSSH PRIVATE KEY", OpenPGP's "PGP PRIVATE KEY BLOCK"… */
+    private const val KEY_LABEL = "(?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?"
+
+    /** One character of a JSON string, an escape counting as one: a pasted key's line breaks are `\n` there. */
+    private const val IN_STRING = """(?:[^"\\\n]|\\.)"""
+
+    /**
+     * A pasted private key, header to footer. With no footer on the line (part of a key was
+     * pasted), what follows the header in its JSON string goes too: the key is its body.
+     */
+    private val privateKey = Regex("-----BEGIN $KEY_LABEL-----(?:$IN_STRING*?-----END $KEY_LABEL-----|$IN_STRING*)")
+
+    private val ownShapes = listOf(
         Regex("gh[pousr]_[A-Za-z0-9]{20,}"),
         Regex("github_pat_[A-Za-z0-9_]{20,}"),
         Regex("sk-[A-Za-z0-9_-]{20,}"),
@@ -24,7 +43,7 @@ internal object SecretMask {
         Regex("glpat-[0-9A-Za-z_-]{20,}"),
         Regex("npm_[0-9A-Za-z]{30,}"),
         Regex("eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"),
-        Regex("-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"),
+        privateKey,
     )
 
     /** `password=…`, `"api_key": "…"`: only the value is masked. */

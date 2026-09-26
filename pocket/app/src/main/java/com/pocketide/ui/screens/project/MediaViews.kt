@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.BitmapDrawable
@@ -115,14 +114,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
+import android.graphics.Color as AndroidColor
 
 /**
  * A session's Media: screenshots, videos, PDFs, HTML reports and APKs the agents and GitHub
  * builds made for the owner. Only safe formats are rendered, each by Android's own decoder.
  */
 @Composable
-fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
+fun MediaPanel(sessionId: String, snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
     val graph = rememberGraph()
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val flow = remember(sessionId) { graph.media.forSession(sessionId) }
@@ -159,7 +160,7 @@ fun MediaPanel(sessionId: String, pendingVideos: Int, snackbar: SnackbarHostStat
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            waitingVideosText(pendingVideos)?.let { StatusChip(it, Tone.WARN) }
+            waitingVideosChip(backups[sessionId])?.let { StatusChip(it, Tone.WARN) }
             if (adding) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             } else {
@@ -634,6 +635,7 @@ private fun FactLine(label: String, value: String) {
 
 private fun readApk(context: Context, file: File): ApkFacts {
     val pm = context.packageManager
+
     // Both flags: with the first alone, signingInfo is null on API 29 and on the first Android 13 release.
     @Suppress("DEPRECATION")
     val flags = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES

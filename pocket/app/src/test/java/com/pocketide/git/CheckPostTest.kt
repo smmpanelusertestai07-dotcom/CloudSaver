@@ -248,6 +248,36 @@ class CheckPostTest {
     }
 
     @Test
+    fun `every commit header but tree and parents is checked`() {
+        val token = fake("gh" + "p_", 36)
+        val base = commits.commit(mapOf("a.txt" to "a\n"))
+        val tree = commits.repo.parseCommit(base).tree.name
+        val person = "Dev <dev@example.com> 1700000000 +0000"
+        val custom = commits.rawCommit(
+            "tree $tree\nparent ${base.name}\nauthor $person\ncommitter $person\n" +
+                "x-note $token\nencoding sup3r-s3cret-value\n\nmsg\n",
+        )
+        val signed = commits.rawCommit(
+            "tree $tree\nparent ${base.name}\nauthor $person\ncommitter $person\n" +
+                "gpgsig -----BEGIN PGP SIGNATURE-----\n $token\n -----END PGP SIGNATURE-----\n\nmsg\n",
+        )
+
+        val byHeaders = check(custom, onGitHub = listOf(base), values = listOf("sup3r-s3cret-value"))
+        assertEquals(
+            listOf(
+                Finding(FindingKind.SECRET, "commit author", short(custom), "Contains a GitHub token."),
+                Finding(FindingKind.VARIABLE_OR_SECRET_VALUE, "commit author", short(custom), KnownValues.DETAIL),
+            ),
+            byHeaders.findings,
+        )
+        assertFalse(byHeaders.ok)
+
+        val bySignature = check(signed, onGitHub = listOf(base))
+        assertEquals(listOf(Finding(FindingKind.SECRET, "commit author", short(signed), "Contains a GitHub token.")), bySignature.findings)
+        assertFalse(bySignature.ok)
+    }
+
+    @Test
     fun `a transcript is AI data whatever it is called`() {
         val claude = """{"parentUuid":null,"sessionId":"4f1c","type":"user","message":{"role":"user","content":"hi"}}"""
         val tip = commits.commit(mapOf("notes/chat.jsonl" to "$claude\n", "data/events.jsonl" to "{\"id\":1}\n"))

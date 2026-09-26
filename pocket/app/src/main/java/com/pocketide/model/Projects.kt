@@ -51,12 +51,15 @@ data class SessionRecord(
     /** False for "Don't back up this chat": kept on this phone only, marked "not backed up". */
     val backUp: Boolean = true,
     /**
+     * Claude ran this session with Remote Control on, so it is in the owner's Claude account too.
+     * Never cleared: turning that switch off later does not take the chat back from Anthropic.
+     */
+    val claudeAccount: Boolean = false,
+    /**
      * Bytes of this session not yet confirmed by Drive, as last written here; never stored in
      * Drive. The live figure is the sync engine's `backups` (and `queueNow` before a phone copy goes).
      */
     val pendingBytes: Long = 0,
-    /** Videos waiting for Wi-Fi. */
-    val pendingVideos: Int = 0,
     /** For a conflict copy: the session it diverged from. */
     val conflictOf: String? = null,
     /** The phone that created it. */

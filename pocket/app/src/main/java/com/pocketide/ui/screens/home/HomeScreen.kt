@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
@@ -55,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,11 +79,13 @@ import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
+import com.pocketide.rooms.RemoteControlState
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.DataUsage
 import com.pocketide.sync.PhoneSpace
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
+import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
@@ -91,9 +96,10 @@ import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
-import com.pocketide.ui.shell.External
+import com.pocketide.ui.screens.onboarding.RestorePlanPanel
 import com.pocketide.ui.screens.onboarding.SetUpComputerCard
 import com.pocketide.ui.screens.onboarding.SetUpOffer
+import com.pocketide.ui.screens.onboarding.rememberRestoreOffer
 import com.pocketide.ui.screens.project.AgentMark
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -103,6 +109,7 @@ import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.rememberGraph
 import com.pocketide.ui.screens.project.rememberTicker
+import com.pocketide.ui.shell.External
 import kotlinx.coroutines.launch
 
 /**
@@ -118,6 +125,7 @@ fun HomeScreen(nav: PocketNav) {
     val sessions by graph.sessions.all.collectAsStateWithLifecycle()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
+    val remoteControls by graph.rooms.remoteControls.collectAsStateWithLifecycle()
     val phone by graph.phone.snapshot.collectAsStateWithLifecycle()
     val usage by graph.sync.usage.collectAsStateWithLifecycle()
     val sync by graph.sync.status.collectAsStateWithLifecycle()
@@ -128,10 +136,15 @@ fun HomeScreen(nav: PocketNav) {
     val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
     val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
+    val restorePending by rememberRestoreOffer().pending.collectAsStateWithLifecycle()
+    val signIns = rememberSignIns(agents.map { it.id }, rooms)
+    var restorePlanOpen by rememberSaveable { mutableStateOf(false) }
 
-    var newProject by remember { mutableStateOf(false) }
-    var importing by remember { mutableStateOf(false) }
-    var agentSheet by remember { mutableStateOf<AgentInfo?>(null) }
+    // Open dialogs are saved: the app lock re-arming replaces the whole screen while the owner is away.
+    var newProject by rememberSaveable { mutableStateOf(false) }
+    var importing by rememberSaveable { mutableStateOf(false) }
+    var agentSheetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val agentSheet = agents.firstOrNull { it.id == agentSheetId }
     var removing by remember { mutableStateOf<Project?>(null) }
     val context = LocalContext.current
 
@@ -188,21 +201,42 @@ fun HomeScreen(nav: PocketNav) {
                     )
                 }
             }
+            if (restorePlanOpen) {
+                item(key = "restore-plan") {
+                    Column {
+                        RestorePlanPanel()
+                        TextButton(onClick = { restorePlanOpen = false }, modifier = Modifier.align(Alignment.End)) { Text("Hide") }
+                    }
+                }
+            } else if (restorePending) {
+                item(key = "restore-offer") {
+                    Banner(Icons.Filled.CloudDownload, "Your chats, memory and Secrets from before are still in your Drive.", Tone.NEUTRAL) {
+                        TextButton(onClick = { restorePlanOpen = true }) { Text("Bring your chats back") }
+                    }
+                }
+            }
             if (SetUpOffer.shows(computer)) item(key = "computer-setup") { SetUpComputerCard() }
             item(key = "phone") { PhoneStrip(phone, usage, onOpen = nav::computer) }
 
             item(key = "projects-label") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SectionLabel("Projects", Modifier.weight(1f))
-                    TextButton(onClick = { importing = true }) {
-                        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Import")
-                    }
-                    FilledTonalButton(onClick = { newProject = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("New")
+                // At the largest font sizes Import and New move under the heading instead of squeezing it.
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SectionLabel("Projects")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { importing = true }) {
+                            Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Import")
+                        }
+                        FilledTonalButton(onClick = { newProject = true }) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("New")
+                        }
                     }
                 }
             }
@@ -229,7 +263,14 @@ fun HomeScreen(nav: PocketNav) {
 
             item(key = "agents-label") { SectionLabel("Agents") }
             items(agents, key = { "agent:${it.id}" }) { agent ->
-                AgentCard(agent, rooms[agent.id], WorkText.chips(agent.displayName, work[agent.id], now), onUsage = nav::openExternal) { agentSheet = agent }
+                AgentCard(
+                    agent = agent,
+                    room = rooms[agent.id],
+                    remoteControl = remoteControls[agent.id],
+                    signedIn = signIns[agent.id],
+                    chips = WorkText.chips(agent.displayName, work[agent.id], now),
+                    onUsage = nav::openExternal,
+                ) { agentSheetId = agent.id }
             }
             item(key = "more-agents") {
                 TextButton(onClick = nav::moreAgents) {
@@ -256,8 +297,8 @@ fun HomeScreen(nav: PocketNav) {
             agent = agent,
             projects = projects,
             sessions = sessions,
-            onDismiss = { agentSheet = null },
-            onOpenSession = { id -> agentSheet = null; nav.agent(id) },
+            onDismiss = { agentSheetId = null },
+            onOpenSession = { id -> agentSheetId = null; nav.agent(id) },
         )
     }
     removing?.let { project ->
@@ -421,7 +462,14 @@ private fun ProjectCard(
         Row(Modifier.padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(project.repo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(
+                        project.repo,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     StatusChip(if (project.isPrivate) "Private" else "Public", if (project.isPrivate) Tone.OK else Tone.WARN)
                 }
                 Text(
@@ -435,7 +483,8 @@ private fun ProjectCard(
                     add(WorkFormat.count(mine.size, "open session", "open sessions"))
                     if (running > 0) add("$running running")
                 }.joinToString(" · ")
-                Text(summary, style = MaterialTheme.typography.bodySmall, color = if (running > 0) toneColor(Tone.OK) else MaterialTheme.colorScheme.onSurfaceVariant)
+                val summaryColor = if (running > 0) toneColor(Tone.OK) else MaterialTheme.colorScheme.onSurfaceVariant
+                Text(summary, style = MaterialTheme.typography.bodySmall, color = summaryColor)
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Project actions") }
@@ -448,8 +497,20 @@ private fun ProjectCard(
     }
 }
 
+/**
+ * An agent on Home: who publishes it, its room, whether it is signed in (with the way to sign in
+ * when it is not), its limits and what it is working on. Tapping it opens its session.
+ */
 @Composable
-private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onUsage: (String) -> Unit, onClick: () -> Unit) {
+private fun AgentCard(
+    agent: AgentInfo,
+    room: RoomState?,
+    remoteControl: RemoteControlState?,
+    signedIn: Boolean?,
+    chips: List<Told>,
+    onUsage: (String) -> Unit,
+    onClick: () -> Unit,
+) {
     val (state, tone) = roomLabel(room)
     val limits = agentLimits(agent.id)
     Card(
@@ -462,7 +523,14 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onU
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(agent.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(
+                        agent.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     when {
                         agent.official -> StatusChip("Official", Tone.OK)
                         agent.verifiedPublisher -> StatusChip("Verified publisher", Tone.NEUTRAL)
@@ -476,6 +544,20 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onU
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(limits.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                signInLabel(signedIn)?.let { (label, tone) ->
+                    // Wraps: at a large font size the chip fills the column, and Sign in moves under it whole.
+                    ActionRow {
+                        StatusChip(label, tone)
+                        if (signedIn == false) TextButton(onClick = onClick) { Text("Sign in") }
+                    }
+                }
+                // Google's Remote Control runs in the room while its own screen may be closed. On its own
+                // line, like the work chips: beside the name and Official it leaves the name no room.
+                when (remoteControl) {
+                    RemoteControlState.Starting -> StatusChip("Remote Control starting", Tone.WARN)
+                    RemoteControlState.On -> StatusChip("Remote Control on", Tone.OK)
+                    null, is RemoteControlState.Off -> Unit
+                }
                 chips.forEach { StatusChip(it.text, it.tone) }
             }
             val usage = limits.usageUrl
@@ -501,7 +583,7 @@ private fun AgentStart(
     val active = remember(agent.id, sessions) {
         runCatching { graph.sessions.activeSession(agent.id) }.getOrNull()?.let { id -> sessions.firstOrNull { it.id == id } }
     }
-    var starting by remember { mutableStateOf(active == null) }
+    var starting by rememberSaveable(agent.id) { mutableStateOf(active == null) }
     if (projects.isEmpty()) {
         AlertDialog(
             onDismissRequest = onDismiss,

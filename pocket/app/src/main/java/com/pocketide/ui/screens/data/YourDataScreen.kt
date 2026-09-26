@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.ShortcutManagerCompat
@@ -63,11 +64,13 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.sync.MoveState
 import com.pocketide.sync.PhoneSpace
 import com.pocketide.ui.components.InfoRow
+import com.pocketide.ui.components.LabelValueRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.manage.ActionRunner
 import com.pocketide.ui.manage.AsOfLine
+import com.pocketide.ui.manage.ChatPlacesCard
 import com.pocketide.ui.manage.ConfirmDialog
 import com.pocketide.ui.manage.DataMath
 import com.pocketide.ui.manage.DiskUsage
@@ -122,7 +125,8 @@ private const val ERASE_OLD = "erase-old-account"
 fun YourDataScreen(nav: PocketNav) {
     val graph = rememberGraph()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
-    var editing by remember { mutableStateOf<MemoryFile?>(null) }
+    // Saved: the app lock re-arming replaces the screen while the owner is away, and the editor must stay open.
+    var editing by rememberSaveable(stateSaver = MemoryFileSaver) { mutableStateOf<MemoryFile?>(null) }
     val file = editing
     val agent = file?.let { f -> agents.firstOrNull { it.id == f.agentId } }
     if (file != null) {
@@ -153,7 +157,13 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     ManagePage("Your data", nav, runner) {
         if (storage.phone != PhoneSpace.OK) {
             item {
-                PhoneSpaceNotice(storage, clean = graph.sync::cleanNow, onRaise = nav::settings, onLargest = null, say = runner::say)
+                PhoneSpaceNotice(
+                    storage,
+                    clean = graph.sync::cleanNow,
+                    onRaise = nav::settings.takeIf { nav.opensEveryScreen },
+                    onLargest = null,
+                    say = runner::say,
+                )
             }
         }
         item { SectionLabel("Where it lives") }
@@ -174,6 +184,8 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         }
         item { SectionLabel("By type") }
         item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
+        item { SectionLabel("Where your chats are saved") }
+        item { ChatPlacesCard(settings, nav) }
         item { SectionLabel("Largest sessions") }
         item { LargestCard(largest, agents, nav, onRemoveMedia = { removeMediaOf = it }, onDelete = { deleting = it }) }
         item { SectionLabel("Memory and instructions") }
@@ -182,7 +194,9 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { ConfigChangesCard(graph, agents, runner) }
         item {
             SectionCard(null) {
-                NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
+                if (nav.opensEveryScreen) {
+                    NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
+                }
                 NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Chats you deleted in the last 30 days") { nav.recentlyDeleted() }
             }
         }
@@ -190,7 +204,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item {
             SectionCard(null) {
                 ManageText.retention(settings).forEach { (what, rule) -> InfoRow(what, rule) }
-                NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
+                if (nav.opensEveryScreen) NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
             }
         }
         item { SectionLabel("Move to another Google account") }
@@ -203,7 +217,8 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
                 Hint(
                     "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, " +
                         "and the agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first; " +
-                        "code that cannot be pushed is named before it goes. Your GitHub repositories and pocketide-keyring stay. " +
+                        "code that cannot be pushed is named before it goes. Your GitHub repositories, pocketide-keyring and " +
+                        "the GitHub App in Settings stay, so you can sign in again. " +
                         "This cannot be undone.",
                 )
                 val checking = runner.isBusy(CHECK_CODE)
@@ -271,13 +286,15 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     }
     // The phone's clones and worktrees go too: code GitHub does not have yet is pushed first,
     // and what still cannot be is named, so it is never lost without the owner saying so.
-    if (confirmDelete) DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
-        runner.run(
-            CHECK_CODE,
-            onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
-        ) {
-            graph.rooms.stopAll()
-            graph.sessions.codeOnlyOnPhone()
+    if (confirmDelete) {
+        DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
+            runner.run(
+                CHECK_CODE,
+                onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
+            ) {
+                graph.rooms.stopAll()
+                graph.sessions.codeOnlyOnPhone()
+            }
         }
     }
     codeAtRisk?.let { left ->
@@ -311,10 +328,10 @@ private suspend fun readSizes(graph: AppGraph, agents: List<AgentInfo>): PhoneSi
 @Composable
 private fun TypeRow(title: String, value: String, places: List<Place>, note: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text(value, style = MaterialTheme.typography.bodyMedium)
-        }
+        LabelValueRow(
+            label = { Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium) },
+            value = { Text(value, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End) },
+        )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             places.forEach { StatusChip(it.label, Tone.NEUTRAL) }
         }
@@ -351,6 +368,7 @@ private fun ByTypeCard(
             "Memory and instructions",
             sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${DataMath.places(it.memoryBytes, drive[ObjectKind.MEMORY])}" } ?: pending,
             listOf(Place.PHONE, Place.DRIVE),
+            "Each agent's instructions, rules, memory, skills, subagents and slash commands.",
         )
         HorizontalDivider()
         TypeRow(
@@ -360,11 +378,26 @@ private fun ByTypeCard(
             "Encrypted. GitHub gets a Secret only when you send it for builds.",
         )
         HorizontalDivider()
-        TypeRow("Projects", "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here", listOf(Place.GITHUB, Place.PHONE), "GitHub holds the main copy; the phone holds a working copy.")
+        TypeRow(
+            "Projects",
+            "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here",
+            listOf(Place.GITHUB, Place.PHONE),
+            "GitHub holds the main copy; the phone holds a working copy.",
+        )
         HorizontalDivider()
-        TypeRow("Build outputs", sizes?.let { ManageFormat.bytes(it.builds) } ?: pending, listOf(Place.PHONE, Place.GITHUB), "The last 3 per project here; GitHub keeps artifacts for 7 days.")
+        TypeRow(
+            "Build outputs",
+            sizes?.let { ManageFormat.bytes(it.builds) } ?: pending,
+            listOf(Place.PHONE, Place.GITHUB),
+            "The last 3 per project here; GitHub keeps artifacts for 7 days.",
+        )
         HorizontalDivider()
-        TypeRow("The computer", sizes?.let { ManageFormat.bytes(it.computer) } ?: pending, listOf(Place.PHONE), "Rebuildable any time; nothing in it is the only copy.")
+        TypeRow(
+            "The computer",
+            sizes?.let { ManageFormat.bytes(it.computer) } ?: pending,
+            listOf(Place.PHONE),
+            "Rebuildable any time; nothing in it is the only copy.",
+        )
         HorizontalDivider()
         TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. On a new phone you sign in to each agent again.")
     }
@@ -485,7 +518,10 @@ private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
     SectionCard(null) {
         Text("1. Sign in to the new Google account.", style = MaterialTheme.typography.bodyMedium)
         Text("2. The app copies every file of your vault, one at a time, so the phone never needs double space.", style = MaterialTheme.typography.bodyMedium)
-        Text("3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
         ManageText.move(current)?.let { ToneLine(it) }
         ManageText.moveProgress(current)?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
         if (busy && current !is MoveState.Copying) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -599,13 +635,13 @@ private fun WithoutAppCard(nav: PocketNav) {
 }
 
 @Composable
-private fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+internal fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     var typed by rememberSaveable { mutableStateOf("") }
     ConfirmDialog(
         title = "Delete everything?",
         text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive, with the " +
             "agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first. Your GitHub " +
-            "repositories are not touched. Type DELETE to confirm.",
+            "repositories are not touched, and the GitHub App in Settings stays, so you can sign in again. Type DELETE to confirm.",
         confirmLabel = "Delete everything",
         destructive = true,
         confirmEnabled = DataMath.deleteConfirmed(typed),

@@ -40,6 +40,8 @@ internal class AndroidAppLock(
 
     override fun leavingOnErrand() = latch.onErrand()
 
+    override fun openForSetUp() = latch.passed()
+
     override fun deviceSecure(): Boolean =
         runCatching { context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true }.getOrDefault(false)
 

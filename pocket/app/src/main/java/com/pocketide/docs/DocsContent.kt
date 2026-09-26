@@ -16,11 +16,14 @@ object DocsContent {
     /** The guide, in reading order (the ~3,000-word body, without terms, privacy policy or notices). */
     val guide: List<DocSection> = GuideStart.all + GuideData.all + GuideSafety.all + GuidePhone.all
 
+    /** What the owner sets up once outside the app (Google Cloud), outside the guide's word budget. */
+    val ownerSetUp: List<DocSection> = OwnerSetUp.all
+
     /** Terms of use, privacy policy and the open-source notices page. */
     val legal: List<DocSection> = Legal.all
 
     /** Every Help section, in reading order. */
-    val sections: List<DocSection> = guide + legal
+    val sections: List<DocSection> = guide + ownerSetUp + legal
 
     val faq: List<FaqEntry> = Faq.all
 

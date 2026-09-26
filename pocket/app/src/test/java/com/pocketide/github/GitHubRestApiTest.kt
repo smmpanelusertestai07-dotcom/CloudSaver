@@ -65,6 +65,36 @@ class GitHubRestApiTest {
     }
 
     @Test
+    fun `once GitHub retires the API version, calls go on without it`() = runBlocking {
+        server.enqueue(json("""{"message":"Unsupported 'X-GitHub-Api-Version' header: API version 2026-03-10 is no longer supported."}""", 410))
+        server.enqueue(json("""{"login":"octo","id":7,"name":null,"avatar_url":null}"""))
+        assertEquals("octo", api.me().login)
+        assertEquals("2026-03-10", server.next().headers["X-GitHub-Api-Version"])
+        assertNull("the same call again, without the version", server.next().headers["X-GitHub-Api-Version"])
+
+        // A write refused for its version is sent again too, and every later call leaves the version out.
+        fx.apiVersion.retired = false
+        server.enqueue(json("""{"message":"Invalid API version"}""", 400))
+        server.enqueue(MockResponse.Builder().code(204).build())
+        assertNull(api.dispatchWorkflowRun("octo", "demo", "ci.yml", "main"))
+        server.enqueue(json("""{"login":"octo","id":7,"name":null,"avatar_url":null}"""))
+        api.me()
+        assertEquals("2026-03-10", server.next().headers["X-GitHub-Api-Version"])
+        assertEquals(listOf(null, null), listOf(server.next(), server.next()).map { it.headers["X-GitHub-Api-Version"] })
+        assertTrue(fx.apiVersion.retired)
+    }
+
+    @Test
+    fun `an answer that is not about the API version keeps it`() = runBlocking {
+        server.enqueue(json("""{"message":"Problems parsing JSON"}""", 400))
+        val refused = failsWith<GitHubException> { runBlocking { api.me() } }
+        assertEquals(GitHubText.REJECTED, refused.message)
+        assertFalse(fx.apiVersion.retired)
+        assertEquals(1, server.requestCount)
+        assertEquals(GitHubText.API_RETIRED, GitHubErrors.of(410, """{"message":"API version 2026-03-10 is not supported"}""").message)
+    }
+
+    @Test
     fun `lists follow the Link header with 100 per page`() = runBlocking {
         val page2 = server.url("/repos/octo/demo/collaborators?affiliation=all&per_page=100&page=2")
         server.enqueue(
@@ -138,7 +168,8 @@ class GitHubRestApiTest {
         assertTrue(sent["private"]!!.jsonPrimitive.boolean)
         assertTrue(sent["auto_init"]!!.jsonPrimitive.boolean)
 
-        server.enqueue(json("""{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}]}""", 422))
+        val nameTaken = """{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}"""
+        server.enqueue(json("""{"message":"Repository creation failed.","errors":[$nameTaken]}""", 422))
         val taken = failsWith<GitHubException> { runBlocking { api.createPrivateRepo("fresh", "") } }
         assertEquals(GitHubText.NAME_TAKEN, taken.message)
     }
@@ -156,7 +187,9 @@ class GitHubRestApiTest {
     @Test
     fun `files are read and written through the contents API in base64`() = runBlocking {
         val content = Base64.getMimeEncoder().encodeToString("hello keyring".toByteArray())
-        server.enqueue(json("""{"type":"file","encoding":"base64","size":13,"name":"half-g.json","path":"keys/half-g.json","content":"${content.replace("\r\n", "\\n")}","sha":"abc123"}"""))
+        val encoded = content.replace("\r\n", "\\n")
+        val named = """"name":"half-g.json","path":"keys/half-g.json""""
+        server.enqueue(json("""{"type":"file","encoding":"base64","size":13,$named,"content":"$encoded","sha":"abc123"}"""))
         val file = api.readFile("octo", "pocketide-keyring", "keys/half-g.json")!!
         assertEquals("hello keyring", file.bytes.toString(Charsets.UTF_8))
         assertEquals("abc123", file.sha)
@@ -314,7 +347,9 @@ class GitHubRestApiTest {
 
     @Test
     fun `a dispatch returns the exact run it started`() = runBlocking {
-        server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"https://api.github.com/repos/octo/demo/actions/runs/30433642","html_url":"https://github.com/octo/demo/actions/runs/30433642"}"""))
+        val runUrl = "https://api.github.com/repos/octo/demo/actions/runs/30433642"
+        val htmlUrl = "https://github.com/octo/demo/actions/runs/30433642"
+        server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"$runUrl","html_url":"$htmlUrl"}"""))
         val run = api.dispatchWorkflowRun("octo", "demo", "android.yml", "session-1", mapOf("variant" to "release"))!!
         assertEquals(30433642L, run.runId)
         val request = server.next()
@@ -346,6 +381,20 @@ class GitHubRestApiTest {
         assertEquals("success", run.conclusion)
         assertEquals("main", server.next().url.queryParameter("branch"))
         assertEquals("/repos/octo/demo/actions/runs/9/jobs", server.next().url.encodedPath)
+    }
+
+    /** The Builds tab refreshes every few seconds while a build runs: each refresh is one request. */
+    @Test
+    fun `a refresh of the runs and one run by id are one request each`() = runBlocking {
+        val run = """{"id":9,"name":"Android","head_branch":"main","status":"in_progress","conclusion":null,
+            "created_at":"2026-09-20T10:00:00Z","updated_at":"2026-09-20T10:09:00Z","html_url":"https://github.com/octo/demo/actions/runs/9"}"""
+        server.enqueue(json("""{"total_count":1,"workflow_runs":[$run]}"""))
+        server.enqueue(json(run))
+        assertNull(api.runs("octo", "demo", null, runners = false).single().runnerImage)
+        assertEquals("in_progress", api.run("octo", "demo", 9)?.status)
+        assertEquals("/repos/octo/demo/actions/runs", server.next().url.encodedPath)
+        assertEquals("/repos/octo/demo/actions/runs/9", server.next().url.encodedPath)
+        assertEquals(2, server.requestCount)
     }
 
     @Test
@@ -462,6 +511,21 @@ class GitHubRestApiTest {
         assertEquals(2048L, usage.cacheBytes)
         assertEquals(1000L, usage.artifactsBytes)
         assertEquals(1, usage.artifactCount)
+    }
+
+    @Test
+    fun `the App counts as installed only on the owner's own account, and not while suspended`() = runBlocking {
+        val org = """{"id":1,"account":{"login":"octo-org"}}"""
+        val suspended = """{"id":2,"account":{"login":"octo"},"suspended_at":"2026-01-01T00:00:00Z"}"""
+        server.enqueue(json("""{"total_count":2,"installations":[$org,$suspended]}"""))
+        assertFalse(api.installedOn("octo"))
+        assertEquals("/user/installations", server.next().url.encodedPath)
+
+        server.enqueue(json("""{"total_count":2,"installations":[$org,{"id":3,"account":{"login":"Octo"}}]}"""))
+        assertTrue(api.installedOn("octo"))
+
+        server.enqueue(json("""{"total_count":0,"installations":[]}"""))
+        assertFalse(api.installedOn("octo"))
     }
 
     private companion object {

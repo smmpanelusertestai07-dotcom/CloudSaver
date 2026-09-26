@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.core.afterDeleteEverything
 import com.pocketide.google.DriveException
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
@@ -43,6 +44,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     override val backups: StateFlow<Map<String, SessionBackup>> = flows.backups
     override val computerRemovalAt: StateFlow<Long?> = flows.computerRemovalAt
     override val backgroundLimit: StateFlow<String?> = flows.backgroundLimit
+    override val heldFiles: StateFlow<List<HeldFile>> = flows.held
 
     /** Shows what Drive held at the last sync, so the app starts offline with it. */
     suspend fun warmUp() {
@@ -55,6 +57,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             flows.computerRemovalAt.value = run.state.computerNoticeDue
             flows.storage.value = Views.storage(run, index, ports.settings.settings.value, flows.storage.value)
             Views.publishWaiting(run, pass.book(run))
+            CodeGate.publish(run)
         }
     }
 
@@ -128,6 +131,40 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
 
     override suspend fun cleanNow(): Long = act { run -> maintenance.cleanNow(run) }
 
+    override suspend fun keepHeldFile(file: HeldFile) {
+        val kept = act { run ->
+            val (key, mark) = heldEntry(run, file) ?: return@act false
+            run.state = run.state.copy(held = run.state.held - key, keptCode = run.state.keptCode + (key to mark.sha256))
+            run.save()
+            CodeGate.publish(run)
+            true
+        }
+        if (!kept) throw SyncException(Plain.HELD_CHANGED)
+        ports.scheduler.requestSoon()
+    }
+
+    override suspend fun removeHeldFile(file: HeldFile) {
+        val problem = act { run ->
+            val (key, mark) = heldEntry(run, file) ?: return@act Plain.HELD_CHANGED
+            val removed = try {
+                CodeGate.remove(ports.dirs, mark)
+            } catch (_: java.io.IOException) {
+                return@act Plain.HELD_NOT_REMOVED
+            }
+            // Gone, or changed: either way the next scan judges what is there now.
+            run.state = run.state.copy(held = run.state.held - key)
+            run.save()
+            CodeGate.publish(run)
+            if (removed) null else Plain.HELD_CHANGED
+        }
+        ports.scheduler.requestSoon()
+        problem?.let { throw SyncException(it) }
+    }
+
+    /** The waiting version [file] shows, with its file key; null when that version no longer waits. */
+    private fun heldEntry(run: Run, file: HeldFile): Pair<String, HeldMark>? =
+        run.state.held.entries.firstOrNull { (_, m) -> m.agentId == file.agentId && m.path == file.path && m.sha256 == file.sha256 }?.toPair()
+
     override suspend fun eraseForever(sessionIds: List<String>) {
         act { run ->
             run.state = run.state.copy(eraseQueue = run.state.eraseQueue + sessionIds)
@@ -164,9 +201,13 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
                 dirs.downloads, dirs.share, dirs.apk,
             )
                 .forEach { deleteTree(it) }
+            ports.forgetLocal()
             ports.wipeSecureStore()
             ports.forgetVaultKey()
-            ports.settings.update { it.copy(onboardingDone = false) }
+            // Settings are erased too, as the owner was told: no old choice reaches the next vault, and
+            // set-up starts over (the extra password belonged to the old key, which is gone). This
+            // copy's GitHub App stays, so the owner can sign in again.
+            ports.settings.update { it.afterDeleteEverything() }
             flows.status.value = SyncStatus.Idle
             flows.waiting.value = emptyList()
             flows.leaseHolder.value = null
@@ -176,6 +217,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             flows.move.value = MoveState.Idle
             flows.backups.value = emptyMap()
             flows.computerRemovalAt.value = null
+            flows.held.value = emptyList()
         }
     }
 
@@ -184,12 +226,15 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         ports.scheduler.requestSoon()
     }
 
-    /** A background sync; runs again at once when more was requested meanwhile. */
-    suspend fun runScheduled(onLargeUpload: suspend () -> Unit): WorkResult {
+    /**
+     * A background sync; runs again at once when more was requested meanwhile. A [periodic] run
+     * stops before the network when there is nothing to do (see [SyncPass.stopIfIdle]).
+     */
+    suspend fun runScheduled(periodic: Boolean = false, onLargeUpload: suspend () -> Unit): WorkResult {
         var result = WorkResult.OK
-        repeat(MAX_ROUNDS) {
+        repeat(MAX_ROUNDS) { round ->
             again.set(false)
-            val options = PassOptions(onLargeUpload = onLargeUpload, deadline = ports.clock.now() + PASS_BUDGET_MS)
+            val options = PassOptions(onLargeUpload = onLargeUpload, deadline = ports.clock.now() + PASS_BUDGET_MS, quietWhenIdle = periodic && round == 0)
             val outcome = attempt { run -> jobsThenPass(run, options) }
             result = if (outcome == null && flows.status.value is SyncStatus.Error && retryable) WorkResult.RETRY else WorkResult.OK
             if (!again.get() || outcome != PassOutcome.DONE) return result
@@ -230,12 +275,18 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         if (!ports.settings.settings.value.onboardingDone) return null
         if (flows.status.value !is SyncStatus.Waiting) flows.status.value = SyncStatus.Running(Plain.SYNCING)
-        val outcome = pass.run(run, options)
+        val outcome = passOrStop(run, options)
+        // Kept safely on the phone while offline: it goes up as soon as a network is back.
+        if (outcome == PassOutcome.OFFLINE && run.entries().isNotEmpty()) ports.scheduler.requestWhenOnline()
         if (flows.storage.value.phone == PhoneSpace.FULL && run.now - run.state.lastMaintenanceAt > MAINTENANCE_GAP_MS) {
             ports.scheduler.requestMaintenance()
         }
         return outcome
     }
+
+    /** The pass; a periodic run with nothing to do stops before the network instead ([SyncPass.stopIfIdle]). */
+    private suspend fun passOrStop(run: Run, options: PassOptions): PassOutcome =
+        if (options.quietWhenIdle && pass.stopIfIdle(run)) PassOutcome.DONE else pass.run(run, options)
 
     private fun requireReady() {
         if (!ports.settings.settings.value.onboardingDone) throw SyncException("Finish setting up PocketIDE first.")
@@ -256,6 +307,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             }
             val run = Run(kit, cipher)
             try {
+                ports.loadLocal()
                 block(run).also { retryable = false }
             } catch (e: CancellationException) {
                 throw e
@@ -273,6 +325,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             val cipher = ports.cipher() ?: throw SyncException(Plain.KEY_NOT_READY)
             val run = Run(kit, cipher)
             try {
+                ports.loadLocal()
                 block(run)
             } catch (e: CancellationException) {
                 throw e
@@ -300,6 +353,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         val waiting = run.state.waiting
         flows.status.value = if (waiting != null && e !is SyncException) Views.waitingStatus(run, waiting) else SyncStatus.Error(Plain.of(e))
+        run.state = run.state.copy(lastFailedAt = run.now)
         try {
             run.save()
         } catch (_: java.io.IOException) {

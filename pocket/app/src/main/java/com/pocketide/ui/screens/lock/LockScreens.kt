@@ -46,6 +46,7 @@ import com.pocketide.AppGraph
 import com.pocketide.github.gitHubAppChoice
 import com.pocketide.model.LinkHealth
 import com.pocketide.model.LockReason
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.onboarding.GitHubAppFields
@@ -81,7 +82,7 @@ fun LockScreen(reason: LockReason) {
     LimitedScreens { nav ->
         when (reason) {
             LockReason.GitHubDisconnected -> GitHubDisconnected()
-            LockReason.DriveDisconnected -> DriveDisconnected()
+            LockReason.DriveDisconnected -> DriveDisconnected(nav)
             is LockReason.StorageFull -> StorageFull(reason.googleStorageFull, nav)
             is LockReason.OtherPhone -> OtherPhone(reason.deviceName)
             is LockReason.Unsupported -> Unsupported(reason.why)
@@ -214,8 +215,8 @@ private fun GitHubDisconnected() {
         }
         RecheckResult(recheck)
         WhatHappened(
-            "Access ends when the PocketIDE app is uninstalled from your GitHub account, its sign-in is revoked, " +
-                "or the account is gone. Being offline never locks the app. Reconnecting uploads what waited.",
+            "Access ends when PocketIDE's sign-in is revoked on GitHub, or the account is gone. " +
+                "Being offline never locks the app. Reconnecting uploads what waited.",
         )
         FinePrint("The app stays locked until both GitHub and Google Drive are connected.")
     }
@@ -236,7 +237,7 @@ private fun ChangeGitHubApp(graph: AppGraph, openUrl: (String) -> Unit, onSaved:
 }
 
 @Composable
-private fun DriveDisconnected() {
+private fun DriveDisconnected(nav: PocketNav) {
     val graph = rememberGraph()
     val recheck = rememberRecheck(graph)
     ShellPage {
@@ -249,7 +250,7 @@ private fun DriveDisconnected() {
         )
         ConnectionStatus(graph)
         Gap(24.dp)
-        DriveConnectPanel(auth = graph.driveAuth, onAuthorized = { recheck.run() }, label = "Reconnect Google Drive")
+        DriveConnectPanel(auth = graph.driveAuth, onAuthorized = { recheck.run() }, onOpenHelp = nav::help, label = "Reconnect Google Drive")
         RecheckResult(recheck)
         WhatHappened(
             "Access ends when PocketIDE is removed from your Google account's third-party connections, " +
@@ -356,7 +357,7 @@ private fun RaiseDriveLimitDialog(current: Int, onPick: (Int) -> Unit, onDismiss
         onDismissRequest = onDismiss,
         title = { Text("PocketIDE's Drive limit") },
         text = {
-            Column(Modifier.selectableGroup()) {
+            DialogBody(Modifier.selectableGroup(), spacing = 0.dp) {
                 if (bigger.isEmpty()) {
                     Text("This is already the largest limit. Delete old chats or free Google storage instead.")
                 }

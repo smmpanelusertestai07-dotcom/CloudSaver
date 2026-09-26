@@ -33,42 +33,54 @@ import com.pocketide.ui.manage.Hint
  * Settings that can run code (hooks, tool servers, permission rules, environment variables)
  * that an agent added in its room. Every room start takes them out again; here the owner reads
  * each one and keeps it (written back at every start) or lets it go. Only this card keeps one.
+ * Below them, the skills, subagents, commands and command rules that can run code, which wait on
+ * this phone until the owner keeps them for the Drive backup, or removes them.
  */
 @Composable
 internal fun ConfigChangesCard(graph: AppGraph, agents: List<AgentInfo>, runner: ActionRunner) {
     val waiting by graph.rooms.configChanges.collectAsStateWithLifecycle()
     val kept by graph.rooms.keptConfig.collectAsStateWithLifecycle()
+    val held by graph.sync.heldFiles.collectAsStateWithLifecycle()
     val name = { agentId: String -> agents.firstOrNull { it.id == agentId }?.displayName ?: agentId }
     SectionCard(null) {
         Hint(
             "Hooks, tool servers, permission rules and environment variables can run code. PocketIDE writes them " +
                 "again at every room start, so a change an agent makes waits here until you keep it.",
         )
-        if (waiting.isEmpty() && kept.isEmpty()) Hint("No agent has changed them.")
-        waiting.forEachIndexed { index, change ->
-            if (index > 0) HorizontalDivider()
-            ChangeRow(change, name(change.agentId)) {
-                val key = actionKey(change)
-                if (change.keepable) {
-                    TextButton(onClick = {
-                        runner.run(key, done = "Kept. It is written back at every start.") { graph.rooms.keepConfigChange(change) }
-                    }, enabled = !runner.isBusy(key)) { Text("Keep") }
-                }
-                TextButton(onClick = { runner.run(key, done = "Let go.") { graph.rooms.dropConfigChange(change) } }, enabled = !runner.isBusy(key)) {
-                    Text("Let go")
-                }
+        if (waiting.isEmpty() && kept.isEmpty() && held.isEmpty()) Hint("No agent has changed them.")
+        WaitingChanges(waiting, name, graph, runner)
+        if (kept.isNotEmpty()) KeptChanges(kept, name, graph, runner)
+        if (held.isNotEmpty()) HeldFilesSection(held, name, graph, runner)
+    }
+}
+
+@Composable
+private fun WaitingChanges(waiting: List<ConfigChange>, name: (String) -> String, graph: AppGraph, runner: ActionRunner) {
+    waiting.forEachIndexed { index, change ->
+        if (index > 0) HorizontalDivider()
+        ChangeRow(change, name(change.agentId)) {
+            val key = actionKey(change)
+            if (change.keepable) {
+                TextButton(onClick = {
+                    runner.run(key, done = "Kept. It is written back at every start.") { graph.rooms.keepConfigChange(change) }
+                }, enabled = !runner.isBusy(key)) { Text("Keep") }
+            }
+            TextButton(onClick = { runner.run(key, done = "Let go.") { graph.rooms.dropConfigChange(change) } }, enabled = !runner.isBusy(key)) {
+                Text("Let go")
             }
         }
-        if (kept.isNotEmpty()) {
-            Text("Kept by you", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-            kept.forEach { change ->
-                ChangeRow(change, name(change.agentId)) {
-                    val key = actionKey(change)
-                    TextButton(onClick = {
-                        runner.run(key, done = "No longer kept.") { graph.rooms.stopKeepingConfigChange(change) }
-                    }, enabled = !runner.isBusy(key)) { Text("Stop keeping") }
-                }
-            }
+    }
+}
+
+@Composable
+private fun KeptChanges(kept: List<ConfigChange>, name: (String) -> String, graph: AppGraph, runner: ActionRunner) {
+    ConfigSubtitle("Kept by you")
+    kept.forEach { change ->
+        ChangeRow(change, name(change.agentId)) {
+            val key = actionKey(change)
+            TextButton(onClick = {
+                runner.run(key, done = "No longer kept.") { graph.rooms.stopKeepingConfigChange(change) }
+            }, enabled = !runner.isBusy(key)) { Text("Stop keeping") }
         }
     }
 }
@@ -77,18 +89,40 @@ internal fun ConfigChangesCard(graph: AppGraph, agents: List<AgentInfo>, runner:
 private fun ChangeRow(change: ConfigChange, agentName: String, actions: @Composable RowScope.() -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(change.sentence(agentName), style = MaterialTheme.typography.bodyLarge)
-        Text("~/${change.file}", style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SelectionContainer {
-            Text(
-                change.shownValue().take(MAX_SHOWN),
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                softWrap = false,
-            )
-        }
+        ConfigPath(change.file)
+        ConfigText(change.shownValue())
         if (!change.keepable) Hint(notKeepable(change))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, content = actions)
+    }
+}
+
+@Composable
+internal fun ConfigSubtitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+}
+
+/** A file under a room's home, as the owner finds it there. */
+@Composable
+internal fun ConfigPath(path: String) {
+    Text(
+        "~/$path",
+        style = MaterialTheme.typography.labelMedium,
+        fontFamily = FontFamily.Monospace,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** A setting or a file's text as it was found: its lines as they are, scrolled sideways. */
+@Composable
+internal fun ConfigText(text: String) {
+    SelectionContainer {
+        Text(
+            text.take(MAX_SHOWN),
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            softWrap = false,
+        )
     }
 }
 

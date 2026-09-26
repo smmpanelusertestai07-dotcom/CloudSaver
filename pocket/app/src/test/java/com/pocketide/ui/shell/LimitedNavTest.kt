@@ -31,6 +31,19 @@ class LimitedNavTest {
     }
 
     @Test
+    fun screensOutsideTheLockAreNotOffered() {
+        nav.settings()
+        nav.secrets(null)
+        assertTrue(stack.isEmpty())
+        assertFalse(nav.opensEveryScreen)
+        // Your data hides its links to Settings and Secrets there, rather than showing dead rows.
+        val source = File("src/main/java/com/pocketide/ui/screens/data/YourDataScreen.kt").readText()
+        assertTrue(source.contains("if (nav.opensEveryScreen) {\n                    NavRow(Icons.Outlined.Key"))
+        assertTrue(source.contains("if (nav.opensEveryScreen) NavRow(Icons.Outlined.Tune"))
+        assertTrue(source.contains("nav::settings.takeIf { nav.opensEveryScreen }"))
+    }
+
+    @Test
     fun webPagesStillOpen() {
         nav.openExternal("https://one.google.com/storage")
         assertEquals(listOf("https://one.google.com/storage"), opened)

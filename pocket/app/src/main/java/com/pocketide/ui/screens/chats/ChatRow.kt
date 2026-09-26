@@ -30,9 +30,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pocketide.core.Ist
 import com.pocketide.model.SessionRecord
-import com.pocketide.model.SessionStatus
 import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.StatusChip
+import com.pocketide.ui.components.Tone
+import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.DELETE_CHAT_TEXT
@@ -40,6 +41,7 @@ import com.pocketide.ui.screens.project.PutOnMainFlow
 import com.pocketide.ui.screens.project.RenameDialog
 import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
+import com.pocketide.ui.screens.project.canPutOnMain
 import com.pocketide.ui.screens.project.rememberGraph
 import com.pocketide.ui.screens.project.sessionStatusLabel
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +60,7 @@ internal fun ChatRow(
     snackbar: SnackbarHostState,
     scope: CoroutineScope,
     onDialog: (ChatDialog) -> Unit,
+    note: String? = null,
 ) {
     val graph = rememberGraph()
     var menu by remember { mutableStateOf(false) }
@@ -93,6 +96,7 @@ internal fun ChatRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN)) }
                 StatusChip(backupLabel, backupTone)
             }
             Box {
@@ -108,7 +112,7 @@ internal fun ChatRow(
                             }
                         })
                     }
-                    if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                    if (canPutOnMain(session.status)) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onDialog(ChatDialog.PUT_ON_MAIN) })
                     }
                     DropdownMenuItem(

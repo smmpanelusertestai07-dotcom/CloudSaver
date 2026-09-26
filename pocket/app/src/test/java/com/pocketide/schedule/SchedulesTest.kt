@@ -3,8 +3,10 @@ package com.pocketide.schedule
 import androidx.work.NetworkType
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
+import com.pocketide.model.LockReason
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -60,6 +62,16 @@ class HeadlessCommandTest {
         assertFalse(HeadlessCommand.succeeded("antigravity", 0, listOf("""{"status": "WAITING","response":""}""")))
         assertFalse("a soft-denied permission exits 0", HeadlessCommand.succeeded("antigravity", 0, listOf("permission denied: write_file")))
     }
+
+    @Test
+    fun agyRefusedAToolItReportsAsNeedingALook() {
+        val output = listOf(
+            "Tool run_command(npm install) was soft-denied: add \"command(npm)\" under permissions.allow in ~/.gemini/antigravity-cli/settings.json",
+            """{"conversation_id":"c","status":"SUCCESS","response":"I could not run npm install."}""",
+        )
+        assertFalse("status SUCCESS, but a tool was refused", HeadlessCommand.succeeded("antigravity", 0, output))
+        assertTrue(HeadlessCommand.succeeded("antigravity", 0, output.drop(1)))
+    }
 }
 
 class ScheduleConstraintsTest {
@@ -91,6 +103,14 @@ class ScheduleConstraintsTest {
         val request = ScheduleWork.once("t1", "s9")
         assertTrue(request.workSpec.constraints.requiresCharging())
         assertEquals("s9", request.workSpec.input.getString(ScheduleWork.KEY_SESSION))
+        assertEquals("s9", ScheduleWork.sessionOf(request.tags))
+    }
+
+    @Test
+    fun aRunAndroidStopsIsNotStartedAgainAtOnce() {
+        for (request in listOf(ScheduleWork.once("t1", "s9"), ScheduleWork.periodic(task()))) {
+            assertEquals(true, request.workSpec.backOffOnSystemInterruptions)
+        }
     }
 }
 
@@ -148,6 +168,43 @@ class ScheduledRunTest {
         assertEquals(1, ports.recorded.size)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun aRunAndroidKeepsInTheBackgroundStopsBeforeAndroidCutsItOff() = runTest {
+        ports.hang = true
+        val outcome = ScheduledRun(ports).run(task(), background = true)
+
+        assertTrue(outcome.timedOut)
+        assertEquals(ScheduledRun.BACKGROUND_LIMIT_MS, testScheduler.currentTime)
+        assertTrue(ports.saved.single().second.contains(ScheduledRun.BACKGROUND_STOP))
+    }
+
+    @Test
+    fun theRunIsMarkedAsStartedBeforeTheAgentStarts() = runTest {
+        ports.onRun = { assertEquals(listOf("t1" to "s-new"), ports.startMarks) }
+        ScheduledRun(ports).run(task())
+        assertEquals(1, ports.runs.size)
+    }
+
+    @Test
+    fun aRunCutOffWithoutANoteIsEndedInItsOwnSessionAndNotStartedAgain() = runTest {
+        ScheduledRun(ports).endCutOff(task().copy(runningSessionId = "s-3", runningSince = 500))
+
+        assertTrue(ports.runs.isEmpty())
+        assertNull("no new session", ports.started)
+        assertEquals("s-3", ports.saved.single().first)
+        assertTrue(ports.saved.single().second.contains(ScheduledRun.CUT_OFF))
+        assertEquals(listOf("t1" to "s-3"), ports.recorded)
+        assertEquals("Scheduled task needs a look", ports.notices.single().first)
+    }
+
+    @Test
+    fun aCutOffRunThatAlreadySaidSoIsLeftAlone() = runTest {
+        ScheduledRun(ports).endCutOff(task())
+        assertTrue(ports.saved.isEmpty())
+        assertTrue(ports.recorded.isEmpty())
+    }
+
     @Test
     fun heavyWorkRulesAreAskedFirst() = runTest {
         ports.refusal = "The battery is low."
@@ -162,6 +219,23 @@ class ScheduledRunTest {
     }
 
     @Test
+    fun runNowUsesTheSessionItShowedOrNone() = runTest {
+        val outcome = ScheduledRun(ports).run(task(), existingSessionId = "s-shown")
+        assertEquals("s-shown", outcome.sessionId)
+
+        ports.known = emptySet()
+        try {
+            ScheduledRun(ports).run(task(), existingSessionId = "s-gone")
+            fail("a missing session is not replaced by a new one")
+        } catch (expected: ScheduleException) {
+            assertEquals(ScheduledRun.SESSION_GONE, expected.message)
+            assertNull(ports.started)
+            assertEquals(1, ports.runs.size)
+            assertEquals("Scheduled task needs a look", ports.notices.last().first)
+        }
+    }
+
+    @Test
     fun anAgentWithoutAHeadlessModeIsRefused() = runTest {
         try {
             ScheduledRun(ports).run(task(agentId = "kilocode.kilo-code"))
@@ -171,6 +245,60 @@ class ScheduledRunTest {
         }
     }
 
+    @Test
+    fun aTaskOnSomeoneElsesProjectNeverRunsUnattended() = runTest {
+        ports.someoneElses = true
+        for (existing in listOf(null, "s-queued")) {
+            try {
+                ScheduledRun(ports).run(task(), existing)
+                fail("someone else's code must not steer an agent with nobody watching")
+            } catch (expected: ScheduleException) {
+                assertEquals(ScheduledRun.SOMEONE_ELSES, expected.message)
+            }
+        }
+        assertTrue(ports.runs.isEmpty())
+        assertNull("no session is made", ports.started)
+        assertTrue(ports.notices.all { it.second.contains(ScheduledRun.SOMEONE_ELSES) })
+        assertEquals(2, ports.notices.size)
+    }
+
+    @Test
+    fun aLockedAppStartsNoScheduledRunAndSaysWhy() = runTest {
+        ports.locked = LockReason.GitHubDisconnected
+        for (existing in listOf(null, "s-queued")) {
+            try {
+                ScheduledRun(ports).run(task(), existing)
+                fail("a revoked GitHub starts no new agent work")
+            } catch (expected: ScheduleException) {
+                assertEquals(ScheduledRun.lockedText(LockReason.GitHubDisconnected), expected.message)
+            }
+        }
+        assertEquals("GitHub and Drive are asked afresh before each run", 2, ports.lockChecks)
+        assertTrue(ports.runs.isEmpty())
+        assertNull("no session is made", ports.started)
+        assertEquals(List(2) { "Scheduled task did not run" }, ports.notices.map { it.first })
+
+        // Offline locks nothing: the guard then answers no lock, and the task runs.
+        ports.locked = null
+        assertEquals("s-new", ScheduledRun(ports).run(task()).sessionId)
+        assertEquals(1, ports.runs.size)
+    }
+
+    @Test
+    fun eachLockSaysWhyInAPlainSentence() {
+        val locks = listOf(
+            LockReason.GitHubDisconnected,
+            LockReason.DriveDisconnected,
+            LockReason.OtherPhone("Pixel 8"),
+            LockReason.StorageFull(googleStorageFull = true),
+            LockReason.Unsupported("This phone has less than 4 GB of memory."),
+        )
+        val texts = locks.map(ScheduledRun::lockedText)
+        assertEquals(locks.size, texts.toSet().size)
+        assertTrue(texts.all { it.endsWith(".") && it.first().isUpperCase() })
+        assertTrue(texts[2].contains("Pixel 8"))
+    }
+
     internal data class RoomRun(val agentId: String, val projectId: String, val argv: List<String>, val workDir: String, val programEnv: Map<String, String>)
 
     internal class FakeRunPorts(private val dirs: AppDirs) : RunPorts {
@@ -178,7 +306,10 @@ class ScheduledRunTest {
         var lines = emptyList<String>()
         var hang = false
         var refusal: String? = null
+        var someoneElses = false
         var started: String? = null
+        var onRun: () -> Unit = {}
+        val startMarks = mutableListOf<Pair<String, String>>()
         val runs = mutableListOf<RoomRun>()
         val saved = mutableListOf<Pair<String, String>>()
         val recorded = mutableListOf<Pair<String, String>>()
@@ -194,7 +325,10 @@ class ScheduledRunTest {
             started = title
             return record("s-new")
         }
-        override fun session(sessionId: String) = record(sessionId)
+
+        /** Sessions this phone knows; null knows every id. */
+        var known: Set<String>? = null
+        override suspend fun session(sessionId: String) = record(sessionId).takeIf { known?.contains(sessionId) ?: true }
         override suspend fun runInRoom(
             agentId: String,
             projectId: String,
@@ -203,12 +337,20 @@ class ScheduledRunTest {
             programEnv: Map<String, String>,
             onLine: (String) -> Unit,
         ): Int {
+            onRun()
             runs += RoomRun(agentId, projectId, argv, workDir, programEnv)
             lines.forEach(onLine)
             if (hang) awaitCancellation()
             return 0
         }
         override fun heavyWorkRefusal() = refusal
+        var locked: LockReason? = null
+        var lockChecks = 0
+        override val lock = LockCheck {
+            lockChecks++
+            locked
+        }
+        override suspend fun someoneElses(projectId: String) = someoneElses
         override suspend fun saveOutput(sessionId: String, file: File) {
             saved += sessionId to file.readText()
         }
@@ -219,8 +361,8 @@ class ScheduledRunTest {
         override fun notify(taskId: String, heading: String, text: String) {
             notices += heading to text
         }
-        override suspend fun recordRun(taskId: String, at: Long, sessionId: String) {
-            recorded += taskId to sessionId
+        override suspend fun recordRun(taskId: String, at: Long, sessionId: String, ended: Boolean) {
+            if (ended) recorded += taskId to sessionId else startMarks += taskId to sessionId
         }
     }
 }
@@ -232,27 +374,90 @@ class TaskSchedulesTest {
         val scheduled = mutableListOf<ScheduledTask>()
         val cancelled = mutableListOf<String>()
         val once = mutableListOf<Pair<String, String>>()
-        override fun schedule(task: ScheduledTask, update: Boolean) {
+        override fun schedule(task: ScheduledTask) {
             scheduled += task
         }
         override fun cancel(taskId: String) {
             cancelled += taskId
         }
+        var queued: String? = null
         override fun runOnce(taskId: String, sessionId: String) {
             once += taskId to sessionId
         }
+        var cancelledAll = 0
+        override fun cancelAll() {
+            cancelledAll++
+        }
+        override suspend fun queuedRun(taskId: String): String? = queued
     }
 
     private val scheduler = FakeScheduler()
     private var whyNot: String? = null
+
+    private val ports by lazy { ScheduledRunTest.FakeRunPorts(AppDirs(temp.root, temp.root)) }
 
     private fun schedules(file: File = File(temp.root, "schedules.json")) = TaskSchedules(
         file = file,
         scheduler = scheduler,
         powerAndWifi = { whyNot },
         io = Dispatchers.Unconfined,
-        runner = ScheduledRun(ScheduledRunTest.FakeRunPorts(AppDirs(temp.root, temp.root))),
+        runner = ScheduledRun(ports),
     )
+
+    @Test
+    fun aTaskOnSomeoneElsesProjectIsNotSavedOrRun() = runTest {
+        val s = schedules()
+        s.save(task())
+        ports.someoneElses = true
+
+        for (attempt in listOf<suspend () -> Unit>({ s.save(task().copy(title = "Other")) }, { s.runNow("t1") })) {
+            try {
+                attempt()
+                fail("refused")
+            } catch (expected: ScheduleException) {
+                assertEquals(ScheduledRun.SOMEONE_ELSES, expected.message)
+            }
+        }
+        assertNull(ports.started)
+        assertTrue(scheduler.once.isEmpty())
+    }
+
+    @Test
+    fun runNowWhileARunWaitsLeadsToThatRun() = runTest {
+        val s = schedules()
+        s.save(task())
+        scheduler.queued = "s-waiting"
+
+        assertEquals("s-waiting", s.runNow("t1"))
+        assertNull("no second, empty session", ports.started)
+        assertTrue(scheduler.once.isEmpty())
+    }
+
+    @Test
+    fun runNowWhileTheTaskRunsLeadsToThatRun() = runTest {
+        val s = schedules()
+        s.save(task())
+        s.recordRun("t1", 10, "s-running", ended = false)
+        val inside = s.exclusively("t1") {
+            assertNull("one run of a task at a time", s.exclusively("t1") { "second" })
+            s.runNow("t1")
+        }
+
+        assertEquals("s-running", inside)
+        assertNull(ports.started)
+        s.recordRun("t1", 10, "s-running")
+        assertNull(s.tasks.value.single().runningSessionId)
+        assertEquals("the lock is let go", "again", s.exclusively("t1") { "again" })
+    }
+
+    @Test
+    fun theRunningMarkSurvivesAnEdit() = runTest {
+        val s = schedules()
+        s.save(task())
+        s.recordRun("t1", 10, "s-running", ended = false)
+        s.save(task().copy(prompt = "run every test"))
+        assertEquals("s-running", s.tasks.value.single().runningSessionId)
+    }
 
     @Test
     fun tasksAreKeptAndScheduled() = runTest {
@@ -264,6 +469,7 @@ class TaskSchedulesTest {
         val again = schedules()
         again.load()
         assertEquals("Nightly tests", again.tasks.value.single().title)
+        assertEquals("a new start puts it in WorkManager again, as this build schedules it", 2, scheduler.scheduled.size)
 
         again.remove("t1")
         assertTrue(again.tasks.value.isEmpty())
@@ -299,6 +505,25 @@ class TaskSchedulesTest {
         whyNot = null
         assertEquals("s-new", s.runNow("t1"))
         assertEquals(listOf("t1" to "s-new"), scheduler.once)
+    }
+
+    @Test
+    fun noOldTaskRunsOrComesBackAfterDeleteEverything() = runTest {
+        val file = File(temp.root, "schedules.json")
+        val s = schedules(file)
+        s.save(task())
+        s.save(task().copy(id = "t2", title = "Weekly clean-up"))
+        // Delete everything removes the file first, then the module forgets what it holds.
+        file.delete()
+        s.forgetEverything()
+        assertEquals("every task's job leaves WorkManager", 1, scheduler.cancelledAll)
+        assertTrue(s.tasks.value.isEmpty())
+
+        // A run that ends afterwards, and a task saved afterwards, never write the old ones back.
+        s.recordRun("t1", 9_000, "s-9")
+        s.save(task().copy(id = "t3", title = "New"))
+        val reread = schedules(file).apply { load() }
+        assertEquals(listOf("t3"), reread.tasks.value.map { it.id })
     }
 
     @Test

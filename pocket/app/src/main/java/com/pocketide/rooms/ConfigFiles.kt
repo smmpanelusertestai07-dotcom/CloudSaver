@@ -25,8 +25,9 @@ import kotlinx.serialization.json.put
 internal object ConfigFiles {
 
     /**
-     * code-server's user settings: phone layout, no telemetry, no self-updates, the agent's own
-     * keys, and with [careful] (someone else's code) the agent's ask-before-running settings.
+     * code-server's user settings: phone layout, the agent's name as the window title, no
+     * telemetry, no self-updates, the agent's own keys, and with [careful] (someone else's code)
+     * the agent's ask-before-running settings.
      * The settings that start programs or loosen the agent's permissions are rebuilt.
      */
     fun codeServerSettings(existing: String?, profile: RoomProfile, fontSize: Int, careful: Boolean = false, kept: List<Entry> = emptyList()): Rebuilt? {
@@ -35,8 +36,13 @@ internal object ConfigFiles {
         CODE_SERVER_SETTINGS.forEach { (key, value) -> managed[key] = value }
         managed["editor.fontSize"] = JsonPrimitive(fontSize)
         managed["terminal.integrated.fontSize"] = JsonPrimitive(fontSize)
+        // The agent's name on the screen's top line, not the session's long worktree folder. VS Code
+        // reads ${...} in it as a variable, so a discovered agent's name loses its "$".
+        managed[WINDOW_TITLE] = JsonPrimitive(profile.name.replace("$", ""))
         managed.putAll(profile.extensionSettings)
         if (careful) managed.putAll(profile.carefulSettings)
+        // What VS Code itself rewrote at its start is still PocketIDE's value: left as it is, not written back.
+        for ((key, forms) in REWRITTEN_BY_VS_CODE) current[key]?.takeIf { it in forms }?.let { managed[key] = it }
         // A careful value PocketIDE set is PocketIDE's: it goes again on the owner's own code.
         val carefulValues = profile.carefulSettings.map { (key, value) -> Entry(key, "", ExecutableJson.canonical(value)) }
         return rebuild(current, CODE_SERVER_SLOTS, ours = emptyList(), kept) { entry -> carefulValues.any { it.sameAs(entry) } }
@@ -46,9 +52,18 @@ internal object ConfigFiles {
     /**
      * Claude Code's `~/.claude/settings.json`: [deny] rules added to the owner's, the updater and
      * error reporting off, transcripts kept for ten years (Claude deletes them after 30 days by
-     * default, which could lose chats not yet backed up), and the notification hook.
+     * default, which could lose chats not yet backed up), the notification hook, and Remote Control
+     * at every session's start as the owner chose ([accountChats]): while it is connected, Anthropic
+     * keeps the session in the owner's Claude account, where the Claude app and claude.ai/code show it.
+     * PocketIDE writes that key each time, so a value an agent set there does not last.
      */
-    fun claudeSettings(existing: String?, deny: List<String>, notifyCommand: String, kept: List<Entry> = emptyList()): Rebuilt? {
+    fun claudeSettings(
+        existing: String?,
+        deny: List<String>,
+        notifyCommand: String,
+        kept: List<Entry> = emptyList(),
+        accountChats: Boolean = true,
+    ): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
         val ours = listOf(Entry(HOOKS, "Notification", ExecutableJson.canonical(notifyHook(notifyCommand)))) +
             CLAUDE_ENV.map { (name, value) -> Entry(ENV, name, ExecutableJson.canonical(value)) }
@@ -61,6 +76,7 @@ internal object ConfigFiles {
         val updated = rebuilt + mapOf(
             "permissions" to JsonObject(permissions + ("deny" to JsonArray(mergedDeny))),
             "cleanupPeriodDays" to JsonPrimitive(maxOf(keepDays ?: 0, CLAUDE_KEEP_DAYS)),
+            CLAUDE_REMOTE_CONTROL to JsonPrimitive(accountChats),
         )
         return Rebuilt(Jsonc.write(JsonObject(updated)), added)
     }
@@ -82,9 +98,12 @@ internal object ConfigFiles {
     }
 
     /** The agy CLI's settings: telemetry off (it is on by default); its allow rules and hooks rebuilt. */
-    fun antigravitySettings(existing: String?, kept: List<Entry> = emptyList()): Rebuilt? {
+    fun antigravitySettings(existing: String?, kept: List<Entry> = emptyList(), careful: Boolean = false): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
-        val (rebuilt, added) = rebuild(current, ANTIGRAVITY_CLI_SLOTS, ours = emptyList(), kept)
+        // agy -p soft-denies what would ask (request-review): on the owner's own code a scheduled
+        // task may still run git and the usual build and test commands. Someone else's code asks.
+        val ours = if (careful) emptyList() else AGY_ALLOW
+        val (rebuilt, added) = rebuild(current, ANTIGRAVITY_CLI_SLOTS, ours, kept) { it in AGY_ALLOW }
         return Rebuilt(Jsonc.write(JsonObject(rebuilt + ("enableTelemetry" to JsonPrimitive(false)))), added)
     }
 
@@ -160,21 +179,30 @@ internal object ConfigFiles {
         val ours = buildJsonObject {
             put("identifier", buildJsonObject { put("id", id) })
             put("version", version)
-            put("location", buildJsonObject {
-                put("\$mid", 1)
-                put("path", guestFolder)
-                put("scheme", "file")
-            })
+            put(
+                "location",
+                buildJsonObject {
+                    put("\$mid", 1)
+                    put("path", guestFolder)
+                    put("scheme", "file")
+                },
+            )
             put("relativeLocation", folder)
-            put("metadata", buildJsonObject {
-                put("installedTimestamp", now)
-                put("source", "vsix")
-            })
+            put(
+                "metadata",
+                buildJsonObject {
+                    put("installedTimestamp", now)
+                    put("source", "vsix")
+                },
+            )
         }
-        return Json.encodeToString(JsonArray.serializer(), buildJsonArray {
-            others.forEach { add(it) }
-            add(ours)
-        })
+        return Json.encodeToString(
+            JsonArray.serializer(),
+            buildJsonArray {
+                others.forEach { add(it) }
+                add(ours)
+            },
+        )
     }
 
     /**
@@ -226,12 +254,17 @@ internal object ConfigFiles {
 
     private fun notifyHook(command: String) = buildJsonObject {
         put("matcher", "")
-        put("hooks", buildJsonArray {
-            add(buildJsonObject {
-                put("type", "command")
-                put("command", command)
-            })
-        })
+        put(
+            "hooks",
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("type", "command")
+                        put("command", command)
+                    },
+                )
+            },
+        )
     }
 
     private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
@@ -239,6 +272,10 @@ internal object ConfigFiles {
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
     const val CLAUDE_KEEP_DAYS = 3650
+    const val WINDOW_TITLE = "window.title"
+
+    /** Claude Code's switch that connects each interactive session to Remote Control as it starts. */
+    const val CLAUDE_REMOTE_CONTROL = "remoteControlAtStartup"
 
     private const val HOOKS = "hooks"
     private const val ENV = "env"
@@ -301,6 +338,19 @@ internal object ConfigFiles {
 
     private val ANTIGRAVITY_MCP_SLOTS = listOf(Slot.Members(listOf(MCP_SERVERS)))
     private val ANTIGRAVITY_CLI_SLOTS = listOf(Slot.Items(listOf("permissions", "allow")), Slot.Members(listOf(HOOKS)))
+
+    /**
+     * The agy CLI's `permissions.allow` rules PocketIDE writes on the owner's own code. Files in
+     * the workspace are already allowed; these are the commands a task needs to test and commit.
+     */
+    val AGY_ALLOW_RULES = listOf(
+        "command(git)",
+        "command(regex:(npm|pnpm|yarn) (run )?(build|lint|test)( .*)?)",
+        "command(regex:\\./gradlew( .*)?)",
+        "command(regex:python3? -m (pytest|unittest)( .*)?)",
+    )
+    private val AGY_ALLOW = AGY_ALLOW_RULES.map { Entry("permissions.allow", "", ExecutableJson.canonical(JsonPrimitive(it))) }
+
     private val ANTIGRAVITY_HOOKS_SLOTS = listOf(Slot.Members(emptyList()))
     private val CODEX_HOOKS_SLOTS = listOf(Slot.Grouped(listOf(HOOKS)), Slot.Members(emptyList(), except = setOf(HOOKS)))
 
@@ -310,13 +360,23 @@ internal object ConfigFiles {
         "DISABLE_ERROR_REPORTING" to JsonPrimitive("1"),
     )
 
+    /**
+     * Settings VS Code 1.138 rewrites at every start to its own newer form: PocketIDE writes that
+     * form and accepts the older one it used to write, so neither side rewrites the file after the other.
+     */
+    private val REWRITTEN_BY_VS_CODE: Map<String, Set<JsonElement>> = mapOf(
+        "extensions.autoUpdate" to setOf(JsonPrimitive("off"), JsonPrimitive(false)),
+        "workbench.preferredDarkColorTheme" to setOf(JsonPrimitive("Dark Modern"), JsonPrimitive("Default Dark Modern")),
+        "workbench.preferredLightColorTheme" to setOf(JsonPrimitive("Light Modern"), JsonPrimitive("Default Light Modern")),
+    )
+
     /** A phone-sized workbench: the agent's view and nothing else, no telemetry, no self-updates. */
     private val CODE_SERVER_SETTINGS: List<Pair<String, JsonElement>> = listOf(
         "workbench.startupEditor" to JsonPrimitive("none"),
         "chat.disableAIFeatures" to JsonPrimitive(true),
         "telemetry.telemetryLevel" to JsonPrimitive("off"),
         "update.mode" to JsonPrimitive("none"),
-        "extensions.autoUpdate" to JsonPrimitive(false),
+        "extensions.autoUpdate" to JsonPrimitive("off"),
         "extensions.autoCheckUpdates" to JsonPrimitive(false),
         "security.workspace.trust.enabled" to JsonPrimitive(false),
         "git.autofetch" to JsonPrimitive(false),
@@ -348,7 +408,7 @@ internal object ConfigFiles {
         "zenMode.silentNotifications" to JsonPrimitive(true),
         "workbench.tips.enabled" to JsonPrimitive(false),
         "window.autoDetectColorScheme" to JsonPrimitive(true),
-        "workbench.preferredDarkColorTheme" to JsonPrimitive("Default Dark Modern"),
-        "workbench.preferredLightColorTheme" to JsonPrimitive("Default Light Modern"),
+        "workbench.preferredDarkColorTheme" to JsonPrimitive("Dark Modern"),
+        "workbench.preferredLightColorTheme" to JsonPrimitive("Light Modern"),
     )
 }

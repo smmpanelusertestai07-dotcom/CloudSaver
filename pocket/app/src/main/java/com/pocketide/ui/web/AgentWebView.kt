@@ -129,12 +129,17 @@ class WebViewHolder internal constructor() {
         }
     }
 
-    /** The page navigates away from the app's own addresses: Chrome, a question, or nothing. */
+    /**
+     * The page navigates away from the app's own addresses: Chrome, a question, or nothing.
+     * code-server's address for a port on the phone leads nowhere (the rooms turn that route
+     * off), so Chrome gets the port itself.
+     */
     internal fun leave(url: String, userGesture: Boolean) {
-        if (callbacks.isInternal(url)) return
-        when (WebPolicy.externalOpen(url, userGesture)) {
-            ExternalOpen.OPEN -> callbacks.openExternal(url)
-            ExternalOpen.ASK -> askToOpen = url
+        val target = EngineProxy.unwrap(url)
+        if (callbacks.isInternal(target)) return
+        when (WebPolicy.externalOpen(target, userGesture)) {
+            ExternalOpen.OPEN -> callbacks.openExternal(target)
+            ExternalOpen.ASK -> askToOpen = target
             ExternalOpen.IGNORE -> Unit
         }
     }

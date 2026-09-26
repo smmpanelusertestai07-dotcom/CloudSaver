@@ -7,6 +7,7 @@ import com.pocketide.sessions.transcripts.ClaudeFormat
 import com.pocketide.sessions.transcripts.Fixtures
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -123,6 +124,20 @@ class SessionLifecycleTest {
         } catch (expected: SessionException) {
             assertEquals("Give the chat a name.", expected.message)
         }
+    }
+
+    @Test
+    fun `a chat kept in the Claude account stays marked so, and is synced once`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Login")
+        assertFalse(session.claudeAccount)
+        sessions.markInClaudeAccount(session.id)
+        sessions.markInClaudeAccount(session.id)
+
+        val again = rig.manager(scope)
+        again.refresh()
+        assertTrue(again.all.value.single().claudeAccount)
+        assertEquals(1, rig.sync.requests.count { it == "chat kept in the Claude account" })
     }
 
     @Test
@@ -310,6 +325,33 @@ class SessionLifecycleTest {
         val again = rig.manager(scope)
         again.refresh()
         assertEquals(first.id, again.activeSession("claude"))
+    }
+
+    @Test
+    fun `a fresh process reads the chats and the open ones from the disk before answering`() = runBlocking<Unit> {
+        val first = rig.manager(scope).start(PROJECT_ID, "claude", "One")
+        // A scope that never runs the start-up load, like a background job that asks first.
+        val cold = rig.manager(CoroutineScope(Job().apply { cancel() }))
+
+        assertTrue(cold.all.value.isEmpty())
+        assertEquals(listOf(first.id), cold.loaded().map { it.id })
+        assertEquals(first.id, cold.activeSession("claude"))
+    }
+
+    @Test
+    fun `after delete everything no chat is written back`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        sessions.start(PROJECT_ID, "claude", "One")
+
+        sessions.forgetEverything()
+        sessions.refresh()
+        sessions.adopt(emptyList())
+
+        assertTrue(sessions.all.value.isEmpty())
+        assertNull(sessions.activeSession("claude"))
+        val again = rig.manager(CoroutineScope(Job().apply { cancel() }))
+        assertTrue("nothing on the disk either", again.loaded().isEmpty())
+        assertNull(again.activeSession("claude"))
     }
 
     @Test

@@ -48,14 +48,20 @@ internal class Maintenance(
         pass.catchUp(run, drive, snapshot, pass.book(run))
         val book = pass.book(run)
         val extras = retention(run, index, settings, book)
-        var latest = committer.commit(run, drive, snapshot, CommitMode.HOLDER, extras)
-        phoneCopies(run, latest.index ?: index, settings, book)
-        latest = reencrypt(run, drive, latest)
-        sweep(run, drive, latest.index ?: index)
-        committer.deleteUnused(run, drive)
-        run.state = run.state.copy(lastMaintenanceAt = run.now)
+        var recorded = emptyList<String>()
+        try {
+            val latest = committer.commit(run, drive, snapshot, CommitMode.HOLDER, extras)
+            recorded = extras.sessions.map { it.id }
+            phoneCopies(run, latest.index ?: index, settings, book)
+            sweep(run, drive, reencrypt(run, drive, latest).index ?: index)
+            committer.deleteUnused(run, drive)
+            run.state = run.state.copy(lastMaintenanceAt = run.now)
+        } catch (lost: LeaseLostException) {
+            // Another phone took the lease meanwhile: this phone's next sync locks and keeps its work.
+            run.keepIndex(lost.snapshot)
+        }
         run.save()
-        return extras.sessions.map { it.id }
+        return recorded
     }
 
     /** Temp files, logs, old build outputs and idle caches; at 90 % of the phone limit, more. */
@@ -208,26 +214,39 @@ internal class Maintenance(
         var spent = 0L
         for (o in stale) {
             if (ports.network.metered() || spent >= REENCRYPT_PER_RUN) break
-            val stored = reencryptOne(run, drive, o)
             spent += o.storedBytes
+            val stored = try {
+                reencryptOne(run, drive, o)
+            } catch (_: DriveException.NotFound) {
+                // Another phone removed it meanwhile; its entry goes with that phone's write.
+                continue
+            }
             replaced += index.objects.filter { it.name == o.name }.map { it.copy(keyGeneration = current, storedBytes = stored) }
         }
         if (replaced.isEmpty()) return snapshot
+        // Written on top of the newest index: entries another phone removed meanwhile stay removed.
         return committer.commit(run, drive, snapshot, CommitMode.HOLDER, CommitExtras(replaceObjects = replaced))
     }
 
+    /** The new stored size. Throws [DriveException.NotFound] when the file left Drive meanwhile. */
     private suspend fun reencryptOne(run: Run, drive: DriveStore, o: VaultObject): Long {
+        val id = o.driveId ?: throw DriveException.NotFound()
         val scratch = kit.queue.scratch()
         try {
             val old = File(scratch, "old")
             val plain = File(scratch, "plain")
             val fresh = File(scratch, "new")
-            FileOutputStream(old).use { drive.download(o.driveId.orEmpty(), it) }
+            FileOutputStream(old).use { drive.download(id, it) }
             FileInputStream(old).use { input -> FileOutputStream(plain).use { run.cipher.decrypt(input, it) } }
             FileInputStream(plain).use { input -> FileOutputStream(fresh).use { run.cipher.encrypt(input, it) } }
             plain.delete()
-            drive.upload(o.name, fresh, o.driveId)
+            val written = drive.upload(o.name, fresh, id)
             ports.budget.record(old.length() + fresh.length(), MeteredDataBudget.KIND_REENCRYPT)
+            if (written.id != id) {
+                // Deleted while it was re-encrypted: the copy just made must not bring it back.
+                drive.delete(written.id)
+                throw DriveException.NotFound()
+            }
             return fresh.length()
         } finally {
             scratch.deleteRecursively()
@@ -236,7 +255,10 @@ internal class Maintenance(
 
     /**
      * Drive files named like ours that no index entry names (an upload whose record was lost, a
-     * failed delete) are removed after a day; the vault's own files are never touched.
+     * failed delete) are removed after a week; the vault's own files are never touched. Another
+     * phone's upload that still waits for its record looks just the same, so the grace outlasts
+     * ordinary time offline, and that phone checks an old upload is still there before recording
+     * it ([Committer.confirmUploads]).
      */
     private suspend fun sweep(run: Run, drive: DriveStore, index: VaultIndex) {
         val files = drive.list()
@@ -285,7 +307,7 @@ internal class Maintenance(
 
     companion object {
         const val TEMP_DAYS = 7
-        const val ORPHAN_GRACE_MS = Durations.DAY
+        const val ORPHAN_GRACE_MS = 7 * Durations.DAY
         const val REENCRYPT_PER_RUN = 200L * 1024 * 1024
     }
 }

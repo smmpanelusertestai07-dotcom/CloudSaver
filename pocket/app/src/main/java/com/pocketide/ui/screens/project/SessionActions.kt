@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import kotlinx.coroutines.launch
 private sealed interface PutPhase {
     data object Confirm : PutPhase
     data object Running : PutPhase
+
     /** The check-post holds GitHub Actions changes: the owner reads their diffs, then approves or not. */
     data class Approve(val holds: List<Hold>, val outcome: Outcome) : PutPhase
     data class Done(val outcome: Outcome) : PutPhase
@@ -277,7 +279,7 @@ private fun ChangesList(changes: SessionChanges, onOpen: (String) -> Unit) {
 /** Renames a session; the new title is synced with it. */
 @Composable
 fun RenameDialog(session: SessionRecord, onDone: (String) -> Unit, onDismiss: () -> Unit) {
-    var title by remember(session.id) { mutableStateOf(session.title) }
+    var title by rememberSaveable(session.id) { mutableStateOf(session.title) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rename chat") },
@@ -298,4 +300,5 @@ fun RenameDialog(session: SessionRecord, onDone: (String) -> Unit, onDismiss: ()
 
 /** The words shown before a chat moves to Recently deleted. */
 const val DELETE_CHAT_TEXT =
-    "It moves to Recently deleted. You can restore it there for 30 days; after that it is erased from your Drive for good."
+    "It moves to Recently deleted. You can restore it there for 30 days; after that it is erased from your Drive for good. " +
+        "A copy the agent's company keeps, such as in your Claude account, is deleted only there."

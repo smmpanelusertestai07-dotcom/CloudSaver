@@ -16,6 +16,8 @@ internal data class PassOptions(
     val onLargeUpload: suspend () -> Unit = {},
     /** No new upload starts after this time; the rest waits for the next run. */
     val deadline: Long = Long.MAX_VALUE,
+    /** A periodic run: it stops before the network when there is nothing to do ([SyncPass.stopIfIdle]). */
+    val quietWhenIdle: Boolean = false,
 )
 
 internal enum class PassOutcome { DONE, OFFLINE, LOCKED, WAITING, BLOCKED }
@@ -45,7 +47,10 @@ internal class SyncPass(
     suspend fun run(run: Run, opts: PassOptions): PassOutcome {
         kit.queue.recover()
         val online = ports.network.online()
-        if (online) checkKeyring()
+        if (online) {
+            checkKeyring()
+            checkAccess()
+        }
         run.account()
         val book = book(run)
         val drive = run.drive()
@@ -71,6 +76,71 @@ internal class SyncPass(
     }
 
     /**
+     * A periodic run with nothing to do ([idle]) stops here, before the keyring check and the
+     * network, so an idle phone wakes cheaply; the status says when Drive was last asked. False
+     * when there is work to do.
+     */
+    suspend fun stopIfIdle(run: Run): Boolean {
+        kit.queue.recover()
+        run.account()
+        if (!idle(run)) return false
+        kit.flows.status.value = SyncStatus.UpToDate(run.state.lastSyncAt)
+        return true
+    }
+
+    /**
+     * Nothing to send, record or bring in, and Drive was asked a short while ago: nothing is queued
+     * or waiting, no file on the phone changed size or time since it was recorded, and this phone's
+     * records, settings, Variables and Secrets are as it last sent them. After a failed run this is
+     * false until a sync succeeds, so a periodic run neither says all is well nor stops trying.
+     */
+    private suspend fun idle(run: Run): Boolean {
+        val state = run.state
+        val book = book(run)
+        val nothingWaits = run.entries().isEmpty() && state.pendingConflicts.isEmpty() && state.eraseQueue.isEmpty() &&
+            state.waiting == null && book.erasingNow().isEmpty()
+        val recentlyAsked = run.now - state.lastSyncAt < IDLE_PULL_MS && state.lastSyncAt > state.lastFailedAt
+        return nothingWaits && recentlyAsked && !recordsChanged(run) && !filesChanged(run, book) && !secretsChanged(run)
+    }
+
+    /** Sessions, projects or synced settings changed on this phone since it last sent them. */
+    private fun recordsChanged(run: Run): Boolean {
+        val state = run.state
+        return Diffs.sessions(ports.localSessions(), state.sessionMarks).isNotEmpty() ||
+            Diffs.projects(ports.localProjects(), state.projectMarks).isNotEmpty() ||
+            SyncedSettings.of(ports.settings.settings.value).json() != state.settingsPushed
+    }
+
+    /**
+     * A file that is new, changed size or time, or went missing, or one that waits for Drive's
+     * version. A file that can run code and still waits for the owner, unchanged, is no news.
+     */
+    private fun filesChanged(run: Run, book: SessionBook): Boolean {
+        val tracks = run.state.tracks
+        if (tracks.values.any { it.behindDrive }) return true
+        val found = kit.scanner.scan(book.matcher, tracks, ports::roomRunning)
+        val changed = found.any { c ->
+            val t = tracks[c.key]
+            val moved = t == null || t.size != c.facts.size || t.modifiedAt != c.facts.modifiedAt
+            book.uploadable(c.sessionId) && moved && !CodeGate.waiting(run.state.held, c)
+        }
+        val seen = found.map { it.key }.toSet()
+        return changed || tracks.any { (key, t) -> key != SECRETS_KEY && t.onPhone && key !in seen && gone(t) }
+    }
+
+    /** Not on the phone any more (a file the scan skips on purpose, like a running room's database, is still there). */
+    private fun gone(t: FileTrack): Boolean = kit.scanner.locate(t.kind, t.agentId, t.path)?.let(::factsOf) == null
+
+    private suspend fun secretsChanged(run: Run): Boolean {
+        val bytes = localSecrets() ?: return false
+        return try {
+            Codec.sha256(bytes) != knownSecrets(run, run.index, emptyList())
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    /**
      * The keyring's visibility and collaborators are checked on every sync (§5.1), before anything
      * is sealed, so a key the check replaces is not used for this pass's new pieces. Without
      * GitHub the key is kept on this phone only (the vault says so); any other failure is tried
@@ -79,6 +149,21 @@ internal class SyncPass(
     private suspend fun checkKeyring() {
         try {
             ports.checkKeyring()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // See above.
+        }
+    }
+
+    /**
+     * Every pass that goes to the network also asks whether GitHub and Drive access still stands,
+     * so a revoked account locks the app before new work starts. The answer is the lock's to
+     * show; the sync goes on either way.
+     */
+    private suspend fun checkAccess() {
+        try {
+            ports.checkAccess()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -113,10 +198,12 @@ internal class SyncPass(
     /**
      * Queues every new byte and changed file, and notes files that disappeared. Returns the
      * sessions whose databases were left for a later run because they changed within [QUIET_MS].
+     * A file that can run code is queued only as the gate allows ([CodeGate]).
      */
     fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
         val maker = run.maker()
-        val entries = run.entries().filter { !it.conflict }
+        val gate = CodeGate(run.state.held, run.state.keptCode)
+        val entries = dropStranded(run, index).filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
         val pendingBySha = entries.filter { it.blob && !it.kind.appendOnly }
             .associate { it.sha256 to SameContent(it.name, null, it.storedBytes, it.keyGeneration) }.toMutableMap()
@@ -129,7 +216,7 @@ internal class SyncPass(
         for (c in kit.scanner.scan(book.matcher, tracks, ports::roomRunning)) {
             seen += c.key
             if (!book.uploadable(c.sessionId)) continue
-            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) {
+            if (leftForLater(c, run.now)) {
                 c.sessionId?.let(deferred::add)
                 continue
             }
@@ -151,10 +238,11 @@ internal class SyncPass(
             }
             if (track != null && track.sessionId == null && c.sessionId != null) track = track.copy(sessionId = c.sessionId)
             val known = Known.of(track, waiting)
-            val result = if (c.kind.appendOnly) {
-                maker.transcript(c, known, compact = compactAllowed && known.pieces >= COMPACT_AFTER)
-            } else {
-                maker.whole(c, known) { sha -> pendingBySha[sha] ?: indexBySha[sha] }
+            val verdict = gate.judge(c, known)
+            val result = when {
+                verdict == CodeGate.Verdict.Stays -> MakeResult.Unchanged
+                c.kind.appendOnly -> maker.transcript(c, known, compact = compactAllowed && foldDue(known, c.facts.size, run.now))
+                else -> gate.check(verdict, maker.whole(c, known) { sha -> pendingBySha[sha] ?: indexBySha[sha] }, run)
             }
             val base = track ?: FileTrack(kind = c.kind, agentId = c.agentId, path = c.path, sessionId = c.sessionId)
             when (result) {
@@ -167,7 +255,7 @@ internal class SyncPass(
                 is MakeResult.Queued -> {
                     val entry = result.entry
                     if (entry.base || !entry.kind.appendOnly) {
-                        run.discard(waiting)
+                        forget(waiting + run.discard(waiting), queued, pendingBySha)
                         queued[c.key] = listOf(entry)
                     }
                     if (entry.blob && !entry.kind.appendOnly) pendingBySha[entry.sha256] = SameContent(entry.name, null, entry.storedBytes, entry.keyGeneration)
@@ -176,8 +264,40 @@ internal class SyncPass(
             }
         }
         noteMissing(run, tracks, seen, book)
-        run.state = run.state.copy(tracks = tracks)
+        run.state = run.state.copy(tracks = tracks, held = gate.held(seen))
+        CodeGate.publish(run)
         return deferred
+    }
+
+    /**
+     * A database written within [QUIET_MS] may be mid-write, so it is copied only once it has been
+     * still that long. A sync is asked for then, rather than leaving it to the hourly run.
+     */
+    private fun leftForLater(c: Candidate, now: Long): Boolean {
+        if (!TrackRules.isDatabase(c.path) || now - c.facts.modifiedAt >= QUIET_MS) return false
+        ports.scheduler.requestAfter(QUIET_MS)
+        return true
+    }
+
+    /**
+     * The queue, less entries that reuse content no queued blob and no index entry holds any more
+     * (its blob left the queue unrecorded, as when its session was erased): such an entry could
+     * never be recorded, so it goes, and its file is read and queued again.
+     */
+    private fun dropStranded(run: Run, index: VaultIndex?): List<QueueEntry> {
+        val entries = run.entries()
+        val held = entries.filter { it.blob }.map { it.name }.toSet() + index?.objects.orEmpty().map { it.name }
+        val stranded = entries.filter { !it.blob && it.driveId == null && it.name !in held }
+        run.discard(stranded)
+        return entries - stranded.toSet()
+    }
+
+    /** Entries that left the queue no longer wait, and content only they held can no longer be reused. */
+    private fun forget(gone: List<QueueEntry>, queued: MutableMap<String, List<QueueEntry>>, pendingBySha: MutableMap<String, SameContent>) {
+        val ids = gone.map { it.id }.toSet()
+        for (key in gone.map { it.trackKey }.toSet()) queued[key] = queued[key].orEmpty().filter { it.id !in ids }
+        val blobs = gone.filter { it.blob }.map { it.name }.toSet()
+        pendingBySha.values.removeAll { it.name in blobs }
     }
 
     /**
@@ -224,14 +344,17 @@ internal class SyncPass(
         val bytes = localSecrets() ?: return
         try {
             val queued = run.entries().filter { it.kind == ObjectKind.SECRETS }
-            val known = queued.maxByOrNull { it.createdAt }?.sha256
-                ?: run.state.tracks[SECRETS_KEY]?.prefixSha256
-                ?: index?.objects?.filter { it.kind == ObjectKind.SECRETS }?.maxByOrNull { it.createdAt }?.sha256
-            if (run.maker().secrets(bytes, known) != null) run.discard(queued)
+            if (run.maker().secrets(bytes, knownSecrets(run, index, queued)) != null) run.discard(queued)
         } finally {
             bytes.fill(0)
         }
     }
+
+    /** The SHA-256 of the Variables and Secrets Drive has or will have: the newest queued, recorded here, or in [index]. */
+    private fun knownSecrets(run: Run, index: VaultIndex?, queued: List<QueueEntry>): String? =
+        queued.maxByOrNull { it.createdAt }?.sha256
+            ?: run.state.tracks[SECRETS_KEY]?.prefixSha256
+            ?: index?.objects?.filter { it.kind == ObjectKind.SECRETS }?.maxByOrNull { it.createdAt }?.sha256
 
     /**
      * Brings in what another phone wrote since this phone's files last matched Drive: its changes
@@ -282,7 +405,9 @@ internal class SyncPass(
         // Queued without Drive's copy: never sent. The merged set is queued again below.
         run.discard(queued)
         if (!broughtIn) return
-        val synced = FileTrack(kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name))
+        val synced = FileTrack(
+            kind = ObjectKind.SECRETS, path = SECRETS_PATH, syncedLength = remote.length, prefixSha256 = remote.sha256, objects = listOf(remote.name),
+        )
         run.state = run.state.copy(tracks = run.state.tracks + (SECRETS_KEY to synced))
         queueSecrets(run, index)
         run.save()
@@ -357,6 +482,8 @@ internal class SyncPass(
      * (or tapped "Upload now"); the daily mobile limit and PocketIDE's Drive share are respected.
      */
     suspend fun upload(run: Run, drive: DriveStore, opts: PassOptions, book: SessionBook, onlyConflicts: Boolean): UploadReport {
+        // An upload whose file is gone meanwhile is sent again below, not recorded with a dead id.
+        committer.confirmUploads(run, drive)
         val settings = ports.settings.settings.value
         val metered = ports.network.metered()
         val limit = Limits.gb(settings.driveLimitGb)
@@ -388,8 +515,10 @@ internal class SyncPass(
     }
 
     /**
-     * One upload. It is marked as started first, so after a kill Drive is asked whether the file
-     * already arrived (names are random, so a match is ours) instead of sending it twice.
+     * One upload. It is marked as started first, with the time, so after a kill Drive is asked
+     * whether the file already arrived (names are random, so a match is ours) instead of sending
+     * it twice. Such a file is as old as that attempt, whenever it is found: another phone's sweep
+     * counts from then ([Committer.confirmUploads]).
      */
     private suspend fun uploadOne(run: Run, drive: DriveStore, e: QueueEntry) {
         if (e.attempted) {
@@ -398,11 +527,11 @@ internal class SyncPass(
                 kit.queue.update(run.cipher, e.copy(driveId = arrived.id))
                 return
             }
-        } else {
-            kit.queue.update(run.cipher, e.copy(attempted = true))
         }
+        val started = e.copy(attempted = true, uploadedAt = run.now)
+        kit.queue.update(run.cipher, started)
         val file = drive.upload(e.name, kit.queue.blobFile(e.id))
-        kit.queue.update(run.cipher, e.copy(attempted = true, driveId = file.id))
+        kit.queue.update(run.cipher, started.copy(driveId = file.id))
     }
 
     /** Another phone holds the lease: keep what this phone had as conflict copies, then stop. */
@@ -459,8 +588,28 @@ internal class SyncPass(
 
     companion object {
         const val COMPACT_AFTER = 100
+
+        /** A transcript with no new piece for this long is finished, for now: see [foldDue]. */
+        const val FOLD_QUIET_MS = Durations.DAY
+
+        /** Folding a quiet transcript may send again at most this much for each piece it removes. */
+        const val FOLD_BYTES_PER_PIECE = 1L shl 20
         const val LARGE_UPLOAD = 8L * 1024 * 1024
         const val QUIET_MS = 60_000L
         const val REMOVAL_GRACE_MS = Durations.HOUR
+
+        /** An idle phone's periodic run still asks Drive after this long, for other phones' changes. */
+        const val IDLE_PULL_MS = 6 * Durations.HOUR
+
+        /**
+         * Whether a transcript's pieces are folded into one base piece now (the caller allows it on
+         * Wi-Fi only). Every piece is an entry of the index, which each sync sends whole, so a
+         * finished chat keeps one: after [COMPACT_AFTER] pieces, or once the chat has been quiet
+         * for a day, when that sends again at most [FOLD_BYTES_PER_PIECE] per piece removed.
+         */
+        fun foldDue(known: Known, size: Long, now: Long): Boolean {
+            val quiet = now - known.lastCreatedAt >= FOLD_QUIET_MS
+            return known.pieces >= COMPACT_AFTER || (known.pieces > 1 && quiet && size <= (known.pieces - 1) * FOLD_BYTES_PER_PIECE)
+        }
     }
 }

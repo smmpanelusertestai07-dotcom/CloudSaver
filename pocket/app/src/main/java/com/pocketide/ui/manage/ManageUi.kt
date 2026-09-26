@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pocketide.core.Ist
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.nav.PocketNav
@@ -171,15 +172,15 @@ fun NavRow(icon: ImageVector, title: String, subtitle: String?, onClick: () -> U
     }
 }
 
-/** A web page that opens in Chrome, outside the app. */
+/** A web page that opens in Chrome, outside the app, unless [open] says otherwise. */
 @Composable
-fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null) {
+fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null, open: () -> Unit = { nav.openExternal(url) }) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = MinTouch)
             .clip(RoundedCornerShape(12.dp))
-            .clickable { nav.openExternal(url) }
+            .clickable(onClick = open)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -196,7 +197,16 @@ fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null) {
 @Composable
 fun AsOfLine(at: Long?, loading: Boolean, onRefresh: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Hint(if (at != null) "As of ${Ist.dateTime(at)}" else if (loading) "Checking…" else "Not checked yet", Modifier.weight(1f))
+        Hint(
+            if (at != null) {
+                "As of ${Ist.dateTime(at)}"
+            } else if (loading) {
+                "Checking…"
+            } else {
+                "Not checked yet"
+            },
+            Modifier.weight(1f),
+        )
         if (loading) {
             CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
         } else {
@@ -264,7 +274,7 @@ fun ConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DialogBody {
                 Text(text, style = MaterialTheme.typography.bodyMedium)
                 extra?.invoke()
             }
@@ -276,7 +286,11 @@ fun ConfirmDialog(
                     onConfirm()
                 },
                 enabled = confirmEnabled,
-                colors = if (destructive) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors(),
+                colors = if (destructive) {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                } else {
+                    ButtonDefaults.textButtonColors()
+                },
             ) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

@@ -24,6 +24,8 @@ internal data class Endpoint(val host: String, val purpose: String) {
 internal object NeededHosts {
     val all = listOf(
         Endpoint("github.com", "GitHub: your code"),
+        // github.com answers a release download with a redirect to here, which the check does not follow.
+        Endpoint(GITHUB_DOWNLOADS, "GitHub downloads (the computer's editor)"),
         Endpoint("api.github.com", "GitHub: projects, builds and sign-in"),
         Endpoint("oauth2.googleapis.com", "Google sign-in"),
         Endpoint("www.googleapis.com", "Google Drive: your AI data"),
@@ -39,6 +41,8 @@ internal object NeededHosts {
         Endpoint("registry.npmjs.org", "npm packages"),
         Endpoint("cdn.playwright.dev", "The agents' browser"),
     )
+
+    const val GITHUB_DOWNLOADS = "release-assets.githubusercontent.com"
 
     /** Looked up from inside Linux: Ubuntu's own archive, which every apt run needs. */
     const val LINUX_LOOKUP = "ports.ubuntu.com"

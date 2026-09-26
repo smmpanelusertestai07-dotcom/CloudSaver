@@ -15,6 +15,12 @@ data class ScheduledTask(
     val lastRunAt: Long? = null,
     val lastSessionId: String? = null,
     val enabled: Boolean = true,
+    /**
+     * The session of a run that has started and not yet ended. Still set when a run starts
+     * again, the run before was cut off with no chance to say so.
+     */
+    val runningSessionId: String? = null,
+    val runningSince: Long? = null,
 )
 
 /**
@@ -26,4 +32,10 @@ interface Schedules {
     suspend fun save(task: ScheduledTask)
     suspend fun remove(id: String)
     suspend fun runNow(id: String): String?
+
+    /**
+     * "Delete everything" removed the tasks' file: no task runs again, and a task saved afterwards
+     * starts a new list, so the old ones are never written back.
+     */
+    suspend fun forgetEverything() = Unit
 }

@@ -3,16 +3,21 @@ package com.pocketide.ui.screens.onboarding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.github.GitHubAccount
 import com.pocketide.github.gitHubAppChoice
+import com.pocketide.ui.components.Tone
 import com.pocketide.ui.shell.CheckCard
 import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.DeviceSignIn
@@ -34,8 +39,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Step 1: GitHub through the PocketIDE GitHub App's device flow. After sign-in the GitHub module
- * creates the private `pocketide-keyring` repository in the background.
+ * Step 1: GitHub through the PocketIDE GitHub App's device flow, and the App installed on the
+ * account. The private `pocketide-keyring` repository is made in the next step, with the key.
  */
 @Composable
 fun GitHubStepScreen(onDone: () -> Unit) {
@@ -96,16 +101,15 @@ fun GitHubStepScreen(onDone: () -> Unit) {
                 GitHubAccountCard(shown)
                 Gap(12.dp)
                 NoticeCard(
-                    "A private repository named pocketide-keyring is being made in your account. " +
+                    "A private repository named pocketide-keyring will be made in your account in the next step. " +
                         "It holds one half of your chats' key, never your code, and GitHub Actions stay off there.",
                 )
                 Gap(12.dp)
-                SecondaryAction(
-                    "Choose which repositories PocketIDE may use",
-                    onClick = { External.openUrl(context, auth.installUrl()) },
+                AppInstallActions(
+                    login = shown.login,
+                    openInstallPage = { External.openUrl(context, auth.installUrl()) },
+                    onDone = onDone,
                 )
-                Gap(12.dp)
-                PrimaryAction("Continue", onClick = onDone)
                 QuietAction(
                     "Use another GitHub account",
                     onClick = {
@@ -142,6 +146,46 @@ fun GitHubStepScreen(onDone: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Signing in does not install PocketIDE's GitHub App, and the next step needs it to make the
+ * keyring. While it is missing, installing it is the way on; the answer is asked again each time
+ * the owner comes back from GitHub.
+ */
+@Composable
+private fun AppInstallActions(login: String, openInstallPage: () -> Unit, onDone: () -> Unit) {
+    val graph = rememberGraph()
+    var install by remember(login) { mutableStateOf(AppInstall.CHECKING) }
+    var asked by remember(login) { mutableIntStateOf(0) }
+    LaunchedEffect(login, asked) { install = appInstall(graph.gitHub, login) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (install.askAgainOnReturn && install != AppInstall.CHECKING) asked++ }
+
+    when (install) {
+        AppInstall.MISSING -> {
+            NoticeCard(
+                "PocketIDE is not installed on your GitHub account yet. Install it, choosing all repositories " +
+                    "or only the ones PocketIDE may use, then come back here.",
+                Tone.WARN,
+            )
+            Gap(12.dp)
+            PrimaryAction("Install PocketIDE on your GitHub", onClick = openInstallPage)
+            Gap(12.dp)
+            SecondaryAction("Continue", onClick = onDone, enabled = false)
+        }
+        AppInstall.UNKNOWN -> {
+            NoticeCard("Could not check that PocketIDE is installed on your GitHub. The next step tells you if it is not.")
+            Gap(12.dp)
+            SecondaryAction("Check again", onClick = { asked++ })
+            Gap(12.dp)
+            PrimaryAction("Continue", onClick = onDone)
+        }
+        AppInstall.CHECKING, AppInstall.INSTALLED -> {
+            SecondaryAction("Choose which repositories PocketIDE may use", onClick = openInstallPage)
+            Gap(12.dp)
+            PrimaryAction("Continue", onClick = onDone, enabled = install.canContinue, busy = install == AppInstall.CHECKING)
         }
     }
 }

@@ -13,6 +13,7 @@ import java.security.MessageDigest
  * |----------------------------------------|------------------------------|--------------------|
  * | rootfs/                                | /                            | every room         |
  * | rooms/<agent>/home/                    | /root                        | that room only     |
+ * | rooms/<agent>/users/                   | /home                        | that room only     |
  * | rooms/<agent>/tmp/                     | /tmp                         | that room only     |
  * | bridge/<agent>/ ([bridgeDirName])      | /run/pocketide               | that room only     |
  * | repos/<project>.git (bare clones)      | /repos/<project>.git         | every room         |
@@ -46,6 +47,14 @@ class AppDirs(val base: File, val cacheBase: File) {
     val logs = File(base, "logs")
 
     fun roomHome(agentId: String) = File(rooms, "$agentId/home")
+
+    /**
+     * The room's own /home, empty until the room writes there. Some programs read fixed paths
+     * under /home whatever HOME says (Claude's CLI takes its sign-in from
+     * /home/claude/.claude/remote/), so the computer's shared /home would let one room plant a
+     * sign-in that another room then uses.
+     */
+    fun roomUserHomes(agentId: String) = File(rooms, "$agentId/users")
     fun roomTmp(agentId: String) = File(rooms, "$agentId/tmp")
     fun roomBridge(agentId: String) = File(bridge, bridgeDirName(agentId))
     fun roomWork(agentId: String) = File(work, agentId)
@@ -57,6 +66,7 @@ class AppDirs(val base: File, val cacheBase: File) {
 
     companion object {
         const val GUEST_HOME = "/root"
+        const val GUEST_USER_HOMES = "/home"
         const val GUEST_BRIDGE = "/run/pocketide"
         const val GUEST_REPOS = "/repos"
         const val GUEST_WORK = "/work"

@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from tests.support import GOOD_LIB, PAGE, PF_R, PF_W, PF_X, PT_GNU_RELRO, PT_LOAD, REPO, TreeTest, elf
+from tests.support import GOOD_LIB, PAGE, PF_R, PF_W, PF_X, PT_GNU_RELRO, PT_LOAD, REPO, TEMPLATE, TreeTest, elf
 
 import brand_tokens
 import least_privilege
@@ -148,6 +148,46 @@ class TemplatesGate(TreeTest):
         self.edit(self.NAME, "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", "actions/checkout@v7")
         self.assertFailsWith(templates.check(self.root), "pinned to 'v7'")
 
+    def test_secrets_in_the_job_that_runs_the_repositorys_code_fail(self):
+        # The old release template: gradlew first, then a signing step in the same job.
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n"
+                  "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
+        self.assertFailsWith(templates.check(self.root), "job build reads Secrets and checks out the repository")
+
+    def test_secrets_in_a_job_of_their_own_pass(self):
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n"
+                  "  sign:\n    needs: build\n    runs-on: ubuntu-latest\n    steps:\n"
+                  "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
+        self.assertPasses(templates.check(self.root))
+
+    def test_secrets_given_to_the_whole_workflow_fail(self):
+        # The workflow-level env reaches every job, the one that runs the repository's build too.
+        self.edit(self.NAME, "jobs:\n", "env:\n  KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\njobs:\n")
+        self.assertFailsWith(templates.check(self.root), "the workflow-level 'env' uses Secrets")
+
+    def test_every_form_of_the_secrets_context_counts(self):
+        build = "      - run: ./gradlew assembleRelease\n"
+        for expression in ("${{ toJSON(secrets) }}", "${{ secrets['ANDROID_KEY_PASSWORD'] }}", "${{ fromJSON(toJSON(secrets)).KEY }}"):
+            with self.subTest(expression=expression):
+                self.write(self.NAME, TEMPLATE.replace(build, build + f'      - run: echo "{expression}"\n'))
+                self.assertFailsWith(templates.check(self.root), "job build reads Secrets and checks out the repository")
+
+    def test_secrets_passed_to_another_workflow_fail(self):
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n"
+                  "  release:\n    uses: ./.github/workflows/release.yml\n    secrets: inherit\n")
+        self.assertFailsWith(templates.check(self.root), "job release passes Secrets to another workflow")
+
+    def test_the_word_secrets_outside_an_expression_reads_nothing(self):
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n      - run: cat docs/secrets.md\n")
+        self.assertPasses(templates.check(self.root))
+
+    def test_the_real_templates_pass(self):
+        self.assertPasses(templates.check())
+
     def test_no_templates_fails_with_the_reason(self):
         (self.root / self.NAME).unlink()
         self.assertFailsWith(templates.check(self.root), "builds module ships them")
@@ -175,13 +215,35 @@ class VersionGate(TreeTest):
         self.assertPasses(version.check(self.root))
         self.assertEqual("3.0.0", version.version_name(self.root))
 
-    def test_old_version_code_fails(self):
-        self.edit("app/build.gradle.kts", "versionCode = 300", "versionCode = 260")
-        self.assertFailsWith(version.check(self.root), "below 300")
+    def test_the_real_build_file_passes(self):
+        self.assertPasses(version.check())
 
-    def test_wrong_version_name_fails(self):
-        self.edit("app/build.gradle.kts", '"3.0.0"', '"2.7.0"')
-        self.assertFailsWith(version.check(self.root), "not 3.<minor>.<patch>")
+    def test_the_code_follows_the_version(self):
+        self.edit("app/build.gradle.kts", '"3.0.0"', '"3.12.4"')
+        report = version.check(self.root)
+        self.assertPasses(report)
+        self.assertIn("versionName 3.12.4, versionCode 31204", report.notes)
+
+    def test_a_raised_version_with_its_own_unchanged_code_fails(self):
+        # What the release job's own notice asks for: raise the version, and nothing else.
+        self.edit("app/build.gradle.kts", '"3.0.0"', '"3.0.1"')
+        self.edit("app/build.gradle.kts", "versionCode = versionCodeOf(appVersion)", "versionCode = 300")
+        self.assertFailsWith(version.check(self.root), "versionCode must be set once as versionCodeOf(appVersion)")
+
+    def test_a_changed_formula_fails(self):
+        self.edit("app/build.gradle.kts", "major * 10000 + minor * 100 + patch", "300")
+        self.assertFailsWith(version.check(self.root), "versionCode must be set once")
+
+    def test_a_version_name_of_its_own_fails(self):
+        self.edit("app/build.gradle.kts", "versionName = appVersion", 'versionName = "3.0.1"')
+        self.assertFailsWith(version.check(self.root), "versionName must be set once as appVersion")
+
+    def test_wrong_version_fails(self):
+        for wrong in ("2.7.0", "3.100.0", "3.0", "3.0.0-beta"):
+            with self.subTest(version=wrong):
+                self.setUp()
+                self.edit("app/build.gradle.kts", '"3.0.0"', f'"{wrong}"')
+                self.assertFailsWith(version.check(self.root), "not 3.<minor>.<patch>")
 
 
 class ManifestGate(TreeTest):
@@ -291,6 +353,34 @@ class LeastPrivilegeGate(unittest.TestCase):
         self.assertTrue(self.scan('post("repos/$o/$n/transfer", body)'))
         self.assertTrue(self.scan('val q = "mutation { deleteRepository(input: {repositoryId: $id}) { clientMutationId } }"'))
 
+    # The app's own idiom: rest.send(Verb.X, repoUrl(owner, name, ...segments)).
+    def test_the_apps_own_idiom_for_a_delete_a_visibility_change_and_a_transfer_fails(self):
+        cases = {
+            "rest.send(Verb.DELETE, repoUrl(owner, name))": "never deletes a repository",
+            'rest.send(Verb.PATCH, repoUrl(owner, name), buildJsonObject { put("private", false) })': "visibility",
+            'rest.send(Verb.POST, repoUrl(owner, name, "transfer"), body)': "transfers a repository",
+            'rest.send(Verb.DELETE, rest.url("repos", owner, name))': "never deletes a repository",
+            'rest.send(\n    Verb.DELETE,\n    repoUrl(owner, name),\n)': "never deletes a repository",
+        }
+        for code, why in cases.items():
+            with self.subTest(code=code):
+                self.assertTrue(any(why in p for p in self.scan(code)), self.scan(code))
+
+    def test_the_apps_own_idiom_inside_a_repository_passes(self):
+        code = ('suspend fun forget(owner: String, name: String, secret: String) =\n'
+                '    rest.send(Verb.DELETE, repoUrl(owner, name, "actions", "secrets", secret))\n'
+                'suspend fun info(owner: String, name: String) = rest.getOrNull(repoUrl(owner, name))\n'
+                'suspend fun rename(o: String, n: String) =\n'
+                '    rest.send(Verb.PATCH, repoUrl(o, n), buildJsonObject { put("description", "x") })\n')
+        self.assertEqual([], self.scan(code))
+
+    def test_a_delete_or_patch_verb_in_the_client_fails(self):
+        for verbs in ("GET, POST, PUT, DELETE", "GET, POST, PATCH, PUT", "GET,\n    DELETE,\n"):
+            with self.subTest(verbs=verbs):
+                problems = self.scan(f"internal enum class Verb {{ {verbs} }}")
+                self.assertTrue(any("gained" in p for p in problems), problems)
+        self.assertEqual([], self.scan("internal enum class Verb { GET, POST, PUT }"))
+
     def test_comments_and_reviewed_exceptions_are_skipped(self):
         line = 'call(Request.Builder().url("$API/repos/$o/$n").delete().build())'
         self.assertEqual([], self.scan("// " + line))
@@ -326,6 +416,10 @@ class WorkflowGate(unittest.TestCase):
     def test_broad_permissions_fail(self):
         text = self.TEXT.replace("permissions:\n  contents: read\n", "permissions: write-all\n", 1)
         self.assertTrue(any("exactly 'contents: read'" in p for p in self.problems(text)))
+
+    def test_a_release_build_that_does_not_say_where_it_publishes_fails(self):
+        text = self.TEXT.replace('"-PPOCKETIDE_RELEASES_REPO=$GITHUB_REPOSITORY"', "", 1)
+        self.assertTrue(any("POCKETIDE_RELEASES_REPO" in p for p in self.problems(text)))
 
     def test_event_text_in_a_script_fails(self):
         text = self.TEXT.replace('[ -n "$message" ] || message=', 'echo "${{ github.event.head_commit.message }}"\n          [ -n "$message" ] || message=', 1)

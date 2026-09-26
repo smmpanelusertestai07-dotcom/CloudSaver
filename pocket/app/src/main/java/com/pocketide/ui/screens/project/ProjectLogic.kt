@@ -7,10 +7,14 @@ import com.pocketide.github.WorkflowRun
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
+import com.pocketide.projects.Projects
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
 import com.pocketide.sessions.SessionChanges
+import com.pocketide.sync.DataBudget
+import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.attempt
 import com.pocketide.usage.BuildEstimate
 import java.time.Instant
 import java.util.Locale
@@ -75,6 +79,16 @@ const val UNTRUSTED_REPO =
 fun trustText(trust: ProjectTrust): Pair<String, Tone> = when (trust) {
     ProjectTrust.YOURS -> "Your code" to Tone.OK
     ProjectTrust.SOMEONE_ELSES -> "Someone else's code" to Tone.WARN
+}
+
+/**
+ * One try at cloning [projectId]. A mobile-data yes given for it ([granted]: the kind the owner
+ * allowed) covers this try alone and ends with it, done, failed or cancelled, so a later clone asks again.
+ */
+suspend fun cloneOnce(projects: Projects, budget: DataBudget, projectId: String, granted: String?): Result<Unit> = try {
+    attempt { projects.ensureCloned(projectId) }
+} finally {
+    granted?.let(budget::endOnce)
 }
 
 /** A room's idle sleep is worth a chip only when it is close. */
@@ -173,10 +187,33 @@ fun defaultSession(sessions: List<SessionRecord>): SessionRecord? {
 fun sessionForBranch(sessions: List<SessionRecord>, branch: String): SessionRecord? =
     sessions.filter { it.branch == branch && it.status != SessionStatus.DELETED }.maxByOrNull { it.lastActivityAt }
 
+/**
+ * The chip for a session's videos held back for Wi-Fi. The count comes from the sync engine's
+ * [backup] of that session, the only place that knows it (the session record never counts them).
+ */
+fun waitingVideosChip(backup: SessionBackup?): String? = waitingVideosText(backup?.videosWaitingForWifi ?: 0)
+
 fun waitingVideosText(count: Int): String? = when {
     count <= 0 -> null
     count == 1 -> "1 video waiting for Wi-Fi"
     else -> "$count videos waiting for Wi-Fi"
+}
+
+/**
+ * Only an open session goes on main. A conflict copy is read or continued; its work reaches main
+ * through the original chat, so its menus do not offer what could only fail.
+ */
+fun canPutOnMain(status: SessionStatus): Boolean = status == SessionStatus.OPEN
+
+/** Said on a conflict copy: which chat goes on main instead. Null for any other session. */
+fun conflictCopyNote(session: SessionRecord, all: List<SessionRecord>): String? {
+    if (session.status != SessionStatus.CONFLICT_COPY) return null
+    val original = all.firstOrNull { it.id == session.conflictOf }
+    return if (original != null) {
+        "Conflict copy of \"${original.title}\": put the original on main."
+    } else {
+        "Conflict copy: put the original chat on main."
+    }
 }
 
 fun sessionStatusLabel(status: SessionStatus, running: Boolean): Pair<String, Tone> = when (status) {
@@ -244,9 +281,35 @@ fun stepMark(step: JobStep): String = when {
     else -> "·"
 }
 
-/** The list keeps checking while a run is unfinished, or while the run started here is not listed yet. */
+/**
+ * The list keeps checking while a run other than [followed] is unfinished. The run started here is
+ * followed by its id instead (listed or not: 20 newer runs may have pushed it off the list).
+ */
 fun needsPolling(runs: List<WorkflowRun>, followed: Long?): Boolean =
-    runs.any { it.status != "completed" } || (followed != null && runs.none { it.id == followed })
+    runs.any { it.status != "completed" && it.id != followed }
+
+/** [runs] with [run] in place of its older entry, or first when the list does not have it. */
+fun withRun(runs: List<WorkflowRun>, run: WorkflowRun): List<WorkflowRun> =
+    if (runs.any { it.id == run.id }) runs.map { if (it.id == run.id) run else it } else listOf(run) + runs
+
+/** [after], a refresh that looked up no runners, with the runner each run had in [before]. */
+fun keepRunners(before: List<WorkflowRun>?, after: List<WorkflowRun>): List<WorkflowRun> {
+    val known = before.orEmpty().associate { it.id to it.runnerImage }
+    return after.map { run -> if (run.runnerImage == null) run.copy(runnerImage = known[run.id]) else run }
+}
+
+/** How long to wait before the next look at a build: longer while GitHub's answer stays the same. */
+fun pollDelayMs(unchanged: Int): Long = when {
+    unchanged < SLOWER_AFTER -> POLL_MS
+    unchanged < SLOWEST_AFTER -> SLOWER_POLL_MS
+    else -> SLOWEST_POLL_MS
+}
+
+private const val POLL_MS = 15_000L
+private const val SLOWER_POLL_MS = 30_000L
+private const val SLOWEST_POLL_MS = 60_000L
+private const val SLOWER_AFTER = 2
+private const val SLOWEST_AFTER = 4
 
 /** The run this phone started, listed first; the others keep GitHub's order (newest first). */
 fun followedFirst(runs: List<WorkflowRun>, followed: Long?): List<WorkflowRun> {
@@ -267,8 +330,10 @@ sealed interface RoomView {
     data class Opening(val step: String?) : RoomView
     data class Ready(val url: String) : RoomView
     data class Failed(val why: String) : RoomView
+
     /** The agent's room is open on a different session now. */
     data object Elsewhere : RoomView
+
     /** The room stopped after it had opened (idle close, the limiter, or Stop). */
     data object Stopped : RoomView
 }

@@ -3,15 +3,17 @@ package com.pocketide.rooms
 import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.Bind
+import com.pocketide.linux.ProotCommand
 import java.io.File
 
 /**
- * What a room sees and what its programs are told, in one place. A room binds its own home,
- * temporary folder, bridge folder and worktrees, plus the shared bare repositories; nothing of
- * any other room is ever bound, so from inside a room the others do not exist.
+ * What a room sees and what its programs are told, in one place. A room binds its own home, its
+ * own /home, temporary folder, shared-memory folder, bridge folder and worktrees, plus the shared
+ * bare repositories; nothing of any other room is ever bound, so from inside a room the others do not exist.
  */
 internal object RoomLayout {
     const val GUEST_TMP = "/tmp"
+    const val GUEST_SHM = ProotCommand.GUEST_SHM
     const val TOOLS = AppDirs.GUEST_TOOLS
     /** First on every room's PATH (ProotCommand), so the phone's xdg-open wins over any other. */
     const val TOOLS_BIN = PhoneGuestTools.BIN_DIR
@@ -26,7 +28,9 @@ internal object RoomLayout {
     /** The room's folders, host side, created when missing. */
     fun hostFolders(dirs: AppDirs, agentId: String): List<File> = listOf(
         dirs.roomHome(agentId),
+        dirs.roomUserHomes(agentId),
         dirs.roomTmp(agentId),
+        shm(dirs, agentId),
         dirs.roomBridge(agentId),
         dirs.repos,
         dirs.roomWork(agentId),
@@ -34,11 +38,20 @@ internal object RoomLayout {
 
     fun binds(dirs: AppDirs, agentId: String): List<Bind> = listOf(
         Bind(dirs.roomHome(agentId).absolutePath, AppDirs.GUEST_HOME),
+        Bind(dirs.roomUserHomes(agentId).absolutePath, AppDirs.GUEST_USER_HOMES),
         Bind(dirs.roomTmp(agentId).absolutePath, GUEST_TMP),
+        Bind(shm(dirs, agentId).absolutePath, GUEST_SHM),
         Bind(dirs.roomBridge(agentId).absolutePath, AppDirs.GUEST_BRIDGE),
         Bind(dirs.repos.absolutePath, AppDirs.GUEST_REPOS),
         Bind(dirs.roomWork(agentId).absolutePath, AppDirs.GUEST_WORK),
     )
+
+    /**
+     * The room's own /dev/shm. Android has none, and glibc keeps POSIX semaphores and shared
+     * memory there, so without it Python's multiprocessing and every parallel test runner fail.
+     * Per room, beside its temporary folder, so rooms still share no files.
+     */
+    fun shm(dirs: AppDirs, agentId: String): File = File(dirs.roomTmp(agentId).parentFile, "shm")
 
     /**
      * Where [guestPath] lives on the host, for the room's own writable places (home, temporary

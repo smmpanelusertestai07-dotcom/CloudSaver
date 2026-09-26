@@ -9,9 +9,12 @@ import java.io.OutputStream
 
 sealed interface DriveAuthResult {
     data class Authorized(val email: String?) : DriveAuthResult
+
     /** The owner must approve in Google's own sheet; launch [intent] and call [DriveAuth.completeConsent]. */
     data class NeedsConsent(val intent: PendingIntent) : DriveAuthResult
-    data class Failed(val why: String) : DriveAuthResult
+
+    /** [unknownBuild]: Google does not know this build, and Help's Google Cloud set-up has the fix. */
+    data class Failed(val why: String, val unknownBuild: Boolean = false) : DriveAuthResult
 }
 
 /**
@@ -74,11 +77,13 @@ sealed class DriveException(message: String) : Exception(message) {
 interface DriveStore {
     suspend fun list(): List<DriveFile>
     suspend fun find(name: String): DriveFile?
+
     /** Creates, or replaces the content of [existingId]. Resumable for large files. */
     suspend fun upload(name: String, source: File, existingId: String? = null): DriveFile
     suspend fun uploadBytes(name: String, bytes: ByteArray, existingId: String? = null): DriveFile
     suspend fun download(id: String, sink: OutputStream)
     suspend fun open(id: String): InputStream
+
     /** Permanent delete (not Drive's Trash). */
     suspend fun delete(id: String)
 
@@ -87,8 +92,27 @@ interface DriveStore {
      * a file for about 30 days; this is for files whose old content must not stay, like a key half.
      */
     suspend fun deleteOldRevisions(id: String) = Unit
+
+    /**
+     * The stored versions (revisions) of this store's files, so a writer can tell afterwards which
+     * version its write replaced; null from a store that cannot read them.
+     */
+    val revisions: DriveRevisions? get() = null
+
     suspend fun quota(): DriveQuota
 
     /** The same store, acting as another authorized account (used only by the move). */
     fun withAccount(email: String): DriveStore
+}
+
+/** One stored version of a file's content (a Drive revision) and its MD5. */
+data class DriveRevision(val id: String, val md5: String?)
+
+/** Reads the stored versions of a file's content (see [DriveStore.revisions]). */
+interface DriveRevisions {
+    /** The stored versions of [id]'s content, oldest first, as Drive lists them. */
+    suspend fun revisionsOf(id: String): List<DriveRevision>
+
+    /** Downloads one stored version of [id]'s content. */
+    suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream)
 }

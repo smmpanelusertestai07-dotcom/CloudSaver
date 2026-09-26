@@ -12,6 +12,7 @@ import com.pocketide.builds.BuildNotices
 import com.pocketide.core.Clock
 import com.pocketide.linux.ComputerState
 import com.pocketide.model.SessionRecord
+import com.pocketide.projects.ProjectTrust
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,10 +45,19 @@ fun createSchedules(graph: AppGraph): Schedules {
 private class GraphRunPorts(private val graph: AppGraph, private val schedules: () -> TaskSchedules) : RunPorts {
     override val clock: Clock get() = graph.clock
 
+    override val lock = LockCheck {
+        graph.access.check()
+        graph.access.state.value.lock
+    }
+
     override suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord =
         graph.sessions.start(projectId, agentId, title)
 
-    override fun session(sessionId: String): SessionRecord? = graph.sessions.all.value.firstOrNull { it.id == sessionId }
+    override suspend fun session(sessionId: String): SessionRecord? {
+        // A task waiting for charging and Wi-Fi often starts a fresh process: the lists are read first.
+        graph.projects.loaded()
+        return graph.sessions.loaded().firstOrNull { it.id == sessionId }
+    }
 
     override suspend fun runInRoom(
         agentId: String,
@@ -58,7 +68,8 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
         onLine: (String) -> Unit,
     ): Int {
         val state = graph.computer.state.value
-        if (state !is ComputerState.Ready && state !is ComputerState.Updating) throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")
+        val ready = state is ComputerState.Ready || state is ComputerState.Updating
+        if (!ready) throw ScheduleException("The computer is not ready. Open PocketIDE to finish setting it up.")
         return try {
             graph.rooms.runHeadless(agentId, projectId, argv, workDir, programEnv, onLine)
         } catch (failed: IllegalStateException) {
@@ -69,6 +80,9 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
             throw ScheduleException("The agent's room could not be prepared: ${failed.message ?: CANNOT_RUN}")
         }
     }
+
+    // A task waiting for charging and Wi-Fi often starts a fresh process, where the list is not read yet.
+    override suspend fun someoneElses(projectId: String): Boolean = graph.projects.loadedTrustOf(projectId) == ProjectTrust.SOMEONE_ELSES
 
     override fun heavyWorkRefusal(): String? = graph.limiter.canStartHeavyWork("A scheduled task").let { if (it.allowed) null else it.reason }
 
@@ -91,9 +105,10 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override fun scratchFile(): File = File(graph.dirs.downloads, "task-${UUID.randomUUID()}.txt")
 
     override fun notify(taskId: String, heading: String, text: String) =
-        BuildNotices.notify(graph.context, taskId.hashCode(), heading, text)
+        BuildNotices.taskEnded(graph.context, taskId, heading, text)
 
-    override suspend fun recordRun(taskId: String, at: Long, sessionId: String) = schedules().recordRun(taskId, at, sessionId)
+    override suspend fun recordRun(taskId: String, at: Long, sessionId: String, ended: Boolean) =
+        schedules().recordRun(taskId, at, sessionId, ended)
 
     private companion object {
         const val CANNOT_RUN = "The agent's room could not run the task."

@@ -61,6 +61,12 @@ internal interface RoomsEnv {
 
     /** Minutes without work after which a room sleeps; 0 or less keeps rooms awake. */
     fun idleSleepMinutes(): Int
+
+    /** Claude's sessions are also kept in the owner's Claude account (Remote Control at their start). */
+    fun claudeChatsInAccount(): Boolean = true
+
+    /** [sessionId] ran in a Claude room started with Remote Control: its chat is in the Claude account. */
+    suspend fun keptInClaudeAccount(sessionId: String) = Unit
     fun canStartHeavyWork(what: String): Decision
     fun allowDownload(bytes: Long, kind: String): Decision
     fun recordDownload(bytes: Long, kind: String)

@@ -63,9 +63,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,22 +91,30 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.core.Ist
+import com.pocketide.docs.FixLadder
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.projects.ProjectTrust
+import com.pocketide.rooms.RemoteControl
+import com.pocketide.rooms.RemoteControlState
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.NeedsMobileData
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.components.toneColor
+import com.pocketide.ui.manage.ChatPlaceDialog
+import com.pocketide.ui.manage.ChatPlaces
+import com.pocketide.ui.manage.openChatPage
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.onboarding.SetUpOffer
 import com.pocketide.ui.web.AgentWebView
 import com.pocketide.ui.web.WebPrefs
 import com.pocketide.ui.web.nextZoom
-import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberTerminalState
+import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberWebViewHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -141,14 +149,18 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     val selected = sessions.firstOrNull { it.id == chosenId } ?: defaultSession(sessions)
     var cloneProblem by remember(projectId) { mutableStateOf<String?>(null) }
     var cloneTries by remember(projectId) { mutableIntStateOf(0) }
-    var creating by remember { mutableStateOf(false) }
+    // The kind the owner allowed on mobile data for the next try alone.
+    var cloneGrant by remember(projectId) { mutableStateOf<String?>(null) }
+    var creating by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
     var askMobileData by remember(projectId) { mutableStateOf<NeedsMobileData?>(null) }
 
     LaunchedEffect(projectId, cloneTries) {
         cloneProblem = null
-        attempt { graph.projects.ensureCloned(projectId) }.onFailure {
+        val granted = cloneGrant
+        cloneGrant = null
+        cloneOnce(graph.projects, graph.dataBudget, projectId, granted).onFailure {
             cloneProblem = plainReason(it)
             if (it is NeedsMobileData) askMobileData = it
         }
@@ -163,6 +175,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                     onClick = {
                         askMobileData = null
                         graph.dataBudget.allowOnce(ask.kind, ask.bytes)
+                        cloneGrant = ask.kind
                         cloneTries++
                     },
                 ) { Text("Use mobile data") }
@@ -254,7 +267,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                     } else {
                         when (tab) {
                             ProjectTab.PREVIEW -> PreviewPanel(selected.id, preview, nav, snackbar)
-                            ProjectTab.MEDIA -> MediaPanel(selected.id, selected.pendingVideos, snackbar)
+                            ProjectTab.MEDIA -> MediaPanel(selected.id, snackbar)
                             ProjectTab.TERMINAL -> TerminalPanel(selected.id, terminal, nav, snackbar)
                             else -> Unit
                         }
@@ -392,6 +405,7 @@ private fun SessionsTab(
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     var putting by remember { mutableStateOf<SessionRecord?>(null) }
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
     var browsing by remember { mutableStateOf<SessionRecord?>(null) }
@@ -417,7 +431,11 @@ private fun SessionsTab(
                         AgentMark(agent, agentId, size = 28.dp)
                         Spacer(Modifier.width(10.dp))
                         Text(agentName(agent, agentId), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Text(WorkFormat.count(list.size, "session", "sessions"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            WorkFormat.count(list.size, "session", "sessions"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 items(list, key = { it.id }) { session ->
@@ -425,6 +443,7 @@ private fun SessionsTab(
                     SessionCard(
                         session = session,
                         running = room is RoomState.Running && room.sessionId == session.id,
+                        waitingVideos = waitingVideosChip(backups[session.id]),
                         onOpen = { nav.agent(session.id) },
                         onPin = {
                             val pinned = SessionShortcut.pin(context, session, agentName(agent, agentId))
@@ -434,6 +453,9 @@ private fun SessionsTab(
                         onFiles = { browsing = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
+                        accountLine = ChatPlaces.sessionLine(session),
+                        onOpenAccount = { ChatPlaces.forSession(session)?.let { openChatPage(context, nav, it) } },
+                        note = conflictCopyNote(session, sessions),
                     )
                 }
             }
@@ -459,12 +481,16 @@ private fun SessionsTab(
 private fun SessionCard(
     session: SessionRecord,
     running: Boolean,
+    waitingVideos: String?,
     onOpen: () -> Unit,
     onPin: () -> Unit,
     onChanges: () -> Unit,
     onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onDelete: () -> Unit,
+    accountLine: String?,
+    onOpenAccount: () -> Unit,
+    note: String?,
 ) {
     var menu by remember { mutableStateOf(false) }
     val (label, tone) = sessionStatusLabel(session.status, running)
@@ -489,8 +515,16 @@ private fun SessionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(session.branch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                waitingVideosText(session.pendingVideos)?.let { StatusChip(it, Tone.WARN) }
+                Text(
+                    session.branch,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN)) }
+                waitingVideos?.let { StatusChip(it, Tone.WARN) }
+                accountLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session actions") }
@@ -499,8 +533,13 @@ private fun SessionCard(
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
-                        DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        if (canPutOnMain(session.status)) {
+                            DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        }
                         DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
+                    }
+                    if (accountLine != null) {
+                        DropdownMenuItem(text = { Text("Open in your Claude account") }, onClick = { menu = false; onOpenAccount() })
                     }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
@@ -525,9 +564,9 @@ fun NewSessionDialog(
 ) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
-    var projectId by remember { mutableStateOf(initialProjectId ?: projects.firstOrNull()?.id) }
-    var agentId by remember { mutableStateOf(initialAgentId ?: agents.firstOrNull()?.id) }
-    var title by remember { mutableStateOf("") }
+    var projectId by rememberSaveable { mutableStateOf(initialProjectId ?: projects.firstOrNull()?.id) }
+    var agentId by rememberSaveable { mutableStateOf(initialAgentId ?: agents.firstOrNull()?.id) }
+    var title by rememberSaveable { mutableStateOf("") }
     var starting by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val decision = remember(agentId) { agentId?.let { id -> runCatching { graph.limiter.canStartAgent(id) }.getOrNull() } }
@@ -535,6 +574,7 @@ fun NewSessionDialog(
 
     AlertDialog(
         onDismissRequest = { if (!starting) onDismiss() },
+        properties = KeepTypedInput,
         title = { Text("New session") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -560,7 +600,11 @@ fun NewSessionDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (blocked) {
-                    Text(decision.reason ?: "The phone cannot start another agent right now.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        decision.reason ?: "The phone cannot start another agent right now.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             }
@@ -615,6 +659,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
     val stops by graph.rooms.stops.collectAsStateWithLifecycle()
     val sleeps by graph.rooms.sleepsAt.collectAsStateWithLifecycle()
+    val remoteControls by graph.rooms.remoteControls.collectAsStateWithLifecycle()
     val installed by graph.agents.installed.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val trusts by graph.projects.trust.collectAsStateWithLifecycle()
@@ -647,10 +692,13 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var bigDismissed by rememberSaveable(sessionId) { mutableStateOf(false) }
     var startingFresh by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
+    var remoteControl by remember { mutableStateOf(false) }
     var immersive by rememberSaveable(sessionId) { mutableStateOf(false) }
     var handOffTo by remember(sessionId) { mutableStateOf<AgentInfo?>(null) }
-    var renamingBranch by remember(sessionId) { mutableStateOf(false) }
+    var renamingBranch by rememberSaveable(sessionId) { mutableStateOf(false) }
     var addingFile by remember(sessionId) { mutableStateOf(false) }
+    var showChatPlace by remember(sessionId) { mutableStateOf(false) }
+    val chatPlace = ChatPlaces.forSession(session).takeIf { agent?.official == true }
     val name = agentName(agent, agentId)
     val sleepText = sleepsSoon(name, sleeps[agentId], now)
     val publicRepo = projects.firstOrNull { it.id == session.projectId }?.isPrivate == false
@@ -708,6 +756,8 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onHandOff = { handOffTo = it },
                         onRenameBranch = { renamingBranch = true },
                         onAddFile = { addingFile = true },
+                        onChatPlace = { showChatPlace = true }.takeIf { chatPlace != null },
+                        onReload = agentWeb::reload,
                         onRestart = {
                             scope.act(snackbar, "Could not restart $name", done = "$name started again. The chat is kept.") {
                                 graph.rooms.restart(agentId)
@@ -723,6 +773,19 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                 val careful = remember(trusts, projects, session.projectId) { graph.projects.trustOf(session.projectId) } == ProjectTrust.SOMEONE_ELSES
                 if (careful && panel == null && !barHidden) {
                     CarefulNote(name, onChange = { nav.project(session.projectId) })
+                }
+                val remoteControlState = remoteControls[agentId]
+                val remoteControlLive = remoteControlState == RemoteControlState.Starting || remoteControlState == RemoteControlState.On
+                if (remoteControlLive && panel == null && !barHidden) {
+                    RemoteControlBar(
+                        on = remoteControlState == RemoteControlState.On,
+                        onOpen = { nav.openExternal(RemoteControl.DASHBOARD) },
+                        onTurnOff = {
+                            scope.act(snackbar, "Could not turn Remote Control off", done = "Remote Control is off.") {
+                                graph.rooms.stopRemoteControl(agentId)
+                            }
+                        },
+                    )
                 }
                 if (isLargeTranscript(session, graph.sessions.largeTranscript(sessionId)) && !bigDismissed && panel == null && !barHidden) {
                     BigChatBanner(
@@ -747,6 +810,8 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onRetry = { tries++ },
                         onBack = nav::back,
                         onSetUp = nav::computer.takeIf { SetUpOffer.needsOwner(computer) },
+                        remoteControl = remoteControlState,
+                        onRemoteControl = { remoteControl = true }.takeIf { agentId == com.pocketide.rooms.RoomProfiles.ANTIGRAVITY },
                     ) { url ->
                         AgentWebView(
                             url = url,
@@ -770,7 +835,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                             when (p) {
                                 AgentPanel.PREVIEW -> PreviewPanel(sessionId, preview, nav, snackbar)
-                                AgentPanel.MEDIA -> MediaPanel(sessionId, session.pendingVideos, snackbar)
+                                AgentPanel.MEDIA -> MediaPanel(sessionId, snackbar)
                                 AgentPanel.TERMINAL -> TerminalPanel(sessionId, terminal, nav, snackbar)
                             }
                         }
@@ -787,6 +852,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
     if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
     if (addingFile) AddFileFlow(sessionId, snackbar, scope, onClose = { addingFile = false })
+    if (showChatPlace) chatPlace?.let { ChatPlaceDialog(it, nav, onDismiss = { showChatPlace = false }) }
     if (stopping) {
         ConfirmDialog(
             title = "Stop ${agentName(agent, agentId)}?",
@@ -803,7 +869,67 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
             onDismiss = { stopping = false },
         )
     }
+    if (remoteControl) {
+        ConfirmDialog(
+            title = "Use Antigravity Remote Control?",
+            text = RemoteControlText.EXPLAINED,
+            confirmLabel = "Start",
+            destructive = false,
+            onConfirm = {
+                // The start itself goes on when this screen is left; only opening Google's page needs it.
+                scope.launch {
+                    finish { graph.rooms.startRemoteControl(agentId) }
+                        .onSuccess(nav::openExternal)
+                        .onFailure { snackbar.showSnackbar("Remote Control did not start: ${plainReason(it)}") }
+                }
+            },
+            onDismiss = { remoteControl = false },
+        )
+    }
 }
+
+/** Google's own Remote Control for Antigravity, offered while the in-app screen stays closed. */
+private object RemoteControlText {
+    const val OFFER = "Use Antigravity Remote Control (needs a phone test)"
+    const val EXPLAINED = "Antigravity's own Remote Control runs in its room here, and you use Antigravity on Google's Remote " +
+        "Control page in your browser, signed in with the same Google Account. PocketIDE opens no port of it to other " +
+        "apps, keeps checking the ports it opens, and turns it off if other apps or devices could use one. It has not " +
+        "been tried on a phone yet. Stopping the room stops it."
+    const val STARTING = "Starting Remote Control…"
+    const val ON = "Remote Control is on: use Antigravity on Google's page."
+}
+
+/** Remote Control starting or on, with the way to its page and to turn it off. */
+@Composable
+private fun RemoteControlBar(on: Boolean, onOpen: () -> Unit, onTurnOff: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!on) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(if (on) RemoteControlText.ON else RemoteControlText.STARTING, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            if (on) TextButton(onClick = onOpen) { Text("Open") }
+            TextButton(onClick = onTurnOff) { Text("Turn off") }
+        }
+    }
+}
+
+/** Under the offer: why PocketIDE turned Remote Control off, while it is off. */
+@Composable
+private fun RemoteControlOffer(state: RemoteControlState?, onRemoteControl: () -> Unit) {
+    when (state) {
+        RemoteControlState.Starting, RemoteControlState.On -> Unit
+        is RemoteControlState.Off -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(state.why, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+            TextButton(onClick = onRemoteControl) { Text(RemoteControlText.OFFER) }
+        }
+        null -> TextButton(onClick = onRemoteControl) { Text(RemoteControlText.OFFER) }
+    }
+}
+
+/** Sessions whose files can be browsed: an open one, and a conflict copy, which keeps its branch. */
+private val WITH_FILES = setOf(SessionStatus.OPEN, SessionStatus.CONFLICT_COPY)
 
 @Composable
 private fun AgentBar(
@@ -824,6 +950,8 @@ private fun AgentBar(
     onHandOff: (AgentInfo) -> Unit,
     onRenameBranch: () -> Unit,
     onAddFile: () -> Unit,
+    onChatPlace: (() -> Unit)?,
+    onReload: () -> Unit,
     onRestart: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -831,7 +959,10 @@ private fun AgentBar(
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back")
+                Icon(
+                    if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back",
+                )
             }
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))
@@ -859,8 +990,10 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text(p.title) }, onClick = { menu = false; onPanel(p) })
                     }
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
-                    if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                    if (session.status in WITH_FILES) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
+                    }
+                    if (canPutOnMain(session.status)) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                     }
                     if (open) {
@@ -872,6 +1005,7 @@ private fun AgentBar(
                             DropdownMenuItem(text = { Text("Continue in ${other.displayName}") }, onClick = { menu = false; onHandOff(other) })
                         }
                     }
+                    ChatPlaceItem(onChatPlace) { menu = false }
                     if (panelTitle == null) {
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -881,12 +1015,21 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text("Full screen") }, onClick = { menu = false; onImmersive() })
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Restart agent") }, onClick = { menu = false; onRestart() })
+                    // The fix-it ladder's first two levels, named as Help and the Computer screen name them.
+                    DropdownMenuItem(text = { Text(FixLadder.RELOAD_ITEM) }, onClick = { menu = false; onReload() })
+                    DropdownMenuItem(text = { Text(FixLadder.RESTART_ITEM) }, onClick = { menu = false; onRestart() })
                     DropdownMenuItem(text = { Text("Stop agent") }, onClick = { menu = false; onStop() })
                 }
             }
         }
     }
+}
+
+/** "Where this chat is saved", for the official agents that have an answer. */
+@Composable
+private fun ChatPlaceItem(onChatPlace: (() -> Unit)?, close: () -> Unit) {
+    if (onChatPlace == null) return
+    DropdownMenuItem(text = { Text("Where this chat is saved") }, onClick = { close(); onChatPlace() })
 }
 
 @Composable
@@ -911,12 +1054,19 @@ private fun RoomContent(
     onBack: () -> Unit,
     /** Set while the computer is not set up (or set-up stopped): retrying cannot help, setting it up does. */
     onSetUp: (() -> Unit)?,
+    /** Antigravity's own Remote Control in this room, if any. */
+    remoteControl: RemoteControlState?,
+    /** Set for Antigravity: its own Remote Control, when its screen cannot open here. */
+    onRemoteControl: (() -> Unit)?,
     ready: @Composable (String) -> Unit,
 ) {
     when (view) {
         is RoomView.Ready -> ready(view.url)
         is RoomView.Opening -> CenterMessage(view.step ?: "Opening $agentName…", progress = true)
-        is RoomView.Failed -> CenterMessage("$agentName did not start: ${view.why}") {
+        is RoomView.Failed -> CenterMessage(
+            "$agentName did not start: ${view.why}",
+            below = { if (onSetUp == null && onRemoteControl != null) RemoteControlOffer(remoteControl, onRemoteControl) },
+        ) {
             if (onSetUp != null) {
                 Button(onClick = onSetUp) { Text(SetUpOffer.TITLE) }
             } else {
@@ -1005,7 +1155,12 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 @Composable
-private fun CenterMessage(text: String, progress: Boolean = false, actions: @Composable () -> Unit = {}) {
+private fun CenterMessage(
+    text: String,
+    progress: Boolean = false,
+    below: @Composable () -> Unit = {},
+    actions: @Composable () -> Unit = {},
+) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
@@ -1014,5 +1169,6 @@ private fun CenterMessage(text: String, progress: Boolean = false, actions: @Com
         if (progress) CircularProgressIndicator()
         Text(text, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { actions() }
+        below()
     }
 }

@@ -21,6 +21,13 @@ class SetUpOfferTest {
     }
 
     @Test
+    fun offlineTheCardSaysWhatTheOwnerDoesNotWhatNeverHappens() {
+        val (advice, _) = setUpAdvice(Network.OFFLINE)
+        assertTrue(advice, advice.contains("tap Set up now"))
+        assertFalse(advice, advice.contains("starts when"))
+    }
+
+    @Test
     fun onlyAMissingOrStoppedComputerNeedsTheOwner() {
         assertTrue(SetUpOffer.needsOwner(ComputerState.NotInstalled))
         assertTrue(SetUpOffer.needsOwner(broken))

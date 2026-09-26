@@ -4,6 +4,7 @@ import com.pocketide.bridge.PhoneGuestTools
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.LinuxCommand
 import com.pocketide.linux.ProotCommand
+import com.pocketide.linux.ProotHost
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -20,7 +21,9 @@ class RoomLayoutTest {
         assertEquals(
             listOf(
                 "${dirs.base}/rooms/claude/home" to "/root",
+                "${dirs.base}/rooms/claude/users" to "/home",
                 "${dirs.base}/rooms/claude/tmp" to "/tmp",
+                "${dirs.base}/rooms/claude/shm" to "/dev/shm",
                 "${dirs.base}/bridge/claude" to "/run/pocketide",
                 "${dirs.base}/repos" to "/repos",
                 "${dirs.base}/work/claude" to "/work",
@@ -32,8 +35,41 @@ class RoomLayoutTest {
         }
         assertTrue(binds.none { it.readOnly })
         // Nothing of the app's own storage beyond these: no vault, no queue, no secure store.
-        val allowed = setOf(dirs.roomHome("claude"), dirs.roomTmp("claude"), dirs.roomBridge("claude"), dirs.repos, dirs.roomWork("claude"))
+        val allowed = setOf(
+            dirs.roomHome("claude"), dirs.roomUserHomes("claude"), dirs.roomTmp("claude"), RoomLayout.shm(dirs, "claude"),
+            dirs.roomBridge("claude"), dirs.repos, dirs.roomWork("claude"),
+        )
         assertEquals(allowed.map { it.absolutePath }.toSet(), binds.map { it.hostPath }.toSet())
+    }
+
+    @Test fun `each room has its own users' home folder, created with the room, so no room can plant a sign-in another reads`() {
+        // Claude's CLI reads /home/claude/.claude/remote/ whatever HOME is: the computer's shared /home must never show.
+        val agents = listOf("claude", "codex", "antigravity", "acme.agent")
+        val homes = agents.map { agent ->
+            val home = RoomLayout.binds(dirs, agent).single { it.guestPath == "/home" }
+            assertEquals(dirs.roomUserHomes(agent).absolutePath, home.hostPath)
+            assertFalse(home.readOnly)
+            assertTrue(File(home.hostPath) in RoomLayout.hostFolders(dirs, agent))
+            assertTrue(home.hostPath.startsWith("${dirs.rooms.absolutePath}/$agent/"))
+            home.hostPath
+        }
+        assertEquals("no two agents share a /home", agents.size, homes.toSet().size)
+        assertTrue(homes.none { it.startsWith(dirs.rootfs.absolutePath) })
+        // Not inside the room's own home either, which Your data and sync read as the agent's files.
+        assertTrue(agents.none { dirs.roomUserHomes(it).absolutePath.startsWith(dirs.roomHome(it).absolutePath + "/") })
+    }
+
+    @Test fun `each room has a writable shared-memory folder of its own, created with the room`() {
+        val shm = RoomLayout.binds(dirs, "claude").single { it.guestPath == "/dev/shm" }
+        assertFalse(shm.readOnly)
+        assertTrue(File(shm.hostPath) in RoomLayout.hostFolders(dirs, "claude"))
+        assertTrue(RoomLayout.binds(dirs, "codex").none { it.hostPath == shm.hostPath })
+        val argv = ProotCommand.build(
+            ProotHost(File("/lib"), File("/tmp")), File("/rootfs"), emptyMap(), "UTC",
+            LinuxCommand(listOf("python3"), binds = RoomLayout.binds(dirs, "claude")), sharedMemory = File("/rootfs/tmp"),
+        ).argv
+        // The room's own folder, never the computer's shared /tmp that set-up uses.
+        assertTrue(argv.none { it.endsWith(":/dev/shm") && it != "${shm.hostPath}:/dev/shm" })
     }
 
     @Test fun `every engine command uses exactly the room's binds`() {
@@ -127,7 +163,10 @@ class RoomLayoutTest {
         assertEquals("/work/octo__app/s1", command.workDir)
         assertEquals("claude-vscode.primaryEditor.open", command.env["POCKETIDE_OPEN_COMMAND"])
         assertEquals("editor", command.env["POCKETIDE_OPEN_PLACE"])
-        assertEquals("http://localhost:{{port}}/", command.env["VSCODE_PROXY_URI"])
+        // A template with {{port}} where a port number goes stops code-server 4.138's workbench on every connect.
+        assertFalse("VSCODE_PROXY_URI" in command.env)
+        val inherited = RoomEngines.codeServer(dirs, RoomProfiles.of("claude", null)!!, "/work/octo__app/s1", 40001, mapOf("VSCODE_PROXY_URI" to "x"))
+        assertFalse("VSCODE_PROXY_URI" in inherited.env)
     }
 
     @Test fun `the hub runs as its extension starts it, without its self-updater`() {

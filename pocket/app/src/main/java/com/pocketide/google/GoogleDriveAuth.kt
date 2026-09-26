@@ -188,7 +188,7 @@ internal class GoogleDriveAuth(
         } catch (e: CancellationException) {
             throw e
         } catch (e: AuthFailure) {
-            DriveAuthResult.Failed(e.message ?: GENERIC)
+            DriveAuthResult.Failed(e.message ?: GENERIC, unknownBuild = e.kind == AuthFailure.Kind.UNKNOWN_BUILD)
         } catch (_: DriveException.Offline) {
             DriveAuthResult.Failed("No connection to Google. Check the internet and try again.")
         } catch (_: DriveException.Revoked) {

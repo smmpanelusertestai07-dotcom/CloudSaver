@@ -14,6 +14,9 @@ internal interface ProjectEnv {
 
     /** The sessions' side of a project, consulted before a project is removed. */
     val work: ProjectWork?
+
+    /** The keyring's Half G was cloned onto the phone, within Linux's reach: the vault key changes. */
+    suspend fun keyringCloned()
 }
 
 /** What sessions hold of a project on this phone, so removing a project never loses work. */

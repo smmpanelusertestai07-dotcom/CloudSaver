@@ -208,7 +208,9 @@ internal class ProotComputer(
         runCatching { GuestConfig.writeResolver(GuestRoot(root), dns.servers()) }
         val variables = command.env.takeIf { it.isNotEmpty() }?.let { writeVariables(command) }
         try {
-            val call = ProotCommand.build(host, root, standIns.binds(), TimeZone.getDefault().id, command, variables)
+            // Set-up and other commands without a room share the computer's own /tmp as their /dev/shm.
+            val shm = File(root, "tmp").takeIf { it.isDirectory }
+            val call = ProotCommand.build(host, root, standIns.binds(), TimeZone.getDefault().id, command, variables, shm)
             val builder = ProcessBuilder(call.argv).redirectErrorStream(command.mergeErrors)
             builder.environment().run {
                 clear()

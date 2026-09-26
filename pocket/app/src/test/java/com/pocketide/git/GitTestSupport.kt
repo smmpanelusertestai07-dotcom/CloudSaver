@@ -169,6 +169,9 @@ internal class TestCommits(dir: File) : AutoCloseable {
         return inserter.insert(commit).also { inserter.flush() }
     }
 
+    /** A commit object written byte for byte, as an agent could write one with any header in it. */
+    fun rawCommit(text: String): ObjectId = inserter.insert(Constants.OBJ_COMMIT, text.toByteArray()).also { inserter.flush() }
+
     override fun close() {
         inserter.close()
         repo.close()

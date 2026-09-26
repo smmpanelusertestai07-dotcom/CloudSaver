@@ -34,6 +34,12 @@ internal interface SyncNotifier {
 internal interface SyncScheduling {
     fun requestSoon()
 
+    /** A sync as soon as a network is back, for what waits on the phone meanwhile. */
+    fun requestWhenOnline()
+
+    /** A sync after [delayMs], for a file left for later because it was still being written. */
+    fun requestAfter(delayMs: Long)
+
     fun requestMaintenance()
     fun schedulePeriodic()
     fun cancelAll()
@@ -65,6 +71,20 @@ internal interface SyncPorts {
     fun cipher(): VaultCipher?
 
     fun keyGeneration(): Int
+
+    /**
+     * Waits until the phone's own chat and project lists are read from the disk. Android often
+     * starts the process just for a sync; until then [localSessions], [localProjects] and
+     * [activeSessionIds] would say the phone has nothing.
+     */
+    suspend fun loadLocal() = Unit
+
+    /**
+     * "Delete everything" removed the phone's chat and project lists and its scheduled tasks from
+     * the disk: they are forgotten in memory too, so nothing writes them back, the next vault never
+     * receives the old records, and no old task runs again.
+     */
+    suspend fun forgetLocal()
 
     fun localSessions(): List<SessionRecord>
 
@@ -127,6 +147,12 @@ internal interface SyncPorts {
      * key half there is exposed. Throws when GitHub is not connected or cannot be reached.
      */
     suspend fun checkKeyring()
+
+    /**
+     * Asks GitHub and Drive whether PocketIDE's access still stands, so a revoked account locks the
+     * app before new work starts; the lock module keeps the answer. Offline locks nothing.
+     */
+    suspend fun checkAccess() = Unit
 
     /** Removes every sealed entry of the secure store ("Delete everything"). */
     fun wipeSecureStore()

@@ -42,8 +42,9 @@ object PhoneSpaceText {
         return when (storage.phone) {
             PhoneSpace.OK -> null
             PhoneSpace.NEARLY_FULL -> "PocketIDE is using most of its space on this phone: $used of its $limit limit, $free free on the phone."
-            PhoneSpace.FULL -> "PocketIDE's space on this phone is full: $used of its $limit limit, $free free on the phone. " +
-                "Clean now removes caches that are rebuilt when needed."
+            PhoneSpace.FULL ->
+                "PocketIDE's space on this phone is full: $used of its $limit limit, $free free on the phone. " +
+                    "Clean now removes caches that are rebuilt when needed."
         }
     }
 
@@ -60,7 +61,8 @@ object PhoneSpaceText {
 fun PhoneSpaceNotice(
     storage: StorageSummary,
     clean: suspend () -> Long,
-    onRaise: () -> Unit,
+    /** Opens Settings for PocketIDE's Drive limit; null where Settings cannot open. */
+    onRaise: (() -> Unit)?,
     onLargest: (() -> Unit)?,
     say: (String) -> Unit,
 ) {
@@ -86,7 +88,7 @@ fun PhoneSpaceNotice(
                         }
                     },
                 ) { Text(if (cleaning) "Cleaning…" else "Clean now") }
-                TextButton(onClick = onRaise) { Text("Raise the limit") }
+                onRaise?.let { TextButton(onClick = it) { Text("Raise the limit") } }
                 onLargest?.let { TextButton(onClick = it) { Text("Largest sessions") } }
             }
         }

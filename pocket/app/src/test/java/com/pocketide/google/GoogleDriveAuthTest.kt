@@ -67,6 +67,19 @@ class GoogleDriveAuthTest {
     }
 
     @Test
+    fun `a build Google does not know says so, so the screen can offer the set-up steps`() = runBlocking<Unit> {
+        google.grants += AuthFailure(AuthFailure.Kind.UNKNOWN_BUILD, "Google does not know this build of PocketIDE.")
+        google.grants += AuthFailure(AuthFailure.Kind.OTHER, "Google could not give access right now (code 8). Try again in a minute.")
+        val auth = auth()
+
+        assertEquals(DriveAuthResult.Failed("Google does not know this build of PocketIDE.", unknownBuild = true), auth.authorize())
+        assertEquals(
+            DriveAuthResult.Failed("Google could not give access right now (code 8). Try again in a minute.", unknownBuild = false),
+            auth.authorize(),
+        )
+    }
+
+    @Test
     fun `an unticked Drive box is not a connection`() = runBlocking<Unit> {
         google.fromIntent = Grant.Token("ya29.x", coversDrive = false)
         val auth = auth()

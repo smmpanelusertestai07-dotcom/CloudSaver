@@ -1,15 +1,17 @@
 package com.pocketide.agents
 
-import com.pocketide.agents.Rule as Check
 import com.pocketide.core.Clock
 import com.pocketide.model.Decision
+import com.pocketide.sync.MeteredDataBudget
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -17,8 +19,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
+import com.pocketide.agents.Rule as Check
 
 class DiscoveryTest {
     @get:Rule
@@ -41,7 +45,16 @@ class DiscoveryTest {
     @After
     fun tearDown() = server.close()
 
-    private fun agent(namespace: String, name: String, published: String = "2026-01-01T00:00:00Z", packageJson: String? = null, verified: Boolean = true, downloads: Long = 200_000, license: String? = "MIT", categories: List<String> = listOf("AI")) =
+    private fun agent(
+        namespace: String,
+        name: String,
+        published: String = "2026-01-01T00:00:00Z",
+        packageJson: String? = null,
+        verified: Boolean = true,
+        downloads: Long = 200_000,
+        license: String? = "MIT",
+        categories: List<String> = listOf("AI"),
+    ) =
         fixture.add(
             FakeExtension(namespace, name, verified = verified, downloads = downloads, license = license, categories = categories).apply {
                 versions += FakeVersion("1.0.0", timestamp = published, packageJson = packageJson ?: OpenVsxFixture.packageJson(namespace, name, "1.0.0"))
@@ -143,7 +156,13 @@ class VerifiedDownloadTest {
         assertThrows(PackageRejected::class.java) { fetch(Expected(sha512 = OpenVsxFixture.sha512(byteArrayOf(0)))) }
         val otherKeys = java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
         assertThrows(PackageRejected::class.java) {
-            fetch(Expected(sha256 = OpenVsxFixture.sha256(payload), signature = otherKeys.public.encoded.copyOfRange(12, 44) to OpenVsxFixture.sign(payload, otherKeys).also { it[0] = (it[0] + 1).toByte() }))
+            fetch(
+                Expected(
+                    sha256 = OpenVsxFixture.sha256(payload),
+                    signature =
+                    otherKeys.public.encoded.copyOfRange(12, 44) to OpenVsxFixture.sign(payload, otherKeys).also { it[0] = (it[0] + 1).toByte() },
+                ),
+            )
         }
         assertThrows(PackageRejected::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload), bytes = 10)) }
 
@@ -156,5 +175,84 @@ class VerifiedDownloadTest {
 
         assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }
         assertEquals(0L, recorded)
+    }
+
+    @Test
+    fun aDownloadThatWaitsForWiFiAsksTheOwnerWithItsSize() {
+        allowed = Decision.no(MeteredDataBudget.WAITS_FOR_WIFI)
+
+        val waits = assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }
+
+        val question = mobileDataQuestion(waits)
+        assertEquals(VerifiedDownload.DATA_KIND, question?.kind)
+        assertEquals(payload.size.toLong(), question?.bytes)
+        allowed = Decision.no("Today's mobile data limit is used up.")
+        assertEquals(null, mobileDataQuestion(assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }))
+    }
+
+    private fun get(expected: Expected): File = runBlocking { download.fetch(server.url("/pkg.vsix"), File(temp.root, "pkg.vsix"), expected) }
+
+    private val complete get() = Expected(sha256 = OpenVsxFixture.sha256(payload), sha512 = OpenVsxFixture.sha512(payload), signature = signature)
+
+    @Test
+    fun aDownloadThatIsCutOffContinuesWhereItStopped() {
+        val half = payload.size / 2
+        // The connection drops halfway: what arrived stays for the next try.
+        server.enqueue(
+            MockResponse.Builder()
+                .body(Buffer().write(payload, 0, half))
+                .setHeader("Content-Length", payload.size)
+                .onResponseEnd(SocketEffect.ShutdownConnection)
+                .build(),
+        )
+        assertThrows(IOException::class.java) { get(complete) }
+        val kept = File(temp.root, "pkg.vsix.part")
+        assertEquals(half.toLong(), kept.length())
+
+        server.enqueue(
+            MockResponse.Builder()
+                .code(206)
+                .setHeader("Content-Range", "bytes $half-${payload.size - 1}/${payload.size}")
+                .body(Buffer().write(payload, half, payload.size - half))
+                .build(),
+        )
+        val file = get(complete)
+
+        server.takeRequest()
+        assertEquals("bytes=$half-", server.takeRequest().headers["Range"])
+        assertTrue(file.readBytes().contentEquals(payload))
+        assertFalse(kept.exists())
+        assertEquals("each byte is counted once", payload.size.toLong(), recorded)
+    }
+
+    @Test
+    fun keptBytesThatDoNotBelongToThePackageAreNotKept() {
+        File(temp.root, "pkg.vsix.part").writeBytes(ByteArray(1000) { 7 })
+        server.enqueue(
+            MockResponse.Builder()
+                .code(206)
+                .setHeader("Content-Range", "bytes 1000-${payload.size - 1}/${payload.size}")
+                .body(Buffer().write(payload, 1000, payload.size - 1000))
+                .build(),
+        )
+
+        assertThrows(PackageRejected::class.java) { get(complete) }
+        assertTrue(temp.root.list().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun aServerThatSendsTheWholeFileAgainStartsItOver() {
+        File(temp.root, "pkg.vsix.part").writeBytes(payload.copyOf(1000))
+        server.enqueue(MockResponse.Builder().body(Buffer().write(payload)).build())
+
+        assertTrue(get(complete).readBytes().contentEquals(payload))
+    }
+
+    @Test
+    fun aPackageAlreadyInPlaceIsCheckedAndUsed() {
+        File(temp.root, "pkg.vsix").writeBytes(payload)
+
+        assertTrue(get(complete).readBytes().contentEquals(payload))
+        assertEquals("nothing downloaded", 0, server.requestCount)
     }
 }

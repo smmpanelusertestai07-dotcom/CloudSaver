@@ -44,7 +44,7 @@ class AppUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 UpdateNotices.readyOnce(applicationContext, state.release)
                 Result.success()
             }
-            is UpdateState.Failed -> retry()
+            is UpdateState.Failed -> if (state.retry) retry() else Result.success()
             else -> Result.success()
         }
     }
@@ -55,7 +55,7 @@ class AppUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWor
         private const val NAME = "pocketide.app.update"
         private const val MAX_ATTEMPTS = 3
 
-        /** Keeps one daily job; calling it again changes nothing. */
+        /** Keeps one daily job, with this version's rules (UPDATE: an app update may change them); calling it again changes nothing. */
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.UNMETERED)
@@ -66,7 +66,7 @@ class AppUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.LINEAR, 1, TimeUnit.HOURS)
                 .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
     }
 }
