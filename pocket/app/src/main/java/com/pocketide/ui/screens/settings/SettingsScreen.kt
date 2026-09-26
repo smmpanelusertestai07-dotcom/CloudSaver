@@ -30,7 +30,6 @@ import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.ScreenLockPortrait
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.SyncDisabled
@@ -166,7 +165,7 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
             Toggle(
                 Icons.Outlined.Fingerprint,
                 "App lock",
-                if (lockable) "Ask for your screen lock when PocketIDE opens" else "Set a screen lock in Android's settings to use this",
+                if (lockable) "Asks for your screen lock, and hides the app in Recents" else "Set a screen lock in Android's settings to use this",
                 settings.appLock && lockable,
                 enabled = lockable,
             ) { on ->
@@ -174,12 +173,6 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
                 if (on) (context.applicationContext as PocketApp).appLock.unlock()
                 update { it.copy(appLock = on) }
             }
-            Toggle(
-                Icons.Outlined.ScreenLockPortrait,
-                "Hide from screenshots",
-                "Keeps code and chats out of screenshots and Recents",
-                settings.hideScreen,
-            ) { on -> update { it.copy(hideScreen = on) } }
             Link(Icons.Outlined.Storage, "Your data", "Where everything is, and deleting it", onYourData)
             Link(Icons.Outlined.SyncDisabled, "GitHub's Settings Sync", "Keep it off for Codespaces, so no other device changes the computer", {
                 Browser.open(context, CODESPACES_SETTINGS)

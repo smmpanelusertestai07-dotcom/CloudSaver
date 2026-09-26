@@ -155,8 +155,8 @@ internal object Guide {
             "Nothing from the cloud computer runs on your phone. The page cannot call into the app, pages other than GitHub " +
                 "open in Chrome, and files reach it only when you pick them.",
             "PocketIDE has no server: no account of ours, no analytics, no ads, no tracking.",
-            "Your GitHub sign-in on the phone is encrypted with a key in Android's Keystore. App lock and Hide from " +
-                "screenshots add more.",
+            "Your GitHub sign-in on the phone is encrypted with a key in Android's Keystore. App lock adds your screen " +
+                "lock, and hides the app in Recents. Screenshots stay allowed.",
         ),
         info(
             "Inside its own computer an agent can change and delete files, and push new commits and branches. Review its " +

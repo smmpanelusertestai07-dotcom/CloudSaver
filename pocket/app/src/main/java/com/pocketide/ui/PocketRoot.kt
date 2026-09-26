@@ -1,5 +1,6 @@
 package com.pocketide.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -9,9 +10,11 @@ import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,7 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -35,6 +41,7 @@ import com.pocketide.PocketApp
 import com.pocketide.agents.Agent
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.ui.lock.HiddenContentCover
 import com.pocketide.ui.lock.LockScreen
 import com.pocketide.ui.nav.ComputerRoute
 import com.pocketide.ui.nav.DataRoute
@@ -57,19 +64,29 @@ import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.theme.PocketTheme
 
-/** Theme, app lock, first-run set-up, then the app with its bottom bar. */
+/**
+ * Theme, app lock, first-run set-up, then the app with its bottom bar. Everything sits on one
+ * [Surface], so text takes the theme's colour on every screen. With App lock on, the app is
+ * covered whenever it is not in front, so Recents keeps a picture of the cover, not the screen.
+ */
 @Composable
 fun PocketRoot(activity: MainActivity) {
     val graph = activity.graph
     val appLock = (activity.application as PocketApp).appLock
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val state by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     PocketTheme(settings.theme, settings.dynamicColor) {
         val locked by appLock.locked.collectAsStateWithLifecycle()
         val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
-        when {
-            settings.appLock && locked -> LockScreen(activity, onUnlocked = appLock::unlock)
-            !settings.onboardingDone || account == null -> Onboarding(graph)
-            else -> MainScreens(activity)
+        Box(Modifier.fillMaxSize()) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                when {
+                    settings.appLock && locked -> LockScreen(activity, onUnlocked = appLock::unlock)
+                    !settings.onboardingDone || account == null -> Onboarding(graph)
+                    else -> MainScreens(activity)
+                }
+            }
+            if (settings.appLock && !state.isAtLeast(Lifecycle.State.RESUMED)) HiddenContentCover()
         }
     }
 }

@@ -55,7 +55,7 @@ class ActionRowUiTest {
 
     private companion object {
         val LIST_ROW = 328.dp
-        const val FIRST = "Recently deleted (3)"
-        const val SECOND = "Waiting to upload (12)"
+        const val FIRST = "Open in Chrome instead"
+        const val SECOND = "Stop the cloud computer"
     }
 }
