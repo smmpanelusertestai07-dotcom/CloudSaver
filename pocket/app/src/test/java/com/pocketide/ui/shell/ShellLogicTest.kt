@@ -12,9 +12,21 @@ import org.junit.Test
 
 class ShellLogicTest {
     @Test
-    fun appLockComesBeforeEverything() {
-        val gate = RootGate.of(appLockOn = true, unlocked = false, unsupportedReason = "32-bit", lock = LockReason.DriveDisconnected, onboardingDone = false)
+    fun appLockComesBeforeEverythingButARefusedPhone() {
+        val gate = RootGate.of(appLockOn = true, unlocked = false, unsupportedReason = null, lock = LockReason.DriveDisconnected, onboardingDone = false)
         assertEquals(RootGate.AppLocked, gate)
+        assertEquals(RootGate.AppLocked, RootGate.of(true, false, null, LockReason.OtherPhone("Pixel 7"), onboardingDone = true))
+        // No screen lock fixes a refused phone, so it is told first.
+        assertEquals(RootGate.Refused("32-bit"), RootGate.of(true, false, "32-bit", LockReason.DriveDisconnected, false))
+    }
+
+    @Test
+    fun aFreshInstallReachesSetUpWithoutTheAppLock() {
+        // Nothing to protect yet, and a phone without a screen lock must reach the step that asks for one.
+        assertEquals(RootGate.Onboarding, RootGate.of(true, false, null, null, onboardingDone = false, keyOnPhone = false))
+        assertEquals(RootGate.Onboarding, RootGate.of(true, false, null, LockReason.GitHubDisconnected, onboardingDone = false, keyOnPhone = false))
+        // Once the key is made, set-up is behind the lock like the rest of the app.
+        assertEquals(RootGate.AppLocked, RootGate.of(true, false, null, null, onboardingDone = false, keyOnPhone = true))
     }
 
     @Test
@@ -123,7 +135,8 @@ class ShellLogicTest {
     fun requirementsFlagWhatIsBelowTheMinimum() {
         val gib = 1L shl 30
         val gb = 1_000_000_000L
-        val realme = PhoneFacts(33, "13", arm64 = true, playServices = true, totalRamBytes = (3.7 * gib).toLong(), freeStorageBytes = 40 * gb, screenLock = true)
+        val realme =
+            PhoneFacts(33, "13", arm64 = true, playServices = true, totalRamBytes = (3.7 * gib).toLong(), freeStorageBytes = 40 * gb, screenLock = true)
         val rows = Requirements.rows(realme).associateBy { it.label }
         assertEquals(Tone.WARN, rows.getValue("Memory").tone)
         assertEquals(Tone.OK, rows.getValue("Android").tone)

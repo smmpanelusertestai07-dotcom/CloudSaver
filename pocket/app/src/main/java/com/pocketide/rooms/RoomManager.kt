@@ -877,6 +877,11 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
         }
 
+    override suspend fun signedIn(agentId: String): Boolean? {
+        val file = SignOuts.signInFile(agentId) ?: HUB_SIGN_IN.takeIf { agentId == RoomProfiles.ANTIGRAVITY } ?: return null
+        return withContext(Dispatchers.IO) { RoomFiles(dirs.roomHome(agentId), guardSecrets = true).isFile(file) }
+    }
+
     // --- tools
 
     private suspend fun afterBrowserInstall() {

@@ -91,6 +91,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.core.Ist
+import com.pocketide.docs.FixLadder
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
@@ -101,6 +102,7 @@ import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.manage.ChatPlaceDialog
 import com.pocketide.ui.manage.ChatPlaces
 import com.pocketide.ui.manage.openChatPage
@@ -145,7 +147,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     val selected = sessions.firstOrNull { it.id == chosenId } ?: defaultSession(sessions)
     var cloneProblem by remember(projectId) { mutableStateOf<String?>(null) }
     var cloneTries by remember(projectId) { mutableIntStateOf(0) }
-    var creating by remember { mutableStateOf(false) }
+    var creating by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
     var askMobileData by remember(projectId) { mutableStateOf<NeedsMobileData?>(null) }
@@ -447,6 +449,7 @@ private fun SessionsTab(
                         onDelete = { deleting = session },
                         accountLine = ChatPlaces.sessionLine(session.agentId, settings),
                         onOpenAccount = { ChatPlaces.of(session.agentId, settings)?.let { openChatPage(context, nav, it) } },
+                        note = conflictCopyNote(session, sessions),
                     )
                 }
             }
@@ -481,6 +484,7 @@ private fun SessionCard(
     onDelete: () -> Unit,
     accountLine: String?,
     onOpenAccount: () -> Unit,
+    note: String?,
 ) {
     var menu by remember { mutableStateOf(false) }
     val (label, tone) = sessionStatusLabel(session.status, running)
@@ -512,6 +516,7 @@ private fun SessionCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN)) }
                 waitingVideos?.let { StatusChip(it, Tone.WARN) }
                 accountLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             }
@@ -522,7 +527,9 @@ private fun SessionCard(
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
-                        DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        if (canPutOnMain(session.status)) {
+                            DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        }
                         DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
                     }
                     if (accountLine != null) {
@@ -551,9 +558,9 @@ fun NewSessionDialog(
 ) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
-    var projectId by remember { mutableStateOf(initialProjectId ?: projects.firstOrNull()?.id) }
-    var agentId by remember { mutableStateOf(initialAgentId ?: agents.firstOrNull()?.id) }
-    var title by remember { mutableStateOf("") }
+    var projectId by rememberSaveable { mutableStateOf(initialProjectId ?: projects.firstOrNull()?.id) }
+    var agentId by rememberSaveable { mutableStateOf(initialAgentId ?: agents.firstOrNull()?.id) }
+    var title by rememberSaveable { mutableStateOf("") }
     var starting by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val decision = remember(agentId) { agentId?.let { id -> runCatching { graph.limiter.canStartAgent(id) }.getOrNull() } }
@@ -681,7 +688,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var remoteControl by remember { mutableStateOf(false) }
     var immersive by rememberSaveable(sessionId) { mutableStateOf(false) }
     var handOffTo by remember(sessionId) { mutableStateOf<AgentInfo?>(null) }
-    var renamingBranch by remember(sessionId) { mutableStateOf(false) }
+    var renamingBranch by rememberSaveable(sessionId) { mutableStateOf(false) }
     var addingFile by remember(sessionId) { mutableStateOf(false) }
     var showChatPlace by remember(sessionId) { mutableStateOf(false) }
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
@@ -744,6 +751,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onRenameBranch = { renamingBranch = true },
                         onAddFile = { addingFile = true },
                         onChatPlace = { showChatPlace = true }.takeIf { chatPlace != null },
+                        onReload = agentWeb::reload,
                         onRestart = {
                             scope.act(snackbar, "Could not restart $name", done = "$name started again. The chat is kept.") {
                                 graph.rooms.restart(agentId)
@@ -865,6 +873,9 @@ private object RemoteControlText {
         "apps, and turns it off again if Antigravity does. It has not been tried on a phone yet. Stopping the room stops it."
 }
 
+/** Sessions whose files can be browsed: an open one, and a conflict copy, which keeps its branch. */
+private val WITH_FILES = setOf(SessionStatus.OPEN, SessionStatus.CONFLICT_COPY)
+
 @Composable
 private fun AgentBar(
     agent: AgentInfo?,
@@ -885,6 +896,7 @@ private fun AgentBar(
     onRenameBranch: () -> Unit,
     onAddFile: () -> Unit,
     onChatPlace: (() -> Unit)?,
+    onReload: () -> Unit,
     onRestart: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -923,8 +935,10 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text(p.title) }, onClick = { menu = false; onPanel(p) })
                     }
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
-                    if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                    if (session.status in WITH_FILES) {
                         DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
+                    }
+                    if (canPutOnMain(session.status)) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                     }
                     if (open) {
@@ -946,7 +960,9 @@ private fun AgentBar(
                         DropdownMenuItem(text = { Text("Full screen") }, onClick = { menu = false; onImmersive() })
                     }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Restart agent") }, onClick = { menu = false; onRestart() })
+                    // The fix-it ladder's first two levels, named as Help and the Computer screen name them.
+                    DropdownMenuItem(text = { Text(FixLadder.RELOAD_ITEM) }, onClick = { menu = false; onReload() })
+                    DropdownMenuItem(text = { Text(FixLadder.RESTART_ITEM) }, onClick = { menu = false; onRestart() })
                     DropdownMenuItem(text = { Text("Stop agent") }, onClick = { menu = false; onStop() })
                 }
             }

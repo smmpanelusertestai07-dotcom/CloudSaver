@@ -77,8 +77,11 @@ class AccessRulesTest {
     }
 
     @Test
-    fun `the key banner shows while the key is only on this phone`() {
-        assertEquals(AccessRules.KEY_BANNER, AccessRules.banner(facts(keyOnlyOnPhone = true)))
+    fun `the key banner shows while the key is only on this phone, and asks to reconnect only without GitHub`() {
+        assertEquals(AccessRules.KEY_BANNER, AccessRules.banner(facts(github = LinkHealth.NOT_CONNECTED, keyOnlyOnPhone = true)))
+        // GitHub is connected: the halves are only waiting for the next sync.
+        assertEquals(AccessRules.KEY_SAVING_BANNER, AccessRules.banner(facts(keyOnlyOnPhone = true)))
+        assertEquals(AccessRules.KEY_SAVING_BANNER, AccessRules.banner(facts(github = LinkHealth.OFFLINE, keyOnlyOnPhone = true)))
         assertNull(AccessRules.banner(facts()))
     }
 }

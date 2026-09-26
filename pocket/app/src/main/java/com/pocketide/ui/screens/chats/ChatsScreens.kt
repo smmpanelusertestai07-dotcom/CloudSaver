@@ -80,6 +80,7 @@ import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
 import com.pocketide.ui.screens.project.agentName
 import com.pocketide.ui.screens.project.attempt
+import com.pocketide.ui.screens.project.conflictCopyNote
 import com.pocketide.ui.screens.project.finish
 import com.pocketide.ui.screens.project.plainReason
 import com.pocketide.ui.screens.project.rememberGraph
@@ -183,6 +184,7 @@ fun ChatsScreen(nav: PocketNav) {
                     snackbar = snackbar,
                     scope = scope,
                     onDialog = { dialog = it to session.id },
+                    note = conflictCopyNote(session, sessions),
                 )
             }
         }
@@ -448,15 +450,12 @@ fun RecentlyDeletedScreen(nav: PocketNav) {
                 val ids = deleted.map { it.id }
                 scope.launch {
                     val failures = finish { ids.count { id -> attempt { graph.sessions.deleteForever(id) }.isFailure } }.getOrDefault(ids.size)
-                    snackbar.showSnackbar(
-                        if (failures ==
-                            0
-                        ) {
-                            "Deleted forever."
-                        } else {
-                            "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again."
-                        },
-                    )
+                    val message = if (failures == 0) {
+                        "Deleted forever."
+                    } else {
+                        "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again."
+                    }
+                    snackbar.showSnackbar(message)
                 }
             },
             onDismiss = { erasingAll = false },
@@ -587,15 +586,12 @@ fun WaitingUploadsScreen(nav: PocketNav) {
                 val ids = selected.toList()
                 scope.launch {
                     val failures = finish { ids.count { id -> attempt { graph.sessions.setBackUp(id, false) }.isFailure } }.getOrDefault(ids.size)
-                    snackbar.showSnackbar(
-                        if (failures ==
-                            0
-                        ) {
-                            "Kept on this phone only. Marked \"Not backed up\"."
-                        } else {
-                            "Some chats could not be changed. Try again."
-                        },
-                    )
+                    val message = if (failures == 0) {
+                        "Kept on this phone only. Marked \"Not backed up\"."
+                    } else {
+                        "Some chats could not be changed. Try again."
+                    }
+                    snackbar.showSnackbar(message)
                 }
                 chosen = emptySet()
             },

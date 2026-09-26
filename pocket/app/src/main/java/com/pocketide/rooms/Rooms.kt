@@ -128,6 +128,12 @@ interface Rooms {
     suspend fun startRemoteControl(agentId: String): String = throw IllegalStateException(RemoteControl.ONLY_ANTIGRAVITY)
 
     /**
+     * Whether [agentId] is signed in in its room: its sign-in file is there. The file is only
+     * looked at, never read. Null for an agent whose sign-in PocketIDE cannot see.
+     */
+    suspend fun signedIn(agentId: String): Boolean? = null
+
+    /**
      * For "Delete everything": stops every room, then runs each signed-in agent's own sign-out in
      * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
      */

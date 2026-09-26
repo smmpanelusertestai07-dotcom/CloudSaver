@@ -53,6 +53,12 @@ class FixLadderTest {
     }
 
     @Test
+    fun `the first two levels name the agent menu's own items`() {
+        assertTrue(FixLadder.text(FixLadder.rungs[0]).contains("menu → ${FixLadder.RELOAD_ITEM}"))
+        assertTrue(FixLadder.text(FixLadder.rungs[1]).contains("menu → ${FixLadder.RESTART_ITEM}"))
+    }
+
+    @Test
     fun `sign-in errors from a changed link have their own rows`() {
         val symptoms = breaks.blocks.filterIsInstance<DocBlock.Table>().first { it.header.first() == "You see" }
         for (error in listOf("Error 400 invalid_request", "401 invalid_client", "Invalid code verifier")) {

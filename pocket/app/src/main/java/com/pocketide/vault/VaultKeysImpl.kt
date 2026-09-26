@@ -322,10 +322,19 @@ internal class VaultKeysImpl(
         } catch (e: IOException) {
             throw e
         } catch (e: Exception) {
-            throw VaultException(VaultText.KEYRING_NOT_MADE, e)
+            throw if (appMissing(login)) GitHubAppMissingException() else VaultException(VaultText.KEYRING_NOT_MADE, e)
         }
         savePhone(phoneState.copy(actionsOff = disableActions(login)))
         return repo
+    }
+
+    /** Only a sure "not installed" counts: a check that fails keeps the general sentence. */
+    private suspend fun appMissing(login: String): Boolean = try {
+        !remote.appInstalled(login)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
     }
 
     /** Actions stay off in the keyring; a missing permission is reported, not fatal. */

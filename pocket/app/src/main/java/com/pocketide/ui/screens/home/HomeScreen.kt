@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
@@ -56,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,8 +94,10 @@ import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.WorkText
 import com.pocketide.ui.manage.resumeRooms
 import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.screens.onboarding.RestorePlanPanel
 import com.pocketide.ui.screens.onboarding.SetUpComputerCard
 import com.pocketide.ui.screens.onboarding.SetUpOffer
+import com.pocketide.ui.screens.onboarding.rememberRestoreOffer
 import com.pocketide.ui.screens.project.AgentMark
 import com.pocketide.ui.screens.project.ConfirmDialog
 import com.pocketide.ui.screens.project.EmptyState
@@ -129,10 +133,15 @@ fun HomeScreen(nav: PocketNav) {
     val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
     val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
+    val restorePending by rememberRestoreOffer().pending.collectAsStateWithLifecycle()
+    val signIns = rememberSignIns(agents.map { it.id }, rooms)
+    var restorePlanOpen by rememberSaveable { mutableStateOf(false) }
 
-    var newProject by remember { mutableStateOf(false) }
-    var importing by remember { mutableStateOf(false) }
-    var agentSheet by remember { mutableStateOf<AgentInfo?>(null) }
+    // Open dialogs are saved: the app lock re-arming replaces the whole screen while the owner is away.
+    var newProject by rememberSaveable { mutableStateOf(false) }
+    var importing by rememberSaveable { mutableStateOf(false) }
+    var agentSheetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val agentSheet = agents.firstOrNull { it.id == agentSheetId }
     var removing by remember { mutableStateOf<Project?>(null) }
     val context = LocalContext.current
 
@@ -189,6 +198,20 @@ fun HomeScreen(nav: PocketNav) {
                     )
                 }
             }
+            if (restorePlanOpen) {
+                item(key = "restore-plan") {
+                    Column {
+                        RestorePlanPanel()
+                        TextButton(onClick = { restorePlanOpen = false }, modifier = Modifier.align(Alignment.End)) { Text("Hide") }
+                    }
+                }
+            } else if (restorePending) {
+                item(key = "restore-offer") {
+                    Banner(Icons.Filled.CloudDownload, "Your chats, memory and Secrets from before are still in your Drive.", Tone.NEUTRAL) {
+                        TextButton(onClick = { restorePlanOpen = true }) { Text("Bring your chats back") }
+                    }
+                }
+            }
             if (SetUpOffer.shows(computer)) item(key = "computer-setup") { SetUpComputerCard() }
             item(key = "phone") { PhoneStrip(phone, usage, onOpen = nav::computer) }
 
@@ -237,7 +260,13 @@ fun HomeScreen(nav: PocketNav) {
 
             item(key = "agents-label") { SectionLabel("Agents") }
             items(agents, key = { "agent:${it.id}" }) { agent ->
-                AgentCard(agent, rooms[agent.id], WorkText.chips(agent.displayName, work[agent.id], now), onUsage = nav::openExternal) { agentSheet = agent }
+                AgentCard(
+                    agent = agent,
+                    room = rooms[agent.id],
+                    signedIn = signIns[agent.id],
+                    chips = WorkText.chips(agent.displayName, work[agent.id], now),
+                    onUsage = nav::openExternal,
+                ) { agentSheetId = agent.id }
             }
             item(key = "more-agents") {
                 TextButton(onClick = nav::moreAgents) {
@@ -264,8 +293,8 @@ fun HomeScreen(nav: PocketNav) {
             agent = agent,
             projects = projects,
             sessions = sessions,
-            onDismiss = { agentSheet = null },
-            onOpenSession = { id -> agentSheet = null; nav.agent(id) },
+            onDismiss = { agentSheetId = null },
+            onOpenSession = { id -> agentSheetId = null; nav.agent(id) },
         )
     }
     removing?.let { project ->
@@ -450,16 +479,8 @@ private fun ProjectCard(
                     add(WorkFormat.count(mine.size, "open session", "open sessions"))
                     if (running > 0) add("$running running")
                 }.joinToString(" · ")
-                Text(
-                    summary, style = MaterialTheme.typography.bodySmall,
-                    color = if (running >
-                        0
-                    ) {
-                        toneColor(Tone.OK)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
+                val summaryColor = if (running > 0) toneColor(Tone.OK) else MaterialTheme.colorScheme.onSurfaceVariant
+                Text(summary, style = MaterialTheme.typography.bodySmall, color = summaryColor)
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Project actions") }
@@ -472,8 +493,19 @@ private fun ProjectCard(
     }
 }
 
+/**
+ * An agent on Home: who publishes it, its room, whether it is signed in (with the way to sign in
+ * when it is not), its limits and what it is working on. Tapping it opens its session.
+ */
 @Composable
-private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onUsage: (String) -> Unit, onClick: () -> Unit) {
+private fun AgentCard(
+    agent: AgentInfo,
+    room: RoomState?,
+    signedIn: Boolean?,
+    chips: List<Told>,
+    onUsage: (String) -> Unit,
+    onClick: () -> Unit,
+) {
     val (state, tone) = roomLabel(room)
     val limits = agentLimits(agent.id)
     Card(
@@ -507,6 +539,12 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onU
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(limits.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                signInLabel(signedIn)?.let { (label, tone) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusChip(label, tone)
+                        if (signedIn == false) TextButton(onClick = onClick) { Text("Sign in") }
+                    }
+                }
                 chips.forEach { StatusChip(it.text, it.tone) }
             }
             val usage = limits.usageUrl
@@ -532,7 +570,7 @@ private fun AgentStart(
     val active = remember(agent.id, sessions) {
         runCatching { graph.sessions.activeSession(agent.id) }.getOrNull()?.let { id -> sessions.firstOrNull { it.id == id } }
     }
-    var starting by remember { mutableStateOf(active == null) }
+    var starting by rememberSaveable(agent.id) { mutableStateOf(active == null) }
     if (projects.isEmpty()) {
         AlertDialog(
             onDismissRequest = onDismiss,

@@ -513,6 +513,21 @@ class GitHubRestApiTest {
         assertEquals(1, usage.artifactCount)
     }
 
+    @Test
+    fun `the App counts as installed only on the owner's own account, and not while suspended`() = runBlocking {
+        val org = """{"id":1,"account":{"login":"octo-org"}}"""
+        val suspended = """{"id":2,"account":{"login":"octo"},"suspended_at":"2026-01-01T00:00:00Z"}"""
+        server.enqueue(json("""{"total_count":2,"installations":[$org,$suspended]}"""))
+        assertFalse(api.installedOn("octo"))
+        assertEquals("/user/installations", server.next().url.encodedPath)
+
+        server.enqueue(json("""{"total_count":2,"installations":[$org,{"id":3,"account":{"login":"Octo"}}]}"""))
+        assertTrue(api.installedOn("octo"))
+
+        server.enqueue(json("""{"total_count":0,"installations":[]}"""))
+        assertFalse(api.installedOn("octo"))
+    }
+
     private companion object {
         /** Shaped like the example in GitHub's "Get billing usage report for a user" docs. */
         const val BILLING_SAMPLE = """{"usageItems":[

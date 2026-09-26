@@ -29,11 +29,14 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.ui.screens.project.AddFileChoice
 import com.pocketide.ui.screens.project.rememberGraph
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * "Share to PocketIDE": the owner picks the session the shared file goes to, then where in it
- * (the project or Media), and that session opens. [onHandled] runs once the file is added or
- * the owner cancels, so the same share is never offered twice.
+ * (the project or Media), and that session opens. Cancelling the second question goes back to
+ * the list. [onHandled] runs once the file is on its way or the owner cancels the list, so the
+ * same share is never offered twice.
  */
 @Composable
 fun SharedFilePicker(uri: Uri, onOpenSession: (String) -> Unit, onHandled: () -> Unit) {
@@ -49,11 +52,12 @@ fun SharedFilePicker(uri: Uri, onOpenSession: (String) -> Unit, onHandled: () ->
             sessionId = sessionId,
             uri = uri,
             scope = graph.scope,
-            say = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() },
+            say = onMainThread { message -> Toast.makeText(context.applicationContext, message, Toast.LENGTH_LONG).show() },
             onClose = {
                 onHandled()
                 onOpenSession(sessionId)
             },
+            onCancel = { chosen = null },
         )
         return
     }
@@ -88,6 +92,14 @@ fun SharedFilePicker(uri: Uri, onOpenSession: (String) -> Unit, onHandled: () ->
         confirmButton = {},
         dismissButton = { TextButton(onClick = onHandled) { Text("Cancel") } },
     )
+}
+
+/**
+ * [show] run on the main thread: the share's result arrives on the app's background scope, and
+ * a toast from a thread without a Looper throws and ends the process.
+ */
+internal fun onMainThread(show: (String) -> Unit): suspend (String) -> Unit = { message ->
+    withContext(Dispatchers.Main) { show(message) }
 }
 
 /** Open sessions, the most recently used first: a finished or deleted one takes no new files. */

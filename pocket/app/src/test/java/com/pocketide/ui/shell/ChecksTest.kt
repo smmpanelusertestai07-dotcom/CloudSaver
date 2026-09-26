@@ -4,7 +4,6 @@ import com.pocketide.linux.ComputerState
 import com.pocketide.vault.KeyState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -91,6 +90,13 @@ class ChecksTest {
     }
 
     @Test
+    fun theHeadingCountsWhatNeedsTheOwner() {
+        assertEquals("Everything here is as it should be.", SafetyCheck.summary(0))
+        assertEquals("1 thing needs you.", SafetyCheck.summary(1))
+        assertEquals("3 things need you.", SafetyCheck.summary(3))
+    }
+
+    @Test
     fun manySecretLookingVariablesAreSummedUpNotListedEndlessly() {
         val names = listOf("A_TOKEN", "B_SECRET", "C_PASSWORD", "D_KEY", "E_PAT")
         val line = SafetyCheck.lines(safe.copy(variables = names.map { null to it })).single { it.id == "variables" }
@@ -103,8 +109,12 @@ class ChecksTest {
         val lines = SafetyCheck.lines(safe.copy(keyNotice = notice)).associateBy { it.id }
         assertEquals(CheckStatus.PROBLEM, lines.getValue("keyring").status)
         assertEquals(notice, lines.getValue("keyring").detail)
-        assertEquals(CheckStatus.PROBLEM, SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone)).single { it.id == "keyring" }.status)
-        assertNull(SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone)).single { it.id == "keyring" }.fix)
+        val pending = SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone)).single { it.id == "keyring" }
+        assertEquals(CheckStatus.PROBLEM, pending.status)
+        assertEquals(SafetyFix.SAVE_KEY_NOW, pending.fix)
+        val alone = SafetyCheck.lines(safe.copy(key = KeyState.OnlyOnPhone, gitHubConnected = false)).single { it.id == "keyring" }
+        assertEquals(SafetyFix.RECONNECT_GITHUB, alone.fix)
+        assertEquals("Reconnect GitHub", alone.fixLabel)
     }
 
     @Test

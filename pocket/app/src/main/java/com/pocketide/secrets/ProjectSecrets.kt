@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 enum class SecretKind {
     /** The agent sees it: set in the room's environment for that project. */
     VARIABLE,
-    /** Never the agent: only PocketIDE's set-up steps and GitHub Actions builds. */
+    /** Never the agent, nor anything in Linux: only GitHub Actions builds, after the owner's [ProjectSecrets.pushToGitHub]. */
     SECRET,
 }
 

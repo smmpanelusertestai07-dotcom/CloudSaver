@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -123,7 +124,7 @@ private fun copyText(context: Context, label: String, text: String) {
 fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, scope: CoroutineScope, onDismiss: () -> Unit) {
     val graph = rememberGraph()
     val prefix = BranchName.prefix(session.branch)
-    var name by remember(session.id) { mutableStateOf(BranchName.tail(session.branch)) }
+    var name by rememberSaveable(session.id) { mutableStateOf(BranchName.tail(session.branch)) }
     val clean = name.trim()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -180,14 +181,22 @@ fun AddFileFlow(sessionId: String, snackbar: SnackbarHostState, scope: Coroutine
 
 /**
  * Asks where [uri] goes in session [sessionId] and adds it there. [scope] outlives the dialog,
- * which closes before the file is copied; [say] tells the owner how it went.
+ * which closes ([onClose]) before the file is copied; [say] tells the owner how it went.
+ * [onCancel] runs when the owner leaves without choosing: nothing is added.
  */
 @Composable
-fun AddFileChoice(sessionId: String, uri: Uri, scope: CoroutineScope, say: suspend (String) -> Unit, onClose: () -> Unit) {
+fun AddFileChoice(
+    sessionId: String,
+    uri: Uri,
+    scope: CoroutineScope,
+    say: suspend (String) -> Unit,
+    onClose: () -> Unit,
+    onCancel: () -> Unit = onClose,
+) {
     val graph = rememberGraph()
     val context = LocalContext.current
     AlertDialog(
-        onDismissRequest = onClose,
+        onDismissRequest = onCancel,
         title = { Text("Add the file where?") },
         text = { Text(ADD_FILE_TEXT) },
         confirmButton = {

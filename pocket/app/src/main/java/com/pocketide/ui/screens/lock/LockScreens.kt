@@ -214,8 +214,8 @@ private fun GitHubDisconnected() {
         }
         RecheckResult(recheck)
         WhatHappened(
-            "Access ends when the PocketIDE app is uninstalled from your GitHub account, its sign-in is revoked, " +
-                "or the account is gone. Being offline never locks the app. Reconnecting uploads what waited.",
+            "Access ends when PocketIDE's sign-in is revoked on GitHub, or the account is gone. " +
+                "Being offline never locks the app. Reconnecting uploads what waited.",
         )
         FinePrint("The app stays locked until both GitHub and Google Drive are connected.")
     }

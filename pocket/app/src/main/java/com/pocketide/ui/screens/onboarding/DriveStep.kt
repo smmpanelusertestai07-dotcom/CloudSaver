@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Redact
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.PlainError
 import com.pocketide.ui.shell.CheckCard
 import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.DriveConnectPanel
@@ -49,12 +50,13 @@ import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.shell.StatusLine
 import com.pocketide.ui.shell.StepHeader
 import com.pocketide.ui.shell.rememberGraph
+import com.pocketide.vault.GitHubAppMissingException
 import com.pocketide.vault.KeyState
 import com.pocketide.vault.VaultKeys
 import com.pocketide.vault.WrongPasswordException
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /**
  * Step 2: Google Drive (`drive.appdata`) and the chats' key. A returning owner gets the key
@@ -72,6 +74,7 @@ fun DriveStepScreen(onDone: () -> Unit) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { secure = graph.appLock.deviceSecure() }
     val connected = email != null || justAuthorized
     var keyReady by remember { mutableStateOf(false) }
+    val restoreOffer = rememberRestoreOffer()
 
     ShellPage {
         StepHeader(OnboardingStep.DRIVE)
@@ -135,9 +138,12 @@ fun DriveStepScreen(onDone: () -> Unit) {
             SectionLabel("Your chats' key")
             KeySetup(
                 vault = graph.vault,
+                openInstallPage = { External.openUrl(context, graph.gitHubAuth.installUrl()) },
                 // Opened with the extra password: this phone's settings must know it is on.
                 onPasswordUsed = { graph.settings.update { it.copy(extraPassword = true) } },
                 onReady = { keyReady = true },
+                // A rebuilt key means chats may wait in Drive: the restore is offered until it starts.
+                onKeyMade = restoreOffer::keyReady,
             )
             if (keyReady) {
                 Gap(24.dp)
@@ -151,7 +157,9 @@ private sealed interface KeyPhase {
     data object Working : KeyPhase
     data class NeedsPassword(val wrong: Boolean) : KeyPhase
     data class Lost(val why: String) : KeyPhase
-    data class Failed(val why: String) : KeyPhase
+
+    /** [appMissing]: the keyring could not be made until PocketIDE's GitHub App is installed. */
+    data class Failed(val why: String, val appMissing: Boolean = false) : KeyPhase
     data class Ready(val restored: Boolean) : KeyPhase
 }
 
@@ -160,7 +168,13 @@ private sealed interface KeyPhase {
  * that exists but cannot be rebuilt is never silently replaced: the owner decides.
  */
 @Composable
-private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -> Unit) {
+private fun KeySetup(
+    vault: VaultKeys,
+    openInstallPage: () -> Unit,
+    onPasswordUsed: () -> Unit,
+    onReady: () -> Unit,
+    onKeyMade: (restored: Boolean) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf<KeyPhase>(KeyPhase.Working) }
     var confirmNewKey by remember { mutableStateOf(false) }
@@ -168,39 +182,15 @@ private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -
     fun attempt(block: suspend () -> KeyPhase) {
         phase = KeyPhase.Working
         scope.launch {
-            phase = try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: IOException) {
-                KeyPhase.Failed("No connection. Check the internet and try again.")
-            } catch (e: Exception) {
-                KeyPhase.Failed(Redact.text(e.message ?: "The key could not be set up.").take(200))
+            phase = keyPhaseOf(block)
+            (phase as? KeyPhase.Ready)?.let { ready ->
+                onKeyMade(ready.restored)
+                onReady()
             }
-            if (phase is KeyPhase.Ready) onReady()
         }
     }
 
-    fun restore(password: CharArray?) = attempt {
-        try {
-            when (val result = vault.restore(password)) {
-                KeyState.Ready, KeyState.OnlyOnPhone -> {
-                    if (password != null) onPasswordUsed()
-                    KeyPhase.Ready(restored = true)
-                }
-                KeyState.NeedsPassword -> KeyPhase.NeedsPassword(wrong = password != null)
-                KeyState.None -> {
-                    vault.setUp()
-                    KeyPhase.Ready(restored = false)
-                }
-                is KeyState.Lost -> KeyPhase.Lost(Redact.text(result.why))
-            }
-        } catch (_: WrongPasswordException) {
-            KeyPhase.NeedsPassword(wrong = true)
-        } finally {
-            password?.fill('\u0000')
-        }
-    }
+    fun restore(password: CharArray?) = attempt { restoreKey(vault, password, onPasswordUsed) }
 
     LaunchedEffect(Unit) {
         when (vault.state.value) {
@@ -212,35 +202,19 @@ private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -
         }
     }
 
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        when (val current = phase) {
-            KeyPhase.Working -> PrimaryAction("Setting up encryption…", onClick = {}, busy = true)
-            is KeyPhase.Ready -> CheckCard(
-                listOf(
-                    CheckItem(
-                        if (current.restored) "Your key is back" else "Encryption is set up",
-                        "Nothing to write down. A new phone rebuilds the key from your Drive and GitHub.",
-                        icon = Icons.Outlined.Key,
-                    ),
-                ),
-            )
-            is KeyPhase.NeedsPassword -> ExtraPasswordEntry(wrong = current.wrong, onSubmit = { restore(it) })
-            is KeyPhase.Failed -> {
-                NoticeCard(current.why, Tone.ERROR)
-                PrimaryAction("Try again", onClick = { restore(null) })
+    KeyPhaseView(
+        phase = phase,
+        openInstallPage = openInstallPage,
+        onRetry = { restore(null) },
+        onPassword = { restore(it) },
+        onKeyCopy = { text ->
+            attempt {
+                vault.importKeyCopy(text)
+                KeyPhase.Ready(restored = true)
             }
-            is KeyPhase.Lost -> {
-                NoticeCard(
-                    title = "Your old key can't be rebuilt",
-                    text = "${current.why} Your code on GitHub is not affected.",
-                    tone = Tone.ERROR,
-                )
-                KeyCopyEntry(onSubmit = { text -> attempt { vault.importKeyCopy(text); KeyPhase.Ready(restored = true) } })
-                QuietAction("Try again", onClick = { restore(null) })
-                QuietAction("Start with a new key", onClick = { confirmNewKey = true })
-            }
-        }
-    }
+        },
+        onNewKey = { confirmNewKey = true },
+    )
 
     if (confirmNewKey) {
         AlertDialog(
@@ -250,11 +224,92 @@ private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -
             confirmButton = {
                 TextButton(onClick = {
                     confirmNewKey = false
-                    attempt { vault.setUp(); KeyPhase.Ready(restored = false) }
+                    attempt {
+                        vault.setUp()
+                        KeyPhase.Ready(restored = false)
+                    }
                 }) { Text("Make a new key") }
             },
             dismissButton = { TextButton(onClick = { confirmNewKey = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** What [block] ended in; a failure becomes the phase that tells the owner what to do. */
+private suspend fun keyPhaseOf(block: suspend () -> KeyPhase): KeyPhase = try {
+    block()
+} catch (e: CancellationException) {
+    throw e
+} catch (_: IOException) {
+    KeyPhase.Failed("No connection. Check the internet and try again.")
+} catch (e: GitHubAppMissingException) {
+    KeyPhase.Failed(e.message.orEmpty(), appMissing = true)
+} catch (e: Exception) {
+    KeyPhase.Failed(PlainError.of(e))
+}
+
+/** Rebuilds the key from its halves, or makes the first one. [password] is wiped afterwards. */
+private suspend fun restoreKey(vault: VaultKeys, password: CharArray?, onPasswordUsed: () -> Unit): KeyPhase = try {
+    when (val result = vault.restore(password)) {
+        KeyState.Ready, KeyState.OnlyOnPhone -> {
+            if (password != null) onPasswordUsed()
+            KeyPhase.Ready(restored = true)
+        }
+        KeyState.NeedsPassword -> KeyPhase.NeedsPassword(wrong = password != null)
+        KeyState.None -> {
+            vault.setUp()
+            KeyPhase.Ready(restored = false)
+        }
+        is KeyState.Lost -> KeyPhase.Lost(Redact.text(result.why))
+    }
+} catch (_: WrongPasswordException) {
+    KeyPhase.NeedsPassword(wrong = true)
+} finally {
+    password?.fill('\u0000')
+}
+
+@Composable
+private fun KeyPhaseView(
+    phase: KeyPhase,
+    openInstallPage: () -> Unit,
+    onRetry: () -> Unit,
+    onPassword: (CharArray) -> Unit,
+    onKeyCopy: (String) -> Unit,
+    onNewKey: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when (phase) {
+            KeyPhase.Working -> PrimaryAction("Setting up encryption…", onClick = {}, busy = true)
+            is KeyPhase.Ready -> CheckCard(
+                listOf(
+                    CheckItem(
+                        if (phase.restored) "Your key is back" else "Encryption is set up",
+                        "Nothing to write down. A new phone rebuilds the key from your Drive and GitHub.",
+                        icon = Icons.Outlined.Key,
+                    ),
+                ),
+            )
+            is KeyPhase.NeedsPassword -> ExtraPasswordEntry(wrong = phase.wrong, onSubmit = onPassword)
+            is KeyPhase.Failed -> {
+                NoticeCard(phase.why, Tone.ERROR)
+                if (phase.appMissing) {
+                    PrimaryAction("Install PocketIDE on your GitHub", onClick = openInstallPage)
+                    SecondaryAction("Try again", onClick = onRetry)
+                } else {
+                    PrimaryAction("Try again", onClick = onRetry)
+                }
+            }
+            is KeyPhase.Lost -> {
+                NoticeCard(
+                    title = "Your old key can't be rebuilt",
+                    text = "${phase.why} Your code on GitHub is not affected.",
+                    tone = Tone.ERROR,
+                )
+                KeyCopyEntry(onSubmit = onKeyCopy)
+                QuietAction("Try again", onClick = onRetry)
+                QuietAction("Start with a new key", onClick = onNewKey)
+            }
+        }
     }
 }
 
