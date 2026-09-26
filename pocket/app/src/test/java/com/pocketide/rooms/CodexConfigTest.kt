@@ -69,7 +69,7 @@ class CodexConfigTest {
     @Test fun `the owner's keys, tables and comments are kept, and another server only once the owner keeps it`() {
         val owner = """
             # my Codex settings
-            model = "gpt-5.5-codex"
+            model = "sample-model"
             sandbox_mode = "workspace-write"
             check_for_update_on_startup = true
 
@@ -77,7 +77,7 @@ class CodexConfigTest {
             enabled = true   # please no
 
             [profiles.fast]
-            model = "gpt-5.5-mini"
+            model = "sample-model-small"
             instructions = ""${'"'}
             multi-line [not a table]
             ""${'"'}
@@ -100,13 +100,13 @@ class CodexConfigTest {
             command = "npx"
         """.trimIndent() + "\n"
         val text = write(owner)
-        assertTrue(text.startsWith("# my Codex settings\nmodel = \"gpt-5.5-codex\"\nsandbox_mode = \"workspace-write\"\n"))
+        assertTrue(text.startsWith("# my Codex settings\nmodel = \"sample-model\"\nsandbox_mode = \"workspace-write\"\n"))
         assertFalse("the owner's sandbox choice stays", text.contains("danger-full-access"))
         assertEquals(1, Regex("(?m)^check_for_update_on_startup = false$").findAll(text).count())
         assertFalse(text.contains("check_for_update_on_startup = true"))
         assertTrue(text.contains("[analytics]\nenabled = false\n"))
         assertFalse(text.contains("please no"))
-        assertTrue(text.contains("[profiles.fast]\nmodel = \"gpt-5.5-mini\"\ninstructions = \"\"\"\nmulti-line [not a table]\n\"\"\"\n"))
+        assertTrue(text.contains("[profiles.fast]\nmodel = \"sample-model-small\"\ninstructions = \"\"\"\nmulti-line [not a table]\n\"\"\"\n"))
         val github = "[mcp_servers.github]\ncommand = \"npx\"\nargs = [\n  \"-y\",\n  \"@modelcontextprotocol/server-github\",\n]"
         assertFalse("a server added in the room waits for the owner", text.contains("[mcp_servers.github]"))
         assertEquals(listOf(Entry("mcp_servers", "github", github)), added(owner))

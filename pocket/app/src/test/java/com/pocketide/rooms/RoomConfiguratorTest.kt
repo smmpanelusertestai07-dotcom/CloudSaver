@@ -118,10 +118,10 @@ class RoomConfiguratorTest {
     @Test fun `a Codex room gets its config, and the override file when the owner has one`() {
         home("codex", ".codex").mkdirs()
         home("codex", ".codex/AGENTS.override.md").writeText("Owner's override.\n")
-        home("codex", ".codex/config.toml").writeText("model = \"gpt-5.5-codex\"\n\n[mcp_servers.github]\ncommand = \"npx\"\n")
+        home("codex", ".codex/config.toml").writeText("model = \"sample-model\"\n\n[mcp_servers.github]\ncommand = \"npx\"\n")
         configurator.configure(RoomProfiles.of("codex", null)!!, listOf("claude"), 14)
         val config = home("codex", ".codex/config.toml").readText()
-        assertTrue(config.startsWith("model = \"gpt-5.5-codex\"\n"))
+        assertTrue(config.startsWith("model = \"sample-model\"\n"))
         assertFalse("a server added in the room waits for the owner", config.contains("[mcp_servers.github]"))
         assertEquals(listOf("github"), book.pending.value.map { it.key })
         assertTrue(config.contains("[mcp_servers.pocketide]\ncommand = \"python3\"\nargs = [\"/opt/pocketide/mcp.py\"]"))

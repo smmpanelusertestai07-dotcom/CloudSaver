@@ -183,7 +183,7 @@ class ConfigFilesTest {
             {
               "permissions": { "deny": ["Read(./secrets/**)", "Read(//x/**)"], "ask": ["Bash(git push:*)"] },
               "env": { "DISABLE_AUTOUPDATER": "0" },
-              "model": "opus",
+              "model": "sample-model",
               "cleanupPeriodDays": 7
             }
         """.trimIndent()
@@ -196,7 +196,7 @@ class ConfigFilesTest {
         assertEquals("PocketIDE's value wins over one set in the room", "1", env["DISABLE_AUTOUPDATER"]!!.jsonPrimitive.content)
         assertEquals("1", env["DISABLE_ERROR_REPORTING"]!!.jsonPrimitive.content)
         assertFalse("telemetry off would also turn off feature flags (R6)", env.containsKey("DISABLE_TELEMETRY"))
-        assertEquals("opus", written["model"]!!.jsonPrimitive.content)
+        assertEquals("sample-model", written["model"]!!.jsonPrimitive.content)
         assertEquals(ConfigFiles.CLAUDE_KEEP_DAYS, written["cleanupPeriodDays"]!!.jsonPrimitive.int)
         val notification = written["hooks"]!!.jsonObject["Notification"]!!.jsonArray
         assertEquals(1, notification.size)
@@ -249,7 +249,7 @@ class ConfigFilesTest {
     }
 
     @Test fun `Claude's sessions connect to Remote Control as the owner chose, and the rebuild keeps it as PocketIDE's own`() {
-        val on = ConfigFiles.claudeSettings("""{"model": "opus"}""", emptyList(), notify)!!
+        val on = ConfigFiles.claudeSettings("""{"model": "sample-model"}""", emptyList(), notify)!!
         assertEquals("on by default", JsonPrimitive(true), obj(on.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
         assertTrue("PocketIDE's own key is no agent's change", on.added.isEmpty())
         val again = ConfigFiles.claudeSettings(on.text, emptyList(), notify)!!
@@ -258,7 +258,7 @@ class ConfigFilesTest {
 
         val off = ConfigFiles.claudeSettings(on.text, emptyList(), notify, accountChats = false)!!
         assertEquals("turned off, an earlier true does not linger", JsonPrimitive(false), obj(off.text)[ConfigFiles.CLAUDE_REMOTE_CONTROL])
-        assertEquals("opus", obj(off.text)["model"]!!.jsonPrimitive.content)
+        assertEquals("sample-model", obj(off.text)["model"]!!.jsonPrimitive.content)
         assertTrue(off.added.isEmpty())
 
         val agentTurnedOn = JsonObject(obj(off.text) + (ConfigFiles.CLAUDE_REMOTE_CONTROL to JsonPrimitive(true))).toString()

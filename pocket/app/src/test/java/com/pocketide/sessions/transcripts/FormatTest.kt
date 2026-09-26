@@ -50,7 +50,7 @@ class FormatTest {
                 Triple(TOOL, "Read: $WORKTREE_A/app/Login.kt", 0),
                 Triple(TOOL, "Bash: ./gradlew test", 0),
                 Triple(USER, "Here is a screenshot of the bug", 1),
-                Triple(USER, "/model sonnet", 0),
+                Triple(USER, "/model sample-model", 0),
                 Triple(ASSISTANT, "Fixed: the token was not refreshed.", 0),
             ),
             shown(entries),
