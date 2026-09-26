@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.FolderShared
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Palette
@@ -66,10 +67,13 @@ import com.pocketide.cloud.ComputerService
 import com.pocketide.core.ThemeMode
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.GitHubLogo
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.lock.canLock
+import com.pocketide.ui.screens.onboarding.GitHubAppFields
 import com.pocketide.ui.web.Browser
 import kotlinx.coroutines.launch
 
@@ -83,6 +87,7 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
     val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     val lockable = (context as? FragmentActivity)?.let(::canLock) == true
     var signingOut by remember { mutableStateOf(false) }
+    var changingApp by remember { mutableStateOf(false) }
     val update = graph.settings::update
 
     Column(
@@ -194,6 +199,7 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
             Link(Icons.Outlined.Apps, "PocketIDE's access on GitHub", "See or remove it on GitHub", {
                 Browser.open(context, graph.gitHubAuth.authorizationsUrl())
             })
+            Link(Icons.Outlined.Key, "GitHub App", "The App PocketIDE signs in through", { changingApp = true })
             Link(Icons.AutoMirrored.Outlined.Logout, "Sign out", "The cloud computers keep running until GitHub stops them", { signingOut = true })
         }
 
@@ -206,6 +212,27 @@ fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (Stri
         }
     }
 
+    if (changingApp) {
+        AlertDialog(
+            onDismissRequest = { changingApp = false },
+            title = { Text("GitHub App") },
+            text = {
+                DialogBody {
+                    Text("Its public client ID and the name in its address. A different App signs you out; sign in again with it.")
+                    GitHubAppFields(graph) { appChanged ->
+                        changingApp = false
+                        if (appChanged) {
+                            ComputerService.disconnect(context)
+                            graph.computerPage.release()
+                            scope.launch { graph.gitHubAuth.signOut() }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { changingApp = false }) { Text("Close") } },
+            properties = KeepTypedInput,
+        )
+    }
     if (signingOut) {
         AlertDialog(
             onDismissRequest = { signingOut = false },

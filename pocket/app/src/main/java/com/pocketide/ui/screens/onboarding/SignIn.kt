@@ -58,9 +58,20 @@ import java.io.IOException
  */
 @Composable
 internal fun SignInScreen(graph: AppGraph, onRead: (String) -> Unit) {
-    var configured by remember { mutableStateOf(graph.gitHubAuth.configured) }
-    if (!configured) {
-        GitHubAppForm(graph, onSaved = { configured = graph.gitHubAuth.configured }, onRead = onRead)
+    val first = remember { !graph.gitHubAuth.configured }
+    var editingApp by remember { mutableStateOf(first) }
+    var attempt by remember { mutableIntStateOf(0) }
+    if (editingApp) {
+        GitHubAppForm(
+            graph,
+            first = first,
+            onSaved = {
+                editingApp = !graph.gitHubAuth.configured
+                attempt++
+            },
+            onBack = if (graph.gitHubAuth.configured) ({ editingApp = false }) else null,
+            onRead = onRead,
+        )
         return
     }
     val context = LocalContext.current
@@ -68,7 +79,6 @@ internal fun SignInScreen(graph: AppGraph, onRead: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf<DeviceCode?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
-    var attempt by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(attempt) {
         problem = null
@@ -117,6 +127,7 @@ internal fun SignInScreen(graph: AppGraph, onRead: (String) -> Unit) {
         }
         Gap(16.dp)
         QuietAction("What PocketIDE can see", onClick = { onRead(DocsContent.PRIVACY_ID) })
+        QuietAction("Use a different GitHub App", onClick = { editingApp = true })
     }
 }
 
@@ -150,51 +161,62 @@ private suspend fun waitForApproval(graph: AppGraph, code: DeviceCode): String? 
 private const val MS_PER_SECOND = 1_000L
 
 /**
- * For an owner whose APK carries no GitHub App (the first build, before the App existed): its
- * public client ID and name, typed once and kept on this phone.
+ * The GitHub App PocketIDE signs in through, for an owner whose APK carries none (the first build,
+ * before the App existed) or who typed it wrong: its public client ID and name, kept on this phone.
  */
 @Composable
-private fun GitHubAppForm(graph: AppGraph, onSaved: () -> Unit, onRead: (String) -> Unit) {
-    val choice = remember { gitHubAppChoice(graph) }
-    var clientId by remember { mutableStateOf("") }
-    var slug by remember { mutableStateOf("") }
-    var errors by remember { mutableStateOf<GitHubAppSave.Invalid?>(null) }
+private fun GitHubAppForm(graph: AppGraph, first: Boolean, onSaved: () -> Unit, onBack: (() -> Unit)?, onRead: (String) -> Unit) {
     ShellPage {
-        ScreenTitle(Icons.Outlined.Lan, "Connect your GitHub App", "This copy of PocketIDE was built without one. Enter your App's public details once.")
+        onBack?.let { QuietAction("Back", onClick = it) }
+        ScreenTitle(
+            Icons.Outlined.Lan,
+            if (first) "Connect your GitHub App" else "Change the GitHub App",
+            if (first) "This copy of PocketIDE was built without one. Enter your App's public details once." else null,
+        )
         Gap(24.dp)
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = clientId,
-                onValueChange = { clientId = it },
-                label = { Text("Client ID") },
-                singleLine = true,
-                isError = errors?.clientId != null,
-                supportingText = errors?.clientId?.let { { Text(it) } },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = slug,
-                onValueChange = { slug = it },
-                label = { Text("App name in its address (github.com/apps/…)") },
-                singleLine = true,
-                isError = errors?.slug != null,
-                supportingText = errors?.slug?.let { { Text(it) } },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        Gap(20.dp)
+        GitHubAppFields(graph, onSaved = { onSaved() })
+        QuietAction("How to make the GitHub App", onClick = { onRead(DocsContent.OWNER_SET_UP_ID) })
+    }
+}
+
+/** The App's two public details, checked before they are kept; [onSaved] learns whether the App changed. */
+@Composable
+internal fun GitHubAppFields(graph: AppGraph, onSaved: (appChanged: Boolean) -> Unit) {
+    val choice = remember { gitHubAppChoice(graph) }
+    val entered = remember { choice.entered() }
+    var clientId by remember { mutableStateOf(entered?.clientId.orEmpty()) }
+    var slug by remember { mutableStateOf(entered?.slug.orEmpty()) }
+    var errors by remember { mutableStateOf<GitHubAppSave.Invalid?>(null) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(
+            value = clientId,
+            onValueChange = { clientId = it },
+            label = { Text("Client ID") },
+            singleLine = true,
+            isError = errors?.clientId != null,
+            supportingText = errors?.clientId?.let { { Text(it) } },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = slug,
+            onValueChange = { slug = it },
+            label = { Text("App name in its address (github.com/apps/…)") },
+            singleLine = true,
+            isError = errors?.slug != null,
+            supportingText = errors?.slug?.let { { Text(it) } },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
         PrimaryAction(
             "Save",
             onClick = {
                 when (val saved = choice.save(clientId, slug)) {
                     is GitHubAppSave.Invalid -> errors = saved
-                    is GitHubAppSave.Saved -> onSaved()
+                    is GitHubAppSave.Saved -> onSaved(saved.appChanged)
                 }
             },
         )
-        QuietAction("How to make the GitHub App", onClick = { onRead(DocsContent.OWNER_SET_UP_ID) })
     }
 }
 

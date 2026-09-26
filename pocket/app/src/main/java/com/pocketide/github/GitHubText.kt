@@ -13,7 +13,7 @@ import kotlin.math.ceil
 internal object GitHubText {
     const val NOT_CONFIGURED =
         "PocketIDE doesn't know your GitHub App yet, so GitHub cannot be connected. " +
-            "Enter the App's client ID in Settings > GitHub App."
+            "Enter the App's client ID on the sign-in screen, or in Settings > GitHub App."
     const val NOT_CONNECTED = "GitHub is not connected. Sign in with GitHub again."
     const val ACCESS_REMOVED = "GitHub access was removed or has expired. Connect GitHub again."
     const val RENEW_FAILED = "GitHub sign-in could not be renewed. Try again in a minute."
