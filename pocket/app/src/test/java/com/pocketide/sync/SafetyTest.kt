@@ -217,6 +217,7 @@ class SafetyTest {
             // A private key pasted into a prompt: one JSON line, its line breaks escaped. Split like the
             // prefixes above, so the source never holds the marker the no-secrets gate looks for.
             "-----BEGIN OPENSSH " + "PRIVATE KEY-----\\n" + fake("b3BlbnNzaC1rZXktdjEAAAAA", 40) + "\\n-----END OPENSSH PRIVATE KEY-----",
+            "-----BEGIN PGP " + "PRIVATE KEY BLOCK-----\\n\\n" + fake("lQOYBGVh", 60) + "\\n=abcd\\n-----END PGP PRIVATE KEY BLOCK-----",
         )
         for (shape in SecretPatterns.tokenShapes) {
             assertTrue("no sample for ${shape.pattern}", samples.any { shape.containsMatchIn(it) })
@@ -231,6 +232,24 @@ class SafetyTest {
             assertTrue(sample, text.startsWith("{\"display\":\"use ") && text.endsWith(" here\",\"timestamp\":1}\n"))
             assertTrue(sample, SecretMaskingInputStream(ByteArrayInputStream(line)).readBytes().contentEquals(masked))
         }
+    }
+
+    @Test
+    fun aPastedPrivateKeyIsMaskedWholeWhateverItsLabelAndEvenWithoutItsFooter() {
+        val body = "lQOYBGVhbGsBCADKq3" + "examplekeybody".repeat(4) + "0123456789"
+        // Split like the samples above, so the source never holds a marker the no-secrets gate looks for.
+        val pgp = "-----BEGIN PGP " + "PRIVATE KEY BLOCK-----\\n\\n$body\\n=abcd\\n-----END PGP " + "PRIVATE KEY BLOCK-----"
+        val partial = "-----BEGIN RSA " + "PRIVATE KEY-----\\n$body"
+        for (pasted in listOf(pgp, partial)) {
+            val line = "{\"display\":\"$pasted\",\"timestamp\":1}\n"
+            val masked = String(SecretMask.mask(line.toByteArray(Charsets.ISO_8859_1)), Charsets.ISO_8859_1)
+            assertEquals(pasted, "{\"display\":\"" + "*".repeat(pasted.length) + "\",\"timestamp\":1}\n", masked)
+        }
+        // A cut-off key in one string and a whole one in the next: each is masked, the JSON around them stays.
+        val both = "{\"display\":\"$partial\",\"pastedContents\":{\"1\":{\"content\":\"$pgp\"}}}\n"
+        val masked = String(SecretMask.mask(both.toByteArray(Charsets.ISO_8859_1)), Charsets.ISO_8859_1)
+        val stars = { s: String -> "*".repeat(s.length) }
+        assertEquals("{\"display\":\"${stars(partial)}\",\"pastedContents\":{\"1\":{\"content\":\"${stars(pgp)}\"}}}\n", masked)
     }
 
     @Test
