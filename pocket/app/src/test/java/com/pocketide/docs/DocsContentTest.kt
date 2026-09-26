@@ -93,9 +93,10 @@ class DocsContentTest {
         for (agent in OfficialAgents.all) {
             val home = checkNotNull(ChatHomes.of(agent.id))
             val page = DocsContent.agentPage(agent)
-            assertTrue(agent.id, sectionText(page).contains("Where its chats are saved: ${home.kept}"))
+            assertTrue(agent.id, sectionText(page).contains("Where you can open its chats again: ${home.kept}"))
             assertTrue(agent.id, page.blocks.containsAll(listOfNotNull(home.open) + home.sources))
         }
+        assertTrue("the table is followed by what companies keep", sectionText(requireSection("privacy")).contains(ChatHomes.COMPANIES_KEEP))
         val codex = DocsContent.agentPage(OfficialAgents.codex)
         assertTrue(sectionText(codex).contains(ChatHomes.CODEX_CLOUD_LINE))
         val codexLinks = codex.blocks.filterIsInstance<DocBlock.Link>().map { it.url }
@@ -103,6 +104,16 @@ class DocsContentTest {
         val antigravity = DocsContent.agentPage(OfficialAgents.antigravity)
         assertTrue(sectionText(antigravity).contains(ChatHomes.JULES_LINE))
         assertTrue(antigravity.blocks.filterIsInstance<DocBlock.Link>().any { it.url == DocLinks.JULES })
+    }
+
+    @Test
+    fun `where chats can be opened again never reads as the company keeping nothing`() {
+        val texts = ChatHomes.all.flatMap { listOfNotNull(it.kept, it.elsewhere, it.note) } + ChatHomes.TABLE_HEADER
+        for (text in texts) {
+            for (claim in listOf("cannot keep", "Nowhere", "keeps nothing", "Also kept")) {
+                assertFalse("\"$text\" says \"$claim\"", text.contains(claim, ignoreCase = true))
+            }
+        }
     }
 
     @Test

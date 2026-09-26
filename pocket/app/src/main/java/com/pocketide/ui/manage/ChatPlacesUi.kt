@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import com.pocketide.core.Settings
+import com.pocketide.docs.ChatHomes
 import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.nav.PocketNav
@@ -34,6 +35,8 @@ fun ChatPlacesCard(settings: Settings, nav: PocketNav) {
                 LinkRow(place.pageLabel, place.page, nav) { openChatPage(context, nav, place) }
             }
         }
+        HorizontalDivider()
+        Hint(COMPANIES_KEEP_HERE)
     }
 }
 
@@ -48,6 +51,7 @@ internal fun ChatPlaceDialog(place: ChatPlaces.Place, nav: PocketNav, onDismiss:
             DialogBody {
                 Text(place.kept, style = MaterialTheme.typography.bodyMedium)
                 place.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                Text(COMPANIES_KEEP_HERE, style = MaterialTheme.typography.bodyMedium)
             }
         },
         confirmButton = {
@@ -63,6 +67,8 @@ internal fun ChatPlaceDialog(place: ChatPlaces.Place, nav: PocketNav, onDismiss:
         dismissButton = { if (place.page != null) TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
+
+private const val COMPANIES_KEEP_HERE = "${ChatHomes.COMPANIES_KEEP} Help → Privacy says what each keeps."
 
 /** Opens [place]'s page: in the company's own app when it has one installed, in the browser otherwise. */
 internal fun openChatPage(context: Context, nav: PocketNav, place: ChatPlaces.Place) {

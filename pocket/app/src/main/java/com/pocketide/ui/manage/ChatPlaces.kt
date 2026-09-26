@@ -28,8 +28,8 @@ internal object ChatPlaces {
 
     const val CLAUDE_ON = "Your Claude account (Anthropic) and ${ChatHomes.BACKUP}."
 
-    const val CLAUDE_OFF = "${ChatHomes.BACKUP} only. Turn on Settings → Agents → \"${ChatHomes.CLAUDE_SWITCH}\" " +
-        "to keep new sessions in your Claude account too."
+    const val CLAUDE_OFF = "Only ${ChatHomes.BACKUP} can bring new sessions back. Turn on Settings → Agents → " +
+        "\"${ChatHomes.CLAUDE_SWITCH}\" to open new sessions in your Claude account too."
 
     const val SESSION_BACKED_UP = "${ChatHomes.BACKUP} has it, so a new phone brings it back."
 
@@ -37,10 +37,10 @@ internal object ChatPlaces {
         "Not backed up: \"Don't back up this chat\" is on, so PocketIDE keeps it on this phone only and a new phone cannot bring it back."
 
     const val SESSION_IN_CLAUDE =
-        "Your Claude account (Anthropic) has it too: it ran while \"${ChatHomes.CLAUDE_SWITCH}\" was on."
+        "You can open it in your Claude account too: it ran while \"${ChatHomes.CLAUDE_SWITCH}\" was on."
 
     const val SESSION_NOT_IN_CLAUDE =
-        "It is not in your Claude account: it has not run while \"${ChatHomes.CLAUDE_SWITCH}\" was on."
+        "Your Claude account does not list it: it has not run while \"${ChatHomes.CLAUDE_SWITCH}\" was on."
 
     const val SESSION_CODEX = "OpenAI does not list sessions run on this phone in your ChatGPT account."
 
