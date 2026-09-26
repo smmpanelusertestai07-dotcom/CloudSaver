@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from tests.support import GOOD_LIB, PAGE, PF_R, PF_W, PF_X, PT_GNU_RELRO, PT_LOAD, REPO, TreeTest, elf
+from tests.support import GOOD_LIB, PAGE, PF_R, PF_W, PF_X, PT_GNU_RELRO, PT_LOAD, REPO, TEMPLATE, TreeTest, elf
 
 import brand_tokens
 import least_privilege
@@ -160,6 +160,29 @@ class TemplatesGate(TreeTest):
                   "      - run: ./gradlew assembleRelease\n"
                   "  sign:\n    needs: build\n    runs-on: ubuntu-latest\n    steps:\n"
                   "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
+        self.assertPasses(templates.check(self.root))
+
+    def test_secrets_given_to_the_whole_workflow_fail(self):
+        # The workflow-level env reaches every job, the one that runs the repository's build too.
+        self.edit(self.NAME, "jobs:\n", "env:\n  KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\njobs:\n")
+        self.assertFailsWith(templates.check(self.root), "the workflow-level 'env' uses Secrets")
+
+    def test_every_form_of_the_secrets_context_counts(self):
+        build = "      - run: ./gradlew assembleRelease\n"
+        for expression in ("${{ toJSON(secrets) }}", "${{ secrets['ANDROID_KEY_PASSWORD'] }}", "${{ fromJSON(toJSON(secrets)).KEY }}"):
+            with self.subTest(expression=expression):
+                self.write(self.NAME, TEMPLATE.replace(build, build + f'      - run: echo "{expression}"\n'))
+                self.assertFailsWith(templates.check(self.root), "job build reads Secrets and checks out the repository")
+
+    def test_secrets_passed_to_another_workflow_fail(self):
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n"
+                  "  release:\n    uses: ./.github/workflows/release.yml\n    secrets: inherit\n")
+        self.assertFailsWith(templates.check(self.root), "job release passes Secrets to another workflow")
+
+    def test_the_word_secrets_outside_an_expression_reads_nothing(self):
+        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
+                  "      - run: ./gradlew assembleRelease\n      - run: cat docs/secrets.md\n")
         self.assertPasses(templates.check(self.root))
 
     def test_the_real_templates_pass(self):
