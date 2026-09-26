@@ -94,9 +94,11 @@ fun MoreAgentsScreen(nav: PocketNav) {
     val official = installed.filter { it.official }
     val added = installed.filter { !it.official }
 
+    // A download the owner started: leaving the screen, or the app lock closing it, must not throw it away.
     fun add(candidate: AgentCandidate) {
         runner.run(
             key = "add:${candidate.extensionId}",
+            outlivesScreen = true,
             onFailure = { error ->
                 val question = mobileDataQuestion(error)
                 if (question != null) askMobileData = candidate to question else runner.say(PlainError.of(error))
