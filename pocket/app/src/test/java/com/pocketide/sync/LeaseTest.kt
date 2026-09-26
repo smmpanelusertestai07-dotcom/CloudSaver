@@ -362,6 +362,112 @@ class LeaseTest {
     }
 
     @Test
+    fun anUploadConfirmedJustBeforeTheSweepIsNeverRecordedWithADeadId() = runBlocking {
+        val a = phoneA()
+        a.homeFile("claude", path).writeText("shared start\n")
+        a.engine.syncNow()
+        val b = phoneB()
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+        b.network.online = false
+        b.homeFile("claude", path).appendText("written on B offline\n")
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        a.engine.takeOver()
+
+        // B uploads its conflict copy; the index write fails.
+        b.network.online = true
+        b.drive.failIndexWrites = 1
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        val uploaded = b.queued().single { it.conflict && it.driveId != null }
+
+        // Almost a week later B tries again, and the record fails again: the old upload is not
+        // trusted that close to the sweep, it is sent again as a new file.
+        clock.advance(Maintenance.ORPHAN_GRACE_MS - 2 * Durations.HOUR)
+        b.drive.failIndexWrites = 1
+        b.engine.syncNow()
+        val again = b.queued().single { it.conflict }
+        assertTrue("sent again as a new file", again.driveId != null && again.driveId != uploaded.driveId && again.name != uploaded.name)
+
+        // Three hours later A's daily job sweeps what no index names; then B records.
+        clock.advance(3 * Durations.HOUR)
+        a.engine.runMaintenance()
+        b.engine.syncNow()
+
+        val index = a.remoteIndex()!!
+        val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
+        val recorded = index.objects.filter { it.sessionId == copy.id }
+        assertTrue("every recorded piece is in Drive", recorded.isNotEmpty() && recorded.all { it.driveId in a.drive.files })
+        assertTrue(b.queued().none { it.conflict })
+        assertNull("the old upload is gone too", a.drive.files[uploaded.driveId])
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.fetchSession(copy.id)
+        assertEquals("shared start\nwritten on B offline\n", reader.homeFile("claude", recorded.single().path).readText())
+    }
+
+    @Test
+    fun anUploadWaitingForItsRecordKeepsTheAgeItHasInDriveAndIsSentAgainInTime() = runBlocking {
+        val a = phoneA()
+        val memory = ".claude/CLAUDE.md"
+        val file = a.homeFile("claude", memory)
+        file.writeText("Be brief.\n")
+        a.engine.syncNow()
+        file.writeText("Be brief. Test first.\n")
+        a.drive.failIndexWrites = 1
+        clock.advance(Durations.MINUTE)
+        a.engine.syncNow()
+        val first = a.queued().single()
+
+        // Found again later, it is still as old as its upload.
+        clock.advance(Committer.CONFIRM_AFTER_MS + Durations.HOUR)
+        a.drive.failIndexWrites = 1
+        a.engine.syncNow()
+        assertEquals(first.uploadedAt, a.queued().single().uploadedAt)
+        assertEquals(first.driveId, a.queued().single().driveId)
+
+        // Half the sweep's grace after the upload, it is sent again, and the old copy goes.
+        clock.advance(Committer.RESEND_AFTER_MS)
+        a.engine.syncNow()
+        assertTrue(a.queued().isEmpty())
+        val recorded = a.remoteIndex()!!.objects.single { it.path == memory }
+        assertTrue("recorded as sent again", recorded.name != first.name && recorded.driveId in a.drive.files)
+        assertEquals(Codec.sha256("Be brief. Test first.\n".toByteArray()), recorded.sha256)
+        assertNull("the old copy left Drive", a.drive.files[first.driveId])
+    }
+
+    @Test
+    fun anUploadTheIndexAlreadyRecordsIsNeitherSentAgainNorDeleted() = runBlocking {
+        val a = phoneA()
+        a.homeFile("claude", path).writeText("shared start\n")
+        a.engine.syncNow()
+        val b = phoneB()
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+        b.network.online = false
+        b.homeFile("claude", path).appendText("written on B offline\n")
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        a.engine.takeOver()
+
+        // B's conflict copy is recorded, but the answer never reaches B; B is then off for days.
+        b.network.online = true
+        b.drive.loseIndexAnswers = 1
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        val recorded = b.queued().single { it.conflict && it.driveId != null }
+
+        clock.advance(Committer.RESEND_AFTER_MS + Durations.DAY)
+        b.engine.syncNow()
+
+        assertTrue(b.queued().none { it.conflict })
+        val index = b.remoteIndex()!!
+        val copy = index.objects.single { it.sessionId == recorded.sessionId }
+        assertEquals("the recorded upload stays what the index names", recorded.name to recorded.driveId, copy.name to copy.driveId)
+        assertTrue("and its file stays", recorded.driveId in b.drive.files)
+    }
+
+    @Test
     fun aPhoneThatTakesTheLeaseBackContinuesFromDrive() = runBlocking {
         val a = phoneA()
         val file = a.homeFile("claude", path)

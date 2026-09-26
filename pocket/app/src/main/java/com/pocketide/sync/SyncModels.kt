@@ -187,8 +187,9 @@ internal data class QueueEntry(
     val attempted: Boolean = false,
     val driveId: String? = null,
     /**
-     * When Drive last confirmed [driveId] (-1: not known). An upload that waited long for its
-     * record is looked for again before it is recorded, in case another phone's sweep removed it.
+     * When the upload of [driveId] started (-1: not known), which is how old its Drive file is:
+     * another phone's sweep goes by that. An upload that waits long for its record is looked for
+     * again before it is recorded, and sent again once half that sweep's grace has passed.
      */
     val uploadedAt: Long = -1,
     val trackKey: String,

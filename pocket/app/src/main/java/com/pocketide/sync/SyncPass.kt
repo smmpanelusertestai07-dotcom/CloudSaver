@@ -515,21 +515,23 @@ internal class SyncPass(
     }
 
     /**
-     * One upload. It is marked as started first, so after a kill Drive is asked whether the file
-     * already arrived (names are random, so a match is ours) instead of sending it twice.
+     * One upload. It is marked as started first, with the time, so after a kill Drive is asked
+     * whether the file already arrived (names are random, so a match is ours) instead of sending
+     * it twice. Such a file is as old as that attempt, whenever it is found: another phone's sweep
+     * counts from then ([Committer.confirmUploads]).
      */
     private suspend fun uploadOne(run: Run, drive: DriveStore, e: QueueEntry) {
         if (e.attempted) {
             val arrived = drive.find(e.name)
             if (arrived != null && (arrived.size == e.storedBytes || arrived.size <= 0)) {
-                kit.queue.update(run.cipher, e.copy(driveId = arrived.id, uploadedAt = run.now))
+                kit.queue.update(run.cipher, e.copy(driveId = arrived.id))
                 return
             }
-        } else {
-            kit.queue.update(run.cipher, e.copy(attempted = true))
         }
+        val started = e.copy(attempted = true, uploadedAt = run.now)
+        kit.queue.update(run.cipher, started)
         val file = drive.upload(e.name, kit.queue.blobFile(e.id))
-        kit.queue.update(run.cipher, e.copy(attempted = true, driveId = file.id, uploadedAt = run.now))
+        kit.queue.update(run.cipher, started.copy(driveId = file.id))
     }
 
     /** Another phone holds the lease: keep what this phone had as conflict copies, then stop. */
