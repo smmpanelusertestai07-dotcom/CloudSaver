@@ -3,6 +3,7 @@ package com.pocketide
 import android.content.Context
 import com.pocketide.cloud.Computers
 import com.pocketide.cloud.createComputers
+import com.pocketide.core.AppFolders
 import com.pocketide.core.Clock
 import com.pocketide.core.KeystoreBox
 import com.pocketide.core.SecureStore
@@ -18,7 +19,6 @@ import com.pocketide.usage.createUsageReporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import java.io.File
 
 /**
  * The app's parts, made on first use. PocketIDE keeps no data of its own: GitHub holds the code,
@@ -28,7 +28,7 @@ class AppGraph(val context: Context) {
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val clock: Clock = Clock.SYSTEM
 
-    val secureStore: SecureStore by lazy { SecureStore(File(context.noBackupFilesDir, "secure"), KeystoreBox()) }
+    val secureStore: SecureStore by lazy { SecureStore(AppFolders.of(context).secure, KeystoreBox()) }
     val settings: SettingsStore by lazy { createSettingsStore(this) }
 
     val gitHubAuth: GitHubAuth by lazy { createGitHubAuth(this) }

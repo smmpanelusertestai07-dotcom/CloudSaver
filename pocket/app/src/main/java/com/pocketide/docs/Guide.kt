@@ -192,6 +192,10 @@ internal object Guide {
             "Leaving PocketIDE (Settings > Your data > Leave PocketIDE) deletes the phone's part and opens Android's page to " +
                 "uninstall. Your repositories and computers stay in your GitHub account until you delete them there.",
         ),
+        p(
+            "An update from an older PocketIDE deletes what that version kept on this phone (its Linux, copies of your " +
+                "projects, the agents' sign-ins), since nothing in this version can open them. Code it pushed is on GitHub.",
+        ),
         link("Your codespaces on GitHub", DocLinks.CODESPACES_LIST),
         link("PocketIDE's access on GitHub", DocLinks.GITHUB_AUTHORIZATIONS),
     )
