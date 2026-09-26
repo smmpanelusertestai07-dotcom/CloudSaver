@@ -9,9 +9,12 @@ import java.io.OutputStream
 
 sealed interface DriveAuthResult {
     data class Authorized(val email: String?) : DriveAuthResult
+
     /** The owner must approve in Google's own sheet; launch [intent] and call [DriveAuth.completeConsent]. */
     data class NeedsConsent(val intent: PendingIntent) : DriveAuthResult
-    data class Failed(val why: String) : DriveAuthResult
+
+    /** [unknownBuild]: Google does not know this build, and Help's Google Cloud set-up has the fix. */
+    data class Failed(val why: String, val unknownBuild: Boolean = false) : DriveAuthResult
 }
 
 /**
@@ -74,11 +77,13 @@ sealed class DriveException(message: String) : Exception(message) {
 interface DriveStore {
     suspend fun list(): List<DriveFile>
     suspend fun find(name: String): DriveFile?
+
     /** Creates, or replaces the content of [existingId]. Resumable for large files. */
     suspend fun upload(name: String, source: File, existingId: String? = null): DriveFile
     suspend fun uploadBytes(name: String, bytes: ByteArray, existingId: String? = null): DriveFile
     suspend fun download(id: String, sink: OutputStream)
     suspend fun open(id: String): InputStream
+
     /** Permanent delete (not Drive's Trash). */
     suspend fun delete(id: String)
 

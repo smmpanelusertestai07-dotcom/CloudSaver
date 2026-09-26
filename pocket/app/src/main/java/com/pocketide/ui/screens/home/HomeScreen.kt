@@ -85,6 +85,7 @@ import com.pocketide.sync.DataUsage
 import com.pocketide.sync.PhoneSpace
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
+import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
@@ -550,7 +551,8 @@ private fun AgentCard(
                 )
                 Text(limits.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 signInLabel(signedIn)?.let { (label, tone) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Wraps: at a large font size the chip fills the column, and Sign in moves under it whole.
+                    ActionRow {
                         StatusChip(label, tone)
                         if (signedIn == false) TextButton(onClick = onClick) { Text("Sign in") }
                     }

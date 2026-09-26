@@ -90,11 +90,12 @@ import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.External
+import com.pocketide.ui.shell.KeySaveOutcome
 import com.pocketide.ui.shell.ReconnectGitHubDialog
 import com.pocketide.ui.shell.Routes
 import com.pocketide.ui.shell.Tab
 import com.pocketide.ui.shell.rememberGraph
-import com.pocketide.ui.shell.saveKeyNow
+import com.pocketide.ui.shell.rememberKeySaver
 
 /**
  * [PocketNav] over the navigation graph. Tabs keep their own back stack (switching away and back
@@ -311,6 +312,8 @@ private fun Tab.selectedIcon(): ImageVector = when (this) {
 private fun AccessBanner(text: String, graph: AppGraph) {
     var reconnecting by rememberSaveable { mutableStateOf(false) }
     if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
+    val keySaver = rememberKeySaver(graph)
+    KeySaveOutcome(keySaver, graph)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier
@@ -334,7 +337,8 @@ private fun AccessBanner(text: String, graph: AppGraph) {
             // Each banner comes with the tap that fixes it.
             when (text) {
                 AccessRules.KEY_BANNER -> TextButton(onClick = { reconnecting = true }) { Text("Reconnect") }
-                AccessRules.KEY_SAVING_BANNER -> TextButton(onClick = { saveKeyNow(graph) }) { Text("Try now") }
+                AccessRules.KEY_SAVING_BANNER ->
+                    TextButton(onClick = keySaver::run, enabled = !keySaver.busy) { Text(if (keySaver.busy) "Trying…" else "Try now") }
             }
         }
     }

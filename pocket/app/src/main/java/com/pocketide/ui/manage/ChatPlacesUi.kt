@@ -5,20 +5,17 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.pocketide.core.Settings
+import com.pocketide.docs.ChatHomes
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.shell.External
@@ -38,6 +35,8 @@ fun ChatPlacesCard(settings: Settings, nav: PocketNav) {
                 LinkRow(place.pageLabel, place.page, nav) { openChatPage(context, nav, place) }
             }
         }
+        HorizontalDivider()
+        Hint(COMPANIES_KEEP_HERE)
     }
 }
 
@@ -49,12 +48,10 @@ internal fun ChatPlaceDialog(place: ChatPlaces.Place, nav: PocketNav, onDismiss:
         onDismissRequest = onDismiss,
         title = { Text("Where this chat is saved") },
         text = {
-            Column {
+            DialogBody {
                 Text(place.kept, style = MaterialTheme.typography.bodyMedium)
-                place.note?.let {
-                    Spacer(Modifier.height(12.dp))
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
-                }
+                place.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                Text(COMPANIES_KEEP_HERE, style = MaterialTheme.typography.bodyMedium)
             }
         },
         confirmButton = {
@@ -63,11 +60,15 @@ internal fun ChatPlaceDialog(place: ChatPlaces.Place, nav: PocketNav, onDismiss:
                     onDismiss()
                     openChatPage(context, nav, place)
                 }) { Text(place.pageLabel) }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Close") }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { if (place.page != null) TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
+
+private const val COMPANIES_KEEP_HERE = "${ChatHomes.COMPANIES_KEEP} Help → Privacy says what each keeps."
 
 /** Opens [place]'s page: in the company's own app when it has one installed, in the browser otherwise. */
 internal fun openChatPage(context: Context, nav: PocketNav, place: ChatPlaces.Place) {

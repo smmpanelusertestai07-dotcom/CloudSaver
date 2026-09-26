@@ -234,9 +234,9 @@ private fun AgentsSection(settings: Settings, update: ((Settings) -> Settings) -
                 SwitchRow(
                     ChatHomes.CLAUDE_SWITCH,
                     "Anthropic keeps each Claude Code session in your Claude account too, under its data-usage policy, " +
-                        "where the Claude app and claude.ai/code show it and you can continue it. Needs a Claude plan " +
-                        "sign-in, Pro or higher. PocketIDE's encrypted Drive backup keeps them either way. Applies from " +
-                        "Claude's next start.",
+                        "where the Claude app and claude.ai/code show it. ${ChatHomes.CLAUDE_CONTINUE} Needs a Claude " +
+                        "plan sign-in, Pro or higher. PocketIDE's encrypted Drive backup keeps them either way. Applies " +
+                        "from Claude's next start.",
                     settings.claudeChatsInAccount,
                 ) { on -> update { it.copy(claudeChatsInAccount = on) } }
             },

@@ -29,9 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pocketide.core.Redact
 import com.pocketide.ui.components.Tone
-import com.pocketide.ui.manage.PlainError
 import com.pocketide.ui.shell.CheckCard
 import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.DriveConnectPanel
@@ -50,20 +48,16 @@ import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.shell.StatusLine
 import com.pocketide.ui.shell.StepHeader
 import com.pocketide.ui.shell.rememberGraph
-import com.pocketide.vault.GitHubAppMissingException
 import com.pocketide.vault.KeyState
 import com.pocketide.vault.VaultKeys
-import com.pocketide.vault.WrongPasswordException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.io.IOException
 
 /**
  * Step 2: Google Drive (`drive.appdata`) and the chats' key. A returning owner gets the key
  * rebuilt from the Drive and GitHub halves; a first phone gets a new key. Nothing to write down.
  */
 @Composable
-fun DriveStepScreen(onDone: () -> Unit) {
+fun DriveStepScreen(onDone: () -> Unit, onOpenHelp: (sectionId: String) -> Unit) {
     val graph = rememberGraph()
     val context = LocalContext.current
     val email by graph.driveAuth.email.collectAsStateWithLifecycle()
@@ -128,6 +122,7 @@ fun DriveStepScreen(onDone: () -> Unit) {
                     authorizedEmail = it
                     justAuthorized = true
                 },
+                onOpenHelp = onOpenHelp,
             )
             FinePrint("Disconnect later and the app locks until you reconnect. Nothing is lost.")
         } else {
@@ -153,16 +148,6 @@ fun DriveStepScreen(onDone: () -> Unit) {
     }
 }
 
-private sealed interface KeyPhase {
-    data object Working : KeyPhase
-    data class NeedsPassword(val wrong: Boolean) : KeyPhase
-    data class Lost(val why: String) : KeyPhase
-
-    /** [appMissing]: the keyring could not be made until PocketIDE's GitHub App is installed. */
-    data class Failed(val why: String, val appMissing: Boolean = false) : KeyPhase
-    data class Ready(val restored: Boolean) : KeyPhase
-}
-
 /**
  * Rebuilds the key from both halves when they exist, or makes a new one on a first phone. A key
  * that exists but cannot be rebuilt is never silently replaced: the owner decides.
@@ -179,10 +164,10 @@ private fun KeySetup(
     var phase by remember { mutableStateOf<KeyPhase>(KeyPhase.Working) }
     var confirmNewKey by remember { mutableStateOf(false) }
 
-    fun attempt(block: suspend () -> KeyPhase) {
+    fun attempt(step: suspend () -> KeyPhase) {
         phase = KeyPhase.Working
         scope.launch {
-            phase = keyPhaseOf(block)
+            phase = step()
             (phase as? KeyPhase.Ready)?.let { ready ->
                 onKeyMade(ready.restored)
                 onReady()
@@ -190,7 +175,7 @@ private fun KeySetup(
         }
     }
 
-    fun restore(password: CharArray?) = attempt { restoreKey(vault, password, onPasswordUsed) }
+    fun restore(password: CharArray?) = attempt { KeySteps.restore(vault, password, onPasswordUsed) }
 
     LaunchedEffect(Unit) {
         when (vault.state.value) {
@@ -207,12 +192,7 @@ private fun KeySetup(
         openInstallPage = openInstallPage,
         onRetry = { restore(null) },
         onPassword = { restore(it) },
-        onKeyCopy = { text ->
-            attempt {
-                vault.importKeyCopy(text)
-                KeyPhase.Ready(restored = true)
-            }
-        },
+        onKeyCopy = { text -> attempt { KeySteps.importKeyCopy(vault, text) } },
         onNewKey = { confirmNewKey = true },
     )
 
@@ -224,48 +204,12 @@ private fun KeySetup(
             confirmButton = {
                 TextButton(onClick = {
                     confirmNewKey = false
-                    attempt {
-                        vault.setUp()
-                        KeyPhase.Ready(restored = false)
-                    }
+                    attempt { KeySteps.startOver(vault) }
                 }) { Text("Make a new key") }
             },
             dismissButton = { TextButton(onClick = { confirmNewKey = false }) { Text("Cancel") } },
         )
     }
-}
-
-/** What [block] ended in; a failure becomes the phase that tells the owner what to do. */
-private suspend fun keyPhaseOf(block: suspend () -> KeyPhase): KeyPhase = try {
-    block()
-} catch (e: CancellationException) {
-    throw e
-} catch (_: IOException) {
-    KeyPhase.Failed("No connection. Check the internet and try again.")
-} catch (e: GitHubAppMissingException) {
-    KeyPhase.Failed(e.message.orEmpty(), appMissing = true)
-} catch (e: Exception) {
-    KeyPhase.Failed(PlainError.of(e))
-}
-
-/** Rebuilds the key from its halves, or makes the first one. [password] is wiped afterwards. */
-private suspend fun restoreKey(vault: VaultKeys, password: CharArray?, onPasswordUsed: () -> Unit): KeyPhase = try {
-    when (val result = vault.restore(password)) {
-        KeyState.Ready, KeyState.OnlyOnPhone -> {
-            if (password != null) onPasswordUsed()
-            KeyPhase.Ready(restored = true)
-        }
-        KeyState.NeedsPassword -> KeyPhase.NeedsPassword(wrong = password != null)
-        KeyState.None -> {
-            vault.setUp()
-            KeyPhase.Ready(restored = false)
-        }
-        is KeyState.Lost -> KeyPhase.Lost(Redact.text(result.why))
-    }
-} catch (_: WrongPasswordException) {
-    KeyPhase.NeedsPassword(wrong = true)
-} finally {
-    password?.fill('\u0000')
 }
 
 @Composable

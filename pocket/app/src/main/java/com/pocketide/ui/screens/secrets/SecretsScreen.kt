@@ -177,7 +177,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
                 }
             }
             items(inherited, key = { "global:${it.name}" }) { value ->
-                InheritedSecretRow(value, busy = runner.isBusy("push:${value.name}"), onPush = { pushing = value })
+                InheritedSecretRow(value, projectId, busy = runner.isBusy("push:${value.name}"), onPush = { pushing = value })
             }
         }
     }
@@ -207,11 +207,7 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
     deleting?.let { value ->
         ConfirmDialog(
             title = "Delete ${value.name}?",
-            text = if (value.pushedToGitHub) {
-                "It is removed from PocketIDE and your Drive. The copy in GitHub Actions stays until you delete it in the repository's settings."
-            } else {
-                "It is removed from this phone and your Drive."
-            },
+            text = SecretsText.deleting(value),
             confirmLabel = "Delete",
             destructive = true,
             onConfirm = { runner.run("delete:${value.name}", done = "${value.name} deleted.") { graph.secrets.remove(value.projectId, value.name) } },
@@ -239,7 +235,8 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
         AlertDialog(
             onDismissRequest = { revealed = null },
             title = { Text(shown.name) },
-            text = { SelectableText(String(shown.chars), Modifier.fillMaxWidth()) },
+            // A value may be a whole key file: it scrolls rather than being cut off.
+            text = { DialogBody { SelectableText(String(shown.chars), Modifier.fillMaxWidth()) } },
             confirmButton = { TextButton(onClick = { revealed = null }) { Text("Hide") } },
         )
     }
@@ -256,16 +253,48 @@ internal fun inheritedSecrets(all: List<ProjectValue>, projectId: String): List<
     }
 }
 
+/** What the Secrets screen says about where GitHub Actions has a value. */
+internal object SecretsText {
+    const val SEND_GLOBAL = "Global Secret. Send it to use it in this project's builds."
+    const val SENT_GLOBAL = "Global Secret, in this project's GitHub Actions. Send it again after you change it."
+
+    /** The chip on a value's own row: a global Secret counts the projects it was sent to. */
+    fun chip(value: ProjectValue): String? = when {
+        value.projectId != null -> "In GitHub".takeIf { value.pushedToGitHub }
+        value.sentTo.isEmpty() -> null
+        value.sentTo.size == 1 -> "In GitHub for 1 project"
+        else -> "In GitHub for ${value.sentTo.size} projects"
+    }
+
+    /** Whether a global Secret was sent from [projectId], the only project its row there speaks for. */
+    fun sentHere(value: ProjectValue, projectId: String) = projectId in value.sentTo
+
+    fun deleting(value: ProjectValue): String = when {
+        value.projectId == null && value.sentTo.isNotEmpty() ->
+            "It is removed from PocketIDE and your Drive. The copies in the GitHub Actions of " +
+                "${value.sentTo.sorted().joinToString()} stay until you delete them in each repository's settings."
+        value.projectId != null && value.pushedToGitHub ->
+            "It is removed from PocketIDE and your Drive. The copy in the GitHub Actions of ${value.projectId} stays " +
+                "until you delete it in the repository's settings."
+        else -> "It is removed from this phone and your Drive."
+    }
+}
+
 @Composable
-private fun InheritedSecretRow(value: ProjectValue, busy: Boolean, onPush: () -> Unit) {
+private fun InheritedSecretRow(value: ProjectValue, projectId: String, busy: Boolean, onPush: () -> Unit) {
+    val sent = SecretsText.sentHere(value, projectId)
     SectionCard(null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(value.name, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace)
-                Hint("Global Secret. Send it to use it in this project's builds.")
+                Hint(if (sent) SecretsText.SENT_GLOBAL else SecretsText.SEND_GLOBAL)
             }
+            if (sent) StatusChip("In GitHub", Tone.OK)
             IconButton(onClick = onPush, enabled = !busy) {
-                Icon(Icons.Outlined.CloudUpload, contentDescription = "Send ${value.name} to GitHub Actions")
+                Icon(
+                    Icons.Outlined.CloudUpload,
+                    contentDescription = if (sent) "Send ${value.name} again" else "Send ${value.name} to GitHub Actions",
+                )
             }
         }
     }
@@ -309,7 +338,7 @@ private fun ValueRow(
                 Text(MASK, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Hint("Changed ${Ist.dateTime(value.updatedAt)}")
             }
-            if (value.pushedToGitHub) StatusChip("In GitHub", Tone.OK)
+            SecretsText.chip(value)?.let { StatusChip(it, Tone.OK) }
         }
         HorizontalDivider()
         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {

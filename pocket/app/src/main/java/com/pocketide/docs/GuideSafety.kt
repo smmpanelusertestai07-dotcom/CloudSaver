@@ -67,7 +67,6 @@ internal object GuideSafety {
             row("Google", "Encrypted files, their sizes, and Half D"),
             row("PocketIDE's developer", "Nothing: no server, no analytics"),
         ),
-        p("Deleting a chat here does not delete a company's copy."),
         bullets(
             "Anthropic: on Free, Pro and Max, chats are kept 30 days with \"Help improve Claude\" off, and up " +
                 "to 5 years with it on.",
@@ -78,6 +77,7 @@ internal object GuideSafety {
         ),
         info("Policies as of ${DocLinks.CHECKED_ON}. $LABELS_NOTE"),
         ChatHomes.table(),
+        p("${ChatHomes.COMPANIES_KEEP} Deleting your copy does not delete theirs."),
         link("Claude privacy settings", DocLinks.CLAUDE_PRIVACY),
         link("Claude Code data usage", DocLinks.CLAUDE_DATA_USAGE),
         link("ChatGPT data controls", DocLinks.CHATGPT_DATA_CONTROLS),

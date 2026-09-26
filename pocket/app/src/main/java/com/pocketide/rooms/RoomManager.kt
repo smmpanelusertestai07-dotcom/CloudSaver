@@ -99,6 +99,9 @@ internal class RoomManager(
     ) {
         val pid: Int? = ProcFacts.pidOf(process)
 
+        /** Started with Remote Control on: every session it shows is kept in the owner's Claude account. */
+        @Volatile var accountChats: Boolean = false
+
         @Volatile var bridge: BridgedPort? = null
 
         @Volatile var url: String = ""
@@ -165,7 +168,11 @@ internal class RoomManager(
             val room = env.makeRoomFor(agentId)
             if (!room.allowed) return@async fail(agentId, room.reason ?: CANNOT_START)
         }
-        val state = lock(agentId).withLock { openLocked(agentId, sessionId, admitted) }
+        val state = lock(agentId).withLock {
+            openLocked(agentId, sessionId, admitted).also { opened ->
+                if (opened is RoomState.Running && live[agentId]?.accountChats == true) env.keptInClaudeAccount(sessionId)
+            }
+        }
         if (firstPrompt != null && state is RoomState.Running) offerPrompt(agentId, firstPrompt)
         state
     }.await()
@@ -515,6 +522,8 @@ internal class RoomManager(
         val hasWorktree = withContext(Dispatchers.IO) { RoomFiles(dirs.roomWork(agentId), guardSecrets = false).isDirectory(worktree) }
         if (!hasWorktree) return fail(agentId, RoomTerminals.MISSING_WORKTREE)
         val careful = careful(session)
+        // Read as the settings written next read it: Remote Control connects from this start on.
+        val accountChats = agentId == RoomProfiles.CLAUDE && env.claudeChatsInAccount()
         publish(agentId, RoomState.Starting("Preparing the room"))
         try {
             withContext(Dispatchers.IO) { prepare(profile, careful) }
@@ -561,6 +570,7 @@ internal class RoomManager(
             return couldNotStart(profile, bridgeFiles, secretFile, failed)
         }
         val room = LiveRoom(profile, process, chosenPort, variables, careful, ActivityClock(env.now(), ::idleLimitMs), session.id)
+        room.accountChats = accountChats
         live[agentId] = room
         env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
 
