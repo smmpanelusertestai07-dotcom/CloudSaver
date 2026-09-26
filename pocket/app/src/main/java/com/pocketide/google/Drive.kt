@@ -87,8 +87,27 @@ interface DriveStore {
      * a file for about 30 days; this is for files whose old content must not stay, like a key half.
      */
     suspend fun deleteOldRevisions(id: String) = Unit
+
+    /**
+     * The stored versions (revisions) of this store's files, so a writer can tell afterwards which
+     * version its write replaced; null from a store that cannot read them.
+     */
+    val revisions: DriveRevisions? get() = null
+
     suspend fun quota(): DriveQuota
 
     /** The same store, acting as another authorized account (used only by the move). */
     fun withAccount(email: String): DriveStore
+}
+
+/** One stored version of a file's content (a Drive revision) and its MD5. */
+data class DriveRevision(val id: String, val md5: String?)
+
+/** Reads the stored versions of a file's content (see [DriveStore.revisions]). */
+interface DriveRevisions {
+    /** The stored versions of [id]'s content, oldest first, as Drive lists them. */
+    suspend fun revisionsOf(id: String): List<DriveRevision>
+
+    /** Downloads one stored version of [id]'s content. */
+    suspend fun downloadRevision(id: String, revisionId: String, sink: OutputStream)
 }

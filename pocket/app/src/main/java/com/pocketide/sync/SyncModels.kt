@@ -125,6 +125,8 @@ internal data class SyncState(
     val restore: RestoreJob? = null,
     val move: MoveJob? = null,
     val lastSyncAt: Long = 0,
+    /** When a run last failed: until a sync succeeds after it, a periodic run never counts as idle. */
+    val lastFailedAt: Long = 0,
     val lastMaintenanceAt: Long = 0,
     /** When Drive last confirmed new data of each session, for its "Backed up" chip. */
     val backedUpAt: Map<String, Long> = emptyMap(),
@@ -164,6 +166,11 @@ internal data class QueueEntry(
     /** An upload was started, so after a crash Drive is asked whether the file already arrived. */
     val attempted: Boolean = false,
     val driveId: String? = null,
+    /**
+     * When Drive last confirmed [driveId] (-1: not known). An upload that waited long for its
+     * record is looked for again before it is recorded, in case another phone's sweep removed it.
+     */
+    val uploadedAt: Long = -1,
     val trackKey: String,
     val fileSize: Long = -1,
     val fileModifiedAt: Long = -1,

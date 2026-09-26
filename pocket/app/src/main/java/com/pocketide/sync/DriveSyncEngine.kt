@@ -188,12 +188,15 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         ports.scheduler.requestSoon()
     }
 
-    /** A background sync; runs again at once when more was requested meanwhile. */
-    suspend fun runScheduled(onLargeUpload: suspend () -> Unit): WorkResult {
+    /**
+     * A background sync; runs again at once when more was requested meanwhile. A [periodic] run
+     * stops before the network when there is nothing to do (see [SyncPass.stopIfIdle]).
+     */
+    suspend fun runScheduled(periodic: Boolean = false, onLargeUpload: suspend () -> Unit): WorkResult {
         var result = WorkResult.OK
-        repeat(MAX_ROUNDS) {
+        repeat(MAX_ROUNDS) { round ->
             again.set(false)
-            val options = PassOptions(onLargeUpload = onLargeUpload, deadline = ports.clock.now() + PASS_BUDGET_MS)
+            val options = PassOptions(onLargeUpload = onLargeUpload, deadline = ports.clock.now() + PASS_BUDGET_MS, quietWhenIdle = periodic && round == 0)
             val outcome = attempt { run -> jobsThenPass(run, options) }
             result = if (outcome == null && flows.status.value is SyncStatus.Error && retryable) WorkResult.RETRY else WorkResult.OK
             if (!again.get() || outcome != PassOutcome.DONE) return result
@@ -234,12 +237,18 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         if (!ports.settings.settings.value.onboardingDone) return null
         if (flows.status.value !is SyncStatus.Waiting) flows.status.value = SyncStatus.Running(Plain.SYNCING)
-        val outcome = pass.run(run, options)
+        val outcome = passOrStop(run, options)
+        // Kept safely on the phone while offline: it goes up as soon as a network is back.
+        if (outcome == PassOutcome.OFFLINE && run.entries().isNotEmpty()) ports.scheduler.requestWhenOnline()
         if (flows.storage.value.phone == PhoneSpace.FULL && run.now - run.state.lastMaintenanceAt > MAINTENANCE_GAP_MS) {
             ports.scheduler.requestMaintenance()
         }
         return outcome
     }
+
+    /** The pass; a periodic run with nothing to do stops before the network instead ([SyncPass.stopIfIdle]). */
+    private suspend fun passOrStop(run: Run, options: PassOptions): PassOutcome =
+        if (options.quietWhenIdle && pass.stopIfIdle(run)) PassOutcome.DONE else pass.run(run, options)
 
     private fun requireReady() {
         if (!ports.settings.settings.value.onboardingDone) throw SyncException("Finish setting up PocketIDE first.")
@@ -306,6 +315,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
         val waiting = run.state.waiting
         flows.status.value = if (waiting != null && e !is SyncException) Views.waitingStatus(run, waiting) else SyncStatus.Error(Plain.of(e))
+        run.state = run.state.copy(lastFailedAt = run.now)
         try {
             run.save()
         } catch (_: java.io.IOException) {

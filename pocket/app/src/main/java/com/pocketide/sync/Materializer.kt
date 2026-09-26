@@ -22,6 +22,9 @@ import java.util.zip.GZIPInputStream
 /** What was written: the file's length and the SHA-256 of its whole content. */
 internal data class Assembled(val length: Long, val sha256: String)
 
+/** The phone's copy no longer starts with the bytes Drive's new pieces continue; nothing was written. */
+internal class PrefixChangedException(message: String) : IOException(message)
+
 /**
  * A synced file on the phone: [path] under [root], a room's home or work folder. Programs inside
  * Linux can change anything under [root], so nothing written there follows a link.
@@ -44,7 +47,8 @@ internal class Materializer(
     /**
      * Writes [target] as its first [keep] bytes (which must hash to [keepSha]) followed by
      * [pieces], in order and without gaps. [keep] = 0 rebuilds the file from Drive alone. Returns
-     * null, having written nothing, when a folder on the way is a link or a file.
+     * null, having written nothing, when a folder on the way is a link or a file; throws
+     * [PrefixChangedException], having written nothing, when the kept bytes are not those.
      */
     suspend fun assemble(
         drive: DriveStore,
@@ -194,9 +198,9 @@ internal class Materializer(
                 check.update(buffer, 0, n)
                 out.write(buffer, 0, n)
             }
-            if (bounded.count != keep) throw IOException("The file on the phone is shorter than expected")
+            if (bounded.count != keep) throw PrefixChangedException("The file on the phone is shorter than expected")
         }
-        if (keepSha != null && hex(check) != keepSha) throw IOException("The file on the phone changed")
+        if (keepSha != null && hex(check) != keepSha) throw PrefixChangedException("The file on the phone changed")
     }
 
     private fun hex(d: MessageDigest) = Codec.hex(d.digest())

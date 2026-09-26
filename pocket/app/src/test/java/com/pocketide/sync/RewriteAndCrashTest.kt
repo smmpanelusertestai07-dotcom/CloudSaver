@@ -280,6 +280,37 @@ class RewriteAndCrashTest {
     }
 
     @Test
+    fun aPulledContinuationIsRefusedWhenThePhonesPrefixChangedUnderTheSameSizeAndTime() = runBlocking {
+        val a = phone()
+        val file = a.homeFile("claude", path)
+        file.writeText("start on A\n")
+        a.engine.syncNow()
+        val b = TestPhone(accounts, clock, deviceId = "phone-b", deviceName = "Phone B")
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+        b.homeFile("claude", path).appendText("continued on B\n")
+        clock.advance(60_000)
+        b.engine.syncNow()
+
+        // On A the chat is rewritten in place within the same second: same size and time, other bytes.
+        val track = a.state().tracks.values.single { it.path == path }
+        file.writeText("START ON A\n")
+        assertTrue(file.setLastModified(track.modifiedAt))
+        clock.advance(60_000)
+        a.engine.takeOver()
+
+        assertEquals("never A's rewritten start with B's piece after it", "start on A\ncontinued on B\n", file.readText())
+        val index = a.remoteIndex()!!
+        val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.fetchSession(copy.id)
+        val copied = index.objects.single { it.sessionId == copy.id }
+        assertEquals("A's version is kept as a conflict copy", "START ON A\n", reader.homeFile("claude", copied.path).readText())
+        assertEquals("nothing half-written is left", listOf(file.name), file.parentFile!!.list()!!.toList())
+        assertTrue(a.dirs.queue.list().orEmpty().none { it.startsWith("tmp-") })
+    }
+
+    @Test
     fun halfWrittenQueueFilesFromAKillAreRemoved() = runBlocking {
         val phone = phone()
         phone.dirs.queue.mkdirs()

@@ -68,6 +68,46 @@ class IndexMergeTest {
     }
 
     @Test
+    fun anotherPhonesChangeMadeAgainOnALaterIndexKeepsEverythingOfBoth() {
+        val t = clock.now
+        val read = VaultIndex(
+            updatedAt = t, revision = 3,
+            sessions = listOf(session("s1", at = t), session("s2", at = t), session("gone", at = t)),
+            objects = listOf(obj("o-1", "s1"), obj("o-2", "s2"), obj("o-gone", "gone")),
+        )
+        val theirs = read.copy(
+            revision = 4,
+            lease = LeasePolicy.lease(DeviceIdentity("phone-b", "Phone B"), t),
+            sessions = listOf(session("s1", at = t).copy(title = "Renamed on B"), session("s2", at = t, deletedAt = t), session("s3", at = t)),
+            objects = listOf(obj("o-1", "s1"), obj("o-3", "s3")),
+            settingsJson = "{\"synced\":true}",
+        )
+        val ours = read.copy(revision = 4, sessions = read.sessions + session("s4", at = t), objects = read.objects + obj("o-4", "s4"))
+
+        val both = IndexMerge.apply(ours, IndexMerge.diff(read, theirs), t, keyGeneration = 1)
+
+        val byId = both.sessions.associateBy { it.id }
+        assertEquals(setOf("s1", "s2", "s3", "s4"), byId.keys)
+        assertEquals("Renamed on B", byId.getValue("s1").title)
+        assertEquals(t, byId.getValue("s2").deletedAt)
+        assertEquals(setOf("o-1", "o-3", "o-4"), both.objects.map { it.name }.toSet())
+        assertEquals("phone-b", both.lease!!.deviceId)
+        assertEquals(theirs.settingsJson, both.settingsJson)
+    }
+
+    @Test
+    fun aNewVersionOfAnEntryIsTakenOnlyWhileTheEntryIsStillThere() {
+        val t = clock.now
+        val base = VaultIndex(updatedAt = t, objects = listOf(obj("o-kept", "s1")))
+        val newer = listOf(obj("o-kept", "s1"), obj("o-removed-meanwhile", "s1")).map { it.copy(keyGeneration = 2) }
+
+        val next = IndexMerge.apply(base, IndexDelta(replaceEntries = newer.associateBy { it.entryKey }), t, keyGeneration = 2)
+
+        assertEquals(listOf("o-kept"), next.objects.map { it.name })
+        assertEquals(2, next.objects.single().keyGeneration)
+    }
+
+    @Test
     fun theEarliestDeletionDateIsKeptSoThe30DayCountNeverRestarts() {
         val t = clock.now
         val first = session("s1", at = t, deletedAt = t - 10 * day)
@@ -117,14 +157,14 @@ class IndexMergeTest {
     }
 
     @Test
-    fun aWriteThatRacesAnotherPhoneIsAppliedOnTopOfTheirs() = runBlocking {
+    fun anotherPhonesWriteMadeOnTopOfThisPhonesKeepsBoth() = runBlocking {
         val accounts = FakeAccounts(clock)
         val phone = TestPhone(accounts, clock).apply { sessions += session("s1", at = clock.now) }
         phone.homeFile("claude", ".claude/CLAUDE.md").writeText("Be brief.")
         phone.engine.syncNow()
         val first = phone.remoteIndex()!!
 
-        // Right after this phone's next write, another phone records a conflict copy of its own.
+        // Right after this phone's next write, another phone records a conflict copy on top of it.
         val other = session("other-conflict", at = clock.now).copy(status = SessionStatus.CONFLICT_COPY, conflictOf = "s1")
         phone.drive.afterIndexWrite = {
             phone.drive.afterIndexWrite = null
@@ -140,7 +180,7 @@ class IndexMergeTest {
         phone.engine.syncNow()
 
         val index = phone.remoteIndex()!!
-        assertEquals("their write, then ours on top", first.revision + 3, index.revision)
+        assertEquals("ours, then theirs on top: nothing is written again", first.revision + 2, index.revision)
         assertTrue(index.sessions.any { it.id == "other-conflict" })
         val memory = index.objects.single { it.kind == ObjectKind.MEMORY }
         assertEquals(Codec.sha256("Be brief. Write tests.".toByteArray()), memory.sha256)

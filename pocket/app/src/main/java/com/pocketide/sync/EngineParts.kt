@@ -17,9 +17,10 @@ import java.io.IOException
 internal class SyncKit(val ports: SyncPorts) {
     val repo = SyncRepository(ports.dirs)
     val queue = UploadQueue(ports.dirs.queue)
-    val remote = RemoteIndex()
+    val remote = RemoteIndex(ports.budget)
     val scanner = Scanner(ports.dirs)
     val materializer = Materializer(queue, ports.budget)
+    val prefixes = PrefixMemory()
     val flows = SyncFlows()
 }
 
@@ -66,7 +67,7 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
 
     fun entries(): List<QueueEntry> = kit.queue.entries(cipher)
 
-    fun maker() = PieceMaker(kit.queue, cipher, ports.keyGeneration(), ports.clock)
+    fun maker() = PieceMaker(kit.queue, cipher, ports.keyGeneration(), ports.clock, kit.prefixes)
 
     /** The account whose index this phone holds; a different sign-in starts over with that account. */
     fun account(): String? {
@@ -106,11 +107,20 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
         kit.flows.driveProjects.value = emptyList()
     }
 
-    /** Drops queued entries; anything already in Drive but never recorded is deleted later. */
-    fun discard(entries: Collection<QueueEntry>) {
+    /**
+     * Drops queued entries; anything already in Drive but never recorded is deleted later. An entry
+     * that reuses a dropped blob's content (identical files are stored once) could then never be
+     * recorded, so it goes too and its file is read again at the next scan. Returns those entries.
+     */
+    fun discard(entries: Collection<QueueEntry>): List<QueueEntry> {
+        if (entries.isEmpty()) return emptyList()
+        val dropped = entries.map { it.id }.toSet()
+        val blobs = entries.filter { it.blob }.map { it.name }.toSet()
+        val reusing = if (blobs.isEmpty()) emptyList() else entries().filter { !it.blob && it.driveId == null && it.name in blobs && it.id !in dropped }
         val uploaded = unrecorded(entries)
-        entries.forEach { kit.queue.remove(it.id) }
+        (entries + reusing).forEach { kit.queue.remove(it.id) }
         if (uploaded.isNotEmpty()) state = state.copy(driveDeletes = state.driveDeletes + uploaded)
+        return reusing
     }
 
     /** Drive files [entries] uploaded (name → id), to delete once the entries leave the queue unrecorded. */

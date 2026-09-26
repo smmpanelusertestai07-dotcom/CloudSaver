@@ -186,14 +186,19 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         val continues = track.kind.appendOnly && track.objects.isNotEmpty() && chain.map { it.name }.take(track.objects.size) == track.objects
         if (continues && committedHere) {
             if (roomBusy(track)) return later(run, track, queued)
-            val assembled = kit.materializer.assemble(drive, run.cipher, place, chain.drop(track.objects.size), keep = track.syncedLength, keepSha = track.prefixSha256)
-                ?: return asItWas
-            return Tracks.materialized(track, chain, assembled, factsOf(file))
+            continued(run, drive, place, track, chain)?.let { return it }
         }
+        // From here the phone's copy is not the one Drive continues: bytes that changed under the
+        // same size and time (rewritten in place within the same second) went another way too.
+        val wentAnotherWay = !committedHere || continues
         val lost = lostHere(track, chain)
         // Everything Drive holds is already at the start of the phone's copy (Drive lost pieces this
         // phone recorded, or the other phone only compacted them): the copy stays, the rest goes up.
-        val kept = if (track.kind.appendOnly) ChainCheck.prefixOf(place, chain)?.let { rebased(track, chain, it) } else if (lost) rebased(track, chain, null) else null
+        val kept = when {
+            track.kind.appendOnly -> ChainCheck.prefixOf(place, chain)?.let { rebased(track, chain, it) }
+            lost -> rebased(track, chain, null)
+            else -> null
+        }
         if (kept != null) {
             run.discard(queued)
             return kept
@@ -202,13 +207,25 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         // Drive's version replaces the phone's, which is kept as a conflict copy first unless Drive
         // already had all of it.
         val alreadyKept = facts.size == track.preservedSize && facts.modifiedAt == track.preservedModifiedAt
-        if ((lost || !committedHere) && !alreadyKept) {
+        if ((lost || wentAnotherWay) && !alreadyKept) {
             val agent = track.agentId ?: return asItWas
             if (!batch.copy(Candidate(track.kind, agent, track.path, file, facts, track.sessionId, TrackRules.isVideo(file.name)))) return asItWas
         }
         run.discard(queued)
         val assembled = kit.materializer.assemble(drive, run.cipher, place, chain) ?: return asItWas
         return Tracks.materialized(track, chain, assembled, factsOf(file))
+    }
+
+    /**
+     * The file extended with Drive's new pieces; the track as it was when a link or a file is in
+     * the way; null when the phone's own bytes are no longer the ones those pieces continue.
+     */
+    private suspend fun continued(run: Run, drive: DriveStore, place: RoomFile, track: FileTrack, chain: List<VaultObject>): FileTrack? = try {
+        val pieces = chain.drop(track.objects.size)
+        val assembled = kit.materializer.assemble(drive, run.cipher, place, pieces, keep = track.syncedLength, keepSha = track.prefixSha256)
+        if (assembled == null) track else Tracks.materialized(track, chain, assembled, factsOf(place.file))
+    } catch (_: PrefixChangedException) {
+        null
     }
 
     /**
