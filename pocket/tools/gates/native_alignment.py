@@ -112,13 +112,15 @@ def libraries_in_apk(apk: Path) -> dict[str, bytes]:
 
 
 def check_libraries(libraries: dict[str, bytes], where: str) -> common.Report:
+    """PocketIDE 4 ships no native code of its own; libraries that AndroidX brings are checked here."""
     report = common.Report()
     if not libraries:
-        report.fail(f"no native libraries found in {where}; the computer cannot start without proot")
+        report.note(f"no native libraries in {where}")
         return report
     for name, data in sorted(libraries.items()):
         if Path(name).parent.name != "arm64-v8a":
-            report.fail(f"{name}: only arm64-v8a libraries may ship")
+            # 16 KB pages come on 64-bit ARM phones; other ABIs serve emulators and old phones.
+            report.note(f"{name}: not arm64-v8a, not checked")
             continue
         try:
             problem, note = judge(name, *program_headers(data))

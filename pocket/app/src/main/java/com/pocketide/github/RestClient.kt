@@ -16,14 +16,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import okio.BufferedSource
 
 /**
- * The HTTP verbs PocketIDE may use against GitHub. There is deliberately no DELETE and no PATCH:
- * the app never deletes a repository and never changes its visibility (the least-privilege gate
- * test checks this list).
+ * The HTTP verbs PocketIDE may use against GitHub. PATCH moves a branch forward (never with force)
+ * and DELETE removes a cloud computer the owner chose to delete; nothing deletes a repository or
+ * changes its visibility (the least-privilege gate test checks where each verb is used).
  */
-internal enum class Verb { GET, POST, PUT }
+internal enum class Verb { GET, POST, PUT, PATCH, DELETE }
 
 /** Where a request gets its user token, and what happens when GitHub refuses one. */
 internal interface UserTokens {
@@ -73,7 +72,6 @@ internal class RestClient(
     val base: HttpUrl,
     private val tokens: UserTokens,
     private val clock: Clock,
-    private val downloadClient: OkHttpClient = client,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val pause: suspend (Long) -> Unit = { delay(it) },
     private val apiVersion: ApiVersionChoice = ApiVersionChoice.process,
@@ -122,15 +120,6 @@ internal class RestClient(
             count++
         }
         return items
-    }
-
-    /** Streams a GET whose answer may redirect to a pre-signed URL (OkHttp drops the token on a host change). */
-    suspend fun <T> stream(url: HttpUrl, read: (BufferedSource) -> T): T {
-        require(isOurs(url)) { GitHubText.NOT_FROM_GITHUB }
-        return exchange(Verb.GET, url, null, ACCEPT_JSON, downloadClient) { response ->
-            if (!response.isSuccessful) throw GitHubErrors.of(response.code, response.body.string())
-            read(response.body.source())
-        }
     }
 
     private suspend fun <T> exchange(

@@ -1,661 +1,209 @@
 package com.pocketide.ui.screens.data
 
-import android.app.Activity
-import android.app.PendingIntent
-import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
-import android.webkit.CookieManager
-import android.webkit.WebStorage
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Article
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DeleteForever
-import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.HideImage
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.RestoreFromTrash
-import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pocketide.AppGraph
-import com.pocketide.google.DriveAuthResult
-import com.pocketide.model.AgentInfo
-import com.pocketide.model.ObjectKind
-import com.pocketide.model.SessionRecord
-import com.pocketide.sync.MoveState
-import com.pocketide.sync.PhoneSpace
-import com.pocketide.ui.components.InfoRow
-import com.pocketide.ui.components.LabelValueRow
+import com.pocketide.agents.Agent
+import com.pocketide.cloud.Computer
+import com.pocketide.cloud.ComputerService
+import com.pocketide.cloud.ComputersView
+import com.pocketide.docs.DocsContent
+import com.pocketide.graph
+import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.SectionCard
-import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
-import com.pocketide.ui.manage.ActionRunner
-import com.pocketide.ui.manage.AsOfLine
-import com.pocketide.ui.manage.ChatPlacesCard
-import com.pocketide.ui.manage.ConfirmDialog
-import com.pocketide.ui.manage.DataMath
-import com.pocketide.ui.manage.DiskUsage
-import com.pocketide.ui.manage.ErrorNote
-import com.pocketide.ui.manage.Hint
-import com.pocketide.ui.manage.LinkRow
-import com.pocketide.ui.manage.ManageFormat
-import com.pocketide.ui.manage.ManagePage
-import com.pocketide.ui.manage.ManageText
-import com.pocketide.ui.manage.MemoryFile
-import com.pocketide.ui.manage.MemoryFiles
-import com.pocketide.ui.manage.NavRow
-import com.pocketide.ui.manage.PhoneSpaceNotice
-import com.pocketide.ui.manage.SectionLabel
-import com.pocketide.ui.manage.ToneLine
-import com.pocketide.ui.manage.attempt
-import com.pocketide.ui.manage.rememberActionRunner
-import com.pocketide.ui.manage.rememberGraph
-import com.pocketide.ui.manage.rememberLoad
-import com.pocketide.ui.nav.PocketNav
-import com.pocketide.ui.screens.project.DELETE_CHAT_TEXT
-import com.pocketide.ui.screens.project.SessionShortcut
-import com.pocketide.ui.shell.External
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-/** Where a kind of data is kept. */
-private enum class Place(val label: String) { PHONE("Phone"), DRIVE("Drive"), GITHUB("GitHub") }
-
-/** Sizes read from this phone's storage. */
-private data class PhoneSizes(
-    val computer: Long,
-    val projects: Long,
-    val builds: Long,
-    val memory: Map<String, List<MemoryFile>>,
-) {
-    val memoryBytes: Long get() = memory.values.flatten().sumOf { it.bytes }
-    val memoryCount: Int get() = memory.values.flatten().count { it.exists }
-}
-
-private const val DELETE_EVERYTHING = "delete-everything"
-private const val CHECK_CODE = "check-code-before-delete"
-private const val MOVE = "move-account"
-private const val ERASE_OLD = "erase-old-account"
+import com.pocketide.ui.components.toneColor
+import com.pocketide.ui.screens.home.DeleteComputerDialog
+import com.pocketide.ui.screens.home.runCatchingMessage
+import com.pocketide.ui.shell.NoticeCard
+import com.pocketide.ui.shell.PrimaryAction
+import com.pocketide.ui.web.Browser
+import kotlinx.coroutines.launch
 
 /**
- * Everything PocketIDE keeps, by type and by place (phone, Drive, GitHub), the largest sessions,
- * the agents' instructions and memory (editable), Variables and Secrets, how long things are
- * kept, moving to another Google account, deleting everything, and how to do it without the app.
+ * Where each piece of the owner's data lives, who can see it, and how to delete it; and leaving
+ * PocketIDE, which deletes the phone's part and leaves the owner's GitHub account as it is.
  */
 @Composable
-fun YourDataScreen(nav: PocketNav) {
-    val graph = rememberGraph()
-    val agents by graph.agents.installed.collectAsStateWithLifecycle()
-    // Saved: the app lock re-arming replaces the screen while the owner is away, and the editor must stay open.
-    var editing by rememberSaveable(stateSaver = MemoryFileSaver) { mutableStateOf<MemoryFile?>(null) }
-    val file = editing
-    val agent = file?.let { f -> agents.firstOrNull { it.id == f.agentId } }
-    if (file != null) {
-        MemoryEditor(graph, graph.dirs.roomHome(file.agentId), file, agent?.displayName ?: file.agentId, nav) { editing = null }
-    } else {
-        DataOverview(graph, agents, nav) { editing = it }
-    }
-}
+fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
+    val scope = rememberCoroutineScope()
+    val view by graph.computers.view.collectAsStateWithLifecycle()
+    val computers = (view as? ComputersView.Ready)?.computers ?: (view as? ComputersView.Failed)?.last.orEmpty()
+    var toDelete by remember { mutableStateOf<Computer?>(null) }
+    var leaving by remember { mutableStateOf(false) }
+    var clearing by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
 
-@Composable
-private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNav, onEdit: (MemoryFile) -> Unit) {
-    val runner = rememberActionRunner()
-    val sessions by graph.sessions.all.collectAsStateWithLifecycle()
-    val projects by graph.projects.all.collectAsStateWithLifecycle()
-    val secrets by graph.secrets.values.collectAsStateWithLifecycle()
-    val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val storage by graph.sync.storage.collectAsStateWithLifecycle()
-    val now = graph.clock::now
-    val sizes = rememberLoad(agents, now) { readSizes(graph, agents) }
-    val drive = rememberLoad("drive", now) { graph.usage.google() }
-    var removeMediaOf by remember { mutableStateOf<SessionRecord?>(null) }
-    var deleting by remember { mutableStateOf<SessionRecord?>(null) }
-    var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    var codeAtRisk by remember { mutableStateOf<List<String>?>(null) }
-    val largest = remember(sessions) { DataMath.largestSessions(sessions) }
-
-    ManagePage("Your data", nav, runner) {
-        if (storage.phone != PhoneSpace.OK) {
-            item {
-                PhoneSpaceNotice(
-                    storage,
-                    clean = graph.sync::cleanNow,
-                    onRaise = nav::settings.takeIf { nav.opensEveryScreen },
-                    onLargest = null,
-                    say = runner::say,
-                )
-            }
+    Column(
+        Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
+            Text("Your data", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         }
-        item { SectionLabel("Where it lives") }
-        item {
-            SectionCard(null) {
-                InfoRow("This phone", if (snapshot.appDataBytes > 0) ManageFormat.bytes(snapshot.appDataBytes) else "…")
-                InfoRow(
-                    "Google Drive (hidden, encrypted)",
-                    drive.value?.let { ManageFormat.bytes(it.appDataBytes) } ?: if (drive.loading) "…" else "Unknown",
-                )
-                InfoRow("GitHub", ManageFormat.count(projects.size, "repository", "repositories") + " + keyring")
-                drive.error?.let { ErrorNote(it) }
-                AsOfLine(drive.at, drive.loading || sizes.loading) {
-                    drive.refresh()
-                    sizes.refresh()
-                }
-            }
-        }
-        item { SectionLabel("By type") }
-        item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
-        item { SectionLabel("Where your chats are saved") }
-        item { ChatPlacesCard(settings, nav) }
-        item { SectionLabel("Largest sessions") }
-        item { LargestCard(largest, agents, nav, onRemoveMedia = { removeMediaOf = it }, onDelete = { deleting = it }) }
-        item { SectionLabel("Memory and instructions") }
-        item { MemoryCard(agents, sizes.value?.memory, sizes.loading, onEdit) }
-        item { SectionLabel("Settings that can run code") }
-        item { ConfigChangesCard(graph, agents, runner) }
-        item {
-            SectionCard(null) {
-                if (nav.opensEveryScreen) {
-                    NavRow(Icons.Outlined.Key, "Variables and Secrets", "${secrets.size} saved · values are masked") { nav.secrets(null) }
-                }
-                NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Chats you deleted in the last 30 days") { nav.recentlyDeleted() }
-            }
-        }
-        item { SectionLabel("How long things are kept") }
-        item {
-            SectionCard(null) {
-                ManageText.retention(settings).forEach { (what, rule) -> InfoRow(what, rule) }
-                if (nav.opensEveryScreen) NavRow(Icons.Outlined.Tune, "Change in Settings", null, nav::settings)
-            }
-        }
-        item { SectionLabel("Move to another Google account") }
-        item { MoveCard(graph, runner) }
-        item { SectionLabel("Without the app") }
-        item { WithoutAppCard(nav) }
-        item { SectionLabel("Delete everything") }
-        item {
-            SectionCard(null) {
-                Hint(
-                    "Erases your chats, media, memory, settings, Variables and Secrets from this phone and from your Drive, " +
-                        "and the agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first; " +
-                        "code that cannot be pushed is named before it goes. Your GitHub repositories, pocketide-keyring and " +
-                        "the GitHub App in Settings stay, so you can sign in again. " +
-                        "This cannot be undone.",
-                )
-                val checking = runner.isBusy(CHECK_CODE)
-                Button(
-                    onClick = { confirmDelete = true },
-                    enabled = !runner.isBusy(DELETE_EVERYTHING) && !checking,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Icon(Icons.Outlined.DeleteForever, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        when {
-                            checking -> "Saving your code…"
-                            runner.isBusy(DELETE_EVERYTHING) -> "Deleting…"
-                            else -> "Delete everything"
-                        },
-                    )
-                }
-            }
-        }
-    }
-
-    removeMediaOf?.let { session ->
-        ConfirmDialog(
-            title = "Remove media from \"${session.title}\"?",
-            text = "${ManageFormat.count(session.mediaCount, "file")} (${ManageFormat.bytes(session.mediaBytes)}) are removed from this " +
-                "phone and your Drive. The chat itself stays.",
-            confirmLabel = "Remove media",
-            destructive = true,
-            onConfirm = { runner.run("media:${session.id}", done = "Media removed. The chat is kept.") { graph.sessions.removeMedia(session.id) } },
-            onDismiss = { removeMediaOf = null },
+        Text(
+            "PocketIDE has no server and no database. Your data is in your GitHub account and with the AI companies you sign in to; " +
+                "this phone keeps only your sign-in and settings.",
+            style = MaterialTheme.typography.bodyMedium,
         )
+        problem?.let { NoticeCard(it, Tone.ERROR) }
+
+        Place(
+            "On this phone",
+            "Your GitHub sign-in (encrypted with a key only this phone has), the computer page's GitHub sign-in, and your settings. " +
+                "No code, no chats, no files. Uninstalling PocketIDE deletes them.",
+        ) {
+            OutlinedButton(onClick = { clearing = true }) { Text("Delete from this phone") }
+        }
+        Place(
+            "Your code",
+            "In your GitHub repositories. New projects are private: only you, and people you invite, can see them.",
+        ) {
+            OutlinedButton(onClick = { Browser.open(context, "https://github.com/settings/repositories") }) { Text("Your repositories") }
+        }
+        Place(
+            "Cloud computers",
+            "One GitHub Codespace per project, each its own private machine that only you can open. GitHub deletes one that stays " +
+                "unused for the days you chose in Settings.",
+        ) {
+            computers.forEach { computer ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(computer.repo.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { toDelete = computer }) { Text("Delete", color = toneColor(Tone.ERROR)) }
+                }
+            }
+            OutlinedButton(onClick = { Browser.open(context, "https://github.com/codespaces") }) { Text("All on GitHub") }
+        }
+        Place(
+            "Chats and agent sign-ins",
+            "Inside each project's cloud computer, kept by each agent itself: " +
+                Agent.entries.joinToString("; ") { "${it.displayName} in ${it.chatsFolder}" } +
+                ". Delete one chat in the agent's own history, or all of them by deleting the computer. They are not on this phone, " +
+                "so uninstalling PocketIDE does not delete them.",
+        )
+        Place(
+            "At the AI companies",
+            "What you ask an agent, and the code it reads, goes to its company under your account there. Their own policies say " +
+                "how long they keep it and whether it trains their models.",
+        ) {
+            ActionRow {
+                Agent.entries.forEach { agent ->
+                    OutlinedButton(onClick = { Browser.open(context, agent.privacyUrl) }) { Text(agent.maker) }
+                }
+            }
+        }
+        Place(
+            "Builds",
+            "GitHub Actions keeps build logs and files for the days your repository sets (90 by default), visible to whoever can see the repository.",
+        )
+
+        SectionCard("Leave PocketIDE") {
+            Text(
+                "Deletes everything PocketIDE keeps on this phone, then opens Android's page for PocketIDE so you can uninstall it. " +
+                    "Your repositories and cloud computers stay in your GitHub account; nothing there is deleted.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = { Browser.open(context, graph.gitHubAuth.authorizationsUrl()) }) {
+                Text("First, remove PocketIDE's access on GitHub (optional)")
+            }
+            PrimaryAction("Leave PocketIDE", onClick = { leaving = true })
+            TextButton(onClick = { onHelpPage(DocsContent.YOUR_DATA_ID) }) { Text("More about your data") }
+        }
     }
-    deleting?.let { session ->
-        ConfirmDialog(
-            title = "Delete \"${session.title}\"?",
-            text = DELETE_CHAT_TEXT,
-            confirmLabel = "Delete",
-            destructive = true,
+
+    toDelete?.let { computer ->
+        DeleteComputerDialog(
+            computer = computer,
+            onDismiss = { toDelete = null },
             onConfirm = {
-                runner.run("delete:${session.id}", done = "Moved to Recently deleted. Delete it forever there to free Drive space now.") {
-                    graph.sessions.delete(session.id)
+                toDelete = null
+                scope.launch {
+                    problem = runCatchingMessage { graph.computers.delete(computer.name) }
+                    if (problem == null && graph.settings.settings.value.lastComputer == computer.name) {
+                        graph.settings.update { it.copy(lastComputer = "") }
+                        ComputerService.disconnect(context)
+                        graph.computerPage.release()
+                    }
                 }
             },
-            onDismiss = { deleting = null },
         )
     }
-    fun deleteEverything() {
-        runner.run(
-            DELETE_EVERYTHING,
-            outlivesScreen = true,
-            onSuccess = { signOuts: List<String> -> runner.say((listOf("Everything was deleted.") + signOuts).joinToString(" ")) },
-        ) {
-            // Read before the delete: afterwards the sessions are gone, and so are their ids.
-            val shortcuts = (graph.sessions.all.value + graph.sync.driveSessions.value).map { SessionShortcut.shortcutId(it.id) }
-            // Each agent's own sign-out ends its sign-in at the vendor too; its room is deleted next.
-            val signOuts = attempt { graph.rooms.signOutAll() }.getOrDefault(emptyList())
-            graph.sync.deleteEverything()
-            clearAppTraces(graph.context, shortcuts)
-            signOuts
-        }
-    }
-    // The phone's clones and worktrees go too: code GitHub does not have yet is pushed first,
-    // and what still cannot be is named, so it is never lost without the owner saying so.
-    if (confirmDelete) {
-        DeleteEverythingDialog(onDismiss = { confirmDelete = false }) {
-            runner.run(
-                CHECK_CODE,
-                onSuccess = { left: List<String> -> if (left.isEmpty()) deleteEverything() else codeAtRisk = left },
-            ) {
-                graph.rooms.stopAll()
-                graph.sessions.codeOnlyOnPhone()
-            }
-        }
-    }
-    codeAtRisk?.let { left ->
-        ConfirmDialog(
-            title = "Some code is only on this phone",
-            text = "It could not be pushed to GitHub, so deleting everything erases it for good:\n" +
-                left.joinToString("\n") { "• $it" } + "\n\nCancel to keep everything, then save it from its chat.",
-            confirmLabel = "Delete unpushed code too",
-            destructive = true,
-            onConfirm = ::deleteEverything,
-            onDismiss = { codeAtRisk = null },
-        )
-    }
-}
-
-private suspend fun readSizes(graph: AppGraph, agents: List<AgentInfo>): PhoneSizes = withContext(Dispatchers.IO) {
-    val dirs = graph.dirs
-    val memory = agents.associate { agent ->
-        agent.id to MemoryFiles.find(dirs.roomHome(agent.id), agent.id, agent.instructionsFile)
-    }
-    PhoneSizes(
-        computer = runCatching { graph.computer.sizeBytes() }.getOrDefault(0L),
-        // Session media lives beside the worktrees; it is counted under Media, not twice.
-        projects = DiskUsage.sizeOf(dirs.repos) + DiskUsage.sizeOf(dirs.work, skipDirectory = ".media"),
-        builds = DiskUsage.sizeOf(dirs.builds),
-        memory = memory,
-    )
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TypeRow(title: String, value: String, places: List<Place>, note: String? = null) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        LabelValueRow(
-            label = { Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium) },
-            value = { Text(value, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End) },
-        )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            places.forEach { StatusChip(it.label, Tone.NEUTRAL) }
-        }
-        if (note != null) Hint(note)
-    }
-}
-
-@Composable
-private fun ByTypeCard(
-    sessions: List<SessionRecord>,
-    projectCount: Int,
-    secretCount: Int,
-    sizes: PhoneSizes?,
-    drive: Map<ObjectKind, Long>,
-) {
-    val live = DataMath.liveSessions(sessions)
-    val pending = "…"
-    SectionCard(null) {
-        TypeRow(
-            "Chats",
-            "${ManageFormat.count(live.size, "session")} · ${DataMath.places(DataMath.chatBytes(sessions), drive[ObjectKind.CHAT_PIECE])}",
-            listOf(Place.PHONE, Place.DRIVE),
-            "All in Drive; the phone keeps recent ones. Never in GitHub.",
-        )
-        HorizontalDivider()
-        TypeRow(
-            "Media",
-            "${ManageFormat.count(DataMath.mediaCount(sessions), "file")} · ${DataMath.places(DataMath.mediaBytes(sessions), drive[ObjectKind.MEDIA])}",
-            listOf(Place.PHONE, Place.DRIVE),
-            "Screenshots, videos and files in your chats.",
-        )
-        HorizontalDivider()
-        TypeRow(
-            "Memory and instructions",
-            sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${DataMath.places(it.memoryBytes, drive[ObjectKind.MEMORY])}" } ?: pending,
-            listOf(Place.PHONE, Place.DRIVE),
-            "Each agent's instructions, rules, memory, skills, subagents and slash commands.",
-        )
-        HorizontalDivider()
-        TypeRow(
-            "Variables and Secrets",
-            ManageFormat.count(secretCount, "value"),
-            listOf(Place.PHONE, Place.DRIVE),
-            "Encrypted. GitHub gets a Secret only when you send it for builds.",
-        )
-        HorizontalDivider()
-        TypeRow(
-            "Projects",
-            "$projectCount · ${sizes?.let { ManageFormat.bytes(it.projects) } ?: pending} here",
-            listOf(Place.GITHUB, Place.PHONE),
-            "GitHub holds the main copy; the phone holds a working copy.",
-        )
-        HorizontalDivider()
-        TypeRow(
-            "Build outputs",
-            sizes?.let { ManageFormat.bytes(it.builds) } ?: pending,
-            listOf(Place.PHONE, Place.GITHUB),
-            "The last 3 per project here; GitHub keeps artifacts for 7 days.",
-        )
-        HorizontalDivider()
-        TypeRow(
-            "The computer",
-            sizes?.let { ManageFormat.bytes(it.computer) } ?: pending,
-            listOf(Place.PHONE),
-            "Rebuildable any time; nothing in it is the only copy.",
-        )
-        HorizontalDivider()
-        TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. On a new phone you sign in to each agent again.")
-    }
-}
-
-/**
- * The largest chats, each with its own ways to free space. This is where the storage-full lock
- * sends the owner, so everything here works without opening Chats.
- */
-@Composable
-private fun LargestCard(
-    largest: List<SessionRecord>,
-    agents: List<AgentInfo>,
-    nav: PocketNav,
-    onRemoveMedia: (SessionRecord) -> Unit,
-    onDelete: (SessionRecord) -> Unit,
-) {
-    SectionCard(null) {
-        if (largest.isEmpty()) Hint("No sessions yet.")
-        largest.forEachIndexed { index, session ->
-            if (index > 0) HorizontalDivider()
-            Column(Modifier.fillMaxWidth()) {
-                val open = if (nav.opensChats) Modifier.clickable { nav.transcript(session.id) } else Modifier
-                Row(
-                    Modifier.fillMaxWidth().then(open).padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(session.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Hint(DataMath.sessionOrigin(session, agents))
+    if (clearing || leaving) {
+        AlertDialog(
+            onDismissRequest = {
+                clearing = false
+                leaving = false
+            },
+            title = { Text(if (leaving) "Leave PocketIDE?" else "Delete PocketIDE's data from this phone?") },
+            text = {
+                Text(
+                    "PocketIDE forgets your GitHub sign-in, the computer page's sign-in and your settings on this phone. " +
+                        "Your code, cloud computers and chats stay in your GitHub account." +
+                        if (leaving) " Then Android's page for PocketIDE opens: tap Uninstall there." else "",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uninstall = leaving
+                    clearing = false
+                    leaving = false
+                    scope.launch {
+                        deleteFromPhone(context, graph)
+                        if (uninstall) {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Text(ManageFormat.bytes(DataMath.sizeOf(session)), style = MaterialTheme.typography.bodyMedium)
-                }
-                if (session.mediaBytes > 0) {
-                    TextButton(onClick = { onRemoveMedia(session) }) {
-                        Icon(Icons.Outlined.HideImage, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Remove media, keep chat (${ManageFormat.bytes(session.mediaBytes)})")
-                    }
-                }
-                TextButton(onClick = { onDelete(session) }) {
-                    Icon(Icons.Outlined.Delete, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Delete chat")
-                }
-            }
-        }
-        if (largest.isNotEmpty()) {
-            Hint(FREE_DRIVE_SPACE)
-            NavRow(Icons.Outlined.RestoreFromTrash, "Recently deleted", "Delete forever to free Drive space") { nav.recentlyDeleted() }
-        }
-    }
-}
-
-/** A deleted chat waits in Recently deleted, still in Drive; only "Delete forever" frees the space at once. */
-internal const val FREE_DRIVE_SPACE =
-    "A deleted chat stays in Recently deleted for 30 days and keeps its Drive space until then. Delete it forever there to free the space now."
-
-@Composable
-private fun MemoryCard(agents: List<AgentInfo>, memory: Map<String, List<MemoryFile>>?, loading: Boolean, onEdit: (MemoryFile) -> Unit) {
-    SectionCard(null) {
-        Hint("What each agent always reads, and what it remembers. Kept outside your repositories and synced, encrypted, to Drive.")
-        if (memory == null) {
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Hint("Could not read the rooms.")
-            return@SectionCard
-        }
-        if (agents.isEmpty()) Hint("No agents yet.")
-        agents.forEach { agent ->
-            val files = memory[agent.id].orEmpty()
-            Text(agent.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-            if (files.isEmpty()) Hint("Appears once this agent's room is set up.")
-            files.forEach { f ->
-                NavRow(
-                    Icons.AutoMirrored.Outlined.Article,
-                    f.label,
-                    if (f.exists) ManageFormat.bytes(f.bytes) else "Not created yet · tap to write one",
-                ) { onEdit(f) }
-            }
-        }
-    }
-}
-
-/**
- * "Move to another Google account" (§5.5): Google's own window picks the account, the sync
- * engine copies one file at a time, then the owner decides when the old copy is erased.
- */
-@Composable
-private fun MoveCard(graph: AppGraph, runner: ActionRunner) {
-    val move by graph.sync.move.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    var confirmStart by rememberSaveable { mutableStateOf(false) }
-    var confirmErase by rememberSaveable { mutableStateOf(false) }
-    var launchedFor by remember { mutableStateOf<PendingIntent?>(null) }
-    val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        if (result.resultCode != Activity.RESULT_OK) {
-            runner.say("Google's window was closed. Nothing moved.")
-            return@rememberLauncherForActivityResult
-        }
-        runner.run(MOVE, outlivesScreen = true) { continueMove(graph, result.data) }
-    }
-    fun openConsent(intent: PendingIntent) {
-        launchedFor = intent
-        try {
-            External.leaving(context)
-            consent.launch(IntentSenderRequest.Builder(intent.intentSender).build())
-        } catch (_: ActivityNotFoundException) {
-            runner.say("Google's window could not open. Update Google Play services and try again.")
-        }
-    }
-    val current = move
-    // Google's window opens once by itself after "Start"; the button below reopens it.
-    LaunchedEffect(current) {
-        if (current is MoveState.NeedsConsent && launchedFor != current.intent) openConsent(current.intent)
-    }
-    val busy = runner.isBusy(MOVE) || runner.isBusy(ERASE_OLD) || current is MoveState.Copying
-
-    SectionCard(null) {
-        Text("1. Sign in to the new Google account.", style = MaterialTheme.typography.bodyMedium)
-        Text("2. The app copies every file of your vault, one at a time, so the phone never needs double space.", style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "3. It makes a new key half there, checks everything, then asks whether to erase the old account's copy.",
-            style = MaterialTheme.typography.bodyMedium,
+                }) { Text("Delete", color = toneColor(Tone.ERROR)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clearing = false
+                    leaving = false
+                }) { Text("Cancel") }
+            },
         )
-        ManageText.move(current)?.let { ToneLine(it) }
-        ManageText.moveProgress(current)?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
-        if (busy && current !is MoveState.Copying) LinearProgressIndicator(Modifier.fillMaxWidth())
-        when (current) {
-            is MoveState.NeedsConsent -> OutlinedButton(onClick = { openConsent(current.intent) }, enabled = !busy) {
-                Text("Open Google's window")
-            }
-            is MoveState.ReadyToEraseOld -> Button(onClick = { confirmErase = true }, enabled = !busy) {
-                Text("Erase the copy in ${current.from}")
-            }
-            is MoveState.Copying -> Hint("Keep the app open on Wi-Fi. If it stops, it continues where it left off.")
-            else -> OutlinedButton(onClick = { confirmStart = true }, enabled = !busy) {
-                Icon(Icons.Outlined.SwapHoriz, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (current is MoveState.Failed) "Try again" else "Move to another account")
-            }
-        }
-    }
-
-    if (confirmStart) {
-        ConfirmDialog(
-            title = "Move to another Google account?",
-            text = "You choose the new account in Google's own window. Keep the app open on Wi-Fi until it finishes; " +
-                "your old account's copy is erased only after you agree at the end.",
-            confirmLabel = "Start",
-            destructive = false,
-            onConfirm = { runner.run(MOVE, outlivesScreen = true) { graph.sync.moveToAnotherAccount() } },
-            onDismiss = { confirmStart = false },
-        )
-    }
-    val ready = current as? MoveState.ReadyToEraseOld
-    if (confirmErase && ready != null) {
-        ConfirmDialog(
-            title = "Erase the copy in ${ready.from}?",
-            text = "Everything is in ${ready.to} and checked. PocketIDE's hidden folder in ${ready.from} is " +
-                "erased for good. Nothing else in that account is touched.",
-            confirmLabel = "Erase",
-            destructive = true,
-            onConfirm = { runner.run(ERASE_OLD, outlivesScreen = true) { graph.sync.eraseOldAccountCopy() } },
-            onDismiss = { confirmErase = false },
-        )
-    }
-}
-
-/** Google approved the new account: finish its consent, then copy everything there. */
-private suspend fun continueMove(graph: AppGraph, data: Intent?) {
-    when (val result = graph.driveAuth.completeConsent(data)) {
-        is DriveAuthResult.Authorized -> {
-            val email = result.email ?: throw IllegalStateException("Google did not say which account was chosen. Try again.")
-            graph.sync.moveToAccount(email)
-        }
-        is DriveAuthResult.NeedsConsent -> throw IllegalStateException("Google asks again. Tap Open Google's window.")
-        is DriveAuthResult.Failed -> throw IllegalStateException(result.why)
-    }
-}
-
-/**
- * After "Delete everything": the agents' screens keep cookies and site storage in Android's
- * WebView, and home-screen shortcuts would point at projects that are gone. Each step is
- * independent; a phone without a working WebView still gets the others.
- */
-private suspend fun clearAppTraces(context: Context, sessionShortcuts: List<String>) = withContext(Dispatchers.Main) {
-    runCatching {
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
-    }
-    runCatching { WebStorage.getInstance().deleteAllData() }
-    runCatching {
-        ShortcutManagerCompat.removeAllDynamicShortcuts(context)
-        val pinned = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).map { it.id }
-        val ids = (pinned + sessionShortcuts).distinct()
-        if (ids.isNotEmpty()) ShortcutManagerCompat.disableShortcuts(context, ids, "This session was deleted.")
     }
 }
 
 @Composable
-private fun WithoutAppCard(nav: PocketNav) {
-    SectionCard(null) {
-        Hint("Drive's hidden folder cannot be opened or edited, by design: it is hidden and every file is encrypted. You can still check it or remove it:")
-        Text(
-            "See the size: on drive.google.com (a computer, or \"Desktop site\" in a phone browser) open Settings → Manage apps; " +
-                "PocketIDE shows its hidden app data.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            "Delete it all: in the same place choose Options → Delete hidden app data, then Disconnect from Drive.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        LinkRow("Drive settings → Manage apps", "https://drive.google.com/drive/settings", nav)
-        LinkRow("What uses your Google storage", "https://one.google.com/storage", nav)
-        HorizontalDivider()
-        Text(
-            "Remove GitHub access: GitHub → Settings → Applications. PocketIDE is on two tabs there: Installed GitHub Apps " +
-                "(Uninstall) and Authorized GitHub Apps (Revoke). Delete pocketide-keyring too if you want.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        LinkRow("GitHub applications", "https://github.com/settings/applications", nav)
-        LinkRow("Installed GitHub Apps", "https://github.com/settings/installations", nav)
-        LinkRow("Authorized GitHub Apps", "https://github.com/settings/apps/authorizations", nav)
-        Text("Remove Google access: your Google Account → Security → third-party connections → PocketIDE.", style = MaterialTheme.typography.bodyMedium)
-        LinkRow("Google third-party connections", "https://myaccount.google.com/connections", nav)
-        Hint("The Drive phone app does not have Manage apps; the website does.")
-        HorizontalDivider()
-        Text(
-            "Agent sign-ins: deleting here removes them from this phone. To end them on the company's side too, sign out " +
-                "of other devices in your Claude, ChatGPT and Google account settings.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        LinkRow("Google: your devices", "https://myaccount.google.com/device-activity", nav)
+private fun Place(title: String, text: String, actions: (@Composable () -> Unit)? = null) {
+    SectionCard(title) {
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+        actions?.let { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { it() } }
     }
-}
-
-@Composable
-internal fun DeleteEverythingDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    var typed by rememberSaveable { mutableStateOf("") }
-    ConfirmDialog(
-        title = "Delete everything?",
-        text = "Chats, media, memory, settings, Variables and Secrets are erased from this phone and your Drive, with the " +
-            "agents' sign-ins and project copies on this phone. Each chat's code is pushed to GitHub first. Your GitHub " +
-            "repositories are not touched, and the GitHub App in Settings stays, so you can sign in again. Type DELETE to confirm.",
-        confirmLabel = "Delete everything",
-        destructive = true,
-        confirmEnabled = DataMath.deleteConfirmed(typed),
-        onConfirm = onConfirm,
-        onDismiss = onDismiss,
-        extra = {
-            OutlinedTextField(
-                value = typed,
-                onValueChange = { typed = it },
-                label = { Text("Type DELETE") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Outlined.DeleteSweep, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-    )
 }

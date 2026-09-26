@@ -1,212 +1,200 @@
 package com.pocketide.ui.screens.usage
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
-import com.pocketide.github.AccountUsage
-import com.pocketide.github.RepoUsage
-import com.pocketide.google.DriveQuota
-import com.pocketide.model.Project
-import com.pocketide.ui.components.InfoRow
+import com.pocketide.graph
+import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.SectionCard
-import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
-import com.pocketide.ui.manage.ActionsUsage
-import com.pocketide.ui.manage.AsOfLine
-import com.pocketide.ui.manage.ErrorNote
-import com.pocketide.ui.manage.Hint
-import com.pocketide.ui.manage.LinkRow
-import com.pocketide.ui.manage.LoadState
-import com.pocketide.ui.manage.ManageFormat
-import com.pocketide.ui.manage.ManagePage
-import com.pocketide.ui.manage.RepoSize
-import com.pocketide.ui.manage.SectionLabel
-import com.pocketide.ui.manage.UsageMeter
-import com.pocketide.ui.manage.rememberGraph
-import com.pocketide.ui.manage.rememberLoad
-import com.pocketide.ui.nav.PocketNav
-import java.util.Locale
+import com.pocketide.ui.components.toneColor
+import com.pocketide.ui.shell.NoticeCard
+import com.pocketide.ui.shell.SecondaryAction
+import com.pocketide.ui.web.Browser
+import com.pocketide.usage.Allowance
+import com.pocketide.usage.CloudUsage
+import kotlinx.coroutines.CancellationException
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
-private const val GITHUB_BILLING = "https://github.com/settings/billing"
-private const val GITHUB_BUDGETS = "https://github.com/settings/billing/budgets"
-private const val GOOGLE_STORAGE = "https://one.google.com/storage"
-
-/**
- * Live usage, never frozen numbers: GitHub Actions minutes and storage against the owner's
- * plan, each project repository, an estimate of builds left, and Google storage. Every block
- * says when it was read and can be refreshed.
- */
+/** This month's hours, storage and build minutes, read live from GitHub, with a daily chart. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsageScreen(nav: PocketNav) {
-    val graph = rememberGraph()
-    val projects by graph.projects.all.collectAsStateWithLifecycle()
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val now = graph.clock::now
-    val github = rememberLoad("github", now) { graph.usage.github() }
-    val estimate = rememberLoad("estimate", now) { graph.usage.estimate() }
-    val google = rememberLoad("google", now) { graph.usage.google() }
-    val publicRepos = remember(projects) { projects.filterNot { it.isPrivate }.flatMap { listOf("${it.owner}/${it.repo}", it.repo) }.toSet() }
-
-    ManagePage("Usage", nav) {
-        item { SectionLabel("GitHub Actions") }
-        item {
-            SectionCard(null) {
-                AsOfLine(github.at, github.loading) {
-                    github.refresh()
-                    estimate.refresh()
-                }
-                github.error?.let { ErrorNote(it) }
-                val usage = github.value
-                val unavailable = usage?.unavailableReason
-                when {
-                    // The lines are empty then, which is not the same as no usage: show no figures at all.
-                    unavailable != null -> Hint(unavailable)
-                    usage != null -> ActionsBlock(usage, publicRepos, graph.clock.now())
-                    !github.loading && github.error == null -> Hint("GitHub did not report usage for this account. Your billing page has it.")
-                }
-                estimate.value?.takeIf { unavailable == null }?.let { e ->
-                    val parts = listOfNotNull(
-                        e.androidLeft?.let { "about $it Android" },
-                        e.iosLeft?.let { "about $it iOS" },
+fun UsageScreen(onHelp: () -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
+    var usage by remember { mutableStateOf<CloudUsage?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var reads by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reads) {
+        loading = true
+        try {
+            usage = graph.usage.read()
+            problem = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            problem = e.message ?: "GitHub did not answer. Pull down to try again."
+        }
+        loading = false
+    }
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reads++ }, modifier = Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row {
+                Column(Modifier.weight(1f)) {
+                    Text("Usage", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        usage?.let { "This month on GitHub, read ${Ist.dateTime(it.readAtMs)}" } ?: "This month on GitHub",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (parts.isNotEmpty()) {
-                        HorizontalDivider()
-                        Text("Builds left this month: ${parts.joinToString(" and ")}", style = MaterialTheme.typography.bodyLarge)
-                        if (e.basis.isNotBlank()) Hint(e.basis)
-                    }
                 }
-                LinkRow("Billing and plans on GitHub", GITHUB_BILLING, nav)
-                LinkRow("Budgets on GitHub", GITHUB_BUDGETS, nav)
+                IconButton(onClick = onHelp) { Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = "About usage") }
             }
+            problem?.let { NoticeCard(it, Tone.ERROR) }
+            usage?.let { UsageCards(it, graph.clock.now()) }
+            SecondaryAction("Open GitHub billing", onClick = { Browser.open(context, BILLING_URL) })
+            SecondaryAction("Plans and upgrade", onClick = { Browser.open(context, PLANS_URL) })
+            Text(
+                "Free allowance as GitHub published it on ${Allowance.CHECKED_ON}. GitHub's own page is the final word.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        item { SectionLabel("Project repositories") }
-        if (projects.isEmpty()) {
-            item { SectionCard(null) { Hint("No projects yet.") } }
-        }
-        items(projects, key = { it.id }) { project -> RepoCard(project) }
-        item { SectionLabel("Google storage") }
-        item { GoogleCard(google, settings.driveLimitGb, nav) }
     }
 }
 
 @Composable
-private fun ActionsBlock(usage: AccountUsage, publicRepos: Set<String>, nowMs: Long) {
-    val summary = ActionsUsage.summarize(usage, publicRepos)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("You pay", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+private fun UsageCards(usage: CloudUsage, now: Long) {
+    usage.unavailableReason?.let {
+        NoticeCard(it, Tone.WARN)
+        return
+    }
+    val allowance = usage.allowance
+    val today = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).toLocalDate()
+    SectionCard("Cloud computers (Codespaces)") {
+        if (allowance != null) {
+            Meter(usage.coreHoursUsed, allowance.coreHours.toDouble())
+            Text(
+                "${Formats.amount(usage.coreHoursUsed)} of ${allowance.coreHours} free core-hours used",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "About ${Formats.amount(usage.hoursLeftOnTwoCores ?: 0.0)} hours left on a 2-core computer. A 4-core one uses them twice as fast.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            val projected = usage.projectedCoreHours(today)
+            val tone = if (projected > allowance.coreHours) Tone.WARN else Tone.OK
+            Text(
+                "At this month's pace: about ${Formats.amount(projected)} core-hours by the end of the month.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = toneColor(tone),
+            )
+        } else {
+            Text("${Formats.amount(usage.coreHoursUsed)} core-hours used this month.", style = MaterialTheme.typography.titleMedium)
+        }
+        DailyChart(usage.coreHoursByDay, today)
+    }
+    SectionCard("Storage") {
+        if (allowance != null) Meter(usage.storageGbMonths, allowance.storageGbMonths.toDouble())
         Text(
-            if (summary.chargedUsd >= 0.005) ManageFormat.usd(summary.chargedUsd) else "Nothing",
+            "${Formats.amount(usage.storageGbMonths)} GB-months" + (allowance?.let { " of ${it.storageGbMonths} free" } ?: ""),
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Stopped computers still use storage until GitHub deletes them. GitHub's own image is not counted.",
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
-    if (summary.grossUsd >= 0.005) {
-        Hint("This month's usage is worth ${ManageFormat.usd(summary.grossUsd)}; ${ManageFormat.usd(summary.discountUsd)} of it is covered by your plan and free public repositories.")
+    SectionCard("Builds (GitHub Actions)") {
+        Text("${Formats.amount(usage.actionsMinutes)} minutes this month", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Builds of public repositories are free. Private ones use the free minutes" +
+                (allowance?.let { " (${it.actionsMinutes} a month)" } ?: "") + "; Windows counts twice, macOS ten times.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
-    summary.byRepository.forEach { cost -> InfoRow(cost.repository ?: "Account", cost.label) }
-    summary.plan?.let { InfoRow("Plan", it.replaceFirstChar { c -> c.uppercase() }) }
-    val allowance = summary.allowance
-    val counted = summary.countedMinutes
-    if (allowance != null) {
-        InfoRow("Minutes used", "${ManageFormat.minutes(counted)} of ${ManageFormat.minutes(allowance.minutes.toDouble())} included in your plan")
-        UsageMeter(counted / allowance.minutes)
-    } else {
-        InfoRow("Minutes used", ManageFormat.minutes(counted))
+    SectionCard("Charged so far") {
+        Text(Formats.usd(usage.billedUsd), style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Without a payment method or spending limit, GitHub stops at the free allowance instead of charging.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
-    if (summary.byOs.isEmpty()) Hint("No Actions minutes used in private repositories this month.")
-    summary.byOs.forEach { os ->
-        val extra = if (os.os.multiplier > 1) " × ${os.os.multiplier} = ${ManageFormat.minutes(os.counted)}" else ""
-        InfoRow(os.os.label, ManageFormat.minutes(os.minutes) + extra)
-    }
-    Hint(
-        "Linux counts 1×, Windows 2× and macOS 10× against the minutes included in your plan. Builds in a public " +
-            "repository are free (public repo).",
+}
+
+@Composable
+private fun Meter(used: Double, of: Double) {
+    val share = if (of <= 0) 0f else (used / of).toFloat().coerceIn(0f, 1f)
+    LinearProgressIndicator(
+        progress = { share },
+        color = toneColor(if (share >= WARN_SHARE) Tone.WARN else Tone.OK),
+        modifier = Modifier.fillMaxWidth().height(8.dp),
     )
-    Hint("Without a payment method or a budget on GitHub, builds stop at the limit: there is no surprise bill.")
-    val share = ActionsUsage.storageShare(summary.storageGbHours, allowance, nowMs)
-    if (allowance != null) {
-        InfoRow(
-            "Artifact storage",
-            (share?.let { ManageFormat.percentText(it, 1.0) + " of " } ?: "") + ManageFormat.bytes(allowance.artifactStorageBytes) + " included",
-        )
-        if (share != null) UsageMeter(share)
-    } else if (summary.storageGbHours > 0) {
-        InfoRow("Artifact storage", String.format(Locale.ENGLISH, "%.1f GB-hours", summary.storageGbHours))
-    }
-    InfoRow("Resets", Ist.date(ActionsUsage.resetAt(nowMs)))
-    if (allowance != null) Hint("Included amounts from GitHub's plan table as of ${ActionsUsage.ALLOWANCE_AS_OF}.")
 }
 
+/** Core-hours per day this month; today's bar in the accent colour. */
 @Composable
-private fun RepoCard(project: Project) {
-    val graph = rememberGraph()
-    val load: LoadState<RepoUsage?> = rememberLoad(project.id, graph.clock::now) { graph.usage.repo(project.id) }
-    SectionCard(null) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(project.repo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Hint(project.owner)
-            }
-            val private = load.value?.repo?.isPrivate ?: project.isPrivate
-            StatusChip(if (private) "Private" else "Public", if (private) Tone.NEUTRAL else Tone.OK)
+private fun DailyChart(byDay: List<Double>, today: LocalDate) {
+    val top = byDay.maxOrNull()?.takeIf { it > 0 } ?: return
+    val bar = MaterialTheme.colorScheme.secondary
+    val current = MaterialTheme.colorScheme.primary
+    val description = "Core-hours per day this month, up to ${Formats.amount(top)} on the busiest day"
+    Canvas(Modifier.fillMaxWidth().height(96.dp).padding(top = 8.dp).semantics { contentDescription = description }) {
+        val slot = size.width / byDay.size
+        val width = slot * BAR_SHARE
+        byDay.forEachIndexed { index, value ->
+            val height = (value / top).toFloat() * size.height
+            drawRoundRect(
+                color = if (index == today.dayOfMonth - 1) current else bar,
+                topLeft = Offset(index * slot + (slot - width) / 2, size.height - height),
+                size = Size(width, height),
+                cornerRadius = CornerRadius(width / 3, width / 3),
+            )
         }
-        AsOfLine(load.at, load.loading, load::refresh)
-        load.error?.let { ErrorNote(it) }
-        val usage = load.value
-        if (usage == null) {
-            if (!load.loading && load.error == null) Hint("GitHub did not report this repository.")
-            return@SectionCard
-        }
-        val size = RepoSize.bytes(usage.repo.sizeKb)
-        InfoRow("Size", "${ManageFormat.bytes(size)} of ${ManageFormat.bytes(RepoSize.GUIDELINE_BYTES)} recommended")
-        UsageMeter(size.toDouble() / RepoSize.GUIDELINE_BYTES)
-        InfoRow("Actions cache", ManageFormat.bytes(usage.cacheBytes))
-        InfoRow("Artifacts", "${ManageFormat.count(usage.artifactCount, "file")} · ${ManageFormat.bytes(usage.artifactsBytes)}")
-        Hint(
-            if (usage.repo.isPrivate) "Private: builds use your included minutes." else "Public: builds on standard runners are free, and anyone can see the code.",
-        )
     }
 }
 
-@Composable
-private fun GoogleCard(google: LoadState<DriveQuota?>, driveLimitGb: Int, nav: PocketNav) {
-    SectionCard(null) {
-        AsOfLine(google.at, google.loading, google::refresh)
-        google.error?.let { ErrorNote(it) }
-        val quota = google.value
-        if (quota == null && google.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (quota != null) {
-            quota.email?.let { InfoRow("Account", it) }
-            val limit = quota.limitBytes
-            if (limit != null && limit > 0) {
-                InfoRow("Used", "${ManageFormat.bytes(quota.usageBytes)} of ${ManageFormat.bytes(limit)}")
-                UsageMeter(quota.usageBytes.toDouble() / limit)
-            } else {
-                InfoRow("Used", "${ManageFormat.bytes(quota.usageBytes)} (no limit)")
-            }
-            InfoRow("In Drive", ManageFormat.bytes(quota.usageInDriveBytes))
-            val share = driveLimitGb * 1_000_000_000L
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                InfoRow("PocketIDE", "${ManageFormat.bytes(quota.appDataBytes)} of your $driveLimitGb GB limit")
-                if (share > 0) UsageMeter(quota.appDataBytes.toDouble() / share)
-            }
-            Hint("Gmail, Photos and Drive share this storage. PocketIDE's part is its hidden, encrypted folder.")
-        }
-        LinkRow("See what uses your Google storage", GOOGLE_STORAGE, nav)
-    }
-}
+private const val BILLING_URL = "https://github.com/settings/billing/usage"
+private const val PLANS_URL = "https://github.com/settings/billing"
+private const val WARN_SHARE = 0.8f
+private const val BAR_SHARE = 0.7f

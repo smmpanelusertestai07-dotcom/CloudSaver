@@ -32,21 +32,6 @@ def elf(segments: list[tuple[int, int, int, int, int]], machine: int = 183) -> b
 GOOD_LIB = elf([(PT_LOAD, PF_R | PF_X, 0, 0x37EC0, PAGE), (PT_LOAD, PF_R | PF_W, 0x3BEC0, 0x2140, PAGE),
                 (PT_LOAD, PF_R | PF_W, 0x41550, 0x3440, PAGE), (PT_GNU_RELRO, PF_R, 0x3BEC0, 0x2140, 1)])
 
-TEMPLATE = """name: Android release
-on:
-  workflow_dispatch:
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: ./gradlew assembleRelease
-"""
-
 FILES = {
     "branding/tokens.json": '{"brand": {"tile_top": "#7A3CD6"}, "semantic": {"running": "#129150"}}',
     "app/src/main/res/values/colors.xml":
@@ -70,17 +55,16 @@ FILES = {
         "<full-backup-content>\n" + "".join(f'  <exclude domain="{d}" path="." />\n'
                                             for d in ("root", "file", "database", "sharedpref", "external"))
         + "</full-backup-content>\n",
-    "app/src/main/java/com/pocketide/docs/GuidePhone.kt":
-        'object GuidePhone {\n    val permissions = section(\n        "permissions",\n'
-        '        table(listOf("Permission", "Why"), row("INTERNET", "The agents need it.")),\n    )\n'
+    "app/src/main/java/com/pocketide/docs/Guide.kt":
+        'object Guide {\n    private val permissions = section(\n        "permissions",\n'
+        '        table(listOf("Permission", "Why"), row("INTERNET", "To reach GitHub.")),\n    )\n'
         "    val all = listOf(permissions)\n}\n",
-    "app/build.gradle.kts": 'val appVersion = "3.0.0"\n\nfun versionCodeOf(version: String): Int {\n'
+    "app/build.gradle.kts": 'val appVersion = "4.0.0"\n\nfun versionCodeOf(version: String): Int {\n'
                             '    val (major, minor, patch) = version.split(".").map { it.toInt() }\n'
                             '    return major * 10000 + minor * 100 + patch\n}\n\n'
                             'android {\n    defaultConfig {\n        versionCode = versionCodeOf(appVersion)\n'
                             '        versionName = appVersion\n    }\n}\n',
-    "app/src/main/assets/templates/android.yml": TEMPLATE,
-    "app/src/main/assets/linux/bootstrap.sh": "#!/bin/bash\nset -eu\necho ready\n",
+    "app/src/main/assets/scripts/example.sh": "#!/bin/bash\nset -eu\necho ready\n",
 }
 
 
@@ -93,7 +77,7 @@ class TreeTest(unittest.TestCase):
         self.root = Path(self._temp.name) / "pocket"
         for name, text in FILES.items():
             self.write(name, text)
-        lib = self.root / "app/src/main/jniLibs/arm64-v8a/libproot.so"
+        lib = self.root / "app/src/main/jniLibs/arm64-v8a/libexample.so"
         lib.parent.mkdir(parents=True)
         lib.write_bytes(GOOD_LIB)
         self.allow = self.root.parent / "permissions.txt"

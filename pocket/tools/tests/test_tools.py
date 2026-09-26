@@ -18,11 +18,7 @@ from unittest import mock
 
 from tests.support import REPO, TOOLS
 
-import pins
 import yaml_lite
-
-sys.path.insert(0, str(TOOLS / "proot"))
-import gpl_notice  # noqa: E402
 
 
 def load_script(name: str):
@@ -75,173 +71,6 @@ class YamlLite(unittest.TestCase):
             yaml_lite.load("a: 1\na: 2\n")
 
 
-class Pins(unittest.TestCase):
-    KOTLIN = '''
-object LinuxPins {
-    val ubuntuBase = PinnedDownload(
-        url = "https://example.org/base.tar.gz",
-        sha256 = "%s",
-        bytes = 29_936_675,
-    )
-    val codeServer = CodeServerPin(version = "4.1", url = "https://github.com/o/r/releases/download/v1/x.tgz",
-        sha256 = "%s", bytes = 5L)
-    val computed = PinnedDownload(url = base + name, sha256 = digest, bytes = size)
-}
-''' % ("a" * 64, "b" * 64)
-
-    def test_reads_literal_pins_and_skips_computed_ones(self):
-        found = pins.parse(self.KOTLIN, "LinuxPins.kt")
-        self.assertEqual(["ubuntuBase", "codeServer"], [p.name for p in found])
-        self.assertEqual(("https://example.org/base.tar.gz", "a" * 64, 29_936_675),
-                         (found[0].url, found[0].sha256, found[0].bytes))
-        self.assertEqual(5, found[1].bytes)
-
-    def test_the_app_pins_the_ubuntu_base(self):
-        names = {p.name for p in pins.all_pins()}
-        self.assertIn("ubuntuBase", names)
-
-
-class GplNotice(unittest.TestCase):
-    RELEASES = [
-        {"version": "5.1.107.94", "build": True, "origin": "Built by CI.",
-         "proot": {"license": "GPL-2.0", "tag": "v5.1.107.94", "commit": "58c3b428", "url": "https://x/p.zip", "sha256": "c" * 64},
-         "talloc": {"license": "LGPL-3.0-or-later", "version": "2.4.3", "url": "https://x/t.tar.gz", "sha256": "d" * 64},
-         "libandroid_shmem": {"license": "BSD-3-Clause", "version": "0.7", "url": "https://x/s.tar.gz", "sha256": "e" * 64}},
-        {"version": "5.1.107.92", "build": False, "origin": "Prebuilt.",
-         "proot": {"license": "GPL-2.0", "tag": "v5.1.107.92", "commit": "7266fb3e", "url": "https://x/tree"},
-         "talloc": {"license": "LGPL-3.0-or-later", "version": "unknown", "url": "https://x/t"},
-         "libandroid_shmem": {"license": "BSD-3-Clause", "version": "unknown", "url": "https://x/s"}},
-    ]
-
-    def test_finds_the_release_by_the_version_inside_the_binary(self):
-        binary = b"\x00ELF...proot v5.1.107.94\x00 1.2.3 \x00"
-        release = gpl_notice.shipped_release(binary, self.RELEASES)
-        text = gpl_notice.notice(release, "3.0.0")
-        self.assertIn("PRoot 5.1.107.94", text)
-        self.assertIn("commit 58c3b428", text)
-        self.assertIn("talloc, LGPL-3.0-or-later", text)
-        self.assertIn("attached to this release", text)
-
-    def test_an_unknown_proot_blocks_the_release(self):
-        with self.assertRaises(gpl_notice.NoticeError):
-            gpl_notice.shipped_release(b"proot 5.1.107.99", self.RELEASES)
-
-    def test_the_shipped_proot_is_known(self):
-        libproot = (TOOLS.parent / "app/src/main/jniLibs/arm64-v8a/libproot.so").read_bytes()
-        self.assertTrue(gpl_notice.shipped_release(libproot, gpl_notice.releases()))
-
-    def test_exactly_one_release_is_built_from_source(self):
-        self.assertEqual(1, sum(1 for r in gpl_notice.releases() if r.get("build")))
-
-    def test_a_gpl_part_without_a_pinned_archive_blocks_the_release(self):
-        with self.assertRaises(gpl_notice.NoticeError) as caught:
-            gpl_notice.check_pinned(self.RELEASES[1])
-        self.assertIn("proot (GPL-2.0)", str(caught.exception))
-        self.assertIn("talloc (LGPL-3.0-or-later)", str(caught.exception))
-        self.assertNotIn("libandroid_shmem (", str(caught.exception))
-        gpl_notice.check_pinned(self.RELEASES[0])
-
-    def test_an_unpinned_recipe_blocks_the_release(self):
-        release = {**self.RELEASES[0], "talloc": {**self.RELEASES[0]["talloc"], "recipe": {"url": "https://x/build.sh"}}}
-        with self.assertRaises(gpl_notice.NoticeError):
-            gpl_notice.check_pinned(release)
-
-    def test_the_shipped_release_pins_every_gpl_source(self):
-        libproot = (TOOLS.parent / "app/src/main/jniLibs/arm64-v8a/libproot.so").read_bytes()
-        gpl_notice.check_pinned(gpl_notice.shipped_release(libproot, gpl_notice.releases()))
-
-    def test_the_shipped_libraries_are_the_recorded_binaries(self):
-        libraries = {p.name: p.read_bytes() for p in (TOOLS.parent / "app/src/main/jniLibs/arm64-v8a").glob("*.so")}
-        release = gpl_notice.shipped_release(libraries["libproot.so"], gpl_notice.releases())
-        self.assertEqual(set(libraries), set(release["binaries"]))
-        gpl_notice.check_binaries(libraries, release)
-
-    def test_a_changed_or_extra_library_blocks_the_release(self):
-        release = {**self.RELEASES[1], "binaries": {"libproot.so": hashlib.sha256(b"proot").hexdigest()}}
-        gpl_notice.check_binaries({"libproot.so": b"proot"}, release)
-        for libraries in ({"libproot.so": b"rebuilt"}, {}, {"libproot.so": b"proot", "libother.so": b"x"}):
-            with self.subTest(libraries=sorted(libraries)), self.assertRaises(gpl_notice.NoticeError):
-                gpl_notice.check_binaries(libraries, release)
-
-    def test_sources_and_recipes_are_all_fetched(self):
-        release = {**self.RELEASES[0], "proot": {**self.RELEASES[0]["proot"], "recipe": {"url": "https://x/build.sh", "sha256": "f" * 64}}}
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gpl_notice, "download_verified") as download:
-            saved = gpl_notice.fetch_sources(release, Path(tmp))
-        self.assertEqual(["proot-5.1.107.94-source.zip", "proot-5.1.107.94-termux-build.sh",
-                          "talloc-2.4.3-source.tar.gz", "libandroid-shmem-0.7-source.tar.gz"], [p.name for p in saved])
-        self.assertEqual(("https://x/build.sh", "f" * 64), download.call_args_list[1].args[:2])
-
-    def test_an_unreachable_host_is_retried_then_its_mirror_is_used(self):
-        good = b"talloc source"
-        pinned = hashlib.sha256(good).hexdigest()
-
-        class Body(io.BytesIO):
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-        def fake_urlopen(request, timeout):
-            if "www.samba.org" in request.full_url:
-                raise gpl_notice.urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
-            return Body(good)
-
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(gpl_notice.urllib.request, "urlopen", side_effect=fake_urlopen) as urlopen, \
-                mock.patch.object(gpl_notice.time, "sleep") as sleep:
-            out = Path(tmp) / "talloc.tar.gz"
-            gpl_notice.download_verified("https://www.samba.org/ftp/t.tar.gz", pinned, out,
-                                         mirrors=("https://download.samba.org/pub/t.tar.gz",))
-            self.assertEqual(good, out.read_bytes())
-        self.assertEqual(4, urlopen.call_count)  # three tries on the dead host, then the mirror
-        self.assertEqual(2, sleep.call_count)
-
-    def test_a_wrong_checksum_moves_on_and_no_match_anywhere_is_refused(self):
-        class Body(io.BytesIO):
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(gpl_notice.urllib.request, "urlopen", side_effect=lambda r, timeout: Body(b"changed")) as urlopen, \
-                mock.patch.object(gpl_notice.time, "sleep"):
-            out = Path(tmp) / "x"
-            with self.assertRaises(gpl_notice.NoticeError) as refused:
-                gpl_notice.download_verified("https://a/x", "0" * 64, out, mirrors=("https://b/x",))
-            self.assertFalse(out.exists())
-        self.assertEqual(2, urlopen.call_count)  # one try each: a checksum is not a network error
-        self.assertIn("not the pinned", str(refused.exception))
-
-    def test_the_release_notice_for_the_shipped_apk(self):
-        jni = TOOLS.parent / "app/src/main/jniLibs/arm64-v8a"
-        with tempfile.TemporaryDirectory() as tmp:
-            apk, out = Path(tmp) / "app.apk", Path(tmp) / "GPL-SOURCE.txt"
-            with zipfile.ZipFile(apk, "w") as archive:
-                for lib in jni.glob("*.so"):
-                    archive.write(lib, f"lib/arm64-v8a/{lib.name}")
-            argv = ["gpl_notice.py", str(apk), "--app-version", "3.0.0", "--out", str(out)]
-            with mock.patch.object(sys, "argv", argv):
-                self.assertEqual(0, gpl_notice.main())
-            text = out.read_text(encoding="utf-8")
-        self.assertIn("PRoot 5.1.107.92", text)
-        self.assertIn("talloc-2.4.3.tar.gz", text)
-        self.assertIn("f12d165dfd34062be3da5e838fbeec429f1b7b9ba5b95371fbd253fb4a9cafc2  libproot.so", text)
-        self.assertIn("packages/libtalloc/build.sh", text)
-
-    def test_an_apk_with_a_rebuilt_proot_under_an_old_version_is_refused(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            apk = Path(tmp) / "app.apk"
-            with zipfile.ZipFile(apk, "w") as archive:
-                archive.writestr("lib/arm64-v8a/libproot.so", b"rebuilt proot 5.1.107.92")
-            argv = ["gpl_notice.py", str(apk), "--app-version", "3.0.0"]
-            with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(io.StringIO()) as err:
-                self.assertEqual(1, gpl_notice.main())
-        self.assertIn("libproot.so is not the recorded build", err.getvalue())
-
-
 class SecretsFile(unittest.TestCase):
     FACTS = secrets_file.KeyFacts("QUJD", "store-pass", "key-pass", "pocketide", "AA:BB", "CC:DD")
 
@@ -250,7 +79,7 @@ class SecretsFile(unittest.TestCase):
         for expected in ("POCKETIDE_KEYSTORE_B64=QUJD", "POCKETIDE_STORE_PASS=store-pass", "POCKETIDE_KEY_PASS=key-pass",
                          "POCKETIDE_KEY_ALIAS=pocketide", "POCKETIDE_GITHUB_APP_CLIENT_ID=", "POCKETIDE_GITHUB_APP_SLUG=",
                          "Package name: com.pocketide", "SHA-1:        AA:BB", "SHA-256:      CC:DD",
-                         "Enable Device Flow", "Plan: Read-only", "drive.appdata", "In production",
+                         "Enable Device Flow", "Plan: Read-only", "Codespaces lifecycle admin: Read and write",
                          "https://github.com/owner/repo/settings/secrets/actions", "Run workflow"):
             self.assertIn(expected, text)
 
@@ -285,18 +114,6 @@ class SecretsFile(unittest.TestCase):
                                      capture_output=True, text=True, check=True).stdout
             sha1 = next(l.split("SHA1:")[1].strip() for l in listing.splitlines() if "SHA1:" in l)
             self.assertIn(f"SHA-1:        {sha1}", text)
-
-
-class RoomTools(unittest.TestCase):
-    """The Python the rooms run inside Linux (assets/rooms), when that module has shipped it."""
-
-    def test_every_room_tool_compiles(self):
-        tools = sorted((TOOLS.parent / "app/src/main/assets/rooms").rglob("*.py"))
-        if not tools:
-            self.skipTest("no Python under assets/rooms yet")
-        for path in tools:
-            with self.subTest(tool=path.name):
-                compile(path.read_text(encoding="utf-8"), str(path), "exec")
 
 
 if __name__ == "__main__":

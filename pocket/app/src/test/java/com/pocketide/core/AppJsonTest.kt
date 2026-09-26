@@ -1,20 +1,39 @@
 package com.pocketide.core
 
-import com.pocketide.model.SessionRecord
-import kotlinx.serialization.builtins.ListSerializer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppJsonTest {
     @Test
-    fun `a chat record saved with a field the app no longer has still loads`() {
-        // Earlier 3.0.0 builds wrote pendingVideos; sessions.json and the vault index both read through AppJson.
+    fun `settings a 3_0 phone saved still load, keeping what still means something`() {
+        // 3.0.0 wrote Drive, vault and phone-computer fields that 4.0.0 no longer has.
         val saved = """
-            [{"id":"s1","agentId":"claude","projectId":"me/app","title":"Login fix","branch":"pocket/claude/2026-09-24-login",
-              "startedAt":1,"lastActivityAt":2,"pendingBytes":0,"pendingVideos":2,"deviceId":"phone"}]
+            {"theme":"DARK","mobileDailyLimitMb":200,"phoneLimitGb":8,"appLock":true,"onboardingDone":true,
+             "gitHubAppClientId":"Iv23liAbCdEfGhIjKlMn","gitHubAppSlug":"pocketide","claudeChatsInAccount":true}
         """.trimIndent()
-        val record = AppJson.decodeFromString(ListSerializer(SessionRecord.serializer()), saved).single()
-        assertEquals("Login fix", record.title)
-        assertEquals(2L, record.lastActivityAt)
+        val settings = AppJson.decodeFromString(Settings.serializer(), saved)
+        assertEquals(ThemeMode.DARK, settings.theme)
+        assertTrue(settings.appLock)
+        assertEquals("Iv23liAbCdEfGhIjKlMn", settings.gitHubAppClientId)
+        assertEquals(NewComputerChoices(), settings.newComputer)
+    }
+
+    @Test
+    fun `deleting the phone's data keeps only this copy's GitHub App`() {
+        val used = Settings(theme = ThemeMode.DARK, appLock = true, lastComputer = "x-1", gitHubAppClientId = "Iv23li", gitHubAppSlug = "app")
+        val after = used.afterDeleteEverything()
+        assertEquals(Settings(gitHubAppClientId = "Iv23li", gitHubAppSlug = "app"), after)
+        assertFalse(after.onboardingDone)
+    }
+
+    @Test
+    fun `the safe choices are the defaults`() {
+        val defaults = Settings()
+        assertTrue("screenshots hidden", defaults.hideScreen)
+        assertEquals(30, defaults.newComputer.idleMinutes)
+        assertEquals(30, defaults.newComputer.keepDays)
+        assertEquals("", defaults.newComputer.machine)
     }
 }

@@ -5,6 +5,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import java.net.HttpURLConnection
 
 // GitHub's JSON, field names as documented for REST API version 2026-03-10. Only the fields
 // PocketIDE reads are declared; AppJson ignores the rest.
@@ -42,25 +43,25 @@ internal data class OwnerJson(val login: String)
 
 @Serializable
 internal data class RepoJson(
+    val id: Long,
     val name: String,
     val owner: OwnerJson,
     val private: Boolean,
     @SerialName("default_branch") val defaultBranch: String? = null,
-    val size: Long = 0,
-    @SerialName("clone_url") val cloneUrl: String,
     @SerialName("html_url") val htmlUrl: String,
     @SerialName("pushed_at") val pushedAt: String? = null,
+    val description: String? = null,
     val fork: Boolean = false,
 ) {
     fun info() = RepoInfo(
+        id = id,
         owner = owner.login,
         name = name,
         isPrivate = private,
         defaultBranch = defaultBranch ?: DEFAULT_BRANCH,
-        sizeKb = size,
-        cloneUrl = cloneUrl,
         htmlUrl = htmlUrl,
         pushedAt = pushedAt,
+        description = description?.takeIf { it.isNotBlank() },
         fork = fork,
     )
 }
@@ -85,9 +86,6 @@ internal data class InstallationsPage(val installations: List<InstallationJson> 
 internal data class InstallationReposPage(val repositories: List<RepoJson> = emptyList())
 
 @Serializable
-internal data class CollaboratorJson(val login: String)
-
-@Serializable
 internal data class ContentJson(
     val type: String,
     val sha: String,
@@ -96,27 +94,13 @@ internal data class ContentJson(
 )
 
 @Serializable
-internal data class PullJson(
-    val number: Int,
-    @SerialName("html_url") val htmlUrl: String,
-    val state: String,
-    val merged: Boolean = false,
-    val mergeable: Boolean? = null,
-    /** Lists of pull requests carry only this, not [merged]. */
-    @SerialName("merged_at") val mergedAt: String? = null,
-) {
-    fun pullRequest() = PullRequest(number, htmlUrl, state, merged || mergedAt != null, mergeable)
-}
+internal data class GitObjectJson(val sha: String)
 
 @Serializable
-internal data class MergeJson(val merged: Boolean = false)
+internal data class RefJson(@SerialName("object") val target: GitObjectJson)
 
 @Serializable
-internal data class DispatchJson(
-    @SerialName("workflow_run_id") val runId: Long,
-    @SerialName("run_url") val runUrl: String,
-    @SerialName("html_url") val htmlUrl: String,
-)
+internal data class CommitJson(val sha: String, val tree: GitObjectJson)
 
 @Serializable
 internal data class RunJson(
@@ -130,7 +114,7 @@ internal data class RunJson(
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("html_url") val htmlUrl: String,
 ) {
-    fun run(runnerImage: String? = null) = WorkflowRun(
+    fun run() = WorkflowRun(
         id = id,
         name = name ?: displayTitle.orEmpty(),
         branch = headBranch.orEmpty(),
@@ -139,65 +123,11 @@ internal data class RunJson(
         createdAt = createdAt,
         updatedAt = updatedAt,
         htmlUrl = htmlUrl,
-        runnerImage = runnerImage,
     )
 }
 
 @Serializable
 internal data class RunsPage(@SerialName("workflow_runs") val runs: List<RunJson> = emptyList())
-
-@Serializable
-internal data class StepJson(val number: Int, val name: String, val status: String, val conclusion: String? = null)
-
-@Serializable
-internal data class JobJson(
-    val id: Long,
-    val name: String,
-    val status: String,
-    val conclusion: String? = null,
-    @SerialName("html_url") val htmlUrl: String? = null,
-    val labels: List<String> = emptyList(),
-    @SerialName("runner_name") val runnerName: String? = null,
-    val steps: List<StepJson> = emptyList(),
-) {
-    fun job() = WorkflowJob(
-        id = id,
-        name = name,
-        status = status,
-        conclusion = conclusion,
-        htmlUrl = htmlUrl.orEmpty(),
-        labels = labels,
-        runnerName = runnerName,
-        steps = steps.map { JobStep(it.number, it.name, it.status, it.conclusion) },
-    )
-}
-
-@Serializable
-internal data class JobsPage(val jobs: List<JobJson> = emptyList())
-
-@Serializable
-internal data class ArtifactJson(
-    val id: Long,
-    val name: String,
-    @SerialName("size_in_bytes") val sizeInBytes: Long,
-    val expired: Boolean,
-    @SerialName("archive_download_url") val archiveDownloadUrl: String,
-    val digest: String? = null,
-) {
-    fun artifact() = RunArtifact(id, name, sizeInBytes, expired, archiveDownloadUrl, digest)
-}
-
-@Serializable
-internal data class ArtifactsPage(val artifacts: List<ArtifactJson> = emptyList())
-
-@Serializable
-internal data class PublicKeyJson(@SerialName("key_id") val keyId: String, val key: String)
-
-@Serializable
-internal data class CacheUsageJson(
-    @SerialName("active_caches_size_in_bytes") val bytes: Long = 0,
-    @SerialName("active_caches_count") val count: Int = 0,
-)
 
 @Serializable
 internal data class UsageItemJson(
@@ -220,9 +150,12 @@ internal data class UsageItemJson(
         grossAmountUsd = grossAmount,
         discountAmountUsd = discountAmount,
         repository = repositoryName,
-        date = date,
+        date = date?.take(ISO_DATE_LENGTH),
     )
 }
+
+/** `2026-09-26T00:00:00Z` and `2026-09-26` both name the day by their first ten characters. */
+private const val ISO_DATE_LENGTH = 10
 
 @Serializable
 internal data class UsageReport(val usageItems: List<UsageItemJson> = emptyList())
@@ -231,7 +164,7 @@ internal data class UsageReport(val usageItems: List<UsageItemJson> = emptyList(
 internal fun <T> decode(serializer: KSerializer<T>, text: String): T = try {
     AppJson.decodeFromString(serializer, text)
 } catch (e: SerializationException) {
-    throw GitHubException(GitHubText.UNEXPECTED, 200)
+    throw GitHubException(GitHubText.UNEXPECTED, HttpURLConnection.HTTP_OK)
 } catch (e: IllegalArgumentException) {
-    throw GitHubException(GitHubText.UNEXPECTED, 200)
+    throw GitHubException(GitHubText.UNEXPECTED, HttpURLConnection.HTTP_OK)
 }

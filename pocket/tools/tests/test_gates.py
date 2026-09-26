@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from tests.support import GOOD_LIB, PAGE, PF_R, PF_W, PF_X, PT_GNU_RELRO, PT_LOAD, REPO, TEMPLATE, TreeTest, elf
+from tests.support import GOOD_LIB, PAGE, PF_R, PF_W, PF_X, PT_GNU_RELRO, PT_LOAD, REPO, TreeTest, elf
 
 import brand_tokens
 import least_privilege
@@ -14,7 +14,6 @@ import no_secrets
 import permissions
 import repository
 import script_safety
-import templates
 import version
 import workflow
 
@@ -93,104 +92,38 @@ class NativeAlignmentGate(TreeTest):
 
     def test_4k_load_segment_fails(self):
         lib = elf([(PT_LOAD, PF_R | PF_X, 0, 0x1000, 0x1000)])
-        (self.root / "app/src/main/jniLibs/arm64-v8a/libproot.so").write_bytes(lib)
+        (self.root / "app/src/main/jniLibs/arm64-v8a/libexample.so").write_bytes(lib)
         self.assertFailsWith(native_alignment.check(self.root), "aligned to 0x1000")
 
     def test_relro_rounding_that_catches_data_fails(self):
         lib = elf([(PT_LOAD, PF_R | PF_X, 0, 0x37EC0, PAGE), (PT_LOAD, PF_R | PF_W, 0x3BEC0, 0x2140, PAGE),
                    (PT_LOAD, PF_R | PF_W, 0x3E000, 0x1000, PAGE), (PT_GNU_RELRO, PF_R, 0x3BEC0, 0x2140, 1)])
-        (self.root / "app/src/main/jniLibs/arm64-v8a/libproot.so").write_bytes(lib)
+        (self.root / "app/src/main/jniLibs/arm64-v8a/libexample.so").write_bytes(lib)
         self.assertFailsWith(native_alignment.check(self.root), "catches writable memory")
 
-    def test_wrong_machine_and_abi_fail(self):
-        (self.root / "app/src/main/jniLibs/arm64-v8a/libproot.so").write_bytes(elf([(PT_LOAD, 5, 0, 16, PAGE)], 62))
+    def test_wrong_machine_fails_and_other_abis_are_noted(self):
+        (self.root / "app/src/main/jniLibs/arm64-v8a/libexample.so").write_bytes(elf([(PT_LOAD, 5, 0, 16, PAGE)], 62))
         self.assertFailsWith(native_alignment.check(self.root), "not arm64")
-        other = self.root / "app/src/main/jniLibs/x86_64/libproot.so"
+        (self.root / "app/src/main/jniLibs/arm64-v8a/libexample.so").write_bytes(GOOD_LIB)
+        other = self.root / "app/src/main/jniLibs/x86_64/libexample.so"
         other.parent.mkdir(parents=True)
-        other.write_bytes(GOOD_LIB)
-        self.assertFailsWith(native_alignment.check(self.root), "only arm64-v8a")
+        other.write_bytes(elf([(PT_LOAD, 5, 0, 16, 0x1000)], 62))
+        report = native_alignment.check(self.root)
+        self.assertPasses(report)
+        self.assertTrue(any("not arm64-v8a, not checked" in note for note in report.notes))
 
-    def test_no_libraries_fails(self):
-        (self.root / "app/src/main/jniLibs/arm64-v8a/libproot.so").unlink()
-        self.assertFailsWith(native_alignment.check(self.root), "no native libraries")
+    def test_no_libraries_pass_with_a_note(self):
+        (self.root / "app/src/main/jniLibs/arm64-v8a/libexample.so").unlink()
+        report = native_alignment.check(self.root)
+        self.assertPasses(report)
+        self.assertTrue(any("no native libraries" in note for note in report.notes))
 
     def test_apk_contents_are_checked(self):
         import zipfile
         apk = self.root.parent / "app.apk"
         with zipfile.ZipFile(apk, "w") as archive:
-            archive.writestr("lib/arm64-v8a/libproot.so", elf([(PT_LOAD, 5, 0, 16, 0x1000)]))
+            archive.writestr("lib/arm64-v8a/libexample.so", elf([(PT_LOAD, 5, 0, 16, 0x1000)]))
         self.assertFailsWith(native_alignment.check(self.root, apk=apk), "aligned to 0x1000")
-
-
-class TemplatesGate(TreeTest):
-    NAME = "app/src/main/assets/templates/android.yml"
-
-    def test_fixture_passes(self):
-        self.assertPasses(templates.check(self.root))
-
-    def test_push_trigger_fails(self):
-        self.edit(self.NAME, "on:\n  workflow_dispatch:\n", "on:\n  push:\n  workflow_dispatch:\n")
-        self.assertFailsWith(templates.check(self.root), "workflow_dispatch only")
-
-    def test_inline_trigger_list_is_read(self):
-        self.edit(self.NAME, "on:\n  workflow_dispatch:\n", "on: [push, workflow_dispatch]\n")
-        self.assertFailsWith(templates.check(self.root), "runs on push, workflow_dispatch")
-
-    def test_write_permission_fails(self):
-        self.edit(self.NAME, "    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n")
-        self.assertFailsWith(templates.check(self.root), "grants write access to contents (job build)")
-
-    def test_missing_read_permission_fails(self):
-        self.edit(self.NAME, "permissions:\n  contents: read\n", "")
-        self.assertFailsWith(templates.check(self.root), "contents: read")
-
-    def test_tag_pinned_action_fails(self):
-        self.edit(self.NAME, "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", "actions/checkout@v7")
-        self.assertFailsWith(templates.check(self.root), "pinned to 'v7'")
-
-    def test_secrets_in_the_job_that_runs_the_repositorys_code_fail(self):
-        # The old release template: gradlew first, then a signing step in the same job.
-        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
-                  "      - run: ./gradlew assembleRelease\n"
-                  "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
-        self.assertFailsWith(templates.check(self.root), "job build reads Secrets and checks out the repository")
-
-    def test_secrets_in_a_job_of_their_own_pass(self):
-        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
-                  "      - run: ./gradlew assembleRelease\n"
-                  "  sign:\n    needs: build\n    runs-on: ubuntu-latest\n    steps:\n"
-                  "      - env:\n          KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\n        run: apksigner sign out.apk\n")
-        self.assertPasses(templates.check(self.root))
-
-    def test_secrets_given_to_the_whole_workflow_fail(self):
-        # The workflow-level env reaches every job, the one that runs the repository's build too.
-        self.edit(self.NAME, "jobs:\n", "env:\n  KEY: ${{ secrets.ANDROID_KEY_PASSWORD }}\njobs:\n")
-        self.assertFailsWith(templates.check(self.root), "the workflow-level 'env' uses Secrets")
-
-    def test_every_form_of_the_secrets_context_counts(self):
-        build = "      - run: ./gradlew assembleRelease\n"
-        for expression in ("${{ toJSON(secrets) }}", "${{ secrets['ANDROID_KEY_PASSWORD'] }}", "${{ fromJSON(toJSON(secrets)).KEY }}"):
-            with self.subTest(expression=expression):
-                self.write(self.NAME, TEMPLATE.replace(build, build + f'      - run: echo "{expression}"\n'))
-                self.assertFailsWith(templates.check(self.root), "job build reads Secrets and checks out the repository")
-
-    def test_secrets_passed_to_another_workflow_fail(self):
-        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
-                  "      - run: ./gradlew assembleRelease\n"
-                  "  release:\n    uses: ./.github/workflows/release.yml\n    secrets: inherit\n")
-        self.assertFailsWith(templates.check(self.root), "job release passes Secrets to another workflow")
-
-    def test_the_word_secrets_outside_an_expression_reads_nothing(self):
-        self.edit(self.NAME, "      - run: ./gradlew assembleRelease\n",
-                  "      - run: ./gradlew assembleRelease\n      - run: cat docs/secrets.md\n")
-        self.assertPasses(templates.check(self.root))
-
-    def test_the_real_templates_pass(self):
-        self.assertPasses(templates.check())
-
-    def test_no_templates_fails_with_the_reason(self):
-        (self.root / self.NAME).unlink()
-        self.assertFailsWith(templates.check(self.root), "builds module ships them")
 
 
 class ScriptSafetyGate(TreeTest):
@@ -213,21 +146,21 @@ class ScriptSafetyGate(TreeTest):
 class VersionGate(TreeTest):
     def test_fixture_passes(self):
         self.assertPasses(version.check(self.root))
-        self.assertEqual("3.0.0", version.version_name(self.root))
+        self.assertEqual("4.0.0", version.version_name(self.root))
 
     def test_the_real_build_file_passes(self):
         self.assertPasses(version.check())
 
     def test_the_code_follows_the_version(self):
-        self.edit("app/build.gradle.kts", '"3.0.0"', '"3.12.4"')
+        self.edit("app/build.gradle.kts", '"4.0.0"', '"4.12.4"')
         report = version.check(self.root)
         self.assertPasses(report)
-        self.assertIn("versionName 3.12.4, versionCode 31204", report.notes)
+        self.assertIn("versionName 4.12.4, versionCode 41204", report.notes)
 
     def test_a_raised_version_with_its_own_unchanged_code_fails(self):
         # What the release job's own notice asks for: raise the version, and nothing else.
-        self.edit("app/build.gradle.kts", '"3.0.0"', '"3.0.1"')
-        self.edit("app/build.gradle.kts", "versionCode = versionCodeOf(appVersion)", "versionCode = 300")
+        self.edit("app/build.gradle.kts", '"4.0.0"', '"4.0.1"')
+        self.edit("app/build.gradle.kts", "versionCode = versionCodeOf(appVersion)", "versionCode = 400")
         self.assertFailsWith(version.check(self.root), "versionCode must be set once as versionCodeOf(appVersion)")
 
     def test_a_changed_formula_fails(self):
@@ -235,15 +168,15 @@ class VersionGate(TreeTest):
         self.assertFailsWith(version.check(self.root), "versionCode must be set once")
 
     def test_a_version_name_of_its_own_fails(self):
-        self.edit("app/build.gradle.kts", "versionName = appVersion", 'versionName = "3.0.1"')
+        self.edit("app/build.gradle.kts", "versionName = appVersion", 'versionName = "4.0.1"')
         self.assertFailsWith(version.check(self.root), "versionName must be set once as appVersion")
 
     def test_wrong_version_fails(self):
-        for wrong in ("2.7.0", "3.100.0", "3.0", "3.0.0-beta"):
+        for wrong in ("3.0.0", "4.100.0", "4.0", "4.0.0-beta"):
             with self.subTest(version=wrong):
                 self.setUp()
-                self.edit("app/build.gradle.kts", '"3.0.0"', f'"{wrong}"')
-                self.assertFailsWith(version.check(self.root), "not 3.<minor>.<patch>")
+                self.edit("app/build.gradle.kts", '"4.0.0"', f'"{wrong}"')
+                self.assertFailsWith(version.check(self.root), "not 4.<minor>.<patch>")
 
 
 class ManifestGate(TreeTest):
@@ -287,7 +220,7 @@ class PermissionsGate(TreeTest):
 
     def test_stale_allow_list_entry_fails(self):
         self.allow.write_text("android.permission.INTERNET\nandroid.permission.WAKE_LOCK\n")
-        self.edit("app/src/main/java/com/pocketide/docs/GuidePhone.kt", 'row("INTERNET", "The agents need it.")',
+        self.edit("app/src/main/java/com/pocketide/docs/Guide.kt", 'row("INTERNET", "To reach GitHub.")',
                   'row("INTERNET", "x"), row("WAKE_LOCK", "y")')
         self.merged("android.permission.INTERNET")
         self.assertFailsWith(permissions.check(self.root, built=True, allow=self.allow), "WAKE_LOCK is on the allow-list")

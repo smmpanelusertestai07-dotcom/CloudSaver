@@ -1,16 +1,11 @@
 name: pocketide
 
-# PocketIDE 3 lives in pocket/, a standalone Gradle build beside CloudSaver in this public
-# repository. This workflow never touches CloudSaver, and CloudSaver's build.yml is left alone.
+# PocketIDE 4 lives in pocket/, a standalone Gradle build beside CloudSaver in this repository.
+# This workflow never touches CloudSaver, and CloudSaver's build.yml is left alone.
 #
 #   build    gates, lint, unit tests, the release APK (zipaligned for 16 KB pages, signed v2+v3),
 #            the merged-manifest permission check, size and alignment gates, SHA256SUMS
-#   engine   the Linux side on a real arm64 runner: scripts, Python tests, and bootstrap.sh
-#            setting up the exact Ubuntu base the app pins
-#   pins     every download the app pins, re-checked against its publisher
-#   proot    PRoot rebuilt from pinned sources with 16 KB alignment: a build check and an
-#            artifact for a later release, not what the APK ships (that is 2.6.0's, see sources.json)
-#   device   the instrumented tests (JGit on Android) on an Android 11 emulator (not a release gate)
+#   device   the instrumented tests and the screen tour on an Android 11 emulator (not a release gate)
 #   release  main only, and only with the owner's stable key: tag pocketide-v<version>, once
 on:
   push:
@@ -83,7 +78,7 @@ jobs:
           version=$(python3 pocket/tools/gates/version.py --print)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "APK_NAME=PocketIDE-$version-arm64-v8a-release.apk" >> "$GITHUB_ENV"
+          echo "APK_NAME=PocketIDE-$version-release.apk" >> "$GITHUB_ENV"
 
       # The certificate's SHA-256 is built into the app (it checks its own updates against it),
       # so it is needed before Gradle runs. The owner's key store is decoded only long enough to
@@ -272,75 +267,10 @@ jobs:
           echo "::error::A gate failed (see 'Source gates' and 'Built gates' above). The APK artifact is for testing only."
           exit 1
 
-  engine:
-    name: Linux engine on arm64
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: ShellCheck
-        run: |
-          if ! command -v shellcheck > /dev/null; then
-            sudo apt-get update -q && sudo apt-get install -y -q shellcheck
-          fi
-
-      - name: Engine test
-        run: bash pocket/tools/engine-test.sh
-
-  pins:
-    name: Pinned downloads still match their publishers
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check every pin
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 pocket/tools/check-pins.py
-
-  proot:
-    name: PRoot from source (16 KB aligned, not shipped)
-    # The NDK is published for x86-64 Linux hosts only, so this cross-compiles; the result is
-    # an arm64 Android binary. The APK keeps the PRoot proven on the phone until this build has
-    # been tested there, so the artifact is named as not shipped.
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: NDK and gawk
-        run: |
-          set -euo pipefail
-          # PRoot's makefile needs gawk (strtonum); the runner's awk may be mawk.
-          command -v gawk > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q gawk; }
-          ndk=$(python3 -c 'import json; print(json.load(open("pocket/tools/proot/sources.json"))["ndk"])')
-          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          (yes || true) | "$sdkmanager" --licenses > /dev/null
-          "$sdkmanager" --install "ndk;$ndk" > /dev/null
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
-
-      - name: Build
-        run: bash pocket/tools/proot/build-proot.sh "$RUNNER_TEMP/proot"
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: PocketIDE-proot-not-shipped
-          path: ${{ runner.temp }}/proot/
-          if-no-files-found: error
-
   device:
     name: On-device tests (Android 11 emulator)
-    # GitHub's arm64 runners have no KVM, so an arm64 emulator there would crawl. This x86-64
-    # Android 11 image runs the app's arm64-only code through Android's own ARM translation, and
-    # the instrumented tests use the app exactly as it is built for the phone.
+    # PocketIDE 4 has no native code of its own, so this x86-64 Android 11 image runs the same
+    # app as the phone.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -417,13 +347,6 @@ jobs:
             cat "$log"
             exit 1
           fi
-          # The app ships arm64 code only; this image runs it through Android's ARM translation.
-          abis=$("$adb" shell getprop ro.product.cpu.abilist | tr -d '\r')
-          echo "Device ABIs: $abis"
-          case ",$abis," in
-            *,arm64-v8a,*) ;;
-            *) echo "::error::This emulator image cannot run arm64 apps ($abis)"; exit 1 ;;
-          esac
           for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
             "$adb" shell settings put global "$scale" 0
           done
@@ -481,7 +404,7 @@ jobs:
 
   release:
     name: Publish pocketide-v${{ needs.build.outputs.version }}
-    needs: [build, engine, pins]
+    needs: [build]
     # Only the owner's own key makes an APK that installs over the one before it.
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.stable_key == 'true'
     runs-on: ubuntu-latest
@@ -508,7 +431,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="pocketide-v$VERSION"
-          apk="dist/PocketIDE-$VERSION-arm64-v8a-release.apk"
+          apk="dist/PocketIDE-$VERSION-release.apk"
           [ -f "$apk" ] || { echo "::error::$apk was not produced by the build"; exit 1; }
           (cd dist && sha256sum --check SHA256SUMS)
 
@@ -527,31 +450,23 @@ jobs:
             exit 1
           fi
 
-          python3 pocket/tools/proot/gpl_notice.py "$apk" --app-version "$VERSION" \
-            --out dist/GPL-SOURCE.txt --sources dist/gpl-source
-
           notes="$RUNNER_TEMP/notes.txt"
           message="$HEAD_MESSAGE"
           [ -n "$message" ] || message=$(git log -1 --format=%B)
           {
-            echo "PocketIDE $VERSION for arm64 Android phones (Android 10 or newer)."
+            echo "PocketIDE $VERSION for Android phones (Android 10 or newer)."
             echo
             echo "Install: download $(basename "$apk") below and open it on the phone. It installs over"
             echo "PocketIDE 2.6.0 and later builds signed with the same key."
             echo
             echo "APK SHA-256: $(sha256sum "$apk" | cut -d' ' -f1)"
             echo
-            echo "The GPL and LGPL source for PRoot and talloc inside the APK: see GPL-SOURCE.txt below."
-            echo
             echo "What changed:"
             echo
             printf '%s\n' "$message" | grep -v -E '^(Co-Authored-By|Claude-Session):' || true
           } > "$notes"
 
-          files=("$apk" dist/SHA256SUMS dist/GPL-SOURCE.txt)
-          while IFS= read -r -d '' source_archive; do
-            files+=("$source_archive")
-          done < <(find dist/gpl-source -type f -print0 2> /dev/null)
+          files=("$apk" dist/SHA256SUMS)
           gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "PocketIDE $VERSION" --notes-file "$notes" --draft
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false

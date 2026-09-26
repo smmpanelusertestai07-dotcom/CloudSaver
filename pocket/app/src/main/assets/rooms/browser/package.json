@@ -1,9 +1,0 @@
-{
-  "name": "pocketide-browser-tools",
-  "private": true,
-  "description": "The agents' test browser tools, installed with npm ci from this lockfile.",
-  "dependencies": {
-    "@playwright/mcp": "0.0.82",
-    "chrome-devtools-mcp": "1.10.1"
-  }
-}

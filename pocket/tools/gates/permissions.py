@@ -5,7 +5,7 @@ Libraries add permissions of their own when manifests merge, so the source manif
 proves little. The allow-list is permissions.txt beside this file. Three things must agree:
   - the merged release manifest requests exactly the allow-list (with --built);
   - the source manifest requests nothing outside it;
-  - every android.permission on it is explained in Help > Permissions (docs/GuidePhone.kt),
+  - every android.permission on it is explained in Help > Permissions (docs/Guide.kt),
     and Help explains nothing that is not requested.
 Any permission the app declares itself must be signature-level, so no other app can hold it.
 
@@ -22,7 +22,7 @@ import common
 import manifests
 
 ALLOW_LIST = Path(__file__).with_name("permissions.txt")
-DOCS = "docs/GuidePhone.kt"
+DOCS = "docs/Guide.kt"
 ANDROID_PREFIX = "android.permission."
 
 

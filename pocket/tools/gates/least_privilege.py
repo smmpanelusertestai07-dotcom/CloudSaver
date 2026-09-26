@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""The GitHub App holds Administration: write only to create repositories (plan §5.3).
+"""The GitHub App holds Administration: write only to create repositories.
 
 That one permission would also let the app delete a repository, change its visibility, archive
-it or transfer it away, and the plan promises none of that ever happens: the keyring check only
-reads visibility and collaborators, then re-keys. This gate reads the Kotlin sources and fails
-when a code path could do any of those things:
+it or transfer it away, and PocketIDE promises none of that ever happens. This gate reads the
+Kotlin sources and fails when a code path could do any of those things:
   - an HTTP DELETE whose URL is a repository itself (repos/{owner}/{name}); deleting things
     inside a repository, such as a session branch or an Actions secret, is fine;
   - a PATCH to a repository that sends "private", "visibility" or "archived";
   - a transfer (repos/{owner}/{name}/transfer), or GraphQL's deleteRepository,
     archiveRepository, transferRepository or updateRepository mutations;
-  - a DELETE or PATCH in the GitHub client's `enum class Verb`, which has neither on purpose.
+  - a DELETE or PATCH added to the GitHub client's `enum class Verb` without a reviewed entry
+    in least_privilege_allow.txt (4.0.0 has one: deleting a codespace, moving a branch).
 
 Both ways of writing a call are read: a string path ("repos/$o/$n" with "DELETE", .delete() or
 @DELETE), and the app's own idiom, rest.send(Verb.DELETE, repoUrl(owner, name, ...)) or
@@ -94,8 +94,8 @@ def verb_enum_problems(relative: str, text: str, allowed: set[str]) -> list[str]
         verbs = WRITE_VERBS.findall(match.group(1))
         index = text.count("\n", 0, match.start())
         if verbs and f"{relative}: {text.splitlines()[index].strip()}" not in allowed:
-            problems.append(f"{relative}:{index + 1}: the GitHub client gained {' and '.join(verbs)}; its verbs are "
-                            "GET, POST and PUT so that no call can delete a repository or change its visibility")
+            problems.append(f"{relative}:{index + 1}: the GitHub client gained {' and '.join(verbs)} without a reviewed "
+                            "entry in least_privilege_allow.txt")
     return problems
 
 
@@ -115,7 +115,7 @@ def scan(relative: str, text: str, allowed: set[str]) -> list[str]:
                 or verb_targets_repository(lines, index, VERB_PATCH)) \
                 and any(VISIBILITY_FIELDS.search(l) for l in window):
             problems.append(f"{where}: PATCHes a repository's visibility or archived state; "
-                            "the keyring check only reads visibility and re-keys")
+                            "PocketIDE never changes who can see a repository")
         if any(TRANSFER.search(s) for s in literals([line])) or TRANSFER_CALL.search(line):
             problems.append(f"{where}: transfers a repository; PocketIDE never does")
         if GRAPHQL.search(line):

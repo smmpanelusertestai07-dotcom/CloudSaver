@@ -1,26 +1,49 @@
 package com.pocketide.ui.screens.settings
 
-import androidx.activity.compose.LocalActivity
+import android.os.Build
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.FolderShared
+import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.ScreenLockPortrait
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.SyncDisabled
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,503 +51,291 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
-import com.pocketide.core.Redact
-import com.pocketide.core.Settings
-import com.pocketide.docs.ChatHomes
-import com.pocketide.sync.DataUsage
-import com.pocketide.sync.NeedsMobileData
-import com.pocketide.ui.components.InfoRow
-import com.pocketide.ui.components.Tone
-import com.pocketide.ui.manage.ManageText
-import com.pocketide.ui.nav.PocketNav
-import com.pocketide.ui.shell.ContentMaxWidth
-import com.pocketide.ui.shell.Formats
-import com.pocketide.ui.shell.Gap
-import com.pocketide.ui.shell.Links
-import com.pocketide.ui.shell.NoticeCard
-import com.pocketide.ui.shell.OutlinedCard
-import com.pocketide.ui.shell.ReconnectGitHubDialog
-import com.pocketide.ui.shell.SectionLabel
-import com.pocketide.ui.shell.SettingChoices
-import com.pocketide.ui.shell.rememberGraph
-import com.pocketide.update.UpdateState
-import kotlinx.coroutines.CancellationException
+import com.pocketide.PocketApp
+import com.pocketide.cloud.ComputerService
+import com.pocketide.core.ThemeMode
+import com.pocketide.docs.DocsContent
+import com.pocketide.graph
+import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.Formats
+import com.pocketide.ui.components.GitHubLogo
+import com.pocketide.ui.components.KeepTypedInput
+import com.pocketide.ui.components.SectionCard
+import com.pocketide.ui.lock.canLock
+import com.pocketide.ui.screens.onboarding.GitHubAppFields
+import com.pocketide.ui.web.Browser
 import kotlinx.coroutines.launch
 
-/**
- * The few settings PocketIDE has (§4, §6.7, §6.8). Every change goes through
- * `graph.settings.update`, so each module sees it at once and the synced ones travel with the vault.
- */
+/** The few choices PocketIDE has, each with what it does. Defaults are the private, safe ones. */
 @Composable
-fun SettingsScreen(nav: PocketNav) {
-    val graph = rememberGraph()
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    fun update(change: (Settings) -> Settings) = graph.settings.update(change)
-
+fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
     val scope = rememberCoroutineScope()
-    val privacyChecklist = remember { BringIntoViewRequester() }
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
+    val lockable = (context as? FragmentActivity)?.let(::canLock) == true
+    var signingOut by remember { mutableStateOf(false) }
+    var changingApp by remember { mutableStateOf(false) }
+    val update = graph.settings::update
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier
-                .widthIn(max = ContentMaxWidth)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
-        ) {
-            SafetySection(graph, settings, nav, ::update, onOpenPrivacyChecklist = { scope.launch { privacyChecklist.bringIntoView() } })
-            MobileDataSection(graph, settings, ::update)
-            StorageSection(graph, settings, ::update)
-            AgentsSection(settings, ::update)
-            SecuritySection(graph, settings, ::update)
-            ManageDataSection(nav, settings, ::update)
-            PrivacySection(nav, settings, ::update, Modifier.bringIntoViewRequester(privacyChecklist))
-            AdvancedSection(graph, settings)
-            AccountsSection(graph, nav)
-            AboutSection(graph, nav)
-        }
-    }
-}
+    Column(
+        Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
 
-@Composable
-private fun MobileDataSection(graph: AppGraph, settings: Settings, update: ((Settings) -> Settings) -> Unit) {
-    val usage by graph.sync.usage.collectAsStateWithLifecycle()
-    SectionLabel("Mobile data")
-    SettingsGroup(
-        listOf(
-            {
-                ChoiceRow(
-                    "Daily limit",
-                    SettingChoices.dailyMobileLimitMb,
-                    settings.mobileDailyLimitMb,
-                    onPick = { mb -> update { it.copy(mobileDailyLimitMb = mb) } },
-                    why = "Only mobile data counts. Once today's share is used, sync waits for Wi-Fi or tomorrow.",
-                    fallbackLabel = Formats::megabytes,
-                )
-            },
-            {
-                SwitchRow(
-                    "Big downloads on Wi-Fi only",
-                    "Set-up, engine and agent updates, the agents' browser and large clones wait for Wi-Fi. One you start " +
-                        "on mobile data asks first and shows its size. Off: they use mobile data within the daily limit.",
-                    settings.wifiOnlyBigDownloads,
-                ) { on -> update { it.copy(wifiOnlyBigDownloads = on) } }
-            },
-            {
-                SwitchRow(
-                    "Chat videos on mobile data",
-                    "Off: videos wait for Wi-Fi. Text and images always sync.",
-                    settings.videosOnMobileData,
-                ) { on -> update { it.copy(videosOnMobileData = on) } }
-            },
-        ),
-    )
-    Gap(12.dp)
-    DataUsageCard(usage, settings.mobileDailyLimitMb)
-}
-
-@Composable
-private fun DataUsageCard(usage: DataUsage, limitMb: Int) {
-    OutlinedCard {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Mobile data used", style = MaterialTheme.typography.titleSmall)
-            val limitBytes = limitMb * 1_000_000L
-            InfoRow("Today", Formats.bytes(usage.todayMeteredBytes))
-            if (limitBytes > 0) {
-                InfoRow("Daily limit", "${Formats.bytes(usage.todayLimitedBytes)} of ${Formats.megabytes(limitMb)}")
-                LinearProgressIndicator(
-                    progress = { (usage.todayLimitedBytes.toFloat() / limitBytes).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+        SectionCard("Appearance") {
+            InfoItem(Icons.Outlined.DarkMode, "Theme", null)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                val modes = listOf(ThemeMode.SYSTEM to "Phone", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")
+                modes.forEachIndexed { index, (mode, label) ->
+                    SegmentedButton(
+                        selected = settings.theme == mode,
+                        onClick = { update { it.copy(theme = mode) } },
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                    ) { Text(label) }
+                }
             }
-            InfoRow("This month", Formats.bytes(usage.monthMeteredBytes))
-            usage.byType.entries
-                .filter { it.value > 0 }
-                .sortedByDescending { it.value }
-                .forEach { (type, bytes) -> InfoRow("  ${Formats.dataKind(type)}", Formats.bytes(bytes)) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Toggle(Icons.Outlined.Palette, "Wallpaper colours", "Colours from your wallpaper instead of PocketIDE's violet", settings.dynamicColor) { on ->
+                    update { it.copy(dynamicColor = on) }
+                }
+            }
+        }
+
+        SectionCard("New cloud computers") {
             Text(
-                "Only mobile data counts; Wi-Fi is free. The daily limit is for PocketIDE's own transfers. The agents' own " +
-                    "traffic is counted but never blocked, so they keep working.",
-                style = MaterialTheme.typography.bodySmall,
+                "GitHub sets these when it makes a computer, so they apply to computers made from now on.",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Choice(
+                icon = Icons.Outlined.Memory,
+                title = "Machine",
+                options = MACHINES,
+                selected = settings.newComputer.machine,
+                label = { it.second },
+                value = { it.first },
+            ) { machine -> update { it.copy(newComputer = it.newComputer.copy(machine = machine)) } }
+            Choice(
+                icon = Icons.Outlined.Schedule,
+                title = "Stop when idle for",
+                options = IDLE_MINUTES,
+                selected = settings.newComputer.idleMinutes,
+                label = Formats::minutes,
+                value = { it },
+            ) { minutes -> update { it.copy(newComputer = it.newComputer.copy(idleMinutes = minutes)) } }
+            Choice(
+                icon = Icons.Outlined.DeleteSweep,
+                title = "Delete when unused for",
+                options = KEEP_DAYS,
+                selected = settings.newComputer.keepDays,
+                label = Formats::days,
+                value = { it },
+            ) { days -> update { it.copy(newComputer = it.newComputer.copy(keepDays = days)) } }
         }
-    }
-}
 
-@Composable
-private fun StorageSection(graph: AppGraph, settings: Settings, update: ((Settings) -> Settings) -> Unit) {
-    val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
-    SectionLabel("Storage limits")
-    SettingsGroup(
-        listOf(
-            {
-                ChoiceRow(
-                    "On this phone",
-                    SettingChoices.phoneLimitGb(snapshot.storageTotalBytes, settings.phoneLimitGb),
-                    settings.phoneLimitGb,
-                    onPick = { gb -> update { it.copy(phoneLimitGb = gb) } },
-                    why = "Higher keeps more chats and caches on the phone; lower cleans up sooner.",
-                    fallbackLabel = { "$it GB" },
-                )
-            },
-            {
-                ChoiceRow(
-                    "In Google Drive",
-                    SettingChoices.driveLimitGb,
-                    settings.driveLimitGb,
-                    onPick = { gb -> update { it.copy(driveLimitGb = gb) } },
-                    why = "Your Google storage is shared with Gmail and Photos; a higher share leaves them less.",
-                    fallbackLabel = { "$it GB" },
-                )
-            },
-        ),
-    )
-    val using = if (snapshot.at > 0) "PocketIDE uses ${Formats.bytes(snapshot.appDataBytes)} on this phone now. " else ""
-    Text(
-        "${using}At least 2 GB always stay free for the phone. You get a notice at 80 %, and caches are cleaned at 90 %.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
-    )
-}
-
-@Composable
-private fun AgentsSection(settings: Settings, update: ((Settings) -> Settings) -> Unit) {
-    SectionLabel("Agents")
-    SettingsGroup(
-        listOf(
-            {
-                ChoiceRow(
-                    "Agents at the same time",
-                    SettingChoices.maxAgents,
-                    settings.maxAgents,
-                    onPick = { n -> update { it.copy(maxAgents = n) } },
-                    why = "Each open agent needs memory. Auto follows this phone's memory and heat as they change.",
-                    fallbackLabel = { "$it at a time" },
-                )
-            },
-            {
-                ChoiceRow(
-                    "Idle agents sleep after",
-                    SettingChoices.idleSleepMinutes,
-                    settings.idleSleepMinutes,
-                    onPick = { m -> update { it.copy(idleSleepMinutes = m) } },
-                    why = "An agent with no work for this long closes its room to save memory and battery. Its session and chat are kept.",
-                    fallbackLabel = { "$it minutes" },
-                )
-            },
-            {
-                SwitchRow(
-                    "Only official agents",
-                    "Show only Claude Code, Codex and Antigravity. Other verified publishers stay hidden.",
-                    settings.onlyOfficialAgents,
-                ) { on -> update { it.copy(onlyOfficialAgents = on) } }
-            },
-            {
-                SwitchRow(
-                    ChatHomes.CLAUDE_SWITCH,
-                    "Anthropic keeps each Claude Code session in your Claude account too, under its data-usage policy, " +
-                        "where the Claude app and claude.ai/code show it. ${ChatHomes.CLAUDE_CONTINUE} Needs a Claude " +
-                        "plan sign-in, Pro or higher. PocketIDE's encrypted Drive backup keeps them either way. Applies " +
-                        "from Claude's next start.",
-                    settings.claudeChatsInAccount,
-                ) { on -> update { it.copy(claudeChatsInAccount = on) } }
-            },
-        ),
-    )
-}
-
-@Composable
-private fun SecuritySection(graph: AppGraph, settings: Settings, update: ((Settings) -> Settings) -> Unit) {
-    val activity = LocalActivity.current as? FragmentActivity
-    var notice by remember { mutableStateOf<String?>(null) }
-    SectionLabel("Look and lock")
-    SettingsGroup(
-        listOf(
-            {
-                SwitchRow(
-                    "App lock",
-                    "Fingerprint or screen lock each time you come back. The app is always hidden in recent apps.",
-                    settings.appLock,
-                ) { on ->
-                    notice = null
-                    when {
-                        on && !graph.appLock.deviceSecure() -> notice = "Set a screen lock on the phone first."
-                        on -> update { it.copy(appLock = true) }
-                        activity == null -> notice = "App lock can't be turned off from here."
-                        // Turning the lock off is itself protected by the lock.
-                        else -> graph.appLock.authenticate(activity, "Turn off app lock") { ok ->
-                            if (ok) update { it.copy(appLock = false) }
-                        }
-                    }
-                }
-            },
-            {
-                ChoiceRow(
-                    "Theme",
-                    SettingChoices.theme,
-                    settings.theme,
-                    onPick = { mode -> update { it.copy(theme = mode) } },
-                    why = "Only how PocketIDE looks. Same as phone follows Android's dark theme.",
-                )
-            },
-        ),
-    )
-    notice?.let {
-        Gap(8.dp)
-        NoticeCard(it, Tone.WARN)
-    }
-}
-
-@Composable
-private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Settings) -> Settings) -> Unit) {
-    SectionLabel("Manage your data")
-    SettingsGroup(
-        listOf(
-            { ActionRow("Your data", "Everything stored, by type and size", onClick = nav::yourData, icon = Icons.Outlined.FolderOpen) },
-            {
-                ActionRow(
-                    "Recently deleted",
-                    "Kept 30 days, then erased from Drive for good",
-                    onClick = nav::recentlyDeleted,
-                    icon = Icons.Outlined.Delete,
-                )
-            },
-        ),
-    )
-    Gap(12.dp)
-    SettingsGroup(
-        listOf(
-            {
-                ChoiceRow(
-                    "Keep chats in Drive",
-                    SettingChoices.keepChatsMonths,
-                    settings.keepChatsMonths,
-                    onPick = { m -> update { it.copy(keepChatsMonths = m) } },
-                    why = "Chats with no new message for this long are removed from Drive. Shorter saves space.",
-                    fallbackLabel = { "$it months after the last message" },
-                )
-            },
-            {
-                ChoiceRow(
-                    "Phone copies of chats",
-                    SettingChoices.phoneChatDays,
-                    settings.phoneChatDays,
-                    onPick = { d -> update { it.copy(phoneChatDays = d) } },
-                    why = "Drive keeps every chat; an older one downloads again when you open it.",
-                    fallbackLabel = { "$it days" },
-                )
-            },
-            {
-                ChoiceRow(
-                    "Media copies on the phone",
-                    SettingChoices.phoneMediaDays,
-                    settings.phoneMediaDays,
-                    onPick = { d -> update { it.copy(phoneMediaDays = d) } },
-                    why = "Keeping all uses phone space but works offline; Drive keeps the originals either way.",
-                    fallbackLabel = { "$it days" },
-                )
-            },
-            {
-                ChoiceRow(
-                    "Project caches",
-                    SettingChoices.cacheDays,
-                    settings.cacheDays,
-                    onPick = { d -> update { it.copy(cacheDays = d) } },
-                    why = "Caches rebuild when needed. Sooner frees space; the next build then takes longer.",
-                    fallbackLabel = { "After $it days unused" },
-                )
-            },
-            {
-                ChoiceRow(
-                    "Unused computer",
-                    SettingChoices.computerUnusedDays,
-                    settings.computerUnusedDays,
-                    onPick = { d -> update { it.copy(computerUnusedDays = d) } },
-                    why = "Removed only when everything is synced, after a 7-day notice. Set it up again from Home when you're on Wi-Fi.",
-                    fallbackLabel = { "After $it days" },
-                )
-            },
-            {
-                SwitchRow(
-                    "When PocketIDE's Drive space is full",
-                    "Move chats older than 12 months to Recently deleted, after a 7-day notice.",
-                    settings.autoTrimOldChats,
-                ) { on -> update { it.copy(autoTrimOldChats = on) } }
-            },
-        ),
-    )
-    Text(
-        ManageText.retentionNote(settings),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
-    )
-    Gap(12.dp)
-    SettingsGroup(
-        Links.manageYourData.map { link ->
-            @Composable { ActionRow(link.title, link.what, onClick = { nav.openExternal(link.url) }, external = true) }
-        },
-    )
-}
-
-@Composable
-private fun AccountsSection(graph: AppGraph, nav: PocketNav) {
-    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
-    val email by graph.driveAuth.email.collectAsStateWithLifecycle()
-    var reconnecting by rememberSaveable { mutableStateOf(false) }
-    SectionLabel("Accounts")
-    OutlinedCard {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            InfoRow("GitHub", account?.let { "@${it.login}" } ?: "Not connected")
-            InfoRow("Google Drive", email ?: "Not connected")
-        }
-    }
-    if (account == null) {
-        Gap(12.dp)
-        SettingsGroup(
-            listOf(
-                {
-                    ActionRow(
-                        "Reconnect GitHub",
-                        "Your chats' key keeps its second half there, and your projects live there",
-                        onClick = { reconnecting = true },
-                    )
-                },
-            ),
-        )
-    }
-    if (reconnecting) ReconnectGitHubDialog(onDismiss = { reconnecting = false })
-    if (account != null) {
-        Gap(12.dp)
-        SettingsGroup(
-            listOf(
-                {
-                    ActionRow(
-                        "Repositories PocketIDE may use",
-                        "Changed on GitHub's site, in the app's installation",
-                        onClick = { nav.openExternal(graph.gitHubAuth.installUrl()) },
-                        external = true,
-                    )
-                },
-            ),
-        )
-    }
-}
-
-@Composable
-private fun AboutSection(graph: AppGraph, nav: PocketNav) {
-    val activity = LocalActivity.current
-    val scope = rememberCoroutineScope()
-    val update by graph.updater.state.collectAsStateWithLifecycle()
-    var busy by remember { mutableStateOf(false) }
-    var checked by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var askMobileData by remember { mutableStateOf<NeedsMobileData?>(null) }
-
-    /**
-     * [outlivesScreen]: a download the owner confirmed runs in the app's scope, so leaving this
-     * screen, or the app lock closing it, does not throw away what already arrived.
-     */
-    fun run(outlivesScreen: Boolean = false, block: suspend () -> Unit) {
-        busy = true
-        error = null
-        (if (outlivesScreen) graph.scope else scope).launch {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (ask: NeedsMobileData) {
-                askMobileData = ask
-            } catch (e: Exception) {
-                error = Redact.text(e.message ?: "That didn't work. Try again.").take(200)
-            } finally {
-                busy = false
+        SectionCard("Computer screen") {
+            Toggle(Icons.Outlined.Keyboard, "Keyboard keys", "Esc, Tab, Ctrl, arrows and Send above the keyboard", settings.keyBar) { on ->
+                update { it.copy(keyBar = on) }
+            }
+            Toggle(
+                Icons.Outlined.Sync,
+                "Stay connected in the background",
+                "Keeps the page open with a notification and a Stop button. Agents work on GitHub either way.",
+                settings.stayConnected,
+            ) { on ->
+                update { it.copy(stayConnected = on) }
+                if (!on) ComputerService.disconnect(context)
             }
         }
+
+        SectionCard("Privacy and security") {
+            Toggle(
+                Icons.Outlined.Fingerprint,
+                "App lock",
+                if (lockable) "Ask for your screen lock when PocketIDE opens" else "Set a screen lock in Android's settings to use this",
+                settings.appLock && lockable,
+                enabled = lockable,
+            ) { on ->
+                // The owner is here already: the lock starts from the next time the app opens.
+                if (on) (context.applicationContext as PocketApp).appLock.unlock()
+                update { it.copy(appLock = on) }
+            }
+            Toggle(
+                Icons.Outlined.ScreenLockPortrait,
+                "Hide from screenshots",
+                "Keeps code and chats out of screenshots and Recents",
+                settings.hideScreen,
+            ) { on -> update { it.copy(hideScreen = on) } }
+            Link(Icons.Outlined.Storage, "Your data", "Where everything is, and deleting it", onYourData)
+            Link(Icons.Outlined.SyncDisabled, "GitHub's Settings Sync", "Keep it off for Codespaces, so no other device changes the computer", {
+                Browser.open(context, CODESPACES_SETTINGS)
+            })
+        }
+
+        SectionCard("GitHub") {
+            ListItem(
+                headlineContent = { Text(account?.login ?: "Not signed in") },
+                supportingContent = { Text("Your code, cloud computers and builds live in this account") },
+                leadingContent = { GitHubLogo() },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            )
+            Link(Icons.Outlined.FolderShared, "Repositories PocketIDE may use", "Choose on GitHub", {
+                Browser.open(context, graph.gitHubAuth.installUrl())
+            })
+            Link(Icons.Outlined.Apps, "PocketIDE's access on GitHub", "See or remove it on GitHub", {
+                Browser.open(context, graph.gitHubAuth.authorizationsUrl())
+            })
+            Link(Icons.Outlined.Key, "GitHub App", "The App PocketIDE signs in through", { changingApp = true })
+            Link(Icons.AutoMirrored.Outlined.Logout, "Sign out", "The cloud computers keep running until GitHub stops them", { signingOut = true })
+        }
+
+        SectionCard("About") {
+            Link(Icons.AutoMirrored.Outlined.MenuBook, "Help", "How PocketIDE works, and answers", onHelp)
+            Link(Icons.Outlined.Gavel, "Terms of use", null, { onHelpPage(DocsContent.TERMS_ID) })
+            Link(Icons.Outlined.PrivacyTip, "Privacy policy", null, { onHelpPage(DocsContent.PRIVACY_ID) })
+            Link(Icons.AutoMirrored.Outlined.Article, "Open-source licences", null, { onHelpPage(DocsContent.NOTICES_ID) })
+            InfoItem(Icons.Outlined.Info, "PocketIDE ${BuildConfig.VERSION_NAME}", DocsContent.TAGLINE)
+        }
     }
 
-    SectionLabel("About")
-    SettingsGroup(
-        listOf(
-            {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    InfoRow("Version", BuildConfig.VERSION_NAME)
-                    when (val state = update) {
-                        is UpdateState.Downloading -> {
-                            Text("Downloading the update…", style = MaterialTheme.typography.bodyMedium)
-                            LinearProgressIndicator(progress = { state.fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+    if (changingApp) {
+        AlertDialog(
+            onDismissRequest = { changingApp = false },
+            title = { Text("GitHub App") },
+            text = {
+                DialogBody {
+                    Text("Its public client ID and the name in its address. A different App signs you out; sign in again with it.")
+                    GitHubAppFields(graph) { appChanged ->
+                        changingApp = false
+                        if (appChanged) {
+                            ComputerService.disconnect(context)
+                            graph.computerPage.release()
+                            scope.launch { graph.gitHubAuth.signOut() }
                         }
-                        else -> Unit
                     }
                 }
             },
-            {
-                when (val state = update) {
-                    UpdateState.UpToDate -> ActionRow(
-                        if (busy) "Checking…" else "Check for updates",
-                        if (checked && !busy) "You have the newest version." else "From PocketIDE's releases on GitHub",
-                        onClick = { if (!busy) run { graph.updater.check(); checked = true } },
-                    )
-                    is UpdateState.Available -> ActionRow(
-                        "Download version ${state.release.version}",
-                        "${Formats.bytes(state.release.apkBytes)} · waits for Wi-Fi unless you allow mobile data",
-                        onClick = { if (!busy) run(outlivesScreen = true) { graph.updater.download() } },
-                    )
-                    is UpdateState.Downloading -> ActionRow("Downloading…", "${(state.fraction * 100).toInt()} %", onClick = {})
-                    is UpdateState.Ready -> ActionRow(
-                        "Install version ${state.release.version}",
-                        "Its signature matches this app. Android's installer opens.",
-                        onClick = { activity?.let { graph.updater.install(it) } },
-                    )
-                    is UpdateState.Failed -> ActionRow(
-                        "Check for updates again",
-                        Redact.text(state.why),
-                        onClick = { if (!busy) run { graph.updater.check(); checked = true } },
-                    )
-                }
-            },
-            { ActionRow("Help", "How it works, your data, questions", onClick = { nav.help(null) }, icon = Icons.AutoMirrored.Outlined.HelpOutline) },
-            { ActionRow("Terms", null, onClick = { nav.help("terms") }, icon = Icons.Outlined.Description) },
-            { ActionRow("Privacy", "Who sees what", onClick = { nav.help("privacy") }, icon = Icons.Outlined.PrivacyTip) },
-            { ActionRow("Privacy policy", null, onClick = { nav.help("privacy-policy") }, icon = Icons.Outlined.Description) },
-        ),
-    )
-    error?.let {
-        Gap(8.dp)
-        NoticeCard(it, Tone.ERROR)
+            confirmButton = { TextButton(onClick = { changingApp = false }) { Text("Close") } },
+            properties = KeepTypedInput,
+        )
     }
-    askMobileData?.let { ask ->
+    if (signingOut) {
         AlertDialog(
-            onDismissRequest = { askMobileData = null },
-            title = { Text("Download ${ask.size} on mobile data?") },
-            text = { Text("The update waits for Wi-Fi. It can download now on mobile data instead. Your data settings do not change.") },
+            onDismissRequest = { signingOut = false },
+            title = { Text("Sign out of GitHub?") },
+            text = { Text("PocketIDE forgets your sign-in on this phone. Your code, cloud computers and chats stay in your GitHub account.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        askMobileData = null
-                        graph.dataBudget.allowOnce(ask.kind, ask.bytes)
-                        run(outlivesScreen = true) {
-                            try {
-                                graph.updater.download()
-                            } finally {
-                                graph.dataBudget.endOnce(ask.kind)
-                            }
-                        }
-                    },
-                ) { Text("Use mobile data") }
+                TextButton(onClick = {
+                    signingOut = false
+                    ComputerService.disconnect(context)
+                    graph.computerPage.release()
+                    scope.launch { graph.gitHubAuth.signOut() }
+                }) { Text("Sign out") }
             },
-            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+            dismissButton = { TextButton(onClick = { signingOut = false }) { Text("Cancel") } },
         )
     }
 }
+
+@Composable
+private fun InfoItem(icon: ImageVector, title: String, detail: String?) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = detail?.let { { Text(it) } },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    )
+}
+
+@Composable
+private fun Link(icon: ImageVector, title: String, detail: String?, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = detail?.let { { Text(it) } },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = { Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.clickable(onClick = onClick),
+    )
+}
+
+@Composable
+private fun Toggle(icon: ImageVector, title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(detail) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = onChange, enabled = enabled) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    )
+}
+
+/** A setting with a few fixed answers: its current one shown, the rest in a dialog. */
+@Composable
+private fun <T, V> Choice(
+    icon: ImageVector,
+    title: String,
+    options: List<T>,
+    selected: V,
+    label: (T) -> String,
+    value: (T) -> V,
+    onSelect: (V) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val current = options.firstOrNull { value(it) == selected }
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(current?.let(label) ?: selected.toString()) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.clickable { open = true },
+    )
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(title) },
+            text = {
+                Column {
+                    options.forEach { option ->
+                        val chosen = value(option) == selected
+                        Row(
+                            Modifier.fillMaxWidth().selectable(chosen, role = Role.RadioButton) {
+                                onSelect(value(option))
+                                open = false
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = chosen, onClick = null)
+                            Text(label(option), modifier = Modifier.padding(start = 12.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { open = false }) { Text("Close") } },
+        )
+    }
+}
+
+private const val CODESPACES_SETTINGS = "https://github.com/settings/codespaces"
+
+/** GitHub's machine names; the empty name lets GitHub pick its smallest, which is the default. */
+private val MACHINES = listOf(
+    "" to "2 cores, 8 GB RAM (uses the fewest hours)",
+    "standardLinux32gb" to "4 cores, 16 GB RAM (uses hours twice as fast)",
+)
+private val IDLE_MINUTES = listOf(15, 30, 60, 120, 240)
+private val KEEP_DAYS = listOf(7, 14, 30)

@@ -67,15 +67,7 @@ internal class ScriptedTokens(var current: String = "ghu_first") : UserTokens {
 internal class ApiFixture(val server: MockWebServer, clock: TestClock = TestClock()) {
     val tokens = ScriptedTokens()
     val waits = mutableListOf<Long>()
-    val sealed = mutableListOf<Pair<ByteArray, ByteArray>>()
     val apiVersion = ApiVersionChoice()
     val rest = RestClient(testHttp, server.url("/"), tokens, clock, io = Dispatchers.IO, pause = { waits += it }, apiVersion = apiVersion)
-    val api = GitHubRestApi(
-        rest = rest,
-        sealer = Sealer { key, value ->
-            sealed += key to value
-            "sealed:".toByteArray() + value
-        },
-        clock = clock,
-    )
+    val api = GitHubRestApi(rest = rest, clock = clock)
 }

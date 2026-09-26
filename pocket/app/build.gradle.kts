@@ -28,8 +28,8 @@ fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\
 
 // The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
 // from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
-// before it, and 3.0.0 (30000) installs over 2.6.0 (260). tools/gates/version.py checks both.
-val appVersion = "3.0.0"
+// before it, and 4.0.0 (40000) installs over 3.0.0 (30000). tools/gates/version.py checks both.
+val appVersion = "4.0.0"
 
 fun versionCodeOf(version: String): Int {
     val parts = version.split(".").map { it.toIntOrNull() ?: -1 }
@@ -49,7 +49,6 @@ android {
         versionCode = versionCodeOf(appVersion)
         versionName = appVersion
 
-        ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GITHUB_APP_CLIENT_ID", quoted(config("POCKETIDE_GITHUB_APP_CLIENT_ID")))
@@ -87,9 +86,6 @@ android {
     }
 
     packaging {
-        // proot and its loader are executed from nativeLibraryDir, the one place Android lets
-        // an app run its own binaries (W^X), so the libraries must be extracted at install.
-        jniLibs { useLegacyPackaging = true }
         resources {
             excludes += setOf(
                 "/META-INF/{AL2.0,LGPL2.1}",
@@ -183,16 +179,12 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.webkit)
-    implementation(libs.play.services.auth)
+    implementation(libs.androidx.browser)
     implementation(libs.okhttp)
-    implementation(libs.bouncycastle)
-    implementation(libs.jgit)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
