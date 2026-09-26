@@ -28,7 +28,10 @@ fun createAccessGuard(graph: AppGraph): AccessGuard {
 
 fun createAppLock(graph: AppGraph): AppLock = AndroidAppLock(graph.context, graph.settings, graph.scope)
 
-/** Every 15 minutes through WorkManager, and each time the app comes back to the front. */
+/**
+ * Each time the app comes to the front, and every 6 hours through WorkManager; the sync engine and
+ * scheduled tasks ask too ([AccessGuard.check]).
+ */
 private fun schedulePeriodicChecks(graph: AppGraph, watchingForeground: AtomicBoolean) {
     AccessCheckWorker.schedule(graph.context)
     if (!watchingForeground.compareAndSet(false, true)) return

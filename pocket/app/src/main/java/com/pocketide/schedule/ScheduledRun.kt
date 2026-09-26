@@ -4,6 +4,7 @@ import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
 import com.pocketide.core.Ist
 import com.pocketide.core.Redact
+import com.pocketide.model.LockReason
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -37,6 +38,12 @@ internal interface RunPorts {
 
     /** Why heavy work may not start now (battery, heat), or null. */
     fun heavyWorkRefusal(): String?
+
+    /**
+     * Why the app is locked now, GitHub and Drive asked afresh (access removed, another phone took
+     * over, storage full), or null. Offline locks nothing.
+     */
+    suspend fun lockNow(): LockReason?
 
     /** True for a project marked "Someone else's", once this phone's project list is read. */
     suspend fun someoneElses(projectId: String): Boolean
@@ -108,8 +115,9 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
 
     /** The session the run uses, once nothing says it may not run now. */
     private suspend fun sessionFor(task: ScheduledTask, existingSessionId: String?): SessionRecord {
-        refusal(task)?.let { why ->
-            // Nobody is watching a scheduled run: the owner hears why nothing ran.
+        // A locked app (a revoked GitHub or Drive, say) starts no new work. Nobody is watching a
+        // scheduled run, so the owner hears why nothing ran.
+        (refusal(task) ?: ports.lockNow()?.let(::lockedText))?.let { why ->
             ports.notify(task.id, "Scheduled task did not run", "${task.title}: $why")
             throw ScheduleException(why)
         }
@@ -239,5 +247,14 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
         const val BUSY = "Not run: this task was already running. That run's session has its result."
         const val SOMEONE_ELSES = "Scheduled tasks run only on your own projects: someone else's code could steer an agent with nobody watching."
         const val NO_HEADLESS = "This agent has no command-line mode, so it cannot run scheduled tasks. Choose Claude Code, Codex or Antigravity."
+
+        /** Why a scheduled task does not start while the app is locked, as the lock screen would say. */
+        fun lockedText(lock: LockReason): String = when (lock) {
+            LockReason.GitHubDisconnected -> "PocketIDE's access to your GitHub was removed. Open PocketIDE to reconnect it."
+            LockReason.DriveDisconnected -> "PocketIDE's access to your Drive was removed. Open PocketIDE to reconnect it."
+            is LockReason.OtherPhone -> "PocketIDE is in use on ${lock.deviceName}. Open it on this phone to use it here again."
+            is LockReason.StorageFull -> "New work waits until there is space in Drive. Open PocketIDE to see how to make space."
+            is LockReason.Unsupported -> lock.why
+        }
     }
 }

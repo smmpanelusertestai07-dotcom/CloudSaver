@@ -24,6 +24,7 @@ class QuietRunsTest {
     fun anIdlePhonesPeriodicRunStopsBeforeGitHubAndDrive() = runBlocking {
         val phone = syncedPhone()
         val checks = phone.keyringChecks
+        val accessChecks = phone.accessChecks
         // Any call to Drive would now fail the run.
         phone.drive.offline = true
 
@@ -31,7 +32,28 @@ class QuietRunsTest {
         assertEquals(WorkResult.OK, phone.periodicRun())
 
         assertEquals("no keyring check on GitHub either", checks, phone.keyringChecks)
+        assertEquals("nor an access check", accessChecks, phone.accessChecks)
         assertTrue(phone.engine.status.value is SyncStatus.UpToDate)
+    }
+
+    @Test
+    fun everyPassThatGoesOnlineAsksWhetherAccessStillStands() = runBlocking {
+        val phone = syncedPhone()
+        assertEquals("the first sync asked", 1, phone.accessChecks)
+
+        phone.network.online = false
+        phone.engine.syncNow()
+        assertEquals("offline there is nothing to ask", 1, phone.accessChecks)
+
+        phone.network.online = true
+        phone.accessFailure = IllegalStateException("the lock module could not ask")
+        phone.homeFile("claude", path).appendText("more\n")
+        clock.advance(Durations.HOUR)
+        phone.periodicRun()
+
+        assertEquals(2, phone.accessChecks)
+        assertTrue("the sync went on", phone.queued().isEmpty())
+        assertEquals(listOf(0L, 3L), phone.remoteIndex()!!.objects.filter { it.path == path }.map { it.offset }.sorted())
     }
 
     @Test

@@ -5,9 +5,10 @@ import com.pocketide.model.AccessState
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * GitHub and Drive are required. Checked at start, every 15 minutes and on each sync: revoked
- * access locks the app (the running step finishes, unsynced data is held encrypted); offline
- * never locks. Also holds the lease lock and the storage-full lock.
+ * GitHub and Drive are required. Checked when the app opens or comes back to the front, with
+ * every sync that goes to the network, before a scheduled task runs, and every 6 hours in the
+ * background: revoked access locks the app (the running step finishes, unsynced data is held
+ * encrypted); offline never locks. Also holds the lease lock and the storage-full lock.
  */
 interface AccessGuard {
     val state: StateFlow<AccessState>

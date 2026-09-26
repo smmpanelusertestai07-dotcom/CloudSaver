@@ -295,6 +295,11 @@ internal class TestPhone(
     /** What the vault's keyring check throws, if anything (GitHub gone, offline). */
     var keyringFailure: Exception? = null
 
+    var accessChecks = 0
+
+    /** What the lock module's access check throws, if anything. */
+    var accessFailure: Exception? = null
+
     val engine = DriveSyncEngine(this)
 
     val drive: FakeDrive get() = accounts[account]
@@ -397,6 +402,10 @@ internal class TestPhone(
     override suspend fun checkKeyring() {
         keyringChecks++
         keyringFailure?.let { throw it }
+    }
+    override suspend fun checkAccess() {
+        accessChecks++
+        accessFailure?.let { throw it }
     }
     override fun wipeSecureStore() {
         secureStoreWiped = true

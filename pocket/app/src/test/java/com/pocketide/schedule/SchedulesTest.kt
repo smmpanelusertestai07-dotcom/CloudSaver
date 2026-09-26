@@ -3,6 +3,7 @@ package com.pocketide.schedule
 import androidx.work.NetworkType
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
+import com.pocketide.model.LockReason
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -261,6 +262,43 @@ class ScheduledRunTest {
         assertEquals(2, ports.notices.size)
     }
 
+    @Test
+    fun aLockedAppStartsNoScheduledRunAndSaysWhy() = runTest {
+        ports.lock = LockReason.GitHubDisconnected
+        for (existing in listOf(null, "s-queued")) {
+            try {
+                ScheduledRun(ports).run(task(), existing)
+                fail("a revoked GitHub starts no new agent work")
+            } catch (expected: ScheduleException) {
+                assertEquals(ScheduledRun.lockedText(LockReason.GitHubDisconnected), expected.message)
+            }
+        }
+        assertEquals("GitHub and Drive are asked afresh before each run", 2, ports.lockChecks)
+        assertTrue(ports.runs.isEmpty())
+        assertNull("no session is made", ports.started)
+        assertEquals(List(2) { "Scheduled task did not run" }, ports.notices.map { it.first })
+
+        // Offline locks nothing: the guard then answers no lock, and the task runs.
+        ports.lock = null
+        assertEquals("s-new", ScheduledRun(ports).run(task()).sessionId)
+        assertEquals(1, ports.runs.size)
+    }
+
+    @Test
+    fun eachLockSaysWhyInAPlainSentence() {
+        val locks = listOf(
+            LockReason.GitHubDisconnected,
+            LockReason.DriveDisconnected,
+            LockReason.OtherPhone("Pixel 8"),
+            LockReason.StorageFull(googleStorageFull = true),
+            LockReason.Unsupported("This phone has less than 4 GB of memory."),
+        )
+        val texts = locks.map(ScheduledRun::lockedText)
+        assertEquals(locks.size, texts.toSet().size)
+        assertTrue(texts.all { it.endsWith(".") && it.first().isUpperCase() })
+        assertTrue(texts[2].contains("Pixel 8"))
+    }
+
     internal data class RoomRun(val agentId: String, val projectId: String, val argv: List<String>, val workDir: String, val programEnv: Map<String, String>)
 
     internal class FakeRunPorts(private val dirs: AppDirs) : RunPorts {
@@ -306,6 +344,12 @@ class ScheduledRunTest {
             return 0
         }
         override fun heavyWorkRefusal() = refusal
+        var lock: LockReason? = null
+        var lockChecks = 0
+        override suspend fun lockNow(): LockReason? {
+            lockChecks++
+            return lock
+        }
         override suspend fun someoneElses(projectId: String) = someoneElses
         override suspend fun saveOutput(sessionId: String, file: File) {
             saved += sessionId to file.readText()

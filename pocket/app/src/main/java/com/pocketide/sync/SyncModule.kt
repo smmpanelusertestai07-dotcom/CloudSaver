@@ -205,6 +205,8 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
         graph.vault.checkKeyring()
     }
 
+    override suspend fun checkAccess() = graph.access.check()
+
     /** The secure store's folder (see AppGraph): tokens, the vault key and Secrets. */
     override fun wipeSecureStore() {
         deleteTree(File(graph.context.filesDir, "secure"))

@@ -47,7 +47,10 @@ internal class SyncPass(
     suspend fun run(run: Run, opts: PassOptions): PassOutcome {
         kit.queue.recover()
         val online = ports.network.online()
-        if (online) checkKeyring()
+        if (online) {
+            checkKeyring()
+            checkAccess()
+        }
         run.account()
         val book = book(run)
         val drive = run.drive()
@@ -142,6 +145,21 @@ internal class SyncPass(
     private suspend fun checkKeyring() {
         try {
             ports.checkKeyring()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // See above.
+        }
+    }
+
+    /**
+     * Every pass that goes to the network also asks whether GitHub and Drive access still stands,
+     * so a revoked account locks the app before new work starts. The answer is the lock's to
+     * show; the sync goes on either way.
+     */
+    private suspend fun checkAccess() {
+        try {
+            ports.checkAccess()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

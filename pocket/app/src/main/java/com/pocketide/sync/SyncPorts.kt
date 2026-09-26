@@ -148,6 +148,12 @@ internal interface SyncPorts {
      */
     suspend fun checkKeyring()
 
+    /**
+     * Asks GitHub and Drive whether PocketIDE's access still stands, so a revoked account locks the
+     * app before new work starts; the lock module keeps the answer. Offline locks nothing.
+     */
+    suspend fun checkAccess() = Unit
+
     /** Removes every sealed entry of the secure store ("Delete everything"). */
     fun wipeSecureStore()
 
