@@ -29,7 +29,7 @@ fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\
 // The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
 // from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
 // before it, and 4.0.0 (40000) installs over 3.0.0 (30000). tools/gates/version.py checks both.
-val appVersion = "4.0.0"
+val appVersion = "4.1.0"
 
 fun versionCodeOf(version: String): Int {
     val parts = version.split(".").map { it.toIntOrNull() ?: -1 }

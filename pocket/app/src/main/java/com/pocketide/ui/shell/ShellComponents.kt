@@ -73,7 +73,8 @@ val ContentMaxWidth = 600.dp
 
 /**
  * The body of every full-page shell screen: edge-to-edge background, content inside the safe
- * area, scrolls when large fonts or landscape make it taller than the screen.
+ * area, scrolls when large fonts or landscape make it taller than the screen. A [Surface], so text
+ * takes the theme's colour wherever the page is shown, the lock and first-run screens included.
  */
 @Composable
 fun ShellPage(
@@ -81,24 +82,20 @@ fun ShellPage(
     centered: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Box(
-        modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(
-            Modifier
-                .widthIn(max = ContentMaxWidth)
-                .fillMaxWidth()
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = if (centered) Arrangement.Center else Arrangement.Top,
-            horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-            content = content,
-        )
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.TopCenter) {
+            Column(
+                Modifier
+                    .widthIn(max = ContentMaxWidth)
+                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalArrangement = if (centered) Arrangement.Center else Arrangement.Top,
+                horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+                content = content,
+            )
+        }
     }
 }
 

@@ -2,6 +2,7 @@ package com.pocketide.cloud
 
 import com.pocketide.core.AppJson
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -41,6 +42,37 @@ class ComputerConfigTest {
         assertEquals("bash ${ComputerConfig.SETUP} create", config["postCreateCommand"]!!.jsonPrimitive.content)
         assertEquals("bash ${ComputerConfig.SETUP} start", config["postStartCommand"]!!.jsonPrimitive.content)
         assertNull(config["postAttachCommand"])
+    }
+
+    @Test
+    fun `the computer has a desktop to watch, Claude's command-line tool, and room for a browser`() {
+        assertEquals(
+            setOf("ghcr.io/devcontainers/features/desktop-lite:1", "ghcr.io/anthropics/devcontainer-features/claude-code:1.0"),
+            config["features"]!!.jsonObject.keys,
+        )
+        assertEquals(listOf(ComputerConfig.DESKTOP_PORT), config["forwardPorts"]!!.jsonArray.map { it.jsonPrimitive.int })
+        val desktop = config["portsAttributes"]!!.jsonObject["${ComputerConfig.DESKTOP_PORT}"]!!.jsonObject
+        assertEquals("Desktop", desktop["label"]!!.jsonPrimitive.content)
+        assertEquals(listOf("--shm-size=1g"), config["runArgs"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun `each agent gets the phone notes once, after the owner's own, and the browser tools`() {
+        val home = Files.createTempDirectory("home").toFile().apply { deleteOnExit() }
+        val own = File(home, ".claude/CLAUDE.md").apply {
+            parentFile?.mkdirs()
+            writeText("# Mine\nKeep this.\n")
+        }
+        val script = File(home, "setup.sh").apply { writeText(this@ComputerConfigTest.script.text) }
+        repeat(2) { run(home, listOf("bash", script.path, "start"), home = home) }
+        for (path in listOf(".claude/CLAUDE.md", ".codex/AGENTS.md", ".gemini/GEMINI.md")) {
+            val text = File(home, path).readText()
+            assertEquals(path, 1, Regex("<!-- PocketIDE: start -->").findAll(text).count())
+            assertTrue(path, "menu > Desktop" in text && text.trimEnd().endsWith("<!-- PocketIDE: end -->"))
+        }
+        assertTrue(own.readText().startsWith("# Mine\nKeep this.\n<!-- PocketIDE: start -->"))
+        val servers = AppJson.parseToJsonElement(File(home, ".gemini/config/mcp_config.json").readText()).jsonObject
+        assertEquals(setOf("playwright", "chrome-devtools"), servers["mcpServers"]!!.jsonObject.keys)
     }
 
     @Test
@@ -100,7 +132,11 @@ class ComputerConfigTest {
 
     private fun run(dir: File, command: List<String>, home: File? = null): String {
         val builder = ProcessBuilder(command).directory(dir).redirectErrorStream(true)
-        home?.let { builder.environment()["HOME"] = it.path }
+        home?.let {
+            builder.environment()["HOME"] = it.path
+            // The system's tools only: no agent command-line tool of the build machine's own.
+            builder.environment()["PATH"] = "/usr/bin:/bin"
+        }
         val process = builder.start()
         check(process.waitFor(30, TimeUnit.SECONDS)) { "timed out: $command" }
         return process.inputStream.bufferedReader().readText()

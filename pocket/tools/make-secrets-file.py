@@ -141,87 +141,92 @@ def gather(args: argparse.Namespace) -> KeyFacts:
 
 
 def render(facts: KeyFacts, repo: str | None, keystore_name: str) -> str:
+    """The owner's file: the four secrets spaced apart, GitHub's own field names, full links."""
     today = dt.datetime.now(dt.timezone.utc).strftime("%d %b %Y")
-    site = f"https://github.com/{repo}" if repo else "https://github.com/<owner>/<repository>"
-    return f"""PocketIDE 4: secrets and settings for GitHub Actions
-Made on {today} from {keystore_name}. Keep this file private, and delete it once every value is saved.
-Screen names below are as of September 2026; if a label has moved, the path is still right.
-
-Repository:   {site}
-Workflow:     {WORKFLOW} (shown as "pocketide" in the Actions tab)
-Secrets page: {site}/settings/secrets/actions
-Variables:    {site}/settings/variables/actions
-
-
-1. REPOSITORY SECRETS
-   Settings > Secrets and variables > Actions > Secrets > New repository secret.
-   One secret per line: the name before "=", the value after it.
-
-POCKETIDE_KEYSTORE_B64={facts.keystore_b64}
-POCKETIDE_STORE_PASS={facts.store_pass}
-POCKETIDE_KEY_PASS={facts.key_pass}
-POCKETIDE_KEY_ALIAS={facts.alias}
-
-
-2. REPOSITORY VARIABLES (not secret; fill them in after step A below)
-   Settings > Secrets and variables > Actions > Variables > New repository variable.
-
-POCKETIDE_GITHUB_APP_CLIENT_ID=<the GitHub App's Client ID, which starts with "Iv">
-POCKETIDE_GITHUB_APP_SLUG=<the last part of the App's public link, github.com/apps/<slug>>
+    name = repo or "<owner>/<repository>"
+    site = f"https://github.com/{name}"
+    secrets_ = [
+        ("POCKETIDE_KEYSTORE_B64", facts.keystore_b64, "The signing key (base64)"),
+        ("POCKETIDE_STORE_PASS", facts.store_pass, "The key store password"),
+        ("POCKETIDE_KEY_PASS", facts.key_pass, "The key password"),
+        ("POCKETIDE_KEY_ALIAS", facts.alias, "The key's name (alias)"),
+    ]
+    # Name and secret each on a line of their own, so a long press copies exactly the value.
+    blocks = "\n\n\n".join(
+        f"{number}) {what}\nName:\n{key}\nSecret:\n{value}"
+        for number, (key, value, what) in enumerate(secrets_, start=1)
+    )
+    return f"""PocketIDE: GitHub secrets
+App: PocketIDE (Android app, package {PACKAGE})
+GitHub repository: {name}
+{site}
+Made {today} from {keystore_name}. Private: keep it only in your own storage.
 
 
-3. SIGNING CERTIFICATE (not secret; how the app's updates are recognised)
-
-Package name: {PACKAGE}
-SHA-1:        {facts.sha1}
-SHA-256:      {facts.sha256}
+REPOSITORY SECRETS (4)
+Open this page, then for each one: Name, Secret, Add secret.
+{site}/settings/secrets/actions/new
 
 
-A. CREATE THE GITHUB APP (sign-in for PocketIDE; no server, no client secret)
-   1. Open https://github.com/settings/apps/new
-      (Settings > Developer settings > GitHub Apps > New GitHub App).
-   2. GitHub App name: anything unique, for example "PocketIDE <your login>".
-      Homepage URL: {site}
-   3. Identifying and authorizing users: leave Callback URL empty; keep "Expire user
-      authorization tokens" ticked; leave "Request user authorization (OAuth) during
-      installation" unticked; tick "Enable Device Flow".
-   4. Webhook: untick "Active". PocketIDE needs no webhook.
-   5. Repository permissions:
-        Codespaces: Read and write                 Codespaces lifecycle admin: Read and write
-        Codespaces metadata: Read-only             Contents: Read and write
-        Administration: Read and write             Actions: Read-only
-        Metadata: Read-only
-      Account permissions:
-        Plan: Read-only (so the app can show your real Codespaces hours and Actions minutes)
-        Repository creation: Read and write, where GitHub shows it (for New project)
-   6. Where can this GitHub App be installed? Only on this account. Then Create GitHub App.
-   7. On the App's page, copy the Client ID into POCKETIDE_GITHUB_APP_CLIENT_ID, and the slug
-      (the last part of its public link) into POCKETIDE_GITHUB_APP_SLUG. Do not generate a
-      client secret or a private key: PocketIDE uses neither.
-   8. Install App > your account > All repositories (so projects made in PocketIDE work at
-      once), or Only select repositories. PocketIDE never deletes a repository or changes who
-      can see one; the build's least-privilege gate checks that.
-   An App from PocketIDE 3 can be kept: add the Codespaces permissions above, then accept the
-   new permissions on github.com/settings/installations.
+{blocks}
 
 
-B. PASTE THE VALUES
-   Secrets from section 1, and the two variables from section 2, on the pages listed at the top.
+See all 4 saved:
+{site}/settings/secrets/actions
 
 
-C. RE-RUN THE WORKFLOW
-   Actions > pocketide > Run workflow > Branch: main > Run workflow.
-   The build signs with your key, and the release job publishes pocketide-v<version>.
+REPOSITORY VARIABLES (2, not secret)
+Fill these in after you make the GitHub App below. For each one: Name, Value, Add variable.
+{site}/settings/variables/actions/new
+
+1) The App's Client ID (it starts with Iv)
+Name:
+POCKETIDE_GITHUB_APP_CLIENT_ID
+Value:
+copy it from the App's page
+
+2) The App's name in its link, github.com/apps/<name>
+Name:
+POCKETIDE_GITHUB_APP_SLUG
+Value:
+that <name>
 
 
-CHECKLIST
-   [ ] 4 secrets saved: POCKETIDE_KEYSTORE_B64, POCKETIDE_STORE_PASS, POCKETIDE_KEY_PASS,
-       POCKETIDE_KEY_ALIAS
-   [ ] 2 variables saved: POCKETIDE_GITHUB_APP_CLIENT_ID, POCKETIDE_GITHUB_APP_SLUG
-   [ ] GitHub App: Device Flow on, webhook off, the permissions above, installed on your repositories
-   [ ] The key store file is backed up somewhere private
-   [ ] The workflow ran green on main
-   [ ] This file is deleted
+GITHUB APP (how PocketIDE signs in; no client secret, no private key)
+Make it here:
+https://github.com/settings/apps/new
+- GitHub App name: anything unique, for example PocketIDE-<your GitHub name>
+- Homepage URL: {site}
+- Callback URL: leave empty. Tick "Enable Device Flow". Webhook: untick "Active".
+- Repository permissions:
+    Actions: Read-only
+    Administration: Read and write
+    Codespaces: Read and write
+    Codespaces lifecycle admin: Read and write
+    Codespaces metadata: Read-only
+    Contents: Read and write
+    Metadata: Read-only
+    Repository creation: Read and write (if GitHub lists it)
+- Account permissions:
+    Plan: Read-only
+- Where can this GitHub App be installed: Only on this account. Then: Create GitHub App.
+Then install it on your repositories (All repositories is simplest):
+https://github.com/settings/apps
+Already have the App? Add any missing permission above, then accept it here:
+https://github.com/settings/installations
+
+
+CHECK
+Run the build: open the link, Run workflow, Branch: main, Run workflow.
+{site}/actions/workflows/pocket.yml
+The signed APK appears here:
+{site}/releases
+
+
+SIGNING CERTIFICATE (not secret; how Android knows an update is really yours)
+Package: {PACKAGE}
+SHA-1:   {facts.sha1}
+SHA-256: {facts.sha256}
 """
 
 

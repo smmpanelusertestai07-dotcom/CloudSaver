@@ -2,8 +2,7 @@
 """Nothing that looks like a live credential may be tracked under pocket/.
 
 The patterns are the shapes real providers issue, so a match is almost never a coincidence.
-Test sources may hold age identities: the vault tests use the public age test vectors (C2SP
-age testkit), and a test key opens nothing. Everything else applies to tests too.
+They apply to tests too: a test needs no real credential.
 """
 from __future__ import annotations
 
@@ -28,16 +27,11 @@ PATTERNS = [
     (re.compile(r"-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----"), "a private key"),
     (re.compile(r"\bAGE-SECRET-KEY-1[0-9A-Z]{58}\b"), "an age secret key"),
 ]
-TEST_FIXTURE_KINDS = {"an age secret key"}
-TEST_ROOTS = ("app/src/test/", "app/src/androidTest/")
 
 
 def scan(relative: str, text: str) -> list[str]:
-    in_tests = relative.startswith(TEST_ROOTS)
     found = []
     for pattern, what in PATTERNS:
-        if in_tests and what in TEST_FIXTURE_KINDS:
-            continue
         match = pattern.search(text)
         if match:
             line = text.count("\n", 0, match.start()) + 1

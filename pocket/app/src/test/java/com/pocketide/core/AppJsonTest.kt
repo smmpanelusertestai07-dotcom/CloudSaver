@@ -31,7 +31,7 @@ class AppJsonTest {
     @Test
     fun `the safe choices are the defaults`() {
         val defaults = Settings()
-        assertTrue("screenshots hidden", defaults.hideScreen)
+        assertFalse("screenshots are never blocked; App lock is the owner's choice", defaults.appLock)
         assertEquals(30, defaults.newComputer.idleMinutes)
         assertEquals(30, defaults.newComputer.keepDays)
         assertEquals("", defaults.newComputer.machine)

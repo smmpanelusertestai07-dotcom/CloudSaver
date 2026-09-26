@@ -2,9 +2,12 @@ package com.pocketide
 
 import android.app.UiModeManager
 import android.content.Intent
+import android.content.res.Configuration
+import android.content.res.Resources
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -19,8 +22,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * The single activity. With "Hide from screenshots" on (the default), FLAG_SECURE keeps code and
- * chats out of screenshots and the Recents preview; the app lock itself is part of [PocketRoot].
+ * The single activity. Screenshots are always allowed. With App lock on, Recents shows a cover
+ * instead of the screen (see [PocketRoot]); the lock itself is part of [PocketRoot] too.
  */
 class MainActivity : FragmentActivity() {
     private val computerAsked = MutableStateFlow(false)
@@ -30,12 +33,13 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        systemBars(graph.settings.settings.value.theme)
         if (savedInstanceState == null) take(intent)
         lifecycleScope.launch {
-            graph.settings.settings.map { it.hideScreen to it.theme }.distinctUntilChanged().collect { (hide, theme) ->
-                if (hide) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            graph.settings.settings.map { it.appLock to it.theme }.distinctUntilChanged().collect { (lock, theme) ->
+                hideInRecents(lock)
                 followTheme(theme)
+                systemBars(theme)
             }
         }
         setContent { PocketRoot(activity = this) }
@@ -57,6 +61,32 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
+     * Android 13 and newer keep no picture of the screen for Recents while App lock is on; older
+     * versions keep the picture of the cover that [PocketRoot] draws when the app leaves the front.
+     */
+    private fun hideInRecents(lock: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!lock)
+    }
+
+    /**
+     * Status and navigation bar icons in the app's own light or dark choice, which can differ from
+     * the phone's: dark icons on a dark app would be invisible.
+     */
+    private fun systemBars(theme: ThemeMode) {
+        val dark = { resources: Resources ->
+            when (theme) {
+                ThemeMode.SYSTEM -> resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+        }
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT, dark),
+            navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM, dark),
+        )
+    }
+
+    /**
      * Android 12 and newer take the app's own light or dark choice, so the system's screens and the
      * cloud computer's page (which follows the app's night mode) match the app.
      */
@@ -72,5 +102,9 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         const val ACTION_OPEN_COMPUTER = "com.pocketide.OPEN_COMPUTER"
+
+        // The scrims enableEdgeToEdge uses by default behind three-button navigation.
+        private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+        private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
     }
 }

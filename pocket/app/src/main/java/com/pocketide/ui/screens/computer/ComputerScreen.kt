@@ -31,13 +31,16 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.Preview
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Terminal
@@ -51,6 +54,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -70,6 +74,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -79,9 +84,12 @@ import com.pocketide.AppGraph
 import com.pocketide.agents.Agent
 import com.pocketide.cloud.Computer
 import com.pocketide.cloud.ComputerService
+import com.pocketide.cloud.ForwardedPorts
 import com.pocketide.cloud.OpenStep
 import com.pocketide.graph
 import com.pocketide.ui.components.AgentLogo
+import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.VsCodeLogo
@@ -202,6 +210,7 @@ private fun ComputerPage(
     var pageState by remember { mutableStateOf<PageState>(PageState.Loading(0)) }
     var generation by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }
+    var previewing by remember { mutableStateOf(false) }
     var waiting by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
     var askOpen by remember { mutableStateOf<String?>(null) }
     val answer = { uris: List<Uri> ->
@@ -277,11 +286,50 @@ private fun ComputerPage(
             page = page,
             keyBar = keyBar,
             onDismiss = { menu = false },
+            onWebPreview = { previewing = true },
             onHome = onHome,
             onHelp = onHelp,
         )
     }
+    if (previewing) WebPreviewDialog(computer, onDismiss = { previewing = false })
 }
+
+/** Opens a port of the computer, such as a web app's dev server, in a Chrome tab. */
+@Composable
+private fun WebPreviewDialog(computer: Computer, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var typed by rememberSaveable { mutableStateOf(DEFAULT_PREVIEW_PORT) }
+    val port = ForwardedPorts.port(typed)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Web preview") },
+        text = {
+            DialogBody {
+                Text("The port your app's server uses inside the computer. Only your GitHub sign-in opens it.")
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it.filter(Char::isDigit).take(MAX_PORT_DIGITS) },
+                    label = { Text("Port") },
+                    singleLine = true,
+                    isError = port == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = port != null, onClick = {
+                onDismiss()
+                port?.let { Browser.open(context, ForwardedPorts.url(computer.name, it)) }
+            }) { Text("Open") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        properties = KeepTypedInput,
+    )
+}
+
+private const val DEFAULT_PREVIEW_PORT = "3000"
+private const val MAX_PORT_DIGITS = 5
 
 /** A file input that takes only pictures gets the photo picker; anything else, the files picker. */
 internal fun acceptsOnlyImages(acceptTypes: List<String>): Boolean {
@@ -374,7 +422,15 @@ private fun FloatingMenuButton(onMenu: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ComputerMenu(computer: Computer, page: ComputerWebView, keyBar: Boolean, onDismiss: () -> Unit, onHome: () -> Unit, onHelp: () -> Unit) {
+private fun ComputerMenu(
+    computer: Computer,
+    page: ComputerWebView,
+    keyBar: Boolean,
+    onDismiss: () -> Unit,
+    onWebPreview: () -> Unit,
+    onHome: () -> Unit,
+    onHelp: () -> Unit,
+) {
     val context = LocalContext.current
     val graph = context.graph
     val scope = rememberCoroutineScope()
@@ -411,6 +467,10 @@ private fun ComputerMenu(computer: Computer, page: ComputerWebView, keyBar: Bool
             MenuRow("Command palette", "Every VS Code command, by name", icon = Icons.Outlined.Search) {
                 close { page.sendKey(KeyEvent.KEYCODE_F1) }
             }
+            MenuRow("Desktop", "Watch the agents' browser and your app, live", icon = Icons.Outlined.DesktopWindows) {
+                close { Browser.open(context, ForwardedPorts.desktop(computer.name)) }
+            }
+            MenuRow("Web preview", "Open your web app's port, such as 3000", icon = Icons.Outlined.Preview) { close(onWebPreview) }
             ListItem(
                 headlineContent = { Text("Keyboard keys") },
                 supportingContent = { Text("Esc, Tab, Ctrl, arrows and Send above the keyboard") },

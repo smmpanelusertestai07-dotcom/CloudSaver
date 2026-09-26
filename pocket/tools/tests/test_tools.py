@@ -76,12 +76,20 @@ class SecretsFile(unittest.TestCase):
 
     def test_lists_every_value_and_step(self):
         text = secrets_file.render(self.FACTS, "owner/repo", "release.jks")
-        for expected in ("POCKETIDE_KEYSTORE_B64=QUJD", "POCKETIDE_STORE_PASS=store-pass", "POCKETIDE_KEY_PASS=key-pass",
-                         "POCKETIDE_KEY_ALIAS=pocketide", "POCKETIDE_GITHUB_APP_CLIENT_ID=", "POCKETIDE_GITHUB_APP_SLUG=",
-                         "Package name: com.pocketide", "SHA-1:        AA:BB", "SHA-256:      CC:DD",
-                         "Enable Device Flow", "Plan: Read-only", "Codespaces lifecycle admin: Read and write",
-                         "https://github.com/owner/repo/settings/secrets/actions", "Run workflow"):
+        for expected in ("Name:\nPOCKETIDE_KEYSTORE_B64\nSecret:\nQUJD\n", "Name:\nPOCKETIDE_STORE_PASS\nSecret:\nstore-pass\n",
+                         "Name:\nPOCKETIDE_KEY_PASS\nSecret:\nkey-pass\n", "Name:\nPOCKETIDE_KEY_ALIAS\nSecret:\npocketide\n",
+                         "Name:\nPOCKETIDE_GITHUB_APP_CLIENT_ID\n", "Name:\nPOCKETIDE_GITHUB_APP_SLUG\n",
+                         "App: PocketIDE", "GitHub repository: owner/repo", "Package: com.pocketide", "SHA-1:   AA:BB",
+                         "SHA-256: CC:DD", "Enable Device Flow", "Plan: Read-only", "Codespaces lifecycle admin: Read and write",
+                         "https://github.com/owner/repo/settings/secrets/actions/new", "Run workflow"):
             self.assertIn(expected, text)
+        # Each secret stands apart from the next, and no version number dates the file.
+        self.assertIn("Secret:\nQUJD\n\n\n2) The key store password", text)
+        self.assertNotIn("PocketIDE 4", text)
+        # Every link is a full address, so it opens with a tap in any text viewer.
+        for line in text.splitlines():
+            if "github.com/" in line and "apps/<name>" not in line and "PocketIDE-" not in line:
+                self.assertTrue(line.startswith("https://") or line.startswith("- Homepage URL: https://"), line)
 
     def test_the_file_is_private_and_never_overwritten_silently(self):
         with tempfile.TemporaryDirectory() as work:
@@ -109,11 +117,13 @@ class SecretsFile(unittest.TestCase):
             with mock.patch("builtins.print"):
                 self.assertEqual(0, secrets_file.main([str(keystore), "--create", "--out", str(out)]))
             text = out.read_text()
-            password = next(l.split("=", 1)[1] for l in text.splitlines() if l.startswith("POCKETIDE_STORE_PASS="))
+            lines = text.splitlines()
+            at = lines.index("POCKETIDE_STORE_PASS")
+            password = lines[at + 2]
             listing = subprocess.run(["keytool", "-list", "-v", "-keystore", str(keystore), "-storepass", password],
                                      capture_output=True, text=True, check=True).stdout
             sha1 = next(l.split("SHA1:")[1].strip() for l in listing.splitlines() if "SHA1:" in l)
-            self.assertIn(f"SHA-1:        {sha1}", text)
+            self.assertIn(f"SHA-1:   {sha1}", text)
 
 
 if __name__ == "__main__":

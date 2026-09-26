@@ -18,10 +18,8 @@ data class Settings(
     /** The version of the terms the owner accepted; 0 = not yet. */
     val termsAccepted: Int = 0,
     val onboardingDone: Boolean = false,
-    /** Ask for the phone's screen lock when the app opens. */
+    /** Ask for the phone's screen lock when the app opens, and cover the app in Recents. */
     val appLock: Boolean = false,
-    /** Keep code and chats out of screenshots and the Recents preview. */
-    val hideScreen: Boolean = true,
     /** The cloud computer the Computer tab opens: its codespace name. Empty = none chosen yet. */
     val lastComputer: String = "",
     val newComputer: NewComputerChoices = NewComputerChoices(),

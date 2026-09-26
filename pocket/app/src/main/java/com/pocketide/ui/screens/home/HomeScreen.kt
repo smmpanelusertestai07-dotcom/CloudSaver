@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Add
@@ -30,6 +32,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -47,8 +50,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.Agent
 import com.pocketide.cloud.Computer
@@ -302,7 +307,14 @@ private fun AgentTile(agent: Agent, modifier: Modifier, onClick: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             AgentLogo(agent, size = 44.dp)
             Spacer(Modifier.padding(top = 8.dp))
-            Text(agent.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The whole name, a little smaller if it must be, on a small phone with large text.
+            val name = MaterialTheme.typography.titleSmall
+            BasicText(
+                agent.displayName,
+                style = name.copy(color = LocalContentColor.current, textAlign = TextAlign.Center),
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = MIN_AGENT_NAME, maxFontSize = name.fontSize),
+            )
             Text(agent.maker, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -435,3 +447,6 @@ internal suspend fun runCatchingMessage(block: suspend () -> Unit): String? = tr
 } catch (e: Exception) {
     e.message ?: "Something went wrong. Try again."
 }
+
+/** The smallest a tile shrinks an agent's name to, rather than cut it short. */
+private val MIN_AGENT_NAME = 11.sp

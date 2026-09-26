@@ -53,9 +53,9 @@ class SecretsGate(TreeTest):
             with self.subTest(what=what):
                 self.assertFailsWith(self.scan("app/src/main/java/B.kt", f'val x = "{sample}"\n'), what)
 
-    def test_age_test_vectors_are_allowed_in_tests_only(self):
+    def test_age_keys_fail_in_tests_too(self):
         key = "AGE-SECRET-" + "KEY-1" + "Q" * 58
-        self.assertPasses(self.scan("app/src/test/resources/vault/identity.txt", key + "\n"))
+        self.assertFailsWith(self.scan("app/src/test/resources/identity.txt", key + "\n"), "an age secret key")
         self.assertFailsWith(self.scan("app/src/main/assets/identity.txt", key + "\n"), "an age secret key")
 
     def test_github_tokens_are_caught_in_tests_too(self):
