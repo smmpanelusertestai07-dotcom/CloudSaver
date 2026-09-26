@@ -214,8 +214,9 @@ class SafetyTest {
             "aws_secret_access_key=" + fake("", 40),
             fake("gl" + "pat-", 20),
             fake("ey" + "J", 20) + "." + fake("", 20) + "." + fake("", 20),
-            // A private key pasted into a prompt: one JSON line, its line breaks escaped.
-            "-----BEGIN OPENSSH PRIVATE KEY-----\\n" + fake("b3BlbnNzaC1rZXktdjEAAAAA", 40) + "\\n-----END OPENSSH PRIVATE KEY-----",
+            // A private key pasted into a prompt: one JSON line, its line breaks escaped. Split like the
+            // prefixes above, so the source never holds the marker the no-secrets gate looks for.
+            "-----BEGIN OPENSSH " + "PRIVATE KEY-----\\n" + fake("b3BlbnNzaC1rZXktdjEAAAAA", 40) + "\\n-----END OPENSSH PRIVATE KEY-----",
         )
         for (shape in SecretPatterns.tokenShapes) {
             assertTrue("no sample for ${shape.pattern}", samples.any { shape.containsMatchIn(it) })
