@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.WarningAmber
@@ -25,29 +27,33 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.pocketide.docs.DocBlock
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
-import com.pocketide.ui.manage.LinkRow
-import com.pocketide.ui.nav.PocketNav
+import com.pocketide.ui.web.Browser
 
-/** Renders one doc block. All text uses the platform's own selection (Copy, Select all, Share, Translate). */
+/**
+ * Renders one doc block. All text uses the platform's own selection (Copy, Select all, Share,
+ * Translate). A link to another Help page ("help:<id>") opens in the app; a web link, in Chrome.
+ */
 @Composable
-fun DocBlockView(block: DocBlock, nav: PocketNav) {
+fun DocBlockView(block: DocBlock, onOpen: (String) -> Unit) {
     when (block) {
         is DocBlock.Paragraph -> SelectableText(block.text, Modifier.fillMaxWidth())
         is DocBlock.Bullets -> SelectableText(bullets(block.items), Modifier.fillMaxWidth())
         is DocBlock.Steps -> SelectableText(steps(block.items), Modifier.fillMaxWidth())
         is DocBlock.Table -> TableBlock(block)
         is DocBlock.Note -> NoteBlock(block)
-        is DocBlock.Link -> LinkRow(block.label, block.url, nav)
+        is DocBlock.Link -> LinkRow(block.label, block.url, onOpen)
     }
 }
 
@@ -183,3 +189,20 @@ private fun NoteBlock(note: DocBlock.Note) {
         }
     }
 }
+
+@Composable
+private fun LinkRow(label: String, url: String, onOpen: (String) -> Unit) {
+    val context = LocalContext.current
+    TextButton(
+        onClick = {
+            if (url.startsWith(HELP_SCHEME)) onOpen(url.removePrefix(HELP_SCHEME)) else Browser.open(context, url)
+        },
+    ) {
+        Icon(if (url.startsWith(HELP_SCHEME)) Icons.AutoMirrored.Outlined.MenuBook else Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+}
+
+/** A doc link to another Help page, such as `help:your-data`. */
+const val HELP_SCHEME = "help:"

@@ -1,11 +1,10 @@
 package com.pocketide.docs
 
-import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class NoticesTest {
-
     private val raw: String by lazy {
         // Unit tests run with the module directory as the working directory.
         val file = listOf(File("src/main/assets"), File("app/src/main/assets"))
@@ -21,14 +20,9 @@ class NoticesTest {
     private val ownText: String by lazy { notices.substringBefore(LICENCE_TEXTS) }
 
     @Test
-    fun `notices name every part and its licence`() {
+    fun `notices name every part inside the APK and its licence`() {
         val missing = REQUIRED.filterNot { (part, licence) -> notices.contains(part) && notices.contains(licence) }
         assertTrue("missing from the notices: $missing", missing.isEmpty())
-    }
-
-    @Test
-    fun `GPL source is said to be published with each release`() {
-        assertTrue(notices.contains("The GPL source for each release is published beside it"))
     }
 
     @Test
@@ -40,20 +34,17 @@ class NoticesTest {
 
     @Test
     fun `the Help page's licence table agrees with the notices`() {
-        val section = checkNotNull(DocsContent.section("open-source"))
-        val table = section.blocks.filterIsInstance<DocBlock.Table>().single()
+        val table = checkNotNull(DocsContent.section(DocsContent.NOTICES_ID)).blocks.filterIsInstance<DocBlock.Table>().single()
         val disagree = table.rows.filterNot { (part, licence) ->
-            val name = part.substringBefore(" (").substringBefore(",").substringBefore(" and ")
-            notices.contains(name) && notices.contains(licence.substringBefore(" ("), ignoreCase = true)
+            notices.contains(part.substringBefore(" (").substringBefore(",").substringBefore(" and ")) && notices.contains(licence, ignoreCase = true)
         }
         assertTrue("rows the notices do not back: $disagree", disagree.isEmpty())
     }
 
     @Test
-    fun `parts that are downloaded are not listed as inside the APK`() {
-        val inside = ownText.substringAfter("INSIDE THE APK").substringBefore("DOWNLOADED AT RUN TIME")
-        val wrong = DOWNLOADED.filter { inside.contains(it) }
-        assertTrue("listed inside the APK but downloaded at run time: $wrong", wrong.isEmpty())
+    fun `nothing of the phone computer is still listed`() {
+        val gone = listOf("PRoot", "talloc", "JGit", "Bouncy Castle", "xterm", "code-server")
+        assertTrue(gone.filter { ownText.contains(it) }.toString(), gone.none { ownText.contains(it) })
     }
 
     @Test
@@ -67,36 +58,16 @@ class NoticesTest {
 
         val REQUIRED = listOf(
             "PocketIDE" to "Apache License 2.0",
-            "PRoot" to "GPL-2.0",
-            "talloc" to "LGPL-3.0",
-            "libandroid-shmem" to "BSD 3-Clause",
-            "Ubuntu" to "Canonical",
-            "code-server" to "MIT licence",
-            "xterm.js" to "MIT licence",
-            "@xterm/xterm 6.0.0 and @xterm/addon-fit 0.11.0" to "MIT License",
-            "Bouncy Castle" to "MIT License",
-            "JGit" to "EDL-1.0",
-            "OkHttp" to "Apache License 2.0",
             "AndroidX" to "Apache License 2.0",
-            "kotlinx" to "Apache License 2.0",
-            "Google Play services" to "Google APIs Terms of Service",
-            "Material icons" to "Apache License 2.0",
-            "The agents and their extensions" to "publisher's terms",
+            "Kotlin" to "Apache License 2.0",
+            "OkHttp" to "Apache License 2.0",
+            "Octicons" to "MIT License",
+            "Codicons" to "CC BY 4.0",
         )
 
-        /** Opening words of each licence text the APK's own parts require to accompany them. */
         val FULL_TEXTS = listOf(
-            "Apache License Version 2.0, January 2004",
-            "GNU GENERAL PUBLIC LICENSE Version 2, June 1991",
-            "GNU LESSER GENERAL PUBLIC LICENSE Version 3, 29 June 2007",
-            "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007",
-            "Copyright (c) 2013, Sergii Pylypenko",
-            "Eclipse Distribution License - v 1.0",
-            "Copyright (c) 2004-2017 QOS.ch",
-            "Copyright (c) 2017-2019, The xterm.js authors",
+            "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
+            "Permission is hereby granted, free of charge",
         )
-
-        // xterm.js is in both lists: the terminal page carries its own copy, and code-server another.
-        val DOWNLOADED = listOf("code-server", "Chromium", "Playwright")
     }
 }

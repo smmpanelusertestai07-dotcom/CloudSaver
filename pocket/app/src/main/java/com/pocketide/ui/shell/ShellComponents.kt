@@ -118,44 +118,6 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
     }
 }
 
-/** "Step 2 of 4 · Required" and how long it usually takes, over a segmented bar: done steps green, this one violet. */
-@Composable
-fun StepHeader(step: OnboardingStep, modifier: Modifier = Modifier, required: Boolean = true) {
-    val total = OnboardingStep.NUMBERED
-    val label = "Step ${step.number} of $total"
-    Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (i in 1..total) {
-                val color = when {
-                    i < step.number -> toneColor(Tone.OK)
-                    i == step.number -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.outlineVariant
-                }
-                Box(Modifier.weight(1f).height(4.dp).clip(CircleShape).background(color))
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        // Wraps instead of squeezing the time chip away at the largest font sizes.
-        FlowRow(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            val warn = toneColor(Tone.WARN)
-            Text(
-                buildAnnotatedString {
-                    append(label)
-                    if (required) withStyle(SpanStyle(color = warn, fontWeight = FontWeight.SemiBold)) { append(" · Required") }
-                },
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            step.usualTime?.let { StatusChip(it, Tone.NEUTRAL) }
-        }
-    }
-}
-
 /** An icon tile and a large title with one or two lines under it. */
 @Composable
 fun ScreenTitle(icon: ImageVector, title: String, subtitle: String?, modifier: Modifier = Modifier, tone: Tone? = null) {
@@ -234,19 +196,6 @@ data class CheckItem(
     val icon: ImageVector? = null,
     val spoken: String? = null,
 )
-
-/** [CheckLine]s as a [CheckCard]: a tick when done, a clock while waiting, a cross for a problem. */
-@Composable
-fun CheckLinesCard(lines: List<CheckLine>, modifier: Modifier = Modifier) {
-    CheckCard(lines.map { it.toItem() }, modifier)
-}
-
-fun CheckLine.toItem(): CheckItem = when (status) {
-    CheckStatus.DONE -> CheckItem(title, detail, good = true, spoken = "Done")
-    CheckStatus.PROBLEM -> CheckItem(title, detail, good = false, spoken = "Needs attention")
-    CheckStatus.WAITING -> CheckItem(title, detail, good = null, icon = Icons.Outlined.Schedule, spoken = "Not yet")
-    CheckStatus.INFO -> CheckItem(title, detail, good = null, icon = Icons.Outlined.Info)
-}
 
 /** A rounded card of rows separated by hairlines, as in the set-up mockups. */
 @Composable

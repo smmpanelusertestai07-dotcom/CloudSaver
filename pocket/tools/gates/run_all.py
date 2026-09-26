@@ -21,7 +21,6 @@ import no_secrets
 import permissions
 import repository
 import script_safety
-import templates
 import version
 import workflow
 
@@ -36,7 +35,6 @@ def gates(built: bool, apk: Path | None):
     yield "permissions", lambda: permissions.check(built=built)
     yield "least privilege (GitHub Administration)", least_privilege.check
     yield "script safety", script_safety.check
-    yield "build templates", templates.check
     yield "16 KB native alignment (jniLibs)", native_alignment.check
     if apk is not None:
         yield f"16 KB native alignment ({apk.name})", lambda: native_alignment.check(apk=apk)

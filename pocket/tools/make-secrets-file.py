@@ -143,7 +143,7 @@ def gather(args: argparse.Namespace) -> KeyFacts:
 def render(facts: KeyFacts, repo: str | None, keystore_name: str) -> str:
     today = dt.datetime.now(dt.timezone.utc).strftime("%d %b %Y")
     site = f"https://github.com/{repo}" if repo else "https://github.com/<owner>/<repository>"
-    return f"""PocketIDE 3: secrets and settings for GitHub Actions
+    return f"""PocketIDE 4: secrets and settings for GitHub Actions
 Made on {today} from {keystore_name}. Keep this file private, and delete it once every value is saved.
 Screen names below are as of September 2026; if a label has moved, the path is still right.
 
@@ -170,7 +170,7 @@ POCKETIDE_GITHUB_APP_CLIENT_ID=<the GitHub App's Client ID, which starts with "I
 POCKETIDE_GITHUB_APP_SLUG=<the last part of the App's public link, github.com/apps/<slug>>
 
 
-3. SIGNING CERTIFICATE (not secret; for the Google Android OAuth client in step B)
+3. SIGNING CERTIFICATE (not secret; how the app's updates are recognised)
 
 Package name: {PACKAGE}
 SHA-1:        {facts.sha1}
@@ -187,44 +187,29 @@ A. CREATE THE GITHUB APP (sign-in for PocketIDE; no server, no client secret)
       installation" unticked; tick "Enable Device Flow".
    4. Webhook: untick "Active". PocketIDE needs no webhook.
    5. Repository permissions:
-        Actions: Read and write           Administration: Read and write
-        Contents: Read and write          Metadata: Read-only
-        Pull requests: Read and write     Secrets: Read and write
-        Workflows: Read and write
+        Codespaces: Read and write                 Codespaces lifecycle admin: Read and write
+        Codespaces metadata: Read-only             Contents: Read and write
+        Administration: Read and write             Actions: Read-only
+        Metadata: Read-only
       Account permissions:
-        Plan: Read-only (so the app can show your real Actions usage)
+        Plan: Read-only (so the app can show your real Codespaces hours and Actions minutes)
+        Repository creation: Read and write, where GitHub shows it (for New project)
    6. Where can this GitHub App be installed? Only on this account. Then Create GitHub App.
    7. On the App's page, copy the Client ID into POCKETIDE_GITHUB_APP_CLIENT_ID, and the slug
       (the last part of its public link) into POCKETIDE_GITHUB_APP_SLUG. Do not generate a
       client secret or a private key: PocketIDE uses neither.
-   8. Install App > your account > Only select repositories > pick your project repositories.
-      GitHub adds the repositories PocketIDE creates to this installation by itself; if one is
-      ever missing, PocketIDE shows a button that opens this page.
+   8. Install App > your account > All repositories (so projects made in PocketIDE work at
+      once), or Only select repositories. PocketIDE never deletes a repository or changes who
+      can see one; the build's least-privilege gate checks that.
+   An App from PocketIDE 3 can be kept: add the Codespaces permissions above, then accept the
+   new permissions on github.com/settings/installations.
 
 
-B. CREATE THE GOOGLE CLOUD PROJECT (Drive's hidden app folder)
-   1. Open https://console.cloud.google.com/projectcreate and create a project, e.g. "PocketIDE".
-   2. APIs & Services > Library > Google Drive API > Enable.
-   3. Google Auth Platform (the OAuth consent screen) > Get started: app name PocketIDE, your
-      email as support and contact email, Audience: External.
-   4. Data access > Add or remove scopes: tick .../auth/drive.appdata only, then Save.
-      It is a non-sensitive scope: no verification is needed.
-   5. Audience > Publish app, so the status reads "In production". In "Testing", Google ends
-      every sign-in after 7 days.
-   6. Clients > Create client > Application type: Android.
-      Name: PocketIDE release. Package name: {PACKAGE}. SHA-1 certificate fingerprint: the
-      SHA-1 in section 3. Create. Nothing needs to be copied back: Google recognises the app
-      by its package name and signing certificate.
-      (A debug build is {PACKAGE}.debug with your own debug key; it needs a second Android
-      client with that key's SHA-1.)
-   Google deletes OAuth clients that go unused for 6 months; using the app keeps it alive.
-
-
-C. PASTE THE VALUES
+B. PASTE THE VALUES
    Secrets from section 1, and the two variables from section 2, on the pages listed at the top.
 
 
-D. RE-RUN THE WORKFLOW
+C. RE-RUN THE WORKFLOW
    Actions > pocketide > Run workflow > Branch: main > Run workflow.
    The build signs with your key, and the release job publishes pocketide-v<version>.
 
@@ -234,7 +219,6 @@ CHECKLIST
        POCKETIDE_KEY_ALIAS
    [ ] 2 variables saved: POCKETIDE_GITHUB_APP_CLIENT_ID, POCKETIDE_GITHUB_APP_SLUG
    [ ] GitHub App: Device Flow on, webhook off, the permissions above, installed on your repositories
-   [ ] Google Cloud: Drive API on, drive.appdata scope, In production, Android client with the SHA-1
    [ ] The key store file is backed up somewhere private
    [ ] The workflow ran green on main
    [ ] This file is deleted

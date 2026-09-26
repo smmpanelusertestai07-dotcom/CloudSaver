@@ -1,47 +1,42 @@
 package com.pocketide
 
-import android.content.ContentResolver
+import android.app.UiModeManager
 import android.content.Intent
-import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.core.content.IntentCompat
 import androidx.fragment.app.FragmentActivity
-import com.pocketide.rooms.RoomNotices
+import androidx.lifecycle.lifecycleScope
+import com.pocketide.core.ThemeMode
 import com.pocketide.ui.PocketRoot
-import com.pocketide.ui.screens.project.SessionShortcut
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
- * The single activity. FLAG_SECURE keeps chats and code out of screenshots and the recents
- * thumbnail; the app lock itself is part of [PocketRoot].
- *
- * Launches that ask for something (an agent notification or a pinned shortcut naming a session,
- * a file shared from another app) are held here until the UI takes them, which it does only
- * after the app lock and once navigation is ready.
+ * The single activity. With "Hide from screenshots" on (the default), FLAG_SECURE keeps code and
+ * chats out of screenshots and the Recents preview; the app lock itself is part of [PocketRoot].
  */
 class MainActivity : FragmentActivity() {
-    private val session = MutableStateFlow<String?>(null)
-    private val shared = MutableStateFlow<Uri?>(null)
+    private val computerAsked = MutableStateFlow(false)
 
-    /** The session whose agent screen should open next; null when none is waiting. */
-    val sessionToOpen: StateFlow<String?> = session.asStateFlow()
-
-    /** A file another app shared, waiting for the owner to pick a session for it. */
-    val sharedFile: StateFlow<Uri?> = shared.asStateFlow()
+    /** True when the ongoing notification asked for the computer screen; the UI takes it once. */
+    val openComputer: StateFlow<Boolean> = computerAsked.asStateFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
-        if (savedInstanceState == null) {
-            take(intent)
-        } else {
-            session.value = savedInstanceState.getString(STATE_SESSION)?.takeIf(SessionShortcut::isSessionId)
+        if (savedInstanceState == null) take(intent)
+        lifecycleScope.launch {
+            graph.settings.settings.map { it.hideScreen to it.theme }.distinctUntilChanged().collect { (hide, theme) ->
+                if (hide) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                followTheme(theme)
+            }
         }
         setContent { PocketRoot(activity = this) }
     }
@@ -52,56 +47,30 @@ class MainActivity : FragmentActivity() {
         take(intent)
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        session.value?.let { outState.putString(STATE_SESSION, it) }
-    }
-
-    /** Called once the agent screen for [sessionToOpen] is shown. */
-    fun sessionOpened() {
-        session.value = null
-    }
-
-    /** Called once the shared file was added to a session, or the owner cancelled. */
-    fun sharedFileHandled() {
-        shared.value = null
+    fun computerOpened() {
+        computerAsked.value = false
     }
 
     private fun take(intent: Intent?) {
-        if (intent == null) return
-        val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
-        sessionToOpen(
-            notice = intent.getStringExtra(RoomNotices.EXTRA_SESSION),
-            shortcut = intent.getStringExtra(SessionShortcut.EXTRA_SESSION),
-            fromHistory = fromHistory,
-        )?.let { session.value = it }
-        // Recents hands the original intent back; a relaunch from there must not open it again.
-        intent.removeExtra(RoomNotices.EXTRA_SESSION)
-        intent.removeExtra(SessionShortcut.EXTRA_SESSION)
+        val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (intent?.action == ACTION_OPEN_COMPUTER && !fromHistory) computerAsked.value = true
+    }
 
-        if (intent.action == Intent.ACTION_SEND && !fromHistory) {
-            val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            if (isShareable(uri?.scheme, uri?.authority, packageName)) shared.value = uri
+    /**
+     * Android 12 and newer take the app's own light or dark choice, so the system's screens and the
+     * cloud computer's page (which follows the app's night mode) match the app.
+     */
+    private fun followTheme(theme: ThemeMode) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val mode = when (theme) {
+            ThemeMode.SYSTEM -> UiModeManager.MODE_NIGHT_AUTO
+            ThemeMode.LIGHT -> UiModeManager.MODE_NIGHT_NO
+            ThemeMode.DARK -> UiModeManager.MODE_NIGHT_YES
         }
+        getSystemService(UiModeManager::class.java)?.setApplicationNightMode(mode)
     }
 
-    private companion object {
-        const val STATE_SESSION = "pocketide.session_to_open"
+    companion object {
+        const val ACTION_OPEN_COMPUTER = "com.pocketide.OPEN_COMPUTER"
     }
 }
-
-/**
- * The session a launch names: a notification's or a shortcut's, as a session id and never
- * anything else. A relaunch from Recents carries the old extras again and opens nothing.
- */
-internal fun sessionToOpen(notice: String?, shortcut: String?, fromHistory: Boolean): String? {
-    if (fromHistory) return null
-    return listOfNotNull(notice, shortcut).firstOrNull(SessionShortcut::isSessionId)
-}
-
-/**
- * Only content shared through a content provider of another app. A file:// path could name this
- * app's own private files, and our own provider only serves files the app already has.
- */
-internal fun isShareable(scheme: String?, authority: String?, packageName: String): Boolean =
-    scheme == ContentResolver.SCHEME_CONTENT && authority != null && !authority.startsWith("$packageName.")

@@ -9,17 +9,17 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Seals small secrets (tokens, the vault key, Secrets) so only this install can open them. */
+/** Seals small secrets (the GitHub tokens) so only this install can open them. */
 interface SecretBox {
     fun seal(plain: ByteArray): ByteArray
     fun open(sealed: ByteArray): ByteArray
 }
 
 /**
- * AES-256-GCM with a key that lives in the Android Keystore and never leaves it. The key is
- * erased by Android on uninstall, which is why the vault key also exists as two halves in Drive
- * and GitHub. No user authentication is bound to the key: the app lock guards the screens, and
- * background sync must keep working with the screen off.
+ * AES-256-GCM with a key that lives in the Android Keystore and never leaves it. Android erases
+ * the key on uninstall, which only means signing in to GitHub again: nothing else is kept here.
+ * No user authentication is bound to the key: the app lock guards the screens, and the
+ * background connection must keep working with the screen off.
  */
 class KeystoreBox(private val alias: String = "pocketide.secure.v1") : SecretBox {
     override fun seal(plain: ByteArray): ByteArray {
@@ -92,6 +92,11 @@ class SecureStore(private val dir: File, private val box: SecretBox) {
     }
 
     fun has(name: String) = file(name).isFile
+
+    /** Every sealed blob, for "Delete PocketIDE's data from this phone". */
+    fun deleteAll() {
+        dir.listFiles()?.forEach { it.delete() }
+    }
 
     private fun file(name: String): File {
         require(name.matches(Regex("[A-Za-z0-9._-]+"))) { "Bad secure name" }

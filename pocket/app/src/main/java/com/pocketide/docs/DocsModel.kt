@@ -6,8 +6,10 @@ sealed interface DocBlock {
     data class Bullets(val items: List<String>) : DocBlock
     data class Steps(val items: List<String>) : DocBlock
     data class Table(val header: List<String>, val rows: List<List<String>>) : DocBlock
+
     /** A highlighted note: [tone] is "info", "warn" or "tip". */
     data class Note(val tone: String, val text: String) : DocBlock
+
     /** A link the owner may open in Chrome. */
     data class Link(val label: String, val url: String) : DocBlock
 }

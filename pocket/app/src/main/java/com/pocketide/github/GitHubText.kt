@@ -13,8 +13,8 @@ import kotlin.math.ceil
 internal object GitHubText {
     const val NOT_CONFIGURED =
         "PocketIDE doesn't know your GitHub App yet, so GitHub cannot be connected. " +
-            "Enter the App's client ID in Settings > Advanced > GitHub App."
-    const val NOT_CONNECTED = "GitHub is not connected. Connect it in Settings."
+            "Enter the App's client ID in Settings > GitHub App."
+    const val NOT_CONNECTED = "GitHub is not connected. Sign in with GitHub again."
     const val ACCESS_REMOVED = "GitHub access was removed or has expired. Connect GitHub again."
     const val RENEW_FAILED = "GitHub sign-in could not be renewed. Try again in a minute."
     const val UNEXPECTED = "GitHub sent an answer PocketIDE did not expect. Try again in a minute."
@@ -29,7 +29,6 @@ internal object GitHubText {
     const val NOT_FOUND = "GitHub could not find it, or PocketIDE's GitHub App has no access to it."
     const val FORBIDDEN = "PocketIDE's GitHub App is not allowed to do this. Check the App's permissions on GitHub."
     const val CONFLICT = "It changed on GitHub in the meantime. Reload and try again."
-    const val GONE = "It is no longer on GitHub. Build files expire after a while."
     const val REJECTED = "GitHub did not accept that. Check the details and try again."
     const val NAME_TAKEN = "That name is already used on your GitHub account. Choose another name."
     const val SERVER = "GitHub is having trouble right now. Try again in a few minutes."
@@ -37,17 +36,11 @@ internal object GitHubText {
     const val API_RETIRED = "GitHub changed its API. Update PocketIDE to its newest version."
     const val IS_FOLDER = "That path is a folder on GitHub, not a file."
     const val TOO_BIG = "That file is too big to read through GitHub's API."
-    const val NOT_FROM_GITHUB = "That download link does not point to GitHub, so PocketIDE will not send your sign-in to it."
-    const val DIGEST_MISMATCH = "The downloaded build files do not match GitHub's checksum. Download them again."
-    const val BAD_SECRET_NAME =
-        "Secret names use letters, numbers and underscores, and cannot start with a number or GITHUB_."
-    const val BAD_MERGE_METHOD = "Choose merge, squash or rebase."
-    const val TOO_MANY_INPUTS = "GitHub accepts at most 25 inputs for a workflow."
     const val BAD_NAME = "Use letters, numbers, dots, hyphens or underscores in GitHub names."
     const val BAD_PATH = "That file path is not valid."
 
     const val USAGE_UNAVAILABLE =
-        "GitHub does not share this account's Actions usage with apps. Open GitHub's billing page to see it."
+        "GitHub does not share this account's usage with apps. Open GitHub's billing page to see it."
 
     fun slowDown(waitMs: Long?): String {
         if (waitMs == null) return "GitHub asked PocketIDE to slow down. Try again in a minute."
@@ -69,7 +62,6 @@ internal object GitHubErrors {
         status == 403 -> GitHubText.FORBIDDEN
         status == 409 -> GitHubText.CONFLICT
         ApiVersionChoice.refuses(status, body) -> GitHubText.API_RETIRED
-        status == 410 -> GitHubText.GONE
         status == 422 && details(body).any { it.contains("already exists") } -> GitHubText.NAME_TAKEN
         status == 400 || status == 422 -> GitHubText.REJECTED
         status >= 500 -> GitHubText.SERVER

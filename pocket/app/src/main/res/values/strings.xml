@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PocketIDE</string>
-    <string name="engine_channel_name">Computer running</string>
-    <string name="engine_channel_description">Shown while the Linux computer and your agents are running.</string>
-    <string name="sync_channel_name">Sync and storage</string>
-    <string name="sync_channel_description">Sync problems, storage limits and notices before anything is deleted.</string>
-    <string name="agents_channel_name">New agents and updates</string>
-    <string name="agents_channel_description">A new verified agent was found, or an app update is ready.</string>
-    <string name="builds_channel_name">Builds and scheduled tasks</string>
-    <string name="builds_channel_description">A GitHub Actions build or a scheduled task finished.</string>
-    <string name="engine_fgs_subtype">Runs a local Linux development computer (proot) that hosts coding agents the user opened, until the user stops it.</string>
+    <string name="computer_channel_name">Cloud computer</string>
+    <string name="computer_channel_description">Shown while PocketIDE stays connected to your running cloud computer, with a Stop button.</string>
+    <string name="computer_fgs_subtype">Keeps the app\'s connection to the user\'s own running GitHub Codespace open in the background, shows that it is running, and lets the user stop it.</string>
+    <string name="computer_on_title">Cloud computer is on</string>
+    <string name="computer_on_text">%1$s · Agents keep working on GitHub. It stops by itself when idle.</string>
+    <string name="computer_stop">Stop computer</string>
+    <string name="computer_stopped_title">Cloud computer stopped</string>
+    <string name="computer_stopped_text">%1$s stopped, so it no longer uses your hours. Open it again any time.</string>
 </resources>

@@ -1,328 +1,472 @@
 package com.pocketide.ui.screens.computer
 
-import android.app.ActivityManager
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
-import android.os.StatFs
+import android.view.KeyEvent
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailability
 import com.pocketide.AppGraph
-import com.pocketide.core.Ist
-import com.pocketide.docs.FixLadder
-import com.pocketide.limiter.EngineService
-import com.pocketide.linux.ComputerInfo
-import com.pocketide.linux.ComputerState
-import com.pocketide.linux.RepairItem
-import com.pocketide.linux.RepairStatus
-import com.pocketide.model.PhoneSnapshot
-import com.pocketide.rooms.RoomState
-import com.pocketide.ui.components.InfoRow
-import com.pocketide.ui.components.SectionCard
+import com.pocketide.agents.Agent
+import com.pocketide.cloud.Computer
+import com.pocketide.cloud.ComputerService
+import com.pocketide.cloud.OpenStep
+import com.pocketide.graph
+import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
-import com.pocketide.ui.manage.ComputerExpiry
-import com.pocketide.ui.manage.ConfirmDialog
-import com.pocketide.ui.manage.ErrorNote
-import com.pocketide.ui.manage.Hint
-import com.pocketide.ui.manage.ManageFormat
-import com.pocketide.ui.manage.ManagePage
-import com.pocketide.ui.manage.ManageText
-import com.pocketide.ui.manage.PhoneFacts
-import com.pocketide.ui.manage.PhoneRequirements
-import com.pocketide.ui.manage.PlainError
-import com.pocketide.ui.manage.RequirementCheck
-import com.pocketide.ui.manage.ToneLine
-import com.pocketide.ui.manage.Told
-import com.pocketide.ui.manage.UsageMeter
-import com.pocketide.ui.manage.attempt
-import com.pocketide.ui.manage.rememberActionRunner
-import com.pocketide.ui.manage.rememberGraph
-import com.pocketide.ui.manage.rememberLoad
-import com.pocketide.ui.nav.PocketNav
-import com.pocketide.ui.screens.onboarding.SetUpComputerCard
-import com.pocketide.ui.screens.onboarding.SetUpOffer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.pocketide.ui.components.VsCodeLogo
+import com.pocketide.ui.shell.CenteredTitle
+import com.pocketide.ui.shell.FinePrint
+import com.pocketide.ui.shell.Gap
+import com.pocketide.ui.shell.NoticeCard
+import com.pocketide.ui.shell.PrimaryAction
+import com.pocketide.ui.shell.SecondaryAction
+import com.pocketide.ui.shell.ShellPage
+import com.pocketide.ui.web.Browser
+import com.pocketide.ui.web.ComputerWebView
+import com.pocketide.ui.web.PageHost
+import com.pocketide.ui.web.PageState
+import com.pocketide.ui.web.WebPolicy
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+
+private sealed interface Phase {
+    data class Opening(val step: OpenStep) : Phase
+    data class Ready(val computer: Computer) : Phase
+    data class Failed(val message: String) : Phase
+}
 
 /**
- * The phone and the Linux computer inside the app, as 2.6.0 showed it: processor, memory,
- * storage, versions of everything, each room's live memory, and whether this phone meets the
- * requirements. "Reset computer" rebuilds it; nothing of the owner's lives only there.
+ * The cloud computer, full screen: VS Code for the web on the owner's codespace with the agents
+ * in front, PocketIDE's key bar under it, and the ⋯ menu for agents, terminal and the computer.
  */
 @Composable
-fun ComputerScreen(nav: PocketNav) {
-    val graph = rememberGraph()
+fun ComputerScreen(agentToShow: Agent?, onAgentShown: () -> Unit, onHome: () -> Unit, onHelp: () -> Unit) {
     val context = LocalContext.current
-    val runner = rememberActionRunner()
-    val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
-    val state by graph.computer.state.collectAsStateWithLifecycle()
-    val rooms by graph.rooms.states.collectAsStateWithLifecycle()
-    val agents by graph.agents.installed.collectAsStateWithLifecycle()
-    val sessions by graph.sessions.all.collectAsStateWithLifecycle()
-    val projects by graph.projects.all.collectAsStateWithLifecycle()
+    val graph = context.graph
+    val activity = context as? FragmentActivity ?: return
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val removalAt by graph.sync.computerRemovalAt.collectAsStateWithLifecycle()
-    val info = rememberLoad(Unit, graph.clock::now) { withContext(Dispatchers.IO) { graph.computer.info() } }
-    val size = rememberLoad(state::class, graph.clock::now) { withContext(Dispatchers.IO) { graph.computer.sizeBytes() } }
-    val facts = rememberLoad(snapshot.storageFreeBytes / 1_000_000_000L, graph.clock::now) {
-        withContext(Dispatchers.IO) { readFacts(context, graph, snapshot) }
+    val name = settings.lastComputer
+    if (name.isBlank()) {
+        NoComputer(onHome)
+        return
     }
-    val lastWork = ComputerExpiry.lastWork(sessions.map { it.lastActivityAt }, projects.map { it.lastActivityAt })
-    val daysLeft = ComputerExpiry.daysLeft(lastWork, settings.computerUnusedDays, graph.clock.now())
-    var confirmReset by rememberSaveable { mutableStateOf(false) }
-    var confirmRestart by rememberSaveable { mutableStateOf(false) }
-    var repair by remember { mutableStateOf<List<RepairItem>?>(null) }
-    val working = runner.isBusy(RESET) || runner.isBusy(REPAIR) || state is ComputerState.Installing
+    var attempt by remember(name) { mutableIntStateOf(0) }
+    var phase by remember(name) { mutableStateOf<Phase>(Phase.Opening(OpenStep.CHECKING)) }
+    var askedForNotices by rememberSaveable { mutableStateOf(false) }
+    val notices = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    LaunchedEffect(Unit) { attempt { graph.phone.refresh() } }
+    LaunchedEffect(name, attempt) {
+        phase = open(graph, name) { phase = Phase.Opening(it) }
+    }
 
-    ManagePage("Computer", nav, runner) {
-        // One item either way, so the set-up card keeps its progress while the state changes.
-        item(key = "state") {
-            if (SetUpOffer.shows(state)) SetUpComputerCard() else StateCard(state, size.value, daysLeft, removalAt)
+    when (val current = phase) {
+        is Phase.Opening -> ShellPage {
+            CenteredTitle(Icons.Outlined.Terminal, "Opening your computer", null)
+            Gap(24.dp)
+            OpeningSteps(current.step, addsSetUp = false)
+            Gap(16.dp)
+            FinePrint("A stopped computer takes about a minute to start. It uses your free hours only while it runs.")
+            SecondaryAction("Back to Home", onClick = onHome)
         }
-        item { PhoneCard(snapshot, info.value) }
-        item { VersionsCard(info.value, info.error, agents.map { it.displayName to it.version }) }
-        item {
-            SectionCard("Rooms") {
-                if (agents.isEmpty()) Hint("No agents yet.")
-                agents.forEach { agent ->
-                    val told = ManageText.room(rooms[agent.id] ?: RoomState.Stopped, ManageFormat::bytes)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(agent.displayName, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        StatusChip(told.text, told.tone)
-                    }
+        is Phase.Failed -> ShellPage(centered = true) {
+            CenteredTitle(Icons.Outlined.Terminal, "The computer did not open", null, Tone.ERROR)
+            Gap(16.dp)
+            NoticeCard(current.message, Tone.ERROR)
+            Gap(20.dp)
+            PrimaryAction("Try again", onClick = { attempt++ })
+            SecondaryAction("Back to Home", onClick = onHome)
+        }
+        is Phase.Ready -> {
+            LaunchedEffect(current.computer.name, settings.stayConnected) {
+                if (!settings.stayConnected) return@LaunchedEffect
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedForNotices &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    askedForNotices = true
+                    notices.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
-                val running = rooms.values.filterIsInstance<RoomState.Running>().sumOf { it.memoryBytes }
-                if (running > 0) Hint("Rooms use ${ManageFormat.bytes(running)} of memory now.")
+                ComputerService.stayConnected(context, current.computer)
             }
-        }
-        facts.value?.let { phoneFacts ->
-            item { RequirementsCard(PhoneRequirements.check(phoneFacts)) }
-        }
-        item { NetworkPanel(runner) }
-        item {
-            FixItLadder(
-                working = working,
-                onRestart = { confirmRestart = true },
-                repair = repair,
-                onRepair = {
-                    // From the tap, while Android allows it: a repair may set up missing parts again.
-                    EngineService.start(graph.context)
-                    runner.run(REPAIR, outlivesScreen = true, onSuccess = { items: List<RepairItem> ->
-                        repair = items
-                        runner.say(RepairText.summary(items))
-                    }) {
-                        val computerItems = graph.computer.repair()
-                        computerItems + agents.map { agent ->
-                            attempt { graph.agents.ensureInstalled(agent.id) }.fold(
-                                { RepairItem(agent.displayName, RepairStatus.OK, "Installed and up to date.") },
-                                { RepairItem(agent.displayName, RepairStatus.WARN, PlainError.of(it)) },
-                            )
-                        }
-                    }
-                },
-                onReset = { confirmReset = true },
-                onGuide = { nav.help(IF_SOMETHING_BREAKS) },
+            ComputerPage(
+                activity = activity,
+                computer = current.computer,
+                agentToShow = agentToShow,
+                onAgentShown = onAgentShown,
+                keyBar = settings.keyBar,
+                onHome = onHome,
+                onHelp = onHelp,
             )
         }
     }
+}
 
-    if (confirmRestart) {
-        ConfirmDialog(
-            title = "Restart the computer?",
-            text = "Every room closes and its programs end. Files, sign-ins and chat history stay. Open an agent again to start it.",
-            confirmLabel = "Restart",
-            destructive = false,
-            onConfirm = {
-                runner.run(RESTART, done = "The computer restarted. Open an agent to start it.") {
-                    graph.rooms.stopAll()
-                    graph.computer.restart()
+/** Starts the computer when needed and waits for it; the phase to show once that is done. */
+private suspend fun open(graph: AppGraph, name: String, onStep: (OpenStep) -> Unit): Phase = try {
+    var started = false
+    val computer = graph.computers.startAndWait(name) { step ->
+        if (step == OpenStep.STARTING || step == OpenStep.CREATING) started = true
+        onStep(step)
+    }
+    // A page kept from before the computer stopped shows GitHub's "stopped" screen.
+    if (started) graph.computerPage.reopenIfFor(computer.name, computer.webUrl)
+    Phase.Ready(computer)
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (e: Exception) {
+    Phase.Failed(e.message ?: "The computer did not open. Try again.")
+}
+
+@Composable
+private fun ComputerPage(
+    activity: FragmentActivity,
+    computer: Computer,
+    agentToShow: Agent?,
+    onAgentShown: () -> Unit,
+    keyBar: Boolean,
+    onHome: () -> Unit,
+    onHelp: () -> Unit,
+) {
+    val graph = activity.graph
+    val page = graph.computerPage
+    var pageState by remember { mutableStateOf<PageState>(PageState.Loading(0)) }
+    var generation by remember { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf(false) }
+    var waiting by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    var askOpen by remember { mutableStateOf<String?>(null) }
+    val answer = { uris: List<Uri> ->
+        waiting?.onReceiveValue(uris.toTypedArray().takeIf { it.isNotEmpty() })
+        waiting = null
+    }
+    val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(), answer)
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), answer)
+    val host = remember(computer.name) {
+        object : PageHost {
+            override fun openInChrome(url: String, fromTap: Boolean) {
+                if (fromTap) Browser.open(activity, url) else askOpen = url
+            }
+
+            override fun pickFiles(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams) {
+                // The page waits for one answer per request: an older one is answered empty first.
+                waiting?.onReceiveValue(null)
+                waiting = callback
+                if (acceptsOnlyImages(params.acceptTypes.orEmpty().toList())) {
+                    pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                } else {
+                    pickFiles.launch(arrayOf("*/*"))
                 }
+            }
+
+            override fun onPageState(state: PageState) {
+                pageState = state
+            }
+        }
+    }
+    BackHandler { page.back(onHome) }
+    LaunchedEffect(pageState, agentToShow) {
+        val agent = agentToShow ?: return@LaunchedEffect
+        if (pageState != PageState.Ready) return@LaunchedEffect
+        page.showAgent(agent) { shown ->
+            if (!shown) Toast.makeText(activity, agentMissing(agent), Toast.LENGTH_LONG).show()
+            onAgentShown()
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding().navigationBarsPadding().imePadding()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            key(generation) {
+                AndroidView(
+                    factory = { page.attach(activity, computer.name, computer.webUrl, host) },
+                    modifier = Modifier.fillMaxSize(),
+                    onRelease = { page.detach() },
+                )
+            }
+            PageOverlay(pageState, onReload = {
+                if (pageState == PageState.Stopped) generation++ else page.reopen(computer.webUrl)
+            })
+        }
+        if (keyBar) KeyBar(page, onMenu = { menu = true }) else FloatingMenuButton(onMenu = { menu = true })
+    }
+    askOpen?.let { url ->
+        AlertDialog(
+            onDismissRequest = { askOpen = null },
+            title = { Text("Open in Chrome?") },
+            text = { Text("The page wants to open ${WebPolicy.hostOf(url).orEmpty()}.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    askOpen = null
+                    Browser.open(activity, url)
+                }) { Text("Open") }
             },
-            onDismiss = { confirmRestart = false },
+            dismissButton = { TextButton(onClick = { askOpen = null }) { Text("Not now") } },
         )
     }
-    if (confirmReset) {
-        ResetComputerDialogs(graph, onClose = { confirmReset = false }, onNotice = { text, _ -> runner.say(text) })
+    if (menu) {
+        ComputerMenu(
+            computer = computer,
+            page = page,
+            keyBar = keyBar,
+            onDismiss = { menu = false },
+            onHome = onHome,
+            onHelp = onHelp,
+        )
     }
 }
 
-private const val RESET = RESET_KEY
-private const val REPAIR = "repair"
-private const val RESTART = "restart"
+/** A file input that takes only pictures gets the photo picker; anything else, the files picker. */
+internal fun acceptsOnlyImages(acceptTypes: List<String>): Boolean {
+    val types = acceptTypes.flatMap { it.split(',') }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+    return types.isNotEmpty() && types.all { it.startsWith("image/") }
+}
 
-/** The guide section on fixing problems (docs/GuidePhone.kt). */
-private const val IF_SOMETHING_BREAKS = "if-something-breaks"
+private fun agentMissing(agent: Agent): String =
+    "Tap ${agent.displayName} at the top of the page. If it is not there yet, it is still installing: give it a minute."
 
-/** Try each level only if the one above did not help. Help lists the same levels ([FixLadder]). */
 @Composable
-private fun FixItLadder(
-    working: Boolean,
-    repair: List<RepairItem>?,
-    onRestart: () -> Unit,
-    onRepair: () -> Unit,
-    onReset: () -> Unit,
-    onGuide: () -> Unit,
+private fun PageOverlay(state: PageState, onReload: () -> Unit) {
+    when (state) {
+        is PageState.Loading -> LinearProgressIndicator(
+            progress = { state.progress / 100f },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        is PageState.Failed -> OverlayCard(state.message, onReload)
+        PageState.Stopped -> OverlayCard("Android closed the page to free memory. Your agents kept working in the cloud.", onReload)
+        PageState.Ready -> Unit
+    }
+}
+
+@Composable
+private fun OverlayCard(text: String, onReload: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+        Column(Modifier.widthIn(max = 420.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            NoticeCard(text, Tone.WARN)
+            PrimaryAction("Reload", onClick = onReload)
+        }
+    }
+}
+
+private const val CTRL = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+
+/**
+ * The keys a phone keyboard lacks, as real key presses to the page. Ctrl stays down for the next
+ * key. Send is Ctrl+Enter: the agents are set so Enter makes a new line and Ctrl+Enter sends.
+ */
+@Composable
+private fun KeyBar(page: ComputerWebView, onMenu: () -> Unit) {
+    var ctrl by remember { mutableStateOf(false) }
+    val send = { code: Int, meta: Int ->
+        page.sendKey(code, meta or if (ctrl) CTRL else 0)
+        ctrl = false
+    }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(
+            Modifier.fillMaxWidth().height(48.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            IconButton(onClick = onMenu) { Icon(Icons.Outlined.MoreHoriz, contentDescription = "PocketIDE menu") }
+            Key("Esc") { send(KeyEvent.KEYCODE_ESCAPE, 0) }
+            Key("Tab") { send(KeyEvent.KEYCODE_TAB, 0) }
+            Key("Ctrl", on = ctrl) { ctrl = !ctrl }
+            Key("←") { send(KeyEvent.KEYCODE_DPAD_LEFT, 0) }
+            Key("↑") { send(KeyEvent.KEYCODE_DPAD_UP, 0) }
+            Key("↓") { send(KeyEvent.KEYCODE_DPAD_DOWN, 0) }
+            Key("→") { send(KeyEvent.KEYCODE_DPAD_RIGHT, 0) }
+            Key("Ctrl C") { send(KeyEvent.KEYCODE_C, CTRL) }
+            Key("Send", on = true) { send(KeyEvent.KEYCODE_ENTER, CTRL) }
+        }
+    }
+}
+
+@Composable
+private fun Key(label: String, on: Boolean = false, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.heightIn(min = 36.dp).widthIn(min = 44.dp),
+    ) {
+        Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun FloatingMenuButton(onMenu: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            IconButton(onClick = onMenu) { Icon(Icons.Outlined.MoreHoriz, contentDescription = "PocketIDE menu") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ComputerMenu(computer: Computer, page: ComputerWebView, keyBar: Boolean, onDismiss: () -> Unit, onHome: () -> Unit, onHelp: () -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
+    val scope = rememberCoroutineScope()
+    val close = { action: () -> Unit ->
+        onDismiss()
+        action()
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 16.dp)) {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                VsCodeLogo(size = 22.dp)
+                Spacer(Modifier.padding(start = 10.dp))
+                Text(computer.repo.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                StatusChip(computer.state.label(), computer.state.tone())
+            }
+            Agent.entries.forEach { agent ->
+                MenuRow(
+                    title = agent.displayName,
+                    detail = "by ${agent.maker}",
+                    leading = { AgentLogo(agent, size = 36.dp) },
+                    onClick = {
+                        close {
+                            page.showAgent(agent) { shown ->
+                                if (!shown) Toast.makeText(context, agentMissing(agent), Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                )
+            }
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            MenuRow("Terminal", "Opens or closes VS Code's terminal", icon = Icons.Outlined.Terminal) {
+                close { page.sendKey(KeyEvent.KEYCODE_GRAVE, CTRL) }
+            }
+            MenuRow("Command palette", "Every VS Code command, by name", icon = Icons.Outlined.Search) {
+                close { page.sendKey(KeyEvent.KEYCODE_F1) }
+            }
+            ListItem(
+                headlineContent = { Text("Keyboard keys") },
+                supportingContent = { Text("Esc, Tab, Ctrl, arrows and Send above the keyboard") },
+                leadingContent = { Icon(Icons.Outlined.Keyboard, contentDescription = null) },
+                trailingContent = { Switch(checked = keyBar, onCheckedChange = { on -> graph.settings.update { it.copy(keyBar = on) } }) },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            )
+            MenuRow("Reload page", "Your agents keep working while it reloads", icon = Icons.Outlined.Refresh) { close { page.reload() } }
+            MenuRow("Open in Chrome", "The same computer in the browser", icon = Icons.AutoMirrored.Outlined.OpenInNew) {
+                close { Browser.open(context, computer.webUrl) }
+            }
+            MenuRow("Stop computer", "Saves your free hours; your files stay", icon = Icons.Outlined.PowerSettingsNew) {
+                close {
+                    scope.launch {
+                        try {
+                            graph.computers.stop(computer.name)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (e: Exception) {
+                            Toast.makeText(context, e.message, Toast.LENGTH_LONG).show()
+                            return@launch
+                        }
+                        ComputerService.disconnect(context)
+                        page.release()
+                        onHome()
+                    }
+                }
+            }
+            MenuRow("Home", null, icon = Icons.Outlined.Home) { close(onHome) }
+            MenuRow("Help", null, icon = Icons.AutoMirrored.Outlined.HelpOutline) { close(onHelp) }
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(
+    title: String,
+    detail: String?,
+    icon: ImageVector? = null,
+    leading: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
 ) {
-    SectionCard("If something is wrong") {
-        Hint("Start at the top. Go down a level only if the one above did not help.")
-        TextButton(onClick = onGuide) { Text("What to try when something breaks") }
-        FixLadder.rungs.forEachIndexed { index, rung ->
-            HorizontalDivider()
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(FixLadder.heading(index), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                Hint(FixLadder.text(rung))
-                when (rung.action) {
-                    FixLadder.Action.RESTART_COMPUTER -> TextButton(onClick = onRestart, enabled = !working) { Text("Restart computer") }
-                    FixLadder.Action.REPAIR -> {
-                        TextButton(onClick = onRepair, enabled = !working) { Text("Repair") }
-                        repair?.let { RepairReport(it) }
-                    }
-                    FixLadder.Action.RESET_COMPUTER -> OutlinedButton(onClick = onReset, enabled = !working) {
-                        Icon(Icons.Outlined.RestartAlt, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Reset computer")
-                    }
-                    null -> Unit
-                }
-            }
-        }
-    }
-}
-
-/** Each item Repair looked at, problems first. */
-@Composable
-private fun RepairReport(items: List<RepairItem>) {
-    if (items.isEmpty()) {
-        Hint("Nothing needed repair.")
-        return
-    }
-    RepairText.ordered(items).forEach { item ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(item.what, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            val told = RepairText.chip(item.status)
-            StatusChip(told.text, told.tone)
-        }
-        if (item.detail.isNotBlank()) Hint(item.detail)
-    }
-}
-
-/** A computer that is set up; the others get the set-up card instead ([SetUpOffer]). */
-@Composable
-private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?, removalAt: Long?) {
-    SectionCard("Ubuntu computer") {
-        if (daysLeft != null) {
-            StatusChip(ComputerExpiry.chip(daysLeft), if (daysLeft <= 7) Tone.WARN else Tone.NEUTRAL)
-        }
-        if (removalAt != null) {
-            ToneLine(Told("Removed on ${Ist.date(removalAt)} unless an agent runs. Your projects and chats stay.", Tone.WARN))
-        }
-        when (state) {
-            is ComputerState.Updating -> ToneLine(Told("Updating ${state.what}…", Tone.WARN))
-            else -> ToneLine(Told("Ready.", Tone.OK))
-        }
-        if (sizeBytes != null && sizeBytes > 0) InfoRow("Size on this phone", ManageFormat.bytes(sizeBytes))
-    }
-}
-
-@Composable
-private fun PhoneCard(s: PhoneSnapshot, info: ComputerInfo?) {
-    SectionCard("This phone") {
-        InfoRow("Model", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}")
-        val cpu = info?.cpu?.takeIf { it.isNotBlank() } ?: socModel()
-        if (cpu != null) InfoRow("Processor", cpu)
-        val cores = info?.cores?.takeIf { it > 0 } ?: Runtime.getRuntime().availableProcessors()
-        InfoRow("Cores", cores.toString())
-        if (s.totalRamBytes > 0) {
-            InfoRow("Memory", "${ManageFormat.bytes(s.availRamBytes)} free of ${ManageFormat.bytes(s.totalRamBytes)}")
-            UsageMeter(1.0 - s.availRamBytes.toDouble() / s.totalRamBytes)
-        }
-        if (s.storageTotalBytes > 0) {
-            InfoRow("Storage", "${ManageFormat.bytes(s.storageFreeBytes)} free of ${ManageFormat.bytes(s.storageTotalBytes)}")
-            UsageMeter(1.0 - s.storageFreeBytes.toDouble() / s.storageTotalBytes)
-        }
-        if (s.appDataBytes > 0) InfoRow("PocketIDE uses", ManageFormat.bytes(s.appDataBytes))
-        InfoRow("Android", info?.android?.takeIf { it.isNotBlank() } ?: "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-        info?.kernel?.takeIf { it.isNotBlank() }?.let { InfoRow("Kernel", it) }
-        info?.vaBits?.let { InfoRow("Address space", "$it-bit") }
-    }
-}
-
-@Composable
-private fun VersionsCard(info: ComputerInfo?, error: String?, agents: List<Pair<String, String?>>) {
-    SectionCard("Versions") {
-        if (error != null && info == null) ErrorNote(error)
-        InfoRow("Ubuntu", info?.ubuntu ?: notInstalled(info))
-        InfoRow("Engine (code-server)", info?.codeServer ?: notInstalled(info))
-        InfoRow("Antigravity hub (agy)", info?.agy ?: notInstalled(info))
-        if (agents.isNotEmpty()) HorizontalDivider()
-        agents.forEach { (name, version) -> InfoRow(name, version ?: "Not installed yet") }
-    }
-}
-
-private fun socModel(): String? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL.takeIf { it.isNotBlank() && it != Build.UNKNOWN } else null
-
-private fun notInstalled(info: ComputerInfo?) = if (info == null) "…" else "Not installed"
-
-@Composable
-private fun RequirementsCard(checks: List<RequirementCheck>) {
-    SectionCard("Requirements") {
-        ToneLine(PhoneRequirements.summary(checks))
-        checks.forEach { check ->
-            HorizontalDivider()
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(check.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                    StatusChip(check.thisPhone, check.tone)
-                }
-                Hint("Minimum: ${check.minimum} · Recommended: ${check.recommended}")
-            }
-        }
-    }
-}
-
-private fun readFacts(context: Context, graph: AppGraph, s: PhoneSnapshot): PhoneFacts {
-    val memory = ActivityManager.MemoryInfo()
-    (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.getMemoryInfo(memory)
-    val free = if (s.storageFreeBytes > 0) s.storageFreeBytes else runCatching { StatFs(context.filesDir.absolutePath).availableBytes }.getOrDefault(0L)
-    return PhoneFacts(
-        androidSdk = Build.VERSION.SDK_INT,
-        androidRelease = Build.VERSION.RELEASE ?: Build.VERSION.SDK_INT.toString(),
-        arm64 = Build.SUPPORTED_64_BIT_ABIS.contains("arm64-v8a"),
-        playServices = runCatching {
-            GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
-        }.getOrNull(),
-        totalRamBytes = if (s.totalRamBytes > 0) s.totalRamBytes else memory.totalMem,
-        freeStorageBytes = free,
-        screenLock = runCatching { graph.appLock.deviceSecure() }.getOrNull(),
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = detail?.let { { Text(it) } },
+        leadingContent = leading ?: icon?.let { { Icon(it, contentDescription = null) } },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.clickable(onClick = onClick),
     )
+}
+
+@Composable
+private fun NoComputer(onHome: () -> Unit) {
+    ShellPage(centered = true) {
+        CenteredTitle(Icons.Outlined.Terminal, "No computer open", "Open a project's cloud computer from Home, or make a new project.")
+        Gap(24.dp)
+        PrimaryAction("Go to Home", onClick = onHome)
+    }
 }

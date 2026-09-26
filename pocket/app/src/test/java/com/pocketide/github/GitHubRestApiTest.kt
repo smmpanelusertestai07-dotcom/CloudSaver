@@ -4,21 +4,19 @@ import com.pocketide.core.AppJson
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import okio.ByteString.Companion.encodeUtf8
 import org.junit.After
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
-import java.io.File
 import java.util.Base64
 
 class GitHubRestApiTest {
@@ -40,19 +38,10 @@ class GitHubRestApiTest {
     private fun body(text: String): JsonObject = AppJson.parseToJsonElement(text).jsonObject
 
     private fun repoJson(name: String = "demo", private: Boolean = true) =
-        """{"name":"$name","owner":{"login":"octo"},"private":$private,"visibility":"private","default_branch":"main","size":42,
+        """{"id":${name.length},"name":"$name","owner":{"login":"octo"},"private":$private,"visibility":"private","default_branch":"main","size":42,
            "clone_url":"https://github.com/octo/$name.git","html_url":"https://github.com/octo/$name","pushed_at":"2026-09-20T10:00:00Z"}"""
 
-    private inline fun <reified E : Throwable> failsWith(block: () -> Unit): E {
-        try {
-            block()
-        } catch (e: Throwable) {
-            if (e is E) return e
-            throw e
-        }
-        fail("expected ${E::class.simpleName}")
-        throw AssertionError()
-    }
+    private inline fun <reified E : Throwable> failsWith(crossinline block: () -> Unit): E = assertThrows(E::class.java) { block() }
 
     @Test
     fun `every call carries the documented headers`() = runBlocking {
@@ -75,8 +64,8 @@ class GitHubRestApiTest {
         // A write refused for its version is sent again too, and every later call leaves the version out.
         fx.apiVersion.retired = false
         server.enqueue(json("""{"message":"Invalid API version"}""", 400))
-        server.enqueue(MockResponse.Builder().code(204).build())
-        assertNull(api.dispatchWorkflowRun("octo", "demo", "ci.yml", "main"))
+        server.enqueue(json(repoJson("fresh"), 201))
+        assertEquals("fresh", api.createPrivateRepo("fresh", "").name)
         server.enqueue(json("""{"login":"octo","id":7,"name":null,"avatar_url":null}"""))
         api.me()
         assertEquals("2026-03-10", server.next().headers["X-GitHub-Api-Version"])
@@ -96,26 +85,26 @@ class GitHubRestApiTest {
 
     @Test
     fun `lists follow the Link header with 100 per page`() = runBlocking {
-        val page2 = server.url("/repos/octo/demo/collaborators?affiliation=all&per_page=100&page=2")
+        val page2 = server.url("/user/installations?per_page=100&page=2")
         server.enqueue(
-            MockResponse.Builder().body("""[{"login":"octo"},{"login":"hubot"}]""")
+            MockResponse.Builder().body("""{"installations":[{"id":1},{"id":2}]}""")
                 .addHeader("Link", "<$page2>; rel=\"next\", <$page2>; rel=\"last\"").build(),
         )
-        server.enqueue(json("""[{"login":"mona"}]"""))
-        assertEquals(listOf("octo", "hubot", "mona"), api.collaborators("octo", "demo"))
-        val first = server.next().url
-        assertEquals("100", first.queryParameter("per_page"))
-        assertEquals("all", first.queryParameter("affiliation"))
+        server.enqueue(json("""{"installations":[{"id":3}]}"""))
+        val ids = fx.rest.pages(fx.rest.url("user", "installations")) { decode(InstallationsPage.serializer(), it).installations.map { i -> i.id } }
+        assertEquals(listOf(1L, 2L, 3L), ids)
+        assertEquals("100", server.next().url.queryParameter("per_page"))
         assertEquals("2", server.next().url.queryParameter("page"))
     }
 
     @Test
     fun `a page link to another host is never followed with the token`() = runBlocking {
         server.enqueue(
-            MockResponse.Builder().body("""[{"login":"octo"}]""")
+            MockResponse.Builder().body("""{"installations":[{"id":1}]}""")
                 .addHeader("Link", "<https://evil.example/next>; rel=\"next\"").build(),
         )
-        assertEquals(listOf("octo"), api.collaborators("octo", "demo"))
+        val ids = fx.rest.pages(fx.rest.url("user", "installations")) { decode(InstallationsPage.serializer(), it).installations.map { i -> i.id } }
+        assertEquals(listOf(1L), ids)
         assertEquals(1, server.requestCount)
     }
 
@@ -175,40 +164,58 @@ class GitHubRestApiTest {
     }
 
     @Test
-    fun `actions can be switched off`() = runBlocking {
-        server.enqueue(status(204))
-        api.setActionsEnabled("octo", "pocketide-keyring", enabled = false)
-        val request = server.next()
-        assertEquals("PUT", request.method)
-        assertEquals("/repos/octo/pocketide-keyring/actions/permissions", request.url.encodedPath)
-        assertEquals("""{"enabled":false}""", request.text())
+    fun `files are read through the contents API in base64`() = runBlocking {
+        val content = Base64.getMimeEncoder().encodeToString("{ }".toByteArray())
+        val encoded = content.replace("\r\n", "\\n")
+        server.enqueue(json("""{"type":"file","encoding":"base64","size":3,"name":"devcontainer.json","content":"$encoded","sha":"abc123"}"""))
+        val file = api.readFile("octo", "demo", ".devcontainer/pocketide/devcontainer.json", ref = "main")!!
+        assertEquals("{ }", file.bytes.toString(Charsets.UTF_8))
+        assertEquals("abc123", file.sha)
+        val request = server.next().url
+        assertEquals("/repos/octo/demo/contents/.devcontainer/pocketide/devcontainer.json", request.encodedPath)
+        assertEquals("main", request.queryParameter("ref"))
+
+        server.enqueue(json("""{"message":"Not Found"}""", 404))
+        assertNull(api.readFile("octo", "demo", "none.json"))
     }
 
     @Test
-    fun `files are read and written through the contents API in base64`() = runBlocking {
-        val content = Base64.getMimeEncoder().encodeToString("hello keyring".toByteArray())
-        val encoded = content.replace("\r\n", "\\n")
-        val named = """"name":"half-g.json","path":"keys/half-g.json""""
-        server.enqueue(json("""{"type":"file","encoding":"base64","size":13,$named,"content":"$encoded","sha":"abc123"}"""))
-        val file = api.readFile("octo", "pocketide-keyring", "keys/half-g.json")!!
-        assertEquals("hello keyring", file.bytes.toString(Charsets.UTF_8))
-        assertEquals("abc123", file.sha)
-        assertEquals("/repos/octo/pocketide-keyring/contents/keys/half-g.json", server.next().url.encodedPath)
+    fun `files are committed together on top of the branch, never forced`() = runBlocking {
+        server.enqueue(json("""{"ref":"refs/heads/main","object":{"sha":"head1","type":"commit"}}"""))
+        server.enqueue(json("""{"sha":"head1","tree":{"sha":"tree1"}}"""))
+        server.enqueue(json("""{"sha":"tree2"}""", 201))
+        server.enqueue(json("""{"sha":"commit2"}""", 201))
+        server.enqueue(json("""{"ref":"refs/heads/main","object":{"sha":"commit2"}}"""))
+        val files = listOf(NewFile("a/b.json", "{}"), NewFile("a/run.sh", "echo", executable = true))
+        assertEquals("commit2", api.commitFiles("octo", "demo", "main", files, "Set up"))
 
-        server.enqueue(json("""{"content":{"sha":"def456"},"commit":{"sha":"c1"}}"""))
-        api.writeFile("octo", "pocketide-keyring", "keys/half-g.json", "new".toByteArray(), "Save half", "abc123")
-        val put = body(server.next().text())
-        assertEquals(Base64.getEncoder().encodeToString("new".toByteArray()), put["content"]!!.jsonPrimitive.content)
-        assertEquals("abc123", put["sha"]!!.jsonPrimitive.content)
+        assertEquals("/repos/octo/demo/git/ref/heads/main", server.next().url.encodedPath)
+        assertEquals("/repos/octo/demo/git/commits/head1", server.next().url.encodedPath)
+        val tree = body(server.next().text())
+        assertEquals("tree1", tree["base_tree"]!!.jsonPrimitive.content)
+        val modes = tree["tree"]!!.jsonArray.map { it.jsonObject["mode"]!!.jsonPrimitive.content }
+        assertEquals(listOf("100644", "100755"), modes)
+        val commit = body(server.next().text())
+        assertEquals("tree2", commit["tree"]!!.jsonPrimitive.content)
+        assertEquals("head1", commit["parents"]!!.jsonArray.single().jsonPrimitive.content)
+        val move = server.next()
+        assertEquals("PATCH", move.method)
+        assertEquals("/repos/octo/demo/git/refs/heads/main", move.url.encodedPath)
+        assertFalse(body(move.text())["force"]!!.jsonPrimitive.boolean)
+    }
 
-        server.enqueue(json("""{"message":"is at def456 but expected abc123"}""", 409))
-        val stale = failsWith<GitHubException> {
-            runBlocking { api.writeFile("octo", "pocketide-keyring", "keys/half-g.json", "x".toByteArray(), "m", "abc123") }
-        }
-        assertEquals(GitHubText.CONFLICT, stale.message)
-
-        server.enqueue(json("""{"message":"Not Found"}""", 404))
-        assertNull(api.readFile("octo", "pocketide-keyring", "keys/none.json"))
+    @Test
+    fun `recent runs are one request`() = runBlocking {
+        server.enqueue(
+            json(
+                """{"total_count":1,"workflow_runs":[{"id":9,"name":"Build","head_branch":"main","status":"completed",
+                "conclusion":"success","created_at":"2026-09-26T10:00:00Z","updated_at":"2026-09-26T10:05:00Z",
+                "html_url":"https://github.com/octo/demo/actions/runs/9"}]}""",
+            ),
+        )
+        val runs = api.runs("octo", "demo")
+        assertEquals("success", runs.single().conclusion)
+        assertEquals(1, server.requestCount)
     }
 
     @Test
@@ -218,33 +225,6 @@ class GitHubRestApiTest {
         assertEquals("raw bytes", api.readFile("octo", "demo", "big.bin")!!.bytes.toString(Charsets.UTF_8))
         server.next()
         assertEquals(RestClient.ACCEPT_RAW, server.next().headers["Accept"])
-    }
-
-    @Test
-    fun `the Actions secret is sealed with the repository key and sent with its id`() = runBlocking {
-        val key = ByteArray(32) { it.toByte() }
-        server.enqueue(json("""{"key_id":"568250167242549743","key":"${Base64.getEncoder().encodeToString(key)}"}"""))
-        server.enqueue(status(201))
-        api.setActionsSecret("octo", "demo", "DEPLOY_TOKEN", "s3cret".toByteArray())
-
-        assertEquals("/repos/octo/demo/actions/secrets/public-key", server.next().url.encodedPath)
-        assertArrayEquals(key, fx.sealed.single().first)
-        assertArrayEquals("s3cret".toByteArray(), fx.sealed.single().second)
-        val put = server.next()
-        assertEquals("PUT", put.method)
-        assertEquals("/repos/octo/demo/actions/secrets/DEPLOY_TOKEN", put.url.encodedPath)
-        val sent = body(put.text())
-        assertEquals("568250167242549743", sent["key_id"]!!.jsonPrimitive.content)
-        assertEquals(Base64.getEncoder().encodeToString("sealed:s3cret".toByteArray()), sent["encrypted_value"]!!.jsonPrimitive.content)
-        assertFalse("the plain value never travels", put.text().contains("s3cret"))
-    }
-
-    @Test
-    fun `secret names GitHub refuses are caught before sealing`() = runBlocking {
-        for (bad in listOf("GITHUB_TOKEN", "1ABC", "HAS SPACE", "dash-name")) {
-            failsWith<IllegalArgumentException> { runBlocking { api.setActionsSecret("octo", "demo", bad, ByteArray(1)) } }
-        }
-        assertEquals(0, server.requestCount)
     }
 
     @Test
@@ -304,156 +284,8 @@ class GitHubRestApiTest {
         assertEquals(3, server.requestCount)
 
         server.enqueue(status(502))
-        failsWith<GitHubException> { runBlocking { api.setActionsEnabled("octo", "demo", false) } }
+        failsWith<GitHubException> { runBlocking { api.createPrivateRepo("fresh", "") } }
         assertEquals("a write is not repeated", 4, server.requestCount)
-    }
-
-    @Test
-    fun `an existing pull request is returned instead of an error`() = runBlocking {
-        server.enqueue(json("""{"message":"Validation Failed","errors":[{"message":"A pull request already exists for octo:session-1."}]}""", 422))
-        server.enqueue(json("""[{"number":5,"html_url":"https://github.com/octo/demo/pull/5","state":"open","mergeable":true}]"""))
-        val pr = api.openPullRequest("octo", "demo", "session-1", "main", "Title", "Body")
-        assertEquals(5, pr.number)
-        server.next()
-        val lookup = server.next().url
-        assertEquals("octo:session-1", lookup.queryParameter("head"))
-        assertEquals("main", lookup.queryParameter("base"))
-    }
-
-    @Test
-    fun `a session's pull request is found by its branch, merged or not`() = runBlocking {
-        server.enqueue(json("""[{"number":7,"html_url":"https://github.com/octo/demo/pull/7","state":"closed","merged_at":"2026-09-24T08:00:00Z"}]"""))
-        val pr = api.pullRequestFor("octo", "demo", "pocket/claude/login")!!
-        assertEquals(7, pr.number)
-        assertTrue("a list gives merged_at, not merged", pr.merged)
-        val lookup = server.next().url
-        assertEquals("/repos/octo/demo/pulls", lookup.encodedPath)
-        assertEquals("octo:pocket/claude/login", lookup.queryParameter("head"))
-        assertEquals("all", lookup.queryParameter("state"))
-        assertEquals("desc", lookup.queryParameter("direction"))
-
-        server.enqueue(json("[]"))
-        assertEquals(null, api.pullRequestFor("octo", "demo", "pocket/claude/other"))
-    }
-
-    @Test
-    fun `merge reports false when GitHub cannot merge`() = runBlocking {
-        server.enqueue(json("""{"sha":"6dcb09b","merged":true,"message":"Pull Request successfully merged"}"""))
-        assertTrue(api.mergePullRequest("octo", "demo", 5, "squash"))
-        assertEquals("squash", body(server.next().text())["merge_method"]!!.jsonPrimitive.content)
-        server.enqueue(json("""{"message":"Pull Request is not mergeable"}""", 405))
-        assertFalse(api.mergePullRequest("octo", "demo", 5))
-    }
-
-    @Test
-    fun `a dispatch returns the exact run it started`() = runBlocking {
-        val runUrl = "https://api.github.com/repos/octo/demo/actions/runs/30433642"
-        val htmlUrl = "https://github.com/octo/demo/actions/runs/30433642"
-        server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"$runUrl","html_url":"$htmlUrl"}"""))
-        val run = api.dispatchWorkflowRun("octo", "demo", "android.yml", "session-1", mapOf("variant" to "release"))!!
-        assertEquals(30433642L, run.runId)
-        val request = server.next()
-        assertEquals("/repos/octo/demo/actions/workflows/android.yml/dispatches", request.url.encodedPath)
-        val sent = body(request.text())
-        assertEquals("session-1", sent["ref"]!!.jsonPrimitive.content)
-        assertEquals("release", sent["inputs"]!!.jsonObject["variant"]!!.jsonPrimitive.content)
-
-        server.enqueue(status(204))
-        assertNull(api.dispatchWorkflowRun("octo", "demo", "android.yml", "main"))
-    }
-
-    @Test
-    fun `runs show the runner the newest ones asked for`() = runBlocking {
-        server.enqueue(
-            json(
-                """{"total_count":1,"workflow_runs":[{"id":9,"name":"Android","head_branch":"main","status":"completed","conclusion":"success",
-                "created_at":"2026-09-20T10:00:00Z","updated_at":"2026-09-20T10:09:00Z","html_url":"https://github.com/octo/demo/actions/runs/9"}]}""",
-            ),
-        )
-        server.enqueue(
-            json(
-                """{"total_count":1,"jobs":[{"id":3,"run_id":9,"name":"build","status":"completed","conclusion":"success","labels":["ubuntu-latest"],
-                "runner_name":"GitHub Actions 2","steps":[{"name":"Set up job","number":1,"status":"completed","conclusion":"success"}]}]}""",
-            ),
-        )
-        val run = api.runs("octo", "demo", branch = "main").single()
-        assertEquals("ubuntu-latest", run.runnerImage)
-        assertEquals("success", run.conclusion)
-        assertEquals("main", server.next().url.queryParameter("branch"))
-        assertEquals("/repos/octo/demo/actions/runs/9/jobs", server.next().url.encodedPath)
-    }
-
-    /** The Builds tab refreshes every few seconds while a build runs: each refresh is one request. */
-    @Test
-    fun `a refresh of the runs and one run by id are one request each`() = runBlocking {
-        val run = """{"id":9,"name":"Android","head_branch":"main","status":"in_progress","conclusion":null,
-            "created_at":"2026-09-20T10:00:00Z","updated_at":"2026-09-20T10:09:00Z","html_url":"https://github.com/octo/demo/actions/runs/9"}"""
-        server.enqueue(json("""{"total_count":1,"workflow_runs":[$run]}"""))
-        server.enqueue(json(run))
-        assertNull(api.runs("octo", "demo", null, runners = false).single().runnerImage)
-        assertEquals("in_progress", api.run("octo", "demo", 9)?.status)
-        assertEquals("/repos/octo/demo/actions/runs", server.next().url.encodedPath)
-        assertEquals("/repos/octo/demo/actions/runs/9", server.next().url.encodedPath)
-        assertEquals(2, server.requestCount)
-    }
-
-    @Test
-    fun `a job log gives the runner image and the last lines`() = runBlocking {
-        val log = buildString {
-            append("2026-09-20T10:00:01.0000000Z ##[group]Runner Image\n")
-            append("2026-09-20T10:00:01.0000000Z Image: ubuntu-24.04\n")
-            append("2026-09-20T10:00:01.0000000Z Version: 20260914.1\n")
-            repeat(5000) { append("2026-09-20T10:01:00.0000000Z line $it of the build output\n") }
-            append("2026-09-20T10:09:00.0000000Z BUILD FAILED\n")
-        }
-        val blob = MockWebServer().apply { start() }
-        blob.enqueue(MockResponse.Builder().body(log).build())
-        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", blob.url("/logs/3?sig=abc")).build())
-        val result = api.jobLog("octo", "demo", 3)!!
-        assertEquals("ubuntu-24.04 20260914.1", result.runnerImage)
-        assertTrue(result.tail.endsWith("BUILD FAILED\n"))
-        assertTrue(result.tail.startsWith("2026-09-20T10:01:00"))
-        assertNull("the pre-signed log URL never receives the token", blob.next().headers["Authorization"])
-        blob.close()
-    }
-
-    @Test
-    fun `artifacts download from the redirect without the token and are checked`() = runBlocking {
-        val zip = "PK zip bytes"
-        val digest = "sha256:" + zip.encodeUtf8().sha256().hex()
-        val blob = MockWebServer().apply { start() }
-        blob.enqueue(MockResponse.Builder().body(zip).build())
-        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", blob.url("/blob?sig=1")).build())
-        val dest = File(tempDir(), "app.zip")
-        val artifact = RunArtifact(11, "app", zip.length.toLong(), false, server.url("/repos/octo/demo/actions/artifacts/11/zip").toString(), digest)
-        api.downloadArtifact(artifact, dest)
-        assertEquals(zip, dest.readText())
-        assertEquals("Bearer ghu_first", server.next().headers["Authorization"])
-        assertNull(blob.next().headers["Authorization"])
-
-        blob.enqueue(MockResponse.Builder().body("tampered").build())
-        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", blob.url("/blob?sig=2")).build())
-        val other = File(dest.parentFile, "other.zip")
-        val e = failsWith<GitHubException> { runBlocking { api.downloadArtifact(artifact, other) } }
-        assertEquals(GitHubText.DIGEST_MISMATCH, e.message)
-        assertFalse(other.exists())
-        assertEquals("no partial file is left behind", listOf("app.zip"), dest.parentFile!!.list()!!.toList())
-        blob.close()
-    }
-
-    @Test
-    fun `an expired artifact and a foreign link are plain errors`() = runBlocking {
-        server.enqueue(json("""{"message":"Artifact has expired"}""", 410))
-        val dest = File(tempDir(), "gone.zip")
-        val url = server.url("/repos/octo/demo/actions/artifacts/12/zip").toString()
-        val gone = failsWith<GitHubException> { runBlocking { api.downloadArtifact(RunArtifact(12, "a", 1, true, url), dest) } }
-        assertEquals(GitHubText.GONE, gone.message)
-
-        val foreign = failsWith<GitHubException> {
-            runBlocking { api.downloadArtifact(RunArtifact(13, "a", 1, false, "https://evil.example/zip"), dest) }
-        }
-        assertEquals(GitHubText.NOT_FROM_GITHUB, foreign.message)
-        assertEquals(1, server.requestCount)
     }
 
     @Test
@@ -493,24 +325,6 @@ class GitHubRestApiTest {
         assertEquals("free", usage.plan)
         assertTrue(usage.lines.isEmpty())
         assertEquals(GitHubText.USAGE_UNAVAILABLE, usage.unavailableReason)
-    }
-
-    @Test
-    fun `repository usage adds cache and live artifacts`() = runBlocking {
-        server.enqueue(json(repoJson()))
-        server.enqueue(json("""{"full_name":"octo/demo","active_caches_size_in_bytes":2048,"active_caches_count":2}"""))
-        server.enqueue(
-            json(
-                """{"total_count":2,"artifacts":[
-                {"id":1,"name":"apk","size_in_bytes":1000,"archive_download_url":"https://api.github.com/x","expired":false},
-                {"id":2,"name":"old","size_in_bytes":5000,"archive_download_url":"https://api.github.com/y","expired":true}]}""",
-            ),
-        )
-        val usage = api.repoUsage("octo", "demo")
-        assertEquals(42L, usage.repo.sizeKb)
-        assertEquals(2048L, usage.cacheBytes)
-        assertEquals(1000L, usage.artifactsBytes)
-        assertEquals(1, usage.artifactCount)
     }
 
     @Test

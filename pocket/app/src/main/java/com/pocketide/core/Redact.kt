@@ -18,8 +18,10 @@ object Redact {
 
     fun text(input: String): String {
         var out = input
-        for (p in patterns) out = p.replace(out) { m ->
-            if (m.groupValues.size > 2 && m.groupValues[1].isNotEmpty()) "${m.groupValues[1]}=[hidden]" else "[hidden]"
+        for (p in patterns) {
+            out = p.replace(out) { m ->
+                if (m.groupValues.size > 2 && m.groupValues[1].isNotEmpty()) "${m.groupValues[1]}=[hidden]" else "[hidden]"
+            }
         }
         return out
     }

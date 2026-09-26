@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Nothing leaves through Android's own backup or device transfer: chats and settings travel
-     only encrypted, through the app's own Drive vault, and the computer is rebuilt. -->
+<!-- Nothing leaves through Android's own backup or device transfer. The phone holds only the
+     GitHub sign-in and settings; the owner's code and chats are in their GitHub account. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

@@ -1,31 +1,21 @@
-# Every permission the merged release manifest may request (plan §12). The permissions gate
-# fails when the merged manifest asks for anything not listed here, when a line here is no
-# longer requested, and when an android.permission line is not explained in Help > Permissions.
+# Every permission the merged release manifest may request. The permissions gate fails when the
+# merged manifest asks for anything not listed here, when a line here is no longer requested, and
+# when an android.permission line is not explained in Help > Permissions.
 # ${applicationId} stands for the package name, which differs between release and debug.
 
-# Internet and network state: agents, GitHub, Drive, Open VSX; Wi-Fi versus mobile data.
+# GitHub and the cloud computer's page; offline is told apart from signed out.
 android.permission.INTERNET
 android.permission.ACCESS_NETWORK_STATE
 
-# The computer's special-use foreground service, and long Drive uploads.
+# The optional background connection to a running cloud computer, with its Stop button.
 android.permission.FOREGROUND_SERVICE
 android.permission.FOREGROUND_SERVICE_SPECIAL_USE
-android.permission.FOREGROUND_SERVICE_DATA_SYNC
 
-# Notifications, asked once.
+# The "Cloud computer is on" notice, asked once.
 android.permission.POST_NOTIFICATIONS
 
-# A task keeps running with the screen off.
-android.permission.WAKE_LOCK
-
-# The app lock and revealing Secrets.
+# App lock, with the phone's own screen lock.
 android.permission.USE_BIOMETRIC
-
-# Installs an APK the owner built, only on a tap.
-android.permission.REQUEST_INSTALL_PACKAGES
-
-# WorkManager's boot receiver, so a pending sync finishes after a restart.
-android.permission.RECEIVE_BOOT_COMPLETED
 
 # AndroidX core's signature-level permission guarding the app's own non-exported receivers.
 ${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION

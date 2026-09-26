@@ -6,9 +6,6 @@ internal const val TONE_INFO = "info"
 internal const val TONE_WARN = "warn"
 internal const val TONE_TIP = "tip"
 
-/** Follows every path through another company's screens, whose labels can move. */
-internal const val LABELS_NOTE = "Labels as of ${DocLinks.CHECKED_ON}; if a label moved, the path is still right."
-
 /** Marks what is still being checked on real phones, until it is. */
 internal const val BEING_TESTED = "Being tested on phones like yours"
 
