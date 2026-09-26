@@ -514,7 +514,13 @@ private fun AboutSection(graph: AppGraph, nav: PocketNav) {
                     onClick = {
                         askMobileData = null
                         graph.dataBudget.allowOnce(ask.kind, ask.bytes)
-                        run(outlivesScreen = true) { graph.updater.download() }
+                        run(outlivesScreen = true) {
+                            try {
+                                graph.updater.download()
+                            } finally {
+                                graph.dataBudget.endOnce(ask.kind)
+                            }
+                        }
                     },
                 ) { Text("Use mobile data") }
             },

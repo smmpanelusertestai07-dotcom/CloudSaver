@@ -95,7 +95,8 @@ fun MoreAgentsScreen(nav: PocketNav) {
     val added = installed.filter { !it.official }
 
     // A download the owner started: leaving the screen, or the app lock closing it, must not throw it away.
-    fun add(candidate: AgentCandidate) {
+    // [confirmed]: the owner allowed it on mobile data, for this Add alone.
+    fun add(candidate: AgentCandidate, confirmed: NeedsMobileData? = null) {
         runner.run(
             key = "add:${candidate.extensionId}",
             outlivesScreen = true,
@@ -104,7 +105,13 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 if (question != null) askMobileData = candidate to question else runner.say(PlainError.of(error))
             },
             onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
-        ) { graph.agents.add(candidate) }
+        ) {
+            try {
+                graph.agents.add(candidate)
+            } finally {
+                confirmed?.let { graph.dataBudget.endOnce(it.kind) }
+            }
+        }
     }
 
     ManagePage("More agents", nav, runner) {
@@ -187,7 +194,7 @@ fun MoreAgentsScreen(nav: PocketNav) {
                     onClick = {
                         askMobileData = null
                         graph.dataBudget.allowOnce(question.kind, question.bytes)
-                        add(candidate)
+                        add(candidate, confirmed = question)
                     },
                 ) { Text("Use mobile data") }
             },

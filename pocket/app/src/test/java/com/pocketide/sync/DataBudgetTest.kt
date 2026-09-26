@@ -78,6 +78,19 @@ class DataBudgetTest {
     }
 
     @Test
+    fun aConfirmedTransferThatStoppedEarlyLetsNothingBiggerOrLaterThrough() {
+        budget.allowOnce("agents", 60 * mb)
+        budget.record(5 * mb, "agents")
+
+        assertFalse("a bigger download of the kind is asked about again", budget.allow(250 * mb, "agents", big = true).allowed)
+        assertTrue("the confirmed one continues", budget.allow(55 * mb, "agents", big = true).allowed)
+
+        budget.endOnce("agents")
+
+        assertFalse("once it ended, the next one asks again", budget.allow(10 * mb, "agents", big = true).allowed)
+    }
+
+    @Test
     fun aConfirmedTransferEndsWithTheDay() {
         budget.allowOnce("setup", 300 * mb)
         clock.now = Instant.parse("2026-09-25T00:00:01Z").toEpochMilli()
