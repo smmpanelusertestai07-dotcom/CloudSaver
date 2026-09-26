@@ -8,8 +8,10 @@ package com.pocketide.rooms
  * it through its bridge, so the in-app screen's hub guard is not involved.
  *
  * Any loopback port the daemon opens is reachable by every app on the phone, so each one must
- * turn away a caller that has no key, as the hub must; otherwise Remote Control is stopped again.
- * Not yet tried on a phone: the daemon registers as a systemd user service where one exists.
+ * turn away a caller that has no key, as the hub must, and none may be open to the Wi-Fi; the
+ * ports are checked when it starts and again for as long as it runs, and Remote Control is
+ * stopped at the first one that fails. Not yet tried on a phone: the daemon registers as a
+ * systemd user service where one exists.
  */
 internal object RemoteControl {
     /** Google's Remote Control page, as its documentation links it. */
@@ -20,6 +22,9 @@ internal object RemoteControl {
 
     /** Time the daemon gets to open its ports before they are checked. */
     const val SETTLE_MS = 5_000L
+
+    /** How often the ports are checked again while the daemon runs: it may open new ones any time. */
+    const val WATCH_MS = 60_000L
 
     const val ONLY_ANTIGRAVITY = "Remote Control is Antigravity's own. Open it from the Antigravity room."
 
@@ -37,13 +42,16 @@ internal object RemoteControl {
     """.trimIndent()
 
     /**
-     * Why Remote Control may not stay on, or null. [answers] holds each loopback port the daemon
-     * opened with its answer to a request that has no key (null: it did not answer like a web
-     * server). Only a refusal (4xx) counts as keeping other apps out, as for the hub.
+     * Why Remote Control may not stay on, or null. [answers] holds each port the daemon opened
+     * with its answer to a request that has no key (null: it did not answer like a web server);
+     * [onNetwork] the ones other devices on the same network can reach. Only a refusal for want
+     * of a key (401 or 403) counts as keeping other apps out: a 404 or 405 at the root is what
+     * an RPC server answers there while its RPC routes still work, so it proves nothing.
      */
-    fun problem(answers: Map<Int, HttpAnswer?>): String? = when {
+    fun problem(answers: Map<Int, HttpAnswer?>, onNetwork: Set<Int> = emptySet()): String? = when {
+        answers.keys.any { it in onNetwork } -> OPEN_TO_NETWORK
         answers.values.any { it != null && it.status !in HTTP_CLIENT_ERRORS } -> OPEN_TO_OTHER_APPS
-        answers.values.any { it == null } -> CANNOT_CHECK
+        answers.values.any { it == null || it.status !in KEY_REFUSALS } -> CANNOT_CHECK
         else -> null
     }
 
@@ -55,8 +63,14 @@ internal object RemoteControl {
         "answers any app without asking for its key, so another app could use Antigravity in your projects. " +
         "It can be turned on once an update of Antigravity fixes this."
 
+    const val OPEN_TO_NETWORK = "Remote Control stays off: this version of Antigravity opened a port that other devices " +
+        "on the same Wi-Fi or network can reach, so they could try to use Antigravity in your projects."
+
+    const val STOPPED_BY_ITSELF = "Remote Control stopped by itself. Start it again from the Antigravity room."
+
     const val CANNOT_CHECK = "Remote Control stays off: this version of Antigravity opened a port on this phone that " +
         "PocketIDE cannot check, so it cannot tell whether other apps are kept out."
 
     private val HTTP_CLIENT_ERRORS = 400..499
+    private val KEY_REFUSALS = setOf(401, 403)
 }

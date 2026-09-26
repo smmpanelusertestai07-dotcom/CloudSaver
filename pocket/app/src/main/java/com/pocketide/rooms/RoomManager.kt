@@ -1,7 +1,6 @@
 package com.pocketide.rooms
 
 import com.pocketide.bridge.BridgedPort
-import com.pocketide.bridge.ListenerScan
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.ComputerState
 import com.pocketide.linux.LinuxCommand
@@ -42,7 +41,14 @@ import java.util.concurrent.ConcurrentHashMap
  * terminals, and no use of its screen ([touch]). What a room is busy with is passed on to the
  * limiter, which never closes a busy room and holds the phone awake only while one works.
  */
-internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long = SAMPLE_MS) : Rooms {
+internal class RoomManager(
+    private val env: RoomsEnv,
+    private val sampleMs: Long = SAMPLE_MS,
+    /** Time Remote Control's daemon gets to open its ports before they are checked. */
+    private val remoteSettleMs: Long = RemoteControl.SETTLE_MS,
+    /** How often its ports are checked again while it runs. */
+    private val remoteWatchMs: Long = RemoteControl.WATCH_MS,
+) : Rooms {
     private val dirs = env.dirs
     private val random = SecureRandom()
     private val procs = ProcFacts()
@@ -57,8 +63,13 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     private val holds = WorkHolds(env::setBusy)
     private val waitedBuilds: MutableSet<Pair<String, Long>> = ConcurrentHashMap.newKeySet()
 
-    /** Google's Remote Control daemon running in a room ([startRemoteControl]), keyed by agent id. */
-    private val remoteControls = ConcurrentHashMap<String, Process>()
+    /**
+     * Google's Remote Control daemon running in a room ([startRemoteControl]), keyed by agent id,
+     * from the moment it starts: whatever happens next, a stop reaches it.
+     */
+    private val remoteDaemons = ConcurrentHashMap<String, Process>()
+    private val mutableRemoteControls = MutableStateFlow<Map<String, RemoteControlState>>(emptyMap())
+    override val remoteControls: StateFlow<Map<String, RemoteControlState>> = mutableRemoteControls.asStateFlow()
 
     /** Headless runs (scheduled tasks) going on in each room, keyed by agent id. */
     private val headless = HashMap<String, Int>()
@@ -195,7 +206,7 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     override suspend fun stop(agentId: String) = stopWith(agentId, StopReason.OWNER, "Stopped. Nothing was lost; open it again to continue.")
 
     override suspend fun stopAll() {
-        val agents = live.keys + mutableStates.value.keys + remoteControls.keys
+        val agents = live.keys + mutableStates.value.keys + remoteDaemons.keys
         for (agentId in agents) stopWith(agentId, StopReason.OWNER, "Stopped. Nothing was lost; open it again to continue.")
         terminals.stopAll()
     }
@@ -325,34 +336,121 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         }
     }
 
+    /**
+     * Runs detached from the screen that asked, as an engine start does, so leaving the screen
+     * stops the waiting, not the start.
+     */
     override suspend fun startRemoteControl(agentId: String): String {
         val profile = profile(agentId)?.takeIf { it.engine == Engine.AGY_HUB } ?: throw IllegalStateException(RemoteControl.ONLY_ANTIGRAVITY)
-        computerProblem()?.let { throw IllegalStateException(it) }
-        engineProblem(profile)?.let { throw IllegalStateException(it) }
-        return lock(agentId).withLock {
-            if (remoteControls[agentId]?.isAlive == true) return@withLock RemoteControl.DASHBOARD
-            // The daemon lives on after this screen: the engine's service keeps the computer running.
-            if (!env.keepEngineAlive()) ring(agentId).add("[PocketIDE] Android did not let the engine's service start now.")
-            val scan = ListenerScan(ownUid = android.os.Process.myUid())
-            val before = withContext(Dispatchers.IO) { scan.scan(allPorts()).map { it.port }.toSet() }
-            // Its own folders first, its own /home among them: proot refuses a bind whose folder is missing.
-            withContext(Dispatchers.IO) { RoomLayout.hostFolders(dirs, agentId).forEach { it.mkdirs() } }
-            val command = RoomEngines.headless(dirs, agentId, RemoteControl.startCommand(), AppDirs.GUEST_HOME, roomEnvironment(agentId, emptyMap()))
-            val process = withContext(Dispatchers.IO) { env.computer.start(command) }
-            env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
-            delay(RemoteControl.SETTLE_MS)
-            if (!process.isAlive && process.exitValue() != 0) throw IllegalStateException(RemoteControl.notStarted(ring(agentId).last(LAST_WORDS)))
-            val opened = withContext(Dispatchers.IO) { scan.scan(allPorts()).map { it.port }.toSet() - before }
-            val answers = withContext(Dispatchers.IO) { opened.associateWith { Loopback.get(it, "/", maxBody = HUB_PAGE_BYTES) } }
-            RemoteControl.problem(answers)?.let { why ->
-                env.computer.stop(process)
-                ring(agentId).add("[PocketIDE] Remote Control opened ports ${opened.sorted()}; it was stopped again.")
-                throw IllegalStateException(why)
-            }
-            remoteControls[agentId] = process
-            RemoteControl.DASHBOARD
+        return env.scope.async { lock(agentId).withLock { startRemoteControlLocked(profile) } }.await()
+    }
+
+    private suspend fun startRemoteControlLocked(profile: RoomProfile): String {
+        val agentId = profile.agentId
+        if (remoteDaemons[agentId]?.isAlive == true) return RemoteControl.DASHBOARD
+        publishRemoteControl(agentId, RemoteControlState.Starting)
+        try {
+            computerProblem()?.let { throw IllegalStateException(it) }
+            engineProblem(profile)?.let { throw IllegalStateException(it) }
+            return startDaemon(agentId)
+        } catch (failed: IllegalStateException) {
+            publishRemoteControl(agentId, RemoteControlState.Off(failed.message ?: RemoteControl.notStarted(emptyList())))
+            throw failed
         }
     }
+
+    /** Starts the daemon, tracked at once, and keeps it only when every port it opened passes. */
+    private suspend fun startDaemon(agentId: String): String {
+        // The daemon lives on after this screen: the engine's service keeps the computer running while it is on.
+        if (!env.keepEngineAlive()) ring(agentId).add("[PocketIDE] Android did not let the engine's service start now.")
+        val known = listeningPorts().map { it.port }.toMutableSet()
+        // Its own folders first, its own /home among them: proot refuses a bind whose folder is missing.
+        withContext(Dispatchers.IO) { RoomLayout.hostFolders(dirs, agentId).forEach { it.mkdirs() } }
+        val command = RoomEngines.headless(dirs, agentId, RemoteControl.startCommand(), AppDirs.GUEST_HOME, roomEnvironment(agentId, emptyMap()))
+        val process = try {
+            withContext(Dispatchers.IO) { env.computer.start(command) }
+        } catch (failed: IOException) {
+            throw IllegalStateException(RemoteControl.notStarted(listOfNotNull(failed.message)))
+        }
+        remoteDaemons[agentId] = process
+        env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
+        env.scope.launch { awaitDaemonEnd(agentId, process) }
+        try {
+            delay(remoteSettleMs)
+            if (!process.isAlive) throw IllegalStateException(RemoteControl.notStarted(ring(agentId).last(LAST_WORDS)))
+            daemonPortProblem(agentId, known)?.let { throw IllegalStateException(it) }
+        } catch (failed: IllegalStateException) {
+            endDaemon(agentId, process)
+            throw failed
+        }
+        publishRemoteControl(agentId, RemoteControlState.On)
+        env.scope.launch { watchDaemon(agentId, process, known) }
+        return RemoteControl.DASHBOARD
+    }
+
+    /**
+     * Checks the daemon's ports again for as long as it runs: it may open one any time, when a
+     * conversation starts or after it restarted itself. It is turned off at the first that fails.
+     */
+    private suspend fun watchDaemon(agentId: String, process: Process, known: MutableSet<Int>) {
+        while (remoteDaemons[agentId] === process) {
+            delay(remoteWatchMs)
+            if (remoteDaemons[agentId] !== process) return
+            val why = daemonPortProblem(agentId, known) ?: continue
+            val turnedOff = lock(agentId).withLock {
+                (remoteDaemons[agentId] === process && endDaemon(agentId, process)).also { ended ->
+                    if (ended) publishRemoteControl(agentId, RemoteControlState.Off(why))
+                }
+            }
+            if (turnedOff) env.notify(agentId, null, "Remote Control turned off", why)
+            return
+        }
+    }
+
+    /**
+     * Why the ports that started listening since [known] was taken keep Remote Control off, or
+     * null; the ones that pass join [known]. PocketIDE's own ports (engines, terminals, the port
+     * bridge's) and the dev servers agents announced are not the daemon's.
+     */
+    private suspend fun daemonPortProblem(agentId: String, known: MutableSet<Int>): String? {
+        val own = live.values.map { it.port }.toSet() + terminals.ports() + mutablePreviewPorts.value.values.flatten()
+        val opened = listeningPorts().filter { it.port !in known && it.port !in own }
+        if (opened.isEmpty()) return null
+        val answers = withContext(Dispatchers.IO) { opened.associate { it.port to Loopback.get(it.port, "/") } }
+        val why = RemoteControl.problem(answers, opened.filter { it.onNetwork }.map { it.port }.toSet())
+        if (why == null) {
+            known += answers.keys
+        } else {
+            ring(agentId).add("[PocketIDE] Remote Control opened ports ${answers.keys.sorted()}; it was stopped again.")
+        }
+        return why
+    }
+
+    private suspend fun listeningPorts() = env.portBridge.listeners(allPorts())
+
+    /** Waits for the daemon to end; if nobody stopped it, says so. */
+    private suspend fun awaitDaemonEnd(agentId: String, process: Process) {
+        runInterruptible(Dispatchers.IO) { process.waitFor() }
+        lock(agentId).withLock {
+            if (!remoteDaemons.remove(agentId, process)) return@withLock
+            ring(agentId).add("[PocketIDE] Remote Control ended by itself.")
+            publishRemoteControl(agentId, RemoteControlState.Off(RemoteControl.STOPPED_BY_ITSELF))
+        }
+    }
+
+    /** Stops the daemon exactly, if it is still the room's; true when it was. Called under the room's lock. */
+    private fun endDaemon(agentId: String, process: Process): Boolean {
+        val tracked = remoteDaemons.remove(agentId, process)
+        env.computer.stop(process)
+        return tracked
+    }
+
+    override suspend fun stopRemoteControl(agentId: String) = lock(agentId).withLock {
+        remoteDaemons.remove(agentId)?.let(env.computer::stop)
+        mutableRemoteControls.update { it - agentId }
+    }
+
+    private fun publishRemoteControl(agentId: String, state: RemoteControlState) = mutableRemoteControls.update { it + (agentId to state) }
 
     /** Every TCP port: Android may hide the socket table, and then each one is tried on the loopback. */
     private fun allPorts(): List<Int> = (1..MAX_PORT).toList()
@@ -733,7 +831,8 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             recordStop(agentId, reason, message)
         }
         terminals.stopAgent(agentId)
-        remoteControls.remove(agentId)?.let(env.computer::stop)
+        remoteDaemons.remove(agentId)?.let(env.computer::stop)
+        mutableRemoteControls.update { it - agentId }
         // A scheduled task still running in the room keeps using PocketIDE's tools.
         if (!runningHeadless(agentId)) env.phoneBridge.stop(agentId)
         publish(agentId, RoomState.Stopped)
