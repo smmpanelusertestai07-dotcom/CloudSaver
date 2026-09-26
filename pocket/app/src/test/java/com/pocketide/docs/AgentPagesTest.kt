@@ -1,5 +1,6 @@
 package com.pocketide.docs
 
+import com.pocketide.agents.OfficialAgents
 import com.pocketide.model.AgentInfo
 import com.pocketide.model.AgentSurface
 import org.junit.Assert.assertEquals
@@ -52,6 +53,13 @@ class AgentPagesTest {
         assertTrue(text.contains("cannot be removed"))
         val links = page.blocks.filterIsInstance<DocBlock.Link>().map { it.url }
         assertTrue(DocLinks.CLAUDE_PRIVACY in links)
+    }
+
+    @Test
+    fun `Antigravity's page says a port other devices on the same Wi-Fi could use turns Remote Control off too`() {
+        val text = text(DocsContent.agentPage(OfficialAgents.antigravity))
+        assertTrue(text, text.contains("keeps checking the ports it opens"))
+        assertTrue(text, text.contains("turns it off if other apps on the phone or devices on the same Wi-Fi could use one"))
     }
 
     @Test

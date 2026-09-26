@@ -14,8 +14,8 @@ internal object AgentPages {
         "Remote Control (needs a phone test): while this version's own screen stays closed in PocketIDE, the Antigravity " +
             "room offers Google's own Remote Control. It runs in the room, and you use Antigravity on Google's Remote " +
             "Control page in your browser, signed in with the same Google Account; the page can go on your home screen " +
-            "and send notifications. PocketIDE turns it off again if it opens a port other apps on the phone could use. " +
-            "Stopping the room stops it."
+            "and send notifications. PocketIDE keeps checking the ports it opens, and turns it off if other apps on the " +
+            "phone or devices on the same Wi-Fi could use one. Stopping the room stops it."
 
     private const val SIGN_IN_STAYS = "Sign-ins stay only on this phone, so on a new phone you sign in again."
 
