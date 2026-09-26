@@ -169,7 +169,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             ports.wipeSecureStore()
             ports.forgetVaultKey()
             // Settings are erased too, as the owner was told: no old choice reaches the next vault, and
-            // set-up starts over (the extra password wrapped the old key's Half G, which is gone).
+            // set-up starts over (the extra password belonged to the old key, which is gone).
             ports.settings.update { Settings() }
             flows.status.value = SyncStatus.Idle
             flows.waiting.value = emptyList()
