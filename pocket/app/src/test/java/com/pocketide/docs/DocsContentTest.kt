@@ -88,6 +88,8 @@ class DocsContentTest {
         val claudeNote = checkNotNull(ChatHomes.claude.note)
         assertTrue("what Anthropic stores", claudeNote.contains("transcript") && claudeNote.contains("Help improve Claude"))
         assertTrue("how to turn it off", claudeNote.contains("turn off Settings → Agents → \"${ChatHomes.CLAUDE_SWITCH}\""))
+        assertTrue("continuing it elsewhere needs Claude running here", claudeNote.contains(ChatHomes.CLAUDE_CONTINUE))
+        assertFalse("never promised without that", claudeNote.contains("and you can continue it there."))
         assertTrue(sectionText(requireSection("privacy-policy")).contains(claudeNote))
         assertTrue(sectionText(DocsContent.agentPage(OfficialAgents.claude)).contains(claudeNote))
         for (agent in OfficialAgents.all) {

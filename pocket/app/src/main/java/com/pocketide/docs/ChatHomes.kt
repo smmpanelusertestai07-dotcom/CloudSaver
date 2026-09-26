@@ -36,6 +36,14 @@ internal object ChatHomes {
 
     const val BACKUP = "PocketIDE's encrypted Drive backup"
 
+    /**
+     * Remote Control lasts only while Claude's process runs, and PocketIDE closes idle rooms: the
+     * session can be continued elsewhere only while its room is up.
+     */
+    const val CLAUDE_CONTINUE =
+        "You can continue it there while Claude is running on this phone: a room that sleeps or stops takes it " +
+            "offline until you open the session here again."
+
     /** Said wherever these answers are, so "only the backup" is never read as "the company kept nothing". */
     const val COMPANIES_KEEP = "Each company still keeps what its agent receives under its own policy."
 
@@ -45,8 +53,8 @@ internal object ChatHomes {
         kept = "Your Claude account, while its switch is on, and $BACKUP.",
         elsewhere = "Your Claude account, while Settings → Agents allows it",
         note = "Anthropic stores the transcript (your messages, Claude's replies and tool activity) under its " +
-            "data-usage policy and your \"Help improve Claude\" choice. The Claude app and claude.ai/code show it, " +
-            "and you can continue it there. It needs a Claude plan sign-in, Pro or higher. To stop it, turn off " +
+            "data-usage policy and your \"Help improve Claude\" choice. The Claude app and claude.ai/code show it. " +
+            "$CLAUDE_CONTINUE It needs a Claude plan sign-in, Pro or higher. To stop it, turn off " +
             "Settings → Agents → \"$CLAUDE_SWITCH\".",
         open = link("Open Claude Code on the web", DocLinks.CLAUDE_CODE_WEB),
         sources = listOf(link("Claude Code Remote Control", DocLinks.CLAUDE_REMOTE_CONTROL)),
