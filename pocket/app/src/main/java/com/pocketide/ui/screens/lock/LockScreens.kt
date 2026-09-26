@@ -46,6 +46,7 @@ import com.pocketide.AppGraph
 import com.pocketide.github.gitHubAppChoice
 import com.pocketide.model.LinkHealth
 import com.pocketide.model.LockReason
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.onboarding.GitHubAppFields
@@ -356,7 +357,7 @@ private fun RaiseDriveLimitDialog(current: Int, onPick: (Int) -> Unit, onDismiss
         onDismissRequest = onDismiss,
         title = { Text("PocketIDE's Drive limit") },
         text = {
-            Column(Modifier.selectableGroup()) {
+            DialogBody(Modifier.selectableGroup(), spacing = 0.dp) {
                 if (bigger.isEmpty()) {
                     Text("This is already the largest limit. Delete old chats or free Google storage instead.")
                 }

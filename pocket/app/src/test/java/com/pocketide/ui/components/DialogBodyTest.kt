@@ -16,6 +16,8 @@ class DialogBodyTest {
             "ui/manage/ChatPlacesUi.kt" to "title = { Text(\"Where this chat is saved\") }",
             "ui/shell/KeyOnPhone.kt" to "title = { Text(\"Reconnect GitHub\") }",
             "ui/screens/secrets/SecretsScreen.kt" to "title = { Text(shown.name) }",
+            "ui/screens/lock/LockScreens.kt" to "title = { Text(\"PocketIDE's Drive limit\") }",
+            "ui/screens/computer/ResetComputer.kt" to "title = { Text(\"Saving your work first\") }",
         )
         for ((file, title) in dialogs) {
             val source = source(file)

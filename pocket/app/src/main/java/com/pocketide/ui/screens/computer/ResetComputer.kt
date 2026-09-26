@@ -1,7 +1,5 @@
 package com.pocketide.ui.screens.computer
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,12 +15,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.pocketide.AppGraph
 import com.pocketide.limiter.EngineService
 import com.pocketide.linux.ResetPlan
 import com.pocketide.model.SessionStatus
 import com.pocketide.sync.SyncStatus
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.manage.OutlivingWork
 import com.pocketide.ui.manage.PlainError
@@ -116,7 +114,7 @@ internal fun ResetComputerDialogs(graph: AppGraph, onClose: () -> Unit, onNotice
             onDismissRequest = {},
             title = { Text("Saving your work first") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DialogBody {
                     Text(ResetText.SAVING, style = MaterialTheme.typography.bodyMedium)
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
