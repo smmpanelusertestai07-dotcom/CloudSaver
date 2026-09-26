@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import com.pocketide.AppGraph
+import com.pocketide.ui.components.DialogBody
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -23,15 +24,17 @@ fun ReconnectGitHubDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("Reconnect GitHub") },
         text = {
-            GitHubConnectPanel(
-                signIn = signIn,
-                openUrl = { url -> External.openUrl(context, url) },
-                onConnected = {
-                    saveKeyNow(graph)
-                    onDismiss()
-                },
-                startLabel = "Reconnect GitHub",
-            )
+            DialogBody {
+                GitHubConnectPanel(
+                    signIn = signIn,
+                    openUrl = { url -> External.openUrl(context, url) },
+                    onConnected = {
+                        saveKeyNow(graph)
+                        onDismiss()
+                    },
+                    startLabel = "Reconnect GitHub",
+                )
+            }
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },

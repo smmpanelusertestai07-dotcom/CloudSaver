@@ -239,7 +239,8 @@ fun SecretsScreen(projectId: String?, nav: PocketNav) {
         AlertDialog(
             onDismissRequest = { revealed = null },
             title = { Text(shown.name) },
-            text = { SelectableText(String(shown.chars), Modifier.fillMaxWidth()) },
+            // A value may be a whole key file: it scrolls rather than being cut off.
+            text = { DialogBody { SelectableText(String(shown.chars), Modifier.fillMaxWidth()) } },
             confirmButton = { TextButton(onClick = { revealed = null }) { Text("Hide") } },
         )
     }
