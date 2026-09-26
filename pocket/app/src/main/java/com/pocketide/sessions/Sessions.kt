@@ -81,6 +81,9 @@ interface Sessions {
     /** Keeps this session on the phone only ("Don't back up this chat"). */
     suspend fun setBackUp(sessionId: String, backUp: Boolean)
 
+    /** Claude ran [sessionId] with Remote Control on: records that the chat is in the Claude account too. */
+    suspend fun markInClaudeAccount(sessionId: String) = Unit
+
     /** Removes media from a session but keeps the chat. */
     suspend fun removeMedia(sessionId: String)
 

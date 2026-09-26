@@ -403,7 +403,6 @@ private fun SessionsTab(
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
     var browsing by remember { mutableStateOf<SessionRecord?>(null) }
     var deleting by remember { mutableStateOf<SessionRecord?>(null) }
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val groups = remember(sessions, projectId) { sessionsByAgent(sessions, projectId) }
 
     if (groups.isEmpty()) {
@@ -447,8 +446,8 @@ private fun SessionsTab(
                         onFiles = { browsing = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
-                        accountLine = ChatPlaces.sessionLine(session.agentId, settings),
-                        onOpenAccount = { ChatPlaces.of(session.agentId, settings)?.let { openChatPage(context, nav, it) } },
+                        accountLine = ChatPlaces.sessionLine(session),
+                        onOpenAccount = { ChatPlaces.forSession(session)?.let { openChatPage(context, nav, it) } },
                         note = conflictCopyNote(session, sessions),
                     )
                 }
@@ -691,8 +690,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var renamingBranch by rememberSaveable(sessionId) { mutableStateOf(false) }
     var addingFile by remember(sessionId) { mutableStateOf(false) }
     var showChatPlace by remember(sessionId) { mutableStateOf(false) }
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val chatPlace = ChatPlaces.of(agentId, settings).takeIf { agent?.official == true }
+    val chatPlace = ChatPlaces.forSession(session).takeIf { agent?.official == true }
     val name = agentName(agent, agentId)
     val sleepText = sleepsSoon(name, sleeps[agentId], now)
     val publicRepo = projects.firstOrNull { it.id == session.projectId }?.isPrivate == false

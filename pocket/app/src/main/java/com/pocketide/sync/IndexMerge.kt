@@ -133,9 +133,13 @@ internal object IndexMerge {
         )
     }
 
-    /** The newer activity wins ([a] on a tie); the earliest deletion date is kept, so the 30-day count never restarts. */
+    /**
+     * The newer activity wins ([a] on a tie); the earliest deletion date is kept, so the 30-day count
+     * never restarts, and a chat either phone saw kept in the Claude account stays marked so.
+     */
     fun mergeSession(a: SessionRecord, b: SessionRecord): SessionRecord {
-        val newer = if (b.lastActivityAt > a.lastActivityAt) b else a
+        val newer = (if (b.lastActivityAt > a.lastActivityAt) b else a)
+            .let { if (a.claudeAccount || b.claudeAccount) it.copy(claudeAccount = true) else it }
         val deletions = listOfNotNull(a.deletedAt, b.deletedAt)
         if (deletions.isEmpty()) return newer
         return newer.copy(deletedAt = deletions.min(), status = SessionStatus.DELETED)

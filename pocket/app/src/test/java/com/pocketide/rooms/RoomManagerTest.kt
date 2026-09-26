@@ -136,6 +136,21 @@ class RoomManagerTest {
         assertEquals(1, env.computer.commands.size)
     }
 
+    @Test fun `each session a Claude room started with Remote Control shows is marked kept in the Claude account`() = runBlocking {
+        rooms.open("claude", "s1")
+        rooms.open("claude", "s2")
+        assertEquals(listOf("s1", "s2"), env.inClaudeAccount)
+    }
+
+    @Test fun `a Claude room started with the switch off marks nothing, even after the switch goes on`() = runBlocking {
+        env.accountChats = false
+        rooms.open("claude", "s1")
+        env.accountChats = true
+        rooms.open("claude", "s2")
+        assertEquals("the switch applies from Claude's next start", emptyList<String>(), env.inClaudeAccount)
+        assertEquals(1, env.computer.commands.size)
+    }
+
     @Test fun `stop ends the engine exactly and says why`() = runBlocking {
         rooms.open("claude", "s1")
         val process = env.computer.processes.single()
@@ -738,6 +753,13 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
             return true
         }
         override fun idleSleepMinutes() = 15
+
+        @Volatile var accountChats = true
+        val inClaudeAccount = CopyOnWriteArrayList<String>()
+        override fun claudeChatsInAccount() = accountChats
+        override suspend fun keptInClaudeAccount(sessionId: String) {
+            inClaudeAccount += sessionId
+        }
         override fun canStartHeavyWork(what: String) = Decision.YES
         override fun allowDownload(bytes: Long, kind: String) = Decision.YES
         override fun recordDownload(bytes: Long, kind: String) = Unit

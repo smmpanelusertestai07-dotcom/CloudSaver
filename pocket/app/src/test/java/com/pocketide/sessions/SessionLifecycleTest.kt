@@ -127,6 +127,20 @@ class SessionLifecycleTest {
     }
 
     @Test
+    fun `a chat kept in the Claude account stays marked so, and is synced once`() = runBlocking<Unit> {
+        val sessions = rig.manager(scope)
+        val session = sessions.start(PROJECT_ID, "claude", "Login")
+        assertFalse(session.claudeAccount)
+        sessions.markInClaudeAccount(session.id)
+        sessions.markInClaudeAccount(session.id)
+
+        val again = rig.manager(scope)
+        again.refresh()
+        assertTrue(again.all.value.single().claudeAccount)
+        assertEquals(1, rig.sync.requests.count { it == "chat kept in the Claude account" })
+    }
+
+    @Test
     fun `delete moves to recently deleted, removes the phone copy and keeps the branch`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login fix")

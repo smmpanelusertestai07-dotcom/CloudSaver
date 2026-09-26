@@ -431,6 +431,12 @@ internal class SessionManager(
         env.sync.requestSync("backup choice changed")
     }
 
+    override suspend fun markInClaudeAccount(sessionId: String) {
+        if (records.current().find { it.id == sessionId }?.claudeAccount != false) return
+        change(sessionId) { it.copy(claudeAccount = true) }
+        env.sync.requestSync("chat kept in the Claude account")
+    }
+
     override suspend fun removeMedia(sessionId: String) {
         val session = session(sessionId)
         mediaOf(sessionId)?.forEach { env.media.delete(it) }

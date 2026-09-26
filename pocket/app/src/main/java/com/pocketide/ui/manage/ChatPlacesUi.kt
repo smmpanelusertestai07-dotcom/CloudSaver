@@ -63,9 +63,11 @@ internal fun ChatPlaceDialog(place: ChatPlaces.Place, nav: PocketNav, onDismiss:
                     onDismiss()
                     openChatPage(context, nav, place)
                 }) { Text(place.pageLabel) }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Close") }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { if (place.page != null) TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
 

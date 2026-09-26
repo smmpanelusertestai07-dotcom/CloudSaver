@@ -117,6 +117,16 @@ class IndexMergeTest {
     }
 
     @Test
+    fun aChatKeptInTheClaudeAccountStaysMarkedWhicheverPhoneIsNewer() {
+        val t = clock.now
+        val kept = session("s1", at = t).copy(claudeAccount = true)
+        val later = session("s1", at = t + day)
+        assertTrue(IndexMerge.mergeSession(kept, later).claudeAccount)
+        assertTrue(IndexMerge.mergeSession(later, kept).claudeAccount)
+        assertEquals(t + day, IndexMerge.mergeSession(kept, later).lastActivityAt)
+    }
+
+    @Test
     fun onlyARestoreClearsADeletion() {
         val t = clock.now
         val base = VaultIndex(updatedAt = t, sessions = listOf(session("s1", at = t, deletedAt = t - day)))

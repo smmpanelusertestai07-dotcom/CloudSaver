@@ -85,6 +85,8 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         val careful: Boolean,
         val activity: ActivityClock,
         @Volatile var sessionId: String,
+        /** Started with Remote Control on: every session it shows is kept in the owner's Claude account. */
+        val accountChats: Boolean = false,
     ) {
         val pid: Int? = ProcFacts.pidOf(process)
 
@@ -162,7 +164,12 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     override fun takesPrompts(agentId: String): Boolean = profile(agentId)?.promptCommand != null
 
     /** [admitted]: the limiter has just made room for this room, so its phone readings may lag behind. */
-    private suspend fun openLocked(agentId: String, sessionId: String, admitted: Boolean): RoomState {
+    private suspend fun openLocked(agentId: String, sessionId: String, admitted: Boolean): RoomState =
+        openRoom(agentId, sessionId, admitted).also { state ->
+            if (state is RoomState.Running && live[agentId]?.accountChats == true) env.keptInClaudeAccount(sessionId)
+        }
+
+    private suspend fun openRoom(agentId: String, sessionId: String, admitted: Boolean): RoomState {
         val (profile, session) = when (val opening = opening(agentId, sessionId)) {
             is Opening.Refused -> return fail(agentId, opening.why)
             is Opening.Ready -> opening.profile to opening.session
@@ -417,6 +424,8 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         val hasWorktree = withContext(Dispatchers.IO) { RoomFiles(dirs.roomWork(agentId), guardSecrets = false).isDirectory(worktree) }
         if (!hasWorktree) return fail(agentId, RoomTerminals.MISSING_WORKTREE)
         val careful = careful(session)
+        // Read as the settings written next read it: Remote Control connects from this start on.
+        val accountChats = agentId == RoomProfiles.CLAUDE && env.claudeChatsInAccount()
         publish(agentId, RoomState.Starting("Preparing the room"))
         try {
             withContext(Dispatchers.IO) { prepare(profile, careful) }
@@ -462,7 +471,7 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         } catch (failed: IllegalArgumentException) {
             return couldNotStart(profile, bridgeFiles, secretFile, failed)
         }
-        val room = LiveRoom(profile, process, chosenPort, variables, careful, ActivityClock(env.now(), ::idleLimitMs), session.id)
+        val room = LiveRoom(profile, process, chosenPort, variables, careful, ActivityClock(env.now(), ::idleLimitMs), session.id, accountChats)
         live[agentId] = room
         env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
 
