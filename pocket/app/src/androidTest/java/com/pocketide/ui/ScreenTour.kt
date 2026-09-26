@@ -9,12 +9,25 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.pocketide.agents.OfficialAgents
 import com.pocketide.core.ThemeMode
+import com.pocketide.docs.ChatHomes
+import com.pocketide.docs.DocBlock
+import com.pocketide.docs.DocSection
+import com.pocketide.docs.DocsContent
 import com.pocketide.model.LockReason
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.screens.activity.ActivityScreen
@@ -47,7 +60,8 @@ import java.io.File
  *
  * Runs only when asked (`am instrument -e tour true`), so the normal on-device run stays quick.
  * Each screen is drawn on this phone's real app state and saved as a PNG in the app's own
- * files, under tour/, where CI reads it with `run-as`.
+ * files, under tour/, where CI reads it with `run-as`. A long screen is first scrolled to the
+ * part the picture is about.
  */
 @RunWith(AndroidJUnit4::class)
 class ScreenTour {
@@ -105,7 +119,45 @@ class ScreenTour {
 
     @Test fun driveDisconnected() = shoot("19-locked-drive") { LockScreen(LockReason.DriveDisconnected) }
 
-    private fun shoot(name: String, mode: ThemeMode = ThemeMode.LIGHT, screen: @Composable () -> Unit) {
+    @Test fun settingsClaudeChats() = shoot(
+        "20-settings-claude-chats",
+        scroll = { compose.onNodeWithText(ChatHomes.CLAUDE_SWITCH).performScrollTo() },
+    ) { SettingsScreen(nav) }
+
+    // Your data is a lazy list: a card below the fold is not composed until the list scrolls to it.
+    // Its section labels are drawn in capitals.
+    @Test fun yourDataChatPlaces() = shoot(
+        "21-your-data-chat-places",
+        scroll = { list().performScrollToNode(hasText(CHAT_PLACES_LABEL, ignoreCase = true)) },
+    ) { YourDataScreen(nav) }
+
+    @Test fun helpPrivacyTable() {
+        val privacy = checkNotNull(DocsContent.section("privacy"))
+        val table = itemOf(privacy) { it is DocBlock.Table && it.header.last() == ChatHomes.TABLE_HEADER }
+        shoot("22-help-privacy-table", scroll = { list().performScrollToIndex(table) }) { HelpScreen(sectionId = privacy.id, nav = nav) }
+    }
+
+    @Test fun helpClaude() {
+        val page = DocsContent.agentPage(OfficialAgents.claude)
+        val stores = itemOf(page) { it is DocBlock.Paragraph && it.text == ChatHomes.claude.note }
+        shoot("23-help-claude", scroll = { list().performScrollToIndex(stores) }) { HelpScreen(sectionId = page.id, nav = nav) }
+    }
+
+    /** The screen's one scrolling list. */
+    private fun list(): SemanticsNodeInteraction = compose.onAllNodes(hasScrollToIndexAction()).onFirst()
+
+    /**
+     * The list position of [section]'s first block that [block] accepts, as Help's page lists it:
+     * its title, its summary, then one item per block. Help draws its text in Android's own text
+     * views (for native selection), which the Compose test cannot search, so the page scrolls by position.
+     */
+    private fun itemOf(section: DocSection, block: (DocBlock) -> Boolean): Int {
+        val index = section.blocks.indexOfFirst(block)
+        check(index >= 0) { "${section.id} has no such block" }
+        return 1 + (if (section.summary.isNotBlank()) 1 else 0) + index
+    }
+
+    private fun shoot(name: String, mode: ThemeMode = ThemeMode.LIGHT, scroll: (() -> Unit)? = null, screen: @Composable () -> Unit) {
         // The same frame PocketRoot gives every screen: the theme's background, and the text colour
         // that goes with it.
         compose.setContent {
@@ -117,6 +169,10 @@ class ScreenTour {
         // Lists and states load from disk off the main thread; give them a moment to arrive.
         SystemClock.sleep(SETTLE_MS)
         compose.waitForIdle()
+        if (scroll != null) {
+            scroll()
+            compose.waitForIdle()
+        }
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         val folder = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "tour").apply { mkdirs() }
         File(folder, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -145,5 +201,6 @@ class ScreenTour {
 
     private companion object {
         const val SETTLE_MS = 2_000L
+        const val CHAT_PLACES_LABEL = "Where your chats are saved"
     }
 }
