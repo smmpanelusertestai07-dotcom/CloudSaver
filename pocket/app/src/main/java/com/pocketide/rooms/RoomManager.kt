@@ -335,6 +335,8 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             if (!env.keepEngineAlive()) ring(agentId).add("[PocketIDE] Android did not let the engine's service start now.")
             val scan = ListenerScan(ownUid = android.os.Process.myUid())
             val before = withContext(Dispatchers.IO) { scan.scan(allPorts()).map { it.port }.toSet() }
+            // Its own folders first, its own /home among them: proot refuses a bind whose folder is missing.
+            withContext(Dispatchers.IO) { RoomLayout.hostFolders(dirs, agentId).forEach { it.mkdirs() } }
             val command = RoomEngines.headless(dirs, agentId, RemoteControl.startCommand(), AppDirs.GUEST_HOME, roomEnvironment(agentId, emptyMap()))
             val process = withContext(Dispatchers.IO) { env.computer.start(command) }
             env.scope.launch(Dispatchers.IO) { pump(agentId, process) }

@@ -7,6 +7,7 @@ import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
 import com.pocketide.core.AppDirs
 import com.pocketide.github.PullRequest
+import com.pocketide.linux.Bind
 import com.pocketide.linux.Computer
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
@@ -234,6 +235,19 @@ class RoomManagerTest {
         assertTrue("no port of it goes to the bridge", env.ports.exposed.isEmpty())
         val claude = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("claude") } }
         assertEquals(RemoteControl.ONLY_ANTIGRAVITY, claude.message)
+    }
+
+    @Test fun `Remote Control starts in the room's own folders, its own home among them`() = runBlocking {
+        installAgy()
+        val missing = CopyOnWriteArrayList<String>()
+        env.computer.beforeStart = { command -> command.binds.filterNot { File(it.hostPath).isDirectory }.mapTo(missing) { it.guestPath } }
+
+        // Whether it may stay on is the test above; this stand-in is stopped again once it has started.
+        assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("antigravity") } }
+
+        val binds = env.computer.commands.single().binds
+        assertTrue(binds.contains(Bind(dirs.roomUserHomes("antigravity").absolutePath, AppDirs.GUEST_USER_HOMES)))
+        assertEquals("every folder it binds is there before it starts", emptyList<String>(), missing)
     }
 
     /** The room's agy, as the room sees it. */
