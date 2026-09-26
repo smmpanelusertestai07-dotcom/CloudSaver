@@ -76,7 +76,8 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
         }
     }
 
-    override fun someoneElses(projectId: String): Boolean = graph.projects.trustOf(projectId) == ProjectTrust.SOMEONE_ELSES
+    // A task waiting for charging and Wi-Fi often starts a fresh process, where the list is not read yet.
+    override suspend fun someoneElses(projectId: String): Boolean = graph.projects.loadedTrustOf(projectId) == ProjectTrust.SOMEONE_ELSES
 
     override fun heavyWorkRefusal(): String? = graph.limiter.canStartHeavyWork("A scheduled task").let { if (it.allowed) null else it.reason }
 

@@ -83,6 +83,16 @@ class ProjectRegistryTest {
     }
 
     @Test
+    fun `a fresh process says whose code a project is only after reading the list`() = runBlocking<Unit> {
+        val project = registry().create("app", "")
+        val cold = registry(CoroutineScope(Job().apply { cancel() }))
+
+        // Unread, the list makes every project someone else's: a scheduled task would be refused.
+        assertEquals(ProjectTrust.SOMEONE_ELSES, cold.trustOf(project.id))
+        assertEquals(ProjectTrust.YOURS, cold.loadedTrustOf(project.id))
+    }
+
+    @Test
     fun `the vault's keyring never becomes a project`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["alice/pocketide-keyring"] = repoInfo("alice", "pocketide-keyring")

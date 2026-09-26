@@ -122,6 +122,12 @@ interface Projects {
 
     fun trustOf(projectId: String): ProjectTrust = trust.value[projectId] ?: ProjectTrust.SOMEONE_ELSES
 
+    /** [trustOf] once this phone's list is read: unread, every project would be someone else's. Background jobs ask this. */
+    suspend fun loadedTrustOf(projectId: String): ProjectTrust {
+        loaded()
+        return trustOf(projectId)
+    }
+
     /** The owner's own answer to "Is this your code?", which replaces the automatic one. */
     suspend fun setTrust(projectId: String, trust: ProjectTrust) = Unit
 }

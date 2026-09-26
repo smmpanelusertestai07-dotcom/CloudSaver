@@ -148,7 +148,7 @@ internal class TaskSchedules(
 }
 
 /** Throws with a plain sentence when [task] cannot be saved. */
-private fun checkTask(task: ScheduledTask, runner: ScheduledRun) {
+private suspend fun checkTask(task: ScheduledTask, runner: ScheduledRun) {
     val problem = when {
         task.title.isBlank() -> "Give the task a title."
         task.prompt.isBlank() -> "Write what the agent should do."

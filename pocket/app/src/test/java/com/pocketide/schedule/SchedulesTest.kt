@@ -306,7 +306,7 @@ class ScheduledRunTest {
             return 0
         }
         override fun heavyWorkRefusal() = refusal
-        override fun someoneElses(projectId: String) = someoneElses
+        override suspend fun someoneElses(projectId: String) = someoneElses
         override suspend fun saveOutput(sessionId: String, file: File) {
             saved += sessionId to file.readText()
         }

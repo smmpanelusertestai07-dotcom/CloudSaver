@@ -38,8 +38,8 @@ internal interface RunPorts {
     /** Why heavy work may not start now (battery, heat), or null. */
     fun heavyWorkRefusal(): String?
 
-    /** True for a project marked "Someone else's". */
-    fun someoneElses(projectId: String): Boolean
+    /** True for a project marked "Someone else's", once this phone's project list is read. */
+    suspend fun someoneElses(projectId: String): Boolean
 
     /** Saves the output as a TEXT item in the session's Media. */
     suspend fun saveOutput(sessionId: String, file: File)
@@ -158,7 +158,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
      * Why [task] may never run unattended, or null. Someone else's code could steer an agent
      * that runs with nobody watching, with edits accepted and the room's tools on.
      */
-    fun refusal(task: ScheduledTask): String? = when {
+    suspend fun refusal(task: ScheduledTask): String? = when {
         task.agentId !in HeadlessCommand.supported -> NO_HEADLESS
         ports.someoneElses(task.projectId) -> SOMEONE_ELSES
         else -> null
