@@ -22,8 +22,10 @@ interface AppLock {
     fun lockNow()
     fun onBackground()
     fun onForeground()
+
     /** Shows Android's own prompt; [onDone] gets true when the owner passed it. */
     fun authenticate(activity: FragmentActivity, title: String, onDone: (Boolean) -> Unit)
+
     /** True when the phone has a screen lock (required). */
     fun deviceSecure(): Boolean
 

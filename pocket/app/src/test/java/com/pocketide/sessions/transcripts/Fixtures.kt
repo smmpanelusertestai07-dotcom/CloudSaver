@@ -58,7 +58,10 @@ object Fixtures {
             "user", "u5", "2026-09-24T05:02:00.000Z",
             """{"role":"user","content":"<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>sample-model</command-args>"}""",
         ),
-        claude("user", "u6", "2026-09-24T05:02:01.000Z", """{"role":"user","content":"<local-command-stdout>Set model to sample-model</local-command-stdout>"}"""),
+        claude(
+            "user", "u6", "2026-09-24T05:02:01.000Z",
+            """{"role":"user","content":"<local-command-stdout>Set model to sample-model</local-command-stdout>"}""",
+        ),
         """{"isSidechain":true,"sessionId":"$CLAUDE_SESSION","type":"assistant","message":{"id":"msg_side","role":"assistant","content":[{"type":"text","text":"Subagent notes"}],${usage(1, 0, 0, 1)}},"uuid":"s1","timestamp":"2026-09-24T05:02:30.000Z"}""",
         claude(
             "assistant", "a5", "2026-09-24T05:03:00.000Z",

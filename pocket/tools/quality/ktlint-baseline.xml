@@ -14,24 +14,12 @@
         <error line="186" column="113" source="standard:function-literal" />
         <error line="186" column="161" source="standard:max-line-length" />
         <error line="186" column="166" source="standard:function-literal" />
-        <error line="198" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/main/java/com/pocketide/agents/Discovery.kt">
         <error line="144" column="9" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/agents/EngineRange.kt">
         <error line="79" column="80" source="standard:multiline-if-else" />
-    </file>
-    <file name="src/main/java/com/pocketide/agents/ExtensionInstaller.kt">
-        <error line="156" column="9" source="standard:spacing-between-declarations-with-comments" />
-    </file>
-    <file name="src/main/java/com/pocketide/agents/VerifiedDownload.kt">
-        <error line="110" column="34" source="standard:function-literal" />
-        <error line="110" column="161" source="standard:max-line-length" />
-        <error line="110" column="167" source="standard:function-literal" />
-        <error line="111" column="34" source="standard:function-literal" />
-        <error line="111" column="161" source="standard:max-line-length" />
-        <error line="111" column="167" source="standard:function-literal" />
     </file>
     <file name="src/main/java/com/pocketide/bridge/BridgeConnection.kt">
         <error line="53" column="1" source="standard:spacing-between-declarations-with-annotations" />
@@ -147,10 +135,6 @@
         <error line="112" column="33" source="standard:wrapping" />
         <error line="119" column="9" source="standard:wrapping" />
     </file>
-    <file name="src/main/java/com/pocketide/lock/Access.kt">
-        <error line="24" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="26" column="5" source="standard:spacing-between-declarations-with-comments" />
-    </file>
     <file name="src/main/java/com/pocketide/media/SessionMediaLibrary.kt">
         <error line="76" column="1" source="standard:spacing-between-declarations-with-annotations" />
         <error line="423" column="9" source="standard:spacing-between-declarations-with-comments" />
@@ -183,22 +167,6 @@
         <error line="91" column="56" source="standard:wrapping" />
         <error line="103" column="13" source="standard:wrapping" />
     </file>
-    <file name="src/main/java/com/pocketide/rooms/ConfigFiles.kt">
-        <error line="179" column="17" source="standard:wrapping" />
-        <error line="179" column="28" source="standard:wrapping" />
-        <error line="183" column="13" source="standard:wrapping" />
-        <error line="185" column="17" source="standard:wrapping" />
-        <error line="185" column="28" source="standard:wrapping" />
-        <error line="188" column="13" source="standard:wrapping" />
-        <error line="190" column="36" source="standard:wrapping" />
-        <error line="190" column="59" source="standard:wrapping" />
-        <error line="193" column="9" source="standard:wrapping" />
-        <error line="245" column="13" source="standard:wrapping" />
-        <error line="245" column="21" source="standard:wrapping" />
-        <error line="246" column="17" source="standard:wrapping" />
-        <error line="249" column="13" source="standard:wrapping" />
-        <error line="250" column="9" source="standard:wrapping" />
-    </file>
     <file name="src/main/java/com/pocketide/rooms/McpTools.kt">
         <error line="51" column="5" source="standard:spacing-between-declarations-with-comments" />
         <error line="147" column="47" source="standard:binary-expression-wrapping" />
@@ -214,23 +182,11 @@
     <file name="src/main/java/com/pocketide/rooms/RoomLayout.kt">
         <error line="18" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
-    <file name="src/main/java/com/pocketide/rooms/RoomManager.kt">
-        <error line="86" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="87" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="88" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="89" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="561" column="37" source="standard:wrapping" />
-        <error line="833" column="50" source="standard:multiline-if-else" />
-        <error line="834" column="14" source="standard:multiline-if-else" />
-    </file>
     <file name="src/main/java/com/pocketide/rooms/Rooms.kt">
         <error line="10" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/rooms/Toml.kt">
         <error line="1" column="1" source="standard:filename" />
-    </file>
-    <file name="src/main/java/com/pocketide/schedule/ScheduledRun.kt">
-        <error line="109" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/main/java/com/pocketide/secrets/ProjectSecrets.kt">
         <error line="8" column="5" source="standard:spacing-between-declarations-with-comments" />
@@ -264,10 +220,6 @@
         <error line="174" column="42" source="standard:wrapping" />
         <error line="181" column="9" source="standard:wrapping" />
     </file>
-    <file name="src/main/java/com/pocketide/sync/PieceMaker.kt">
-        <error line="177" column="54" source="standard:multiline-if-else" />
-        <error line="178" column="26" source="standard:multiline-if-else" />
-    </file>
     <file name="src/main/java/com/pocketide/sync/Reconciler.kt">
         <error line="163" column="31" source="standard:parameter-list-wrapping" />
         <error line="163" column="41" source="standard:parameter-list-wrapping" />
@@ -277,13 +229,6 @@
         <error line="163" column="130" source="standard:parameter-list-wrapping" />
         <error line="163" column="152" source="standard:parameter-list-wrapping" />
         <error line="163" column="161" source="standard:max-line-length" />
-        <error line="189" column="29" source="standard:binary-expression-wrapping" />
-        <error line="189" column="161" source="standard:max-line-length" />
-        <error line="196" column="86" source="standard:function-literal" />
-        <error line="196" column="114" source="standard:function-literal" />
-        <error line="196" column="131" source="standard:multiline-if-else" />
-        <error line="196" column="161" source="standard:max-line-length" />
-        <error line="196" column="164" source="standard:multiline-if-else" />
     </file>
     <file name="src/main/java/com/pocketide/sync/Rules.kt">
         <error line="11" column="5" source="standard:spacing-between-declarations-with-comments" />
@@ -292,10 +237,6 @@
     </file>
     <file name="src/main/java/com/pocketide/sync/Sync.kt">
         <error line="14" column="5" source="standard:spacing-between-declarations-with-comments" />
-    </file>
-    <file name="src/main/java/com/pocketide/sync/SyncPass.kt">
-        <error line="285" column="21" source="standard:property-wrapping" />
-        <error line="285" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/main/java/com/pocketide/sync/Views.kt">
         <error line="126" column="161" source="standard:max-line-length" />
@@ -330,17 +271,11 @@
     <file name="src/main/java/com/pocketide/ui/screens/home/HomeDialogs.kt">
         <error line="3" column="1" source="standard:import-ordering" />
     </file>
-    <file name="src/main/java/com/pocketide/ui/screens/onboarding/DriveStep.kt">
-        <error line="3" column="1" source="standard:import-ordering" />
-    </file>
     <file name="src/main/java/com/pocketide/ui/screens/project/MediaLogic.kt">
         <error line="12" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/ui/screens/project/PreviewPanel.kt">
         <error line="67" column="5" source="standard:spacing-between-declarations-with-comments" />
-    </file>
-    <file name="src/main/java/com/pocketide/ui/screens/project/SessionActions.kt">
-        <error line="54" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/ui/screens/usage/UsageScreen.kt">
         <error line="119" column="161" source="standard:max-line-length" />
@@ -377,28 +312,6 @@
         <error line="11" column="5" source="standard:spacing-between-declarations-with-comments" />
         <error line="16" column="5" source="standard:spacing-between-declarations-with-comments" />
         <error line="18" column="5" source="standard:spacing-between-declarations-with-comments" />
-    </file>
-    <file name="src/test/java/com/pocketide/agents/CatalogTest.kt">
-        <error line="85" column="160" source="standard:max-line-length" />
-        <error line="130" column="26" source="standard:binary-expression-wrapping" />
-        <error line="130" column="161" source="standard:max-line-length" />
-        <error line="131" column="26" source="standard:binary-expression-wrapping" />
-        <error line="131" column="161" source="standard:max-line-length" />
-    </file>
-    <file name="src/test/java/com/pocketide/agents/DiscoveryTest.kt">
-        <error line="3" column="1" source="standard:import-ordering" />
-        <error line="44" column="160" source="standard:max-line-length" />
-        <error line="146" column="81" source="standard:binary-expression-wrapping" />
-        <error line="146" column="128" source="standard:binary-expression-wrapping" />
-        <error line="146" column="161" source="standard:max-line-length" />
-        <error line="146" column="174" source="standard:function-literal" />
-        <error line="146" column="175" source="standard:wrapping" />
-        <error line="146" column="183" source="standard:binary-expression-wrapping" />
-        <error line="146" column="192" source="standard:binary-expression-wrapping" />
-        <error line="146" column="205" source="standard:function-literal" />
-    </file>
-    <file name="src/test/java/com/pocketide/agents/FakeAgentsEnv.kt">
-        <error line="43" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/test/java/com/pocketide/agents/OpenVsxFixture.kt">
         <error line="186" column="161" source="standard:max-line-length" />
@@ -474,10 +387,6 @@
     </file>
     <file name="src/test/java/com/pocketide/rooms/ConfigFilesTest.kt">
         <error line="242" column="35" source="standard:mixed-condition-operators" />
-        <error line="328" column="160" source="standard:max-line-length" />
-        <error line="335" column="24" source="standard:binary-expression-wrapping" />
-        <error line="335" column="161" source="standard:max-line-length" />
-        <error line="337" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/rooms/McpToolsTest.kt">
         <error line="86" column="25" source="standard:binary-expression-wrapping" />
@@ -494,40 +403,19 @@
     <file name="src/test/java/com/pocketide/rooms/RoomFilesTest.kt">
         <error line="38" column="161" source="standard:max-line-length" />
     </file>
-    <file name="src/test/java/com/pocketide/rooms/RoomManagerTest.kt">
-        <error line="68" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="113" column="131" source="standard:function-literal" />
-        <error line="113" column="161" source="standard:function-literal" />
-        <error line="113" column="161" source="standard:max-line-length" />
-        <error line="273" column="30" source="standard:wrapping" />
-        <error line="273" column="39" source="standard:wrapping" />
-        <error line="277" column="9" source="standard:wrapping" />
-        <error line="279" column="40" source="standard:wrapping" />
-        <error line="279" column="49" source="standard:wrapping" />
-        <error line="283" column="9" source="standard:wrapping" />
-        <error line="314" column="51" source="standard:wrapping" />
-        <error line="314" column="60" source="standard:wrapping" />
-        <error line="317" column="9" source="standard:wrapping" />
-        <error line="369" column="37" source="standard:wrapping" />
-        <error line="369" column="46" source="standard:wrapping" />
-        <error line="372" column="9" source="standard:wrapping" />
-        <error line="568" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="660" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="670" column="1" source="standard:spacing-between-declarations-with-annotations" />
-    </file>
     <file name="src/test/java/com/pocketide/sessions/TestSupport.kt">
         <error line="278" column="5" source="standard:spacing-between-declarations-with-comments" />
         <error line="280" column="5" source="standard:spacing-between-declarations-with-comments" />
         <error line="355" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/sessions/transcripts/Fixtures.kt">
-        <error line="78" column="161" source="standard:max-line-length" />
-        <error line="91" column="161" source="standard:max-line-length" />
-        <error line="92" column="161" source="standard:max-line-length" />
-        <error line="97" column="161" source="standard:max-line-length" />
-        <error line="107" column="161" source="standard:max-line-length" />
-        <error line="117" column="161" source="standard:max-line-length" />
-        <error line="128" column="161" source="standard:max-line-length" />
+        <error line="81" column="161" source="standard:max-line-length" />
+        <error line="94" column="161" source="standard:max-line-length" />
+        <error line="95" column="161" source="standard:max-line-length" />
+        <error line="100" column="161" source="standard:max-line-length" />
+        <error line="110" column="161" source="standard:max-line-length" />
+        <error line="120" column="161" source="standard:max-line-length" />
+        <error line="131" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/sessions/transcripts/FormatTest.kt">
         <error line="93" column="161" source="standard:max-line-length" />
@@ -544,18 +432,6 @@
         <error line="44" column="22" source="standard:wrapping" />
         <error line="44" column="51" source="standard:wrapping" />
         <error line="46" column="9" source="standard:wrapping" />
-    </file>
-    <file name="src/test/java/com/pocketide/sync/SyncTestKit.kt">
-        <error line="86" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="88" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="90" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="92" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="94" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="96" column="5" source="standard:spacing-between-declarations-with-comments" />
-    </file>
-    <file name="src/test/java/com/pocketide/ui/shell/ShellLogicTest.kt">
-        <error line="126" column="21" source="standard:property-wrapping" />
-        <error line="126" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/ui/work/ChatsLogicTest.kt">
         <error line="3" column="1" source="standard:import-ordering" />
