@@ -308,6 +308,7 @@ class ConfigFilesTest {
     @Test fun `agy's CLI settings turn telemetry off, keep the rest, and rebuild allow rules and hooks`() {
         val rebuilt = ConfigFiles.antigravitySettings(
             """{"permissions": {"deny": ["read_file(/x)"], "allow": ["command(*)"]}, "hooks": {"x": {"Stop": []}}, "enableTelemetry": true}""",
+            careful = true,
         )!!
         val written = obj(rebuilt.text)
         assertEquals(JsonPrimitive(false), written["enableTelemetry"])
@@ -315,6 +316,17 @@ class ConfigFilesTest {
         assertFalse(written["permissions"]!!.jsonObject.containsKey("allow"))
         assertFalse(written.containsKey("hooks"))
         assertEquals(listOf("permissions.allow", "hooks"), rebuilt.added.map { it.place })
+    }
+
+    @Test fun `agy's CLI may run git and the usual tests on the owner's own code, and asks on someone else's`() {
+        val own = ConfigFiles.antigravitySettings("""{"permissions": {"allow": ["command(*)"]}}""")!!
+        val allowed = obj(own.text)["permissions"]!!.jsonObject["allow"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(ConfigFiles.AGY_ALLOW_RULES, allowed)
+        assertEquals("the agent's own rule is still taken out", listOf("\"command(*)\""), own.added.map { it.value })
+
+        val careful = ConfigFiles.antigravitySettings(own.text, careful = true)!!
+        assertFalse(obj(careful.text)["permissions"]!!.jsonObject.containsKey("allow"))
+        assertTrue("PocketIDE's own rules go without a card", careful.added.isEmpty())
     }
 
     @Test fun `hooks files hold only the hooks the owner kept, and go when none is left`() {
@@ -325,16 +337,27 @@ class ConfigFilesTest {
         assertFalse(keptAgy.empty)
         assertTrue(obj(keptAgy.text).containsKey("lint"))
 
-        val codex = ConfigFiles.codexHooks("""{"hooks": {"PreToolUse": [{"matcher": "^Bash$", "hooks": [{"type": "command", "command": "./gate.py"}]}]}, "other": 1}""")!!
+        val codex = ConfigFiles.codexHooks(
+            """{"hooks": {"PreToolUse": [{"matcher": "^Bash$", "hooks": [{"type": "command", "command": "./gate.py"}]}]}, "other": 1}""",
+        )!!
         assertTrue(codex.empty)
         assertEquals(listOf("hooks/PreToolUse", "/other"), codex.added.map { "${it.place}/${it.key}" })
         assertTrue(ConfigFiles.codexHooks(null)!!.empty)
     }
 
     @Test fun `the companion is listed once in code-server's extension list`() {
-        val existing = """[{"identifier":{"id":"anthropic.claude-code"},"version":"2.1.281","location":{"${'$'}mid":1,"path":"/x","scheme":"file"},"relativeLocation":"anthropic.claude-code-2.1.281-linux-arm64"},""" +
-            """{"identifier":{"id":"PocketIDE.pocketide-companion"},"version":"2.5.0","relativeLocation":"pocketide.pocketide-companion-2.5.0"}]"""
-        val written = ConfigFiles.extensionsRegistry(existing, "pocketide.pocketide-companion", "3.0.0", "pocketide.pocketide-companion-3.0.0", "/root/.local/share/code-server/extensions/pocketide.pocketide-companion-3.0.0", 42)!!
+        val existing =
+            """[{"identifier":{"id":"anthropic.claude-code"},"version":"2.1.281",""" +
+                """"location":{"${'$'}mid":1,"path":"/x","scheme":"file"},"relativeLocation":"anthropic.claude-code-2.1.281-linux-arm64"},""" +
+                """{"identifier":{"id":"PocketIDE.pocketide-companion"},"version":"2.5.0","relativeLocation":"pocketide.pocketide-companion-2.5.0"}]"""
+        val written = ConfigFiles.extensionsRegistry(
+            existing,
+            "pocketide.pocketide-companion",
+            "3.0.0",
+            "pocketide.pocketide-companion-3.0.0",
+            "/root/.local/share/code-server/extensions/pocketide.pocketide-companion-3.0.0",
+            42,
+        )!!
         val entries = Json.parseToJsonElement(written).jsonArray.map { it.jsonObject }
         assertEquals(2, entries.size)
         assertEquals("anthropic.claude-code", entries[0]["identifier"]!!.jsonObject["id"]!!.jsonPrimitive.content)

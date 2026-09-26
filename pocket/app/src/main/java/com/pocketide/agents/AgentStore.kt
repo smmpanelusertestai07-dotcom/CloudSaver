@@ -47,7 +47,16 @@ internal data class InstallRecord(
     /** SHA-256 of the package kept as the last good one (the .vsix, or agy's archive). */
     val sha256: String,
     val installedAt: Long,
+    /** The command that opens this version full screen, as the doctor found it. */
+    val openCommand: String? = null,
 )
+
+/** Old entries drop off: only the newest versions are ever candidates. */
+private const val MAX_REJECTED = 50
+
+/** A version the doctor turned down for what it is (not for the phone's state then): never fetched again. */
+@Serializable
+internal data class RejectedVersion(val agentId: String, val version: String)
 
 @Serializable
 internal data class AgentsState(
@@ -59,14 +68,21 @@ internal data class AgentsState(
     val announced: List<String> = emptyList(),
     val installs: List<InstallRecord> = emptyList(),
     val discoveredAt: Long = 0,
+    val rejected: List<RejectedVersion> = emptyList(),
 ) {
     fun install(agentId: String): InstallRecord? = installs.firstOrNull { it.agentId == agentId }
 
     fun withInstall(record: InstallRecord) = copy(installs = installs.filterNot { it.agentId == record.agentId } + record)
 
+    fun rejectedVersions(agentId: String): Set<String> = rejected.filter { it.agentId == agentId }.map { it.version }.toSet()
+
+    fun withRejected(agentId: String, version: String) =
+        copy(rejected = (rejected.filterNot { it.agentId == agentId && it.version == version } + RejectedVersion(agentId, version)).takeLast(MAX_REJECTED))
+
     fun withoutAgent(agentId: String) = copy(
         added = added.filterNot { it.id == agentId },
         installs = installs.filterNot { it.agentId == agentId },
+        rejected = rejected.filterNot { it.agentId == agentId },
     )
 }
 

@@ -98,9 +98,12 @@ internal object ConfigFiles {
     }
 
     /** The agy CLI's settings: telemetry off (it is on by default); its allow rules and hooks rebuilt. */
-    fun antigravitySettings(existing: String?, kept: List<Entry> = emptyList()): Rebuilt? {
+    fun antigravitySettings(existing: String?, kept: List<Entry> = emptyList(), careful: Boolean = false): Rebuilt? {
         val current = Jsonc.parseObject(existing) ?: return null
-        val (rebuilt, added) = rebuild(current, ANTIGRAVITY_CLI_SLOTS, ours = emptyList(), kept)
+        // agy -p soft-denies what would ask (request-review): on the owner's own code a scheduled
+        // task may still run git and the usual build and test commands. Someone else's code asks.
+        val ours = if (careful) emptyList() else AGY_ALLOW
+        val (rebuilt, added) = rebuild(current, ANTIGRAVITY_CLI_SLOTS, ours, kept) { it in AGY_ALLOW }
         return Rebuilt(Jsonc.write(JsonObject(rebuilt + ("enableTelemetry" to JsonPrimitive(false)))), added)
     }
 
@@ -176,21 +179,30 @@ internal object ConfigFiles {
         val ours = buildJsonObject {
             put("identifier", buildJsonObject { put("id", id) })
             put("version", version)
-            put("location", buildJsonObject {
-                put("\$mid", 1)
-                put("path", guestFolder)
-                put("scheme", "file")
-            })
+            put(
+                "location",
+                buildJsonObject {
+                    put("\$mid", 1)
+                    put("path", guestFolder)
+                    put("scheme", "file")
+                },
+            )
             put("relativeLocation", folder)
-            put("metadata", buildJsonObject {
-                put("installedTimestamp", now)
-                put("source", "vsix")
-            })
+            put(
+                "metadata",
+                buildJsonObject {
+                    put("installedTimestamp", now)
+                    put("source", "vsix")
+                },
+            )
         }
-        return Json.encodeToString(JsonArray.serializer(), buildJsonArray {
-            others.forEach { add(it) }
-            add(ours)
-        })
+        return Json.encodeToString(
+            JsonArray.serializer(),
+            buildJsonArray {
+                others.forEach { add(it) }
+                add(ours)
+            },
+        )
     }
 
     /**
@@ -242,12 +254,17 @@ internal object ConfigFiles {
 
     private fun notifyHook(command: String) = buildJsonObject {
         put("matcher", "")
-        put("hooks", buildJsonArray {
-            add(buildJsonObject {
-                put("type", "command")
-                put("command", command)
-            })
-        })
+        put(
+            "hooks",
+            buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("type", "command")
+                        put("command", command)
+                    },
+                )
+            },
+        )
     }
 
     private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
@@ -321,6 +338,19 @@ internal object ConfigFiles {
 
     private val ANTIGRAVITY_MCP_SLOTS = listOf(Slot.Members(listOf(MCP_SERVERS)))
     private val ANTIGRAVITY_CLI_SLOTS = listOf(Slot.Items(listOf("permissions", "allow")), Slot.Members(listOf(HOOKS)))
+
+    /**
+     * The agy CLI's `permissions.allow` rules PocketIDE writes on the owner's own code. Files in
+     * the workspace are already allowed; these are the commands a task needs to test and commit.
+     */
+    val AGY_ALLOW_RULES = listOf(
+        "command(git)",
+        "command(regex:(npm|pnpm|yarn) (run )?(build|lint|test)( .*)?)",
+        "command(regex:\\./gradlew( .*)?)",
+        "command(regex:python3? -m (pytest|unittest)( .*)?)",
+    )
+    private val AGY_ALLOW = AGY_ALLOW_RULES.map { Entry("permissions.allow", "", ExecutableJson.canonical(JsonPrimitive(it))) }
+
     private val ANTIGRAVITY_HOOKS_SLOTS = listOf(Slot.Members(emptyList()))
     private val CODEX_HOOKS_SLOTS = listOf(Slot.Grouped(listOf(HOOKS)), Slot.Members(emptyList(), except = setOf(HOOKS)))
 

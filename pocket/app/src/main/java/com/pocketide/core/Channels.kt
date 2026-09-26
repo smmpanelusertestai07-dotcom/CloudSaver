@@ -22,6 +22,9 @@ object NotificationIds {
     const val ENGINE_RUNNING = 4101
     const val ENGINE_STOPPED = 4102
 
+    /** An agent or computer update running in the foreground (a large download and install). */
+    const val UPDATE_RUNNING = 4103
+
     /** Sync and storage notices: one id per kind, from [SYNC_FIRST] to [SYNC_LAST]. */
     const val SYNC_FIRST = 4200
     const val SYNC_LAST = 4249

@@ -44,6 +44,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -65,6 +66,7 @@ import java.util.concurrent.TimeUnit
  */
 class RoomManagerTest {
     @get:Rule val temp = TemporaryFolder()
+
     @get:Rule val timeout: Timeout = Timeout.seconds(120)
 
     private lateinit var dirs: AppDirs
@@ -110,7 +112,12 @@ class RoomManagerTest {
         val config = env.computer.configs.single()
         val hash = Regex("hashed-password: \"([0-9a-f]{64})\"").find(config)!!.groupValues[1]
         assertEquals(mapOf("Cookie" to "code-server-session=$hash"), env.ports.injected[exposed.targetPort])
-        assertTrue("the password file is gone once code-server has started", dirs.roomBridge("claude").listFiles().orEmpty().none { it.name.endsWith(".secret") })
+        assertTrue(
+            "the password file is gone once code-server has started",
+            dirs.roomBridge("claude").listFiles().orEmpty().none {
+                it.name.endsWith(".secret")
+            },
+        )
 
         val command = env.computer.commands.single()
         assertEquals(RoomLayout.binds(dirs, "claude"), command.binds)
@@ -215,6 +222,20 @@ class RoomManagerTest {
         assertEquals("not started again only to be refused", 1, env.computer.commands.size)
     }
 
+    @Test fun `Remote Control that opens a port any app can use is stopped again, and only Antigravity has it`() = runBlocking {
+        installAgy()
+        env.computer.remoteControlMode = "open"
+
+        val refused = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("antigravity") } }
+
+        assertEquals(RemoteControl.OPEN_TO_OTHER_APPS, refused.message)
+        val daemon = env.computer.processes.single()
+        assertTrue(env.computer.stopped.contains(daemon))
+        assertTrue("no port of it goes to the bridge", env.ports.exposed.isEmpty())
+        val claude = assertThrows(IllegalStateException::class.java) { runBlocking { rooms.startRemoteControl("claude") } }
+        assertEquals(RemoteControl.ONLY_ANTIGRAVITY, claude.message)
+    }
+
     /** The room's agy, as the room sees it. */
     private fun installAgy(): String {
         File(dirs.roomHome("antigravity"), ".gemini/bin").mkdirs()
@@ -270,17 +291,23 @@ class RoomManagerTest {
 
     @Test fun `MCP calls from the room reach the tools`() = runBlocking {
         val handler = env.phone.handlers["mcp"]!!
-        val answer = handler("claude", buildJsonObject {
-            put("tool", "phone_status")
-            put("args", JsonObject(emptyMap()))
-            put("cwd", "/work/octo__app/s1")
-        })
+        val answer = handler(
+            "claude",
+            buildJsonObject {
+                put("tool", "phone_status")
+                put("args", JsonObject(emptyMap()))
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertTrue(answer.jsonObject["text"]!!.jsonPrimitive.content.contains("Everything is allowed"))
-        env.phone.handlers["notify"]!!("claude", buildJsonObject {
-            put("kind", "needs_you")
-            put("text", "Permission to run npm install?")
-            put("cwd", "/work/octo__app/s1")
-        })
+        env.phone.handlers["notify"]!!(
+            "claude",
+            buildJsonObject {
+                put("kind", "needs_you")
+                put("text", "Permission to run npm install?")
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertEquals(listOf("claude|s1|Claude Code needs you|Permission to run npm install?"), env.notices)
     }
 
@@ -311,10 +338,13 @@ class RoomManagerTest {
         val settings = File(dirs.roomHome("claude"), RoomConfigurator.CODE_SERVER_SETTINGS)
         assertEquals("default", Jsonc.parseObject(settings.readText())!!["claudeCode.initialPermissionMode"]!!.jsonPrimitive.content)
         assertEquals(JsonNull, mcpEntries(env.computer.commands.last())["playwright"])
-        val browser = env.phone.handlers["mcp"]!!("claude", buildJsonObject {
-            put("tool", "install_browser")
-            put("cwd", "/work/octo__app/s1")
-        })
+        val browser = env.phone.handlers["mcp"]!!(
+            "claude",
+            buildJsonObject {
+                put("tool", "install_browser")
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertTrue(browser.jsonObject["text"]!!.jsonPrimitive.content.contains("stays off"))
 
         rooms.stop("claude")
@@ -366,10 +396,13 @@ class RoomManagerTest {
     private fun servers(state: File): JsonObject = Json.parseToJsonElement(state.readText()).jsonObject["mcpServers"]!!.jsonObject
 
     @Test fun `writes the agent asks for keep its room busy while they run`() = runBlocking {
-        env.phone.handlers["mcp"]!!("claude", buildJsonObject {
-            put("tool", "put_on_main")
-            put("cwd", "/work/octo__app/s1")
-        })
+        env.phone.handlers["mcp"]!!(
+            "claude",
+            buildJsonObject {
+                put("tool", "put_on_main")
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertEquals(listOf("claude|write|true", "claude|write|false"), env.busyReports)
     }
 
@@ -506,6 +539,9 @@ class RoomManagerTest {
          */
         @Volatile var hubMode = "guarded"
 
+        /** How the stand-in Remote Control daemon's own loopback port treats a caller without a key. */
+        @Volatile var remoteControlMode = "open"
+
         /** Runs the real room.py's steps before Claude's stand-in engine, on the room's folders here. */
         @Volatile var runsRoomSteps = false
 
@@ -528,6 +564,7 @@ class RoomManagerTest {
                     hubMode,
                     argv.firstOrNull { it.startsWith("--csrf_token=") }?.substringAfter('=').orEmpty(),
                 )
+                "pocketide-remote-control" in argv -> engine(Loopback.freePort().toString(), remoteControlMode, "a-key")
                 RoomLayout.TERMINAL_SERVER in argv -> listOf(
                     "python3", File(ASSETS, "rooms/term.py").absolutePath,
                     "--port", argv[argv.indexOf("--port") + 1],
@@ -565,6 +602,7 @@ class RoomManagerTest {
         }
 
         val ran = CopyOnWriteArrayList<LinuxCommand>()
+
         @Volatile var running: suspend (LinuxCommand) -> Int = { 0 }
 
         override suspend fun run(command: LinuxCommand, onLine: (String) -> Unit): Int {
@@ -657,6 +695,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         val trust = ConcurrentHashMap<String, ProjectTrust>()
         val madeRoomFor = CopyOnWriteArrayList<String>()
         val busyReports = CopyOnWriteArrayList<String>()
+
         @Volatile var engineKeptAlive = 0
 
         /** Moves the rooms' clock ahead of the real one, so idle time passes without waiting for it. */
@@ -667,6 +706,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         override fun sessions() = all
         override fun activeSession(agentId: String): String? = null
         override fun project(projectId: String) = Project(id = projectId, owner = "octo", repo = "app", addedAt = 0, lastActivityAt = 0)
+
         @Volatile var variables = mapOf("API_URL" to "https://staging.example")
         override suspend fun variables(projectId: String, agentId: String) = variables
         override fun trust(projectId: String) = trust[projectId] ?: ProjectTrust.YOURS

@@ -117,7 +117,7 @@ private class GraphAgentsEnv(private val graph: AppGraph) : AgentsEnv {
     }.getOrNull()?.let(SemVer::parse)
 
     private companion object {
-        const val DATA_KIND = "agents"
+        const val DATA_KIND = VerifiedDownload.DATA_KIND
         const val VSCODE_PACKAGE = "/opt/code-server/lib/vscode/package.json"
         const val CODE_SERVER_PACKAGE = "/opt/code-server/package.json"
         const val MAX_PACKAGE_JSON = 1024L * 1024

@@ -120,6 +120,14 @@ interface Rooms {
     ): Int = throw IllegalStateException("The agent's room cannot run programs yet.")
 
     /**
+     * Starts Google's own Remote Control in the Antigravity room ([RemoteControl]) and returns the
+     * page where the owner drives it, once every loopback port it opened turns away a caller
+     * without a key; otherwise stops it again and throws with a plain sentence. Stopping the room
+     * stops it too. Not yet tried on a phone.
+     */
+    suspend fun startRemoteControl(agentId: String): String = throw IllegalStateException(RemoteControl.ONLY_ANTIGRAVITY)
+
+    /**
      * For "Delete everything": stops every room, then runs each signed-in agent's own sign-out in
      * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
      */

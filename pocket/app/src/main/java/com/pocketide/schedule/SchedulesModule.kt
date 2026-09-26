@@ -12,6 +12,7 @@ import com.pocketide.builds.BuildNotices
 import com.pocketide.core.Clock
 import com.pocketide.linux.ComputerState
 import com.pocketide.model.SessionRecord
+import com.pocketide.projects.ProjectTrust
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -75,6 +76,8 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
         }
     }
 
+    override fun someoneElses(projectId: String): Boolean = graph.projects.trustOf(projectId) == ProjectTrust.SOMEONE_ELSES
+
     override fun heavyWorkRefusal(): String? = graph.limiter.canStartHeavyWork("A scheduled task").let { if (it.allowed) null else it.reason }
 
     override suspend fun saveOutput(sessionId: String, file: File) {
@@ -98,7 +101,8 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override fun notify(taskId: String, heading: String, text: String) =
         BuildNotices.taskEnded(graph.context, taskId, heading, text)
 
-    override suspend fun recordRun(taskId: String, at: Long, sessionId: String) = schedules().recordRun(taskId, at, sessionId)
+    override suspend fun recordRun(taskId: String, at: Long, sessionId: String, ended: Boolean) =
+        schedules().recordRun(taskId, at, sessionId, ended)
 
     private companion object {
         const val CANNOT_RUN = "The agent's room could not run the task."

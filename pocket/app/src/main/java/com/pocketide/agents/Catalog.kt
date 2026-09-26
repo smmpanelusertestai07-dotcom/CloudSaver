@@ -88,7 +88,7 @@ internal class OpenVsxCatalog(
                 report.copy(note = listOfNotNull(report.note, "${agent.displayName} was not added.").joinToString(" "))
             }
         } finally {
-            if (!kept) withContext(NonCancellable) { forget(agent.id) }
+            if (!kept) forget(agent.id)
         }
     }
 
@@ -172,7 +172,7 @@ internal class OpenVsxCatalog(
         val namespace = OfficialAgents.namespaces[agent.id] ?: extensionId.substringBefore('.')
         val vscode = env.vscodeVersion() ?: throw IllegalStateException(NO_CODE_SERVER)
         val present = doctor.installed(agent.id, extensionId)
-        val release = extensions.newest(extensionId, namespace, vscode)
+        val release = extensions.newest(extensionId, namespace, vscode, skip = state.value.rejectedVersions(agent.id))
         if (present != null && !newer(release.version, present.version)) return null
         // Files are not swapped under a running room; the next check updates it.
         if (present != null && env.roomInUse(agent.id)) return null
@@ -182,12 +182,14 @@ internal class OpenVsxCatalog(
         extensions.install(agent.id, extensionId, fetched.file)
         val report = doctor.check(agent, release.version)
         if (report.ok) {
-            record(agent.id, release.version, fetched.sha256)
+            record(agent.id, release.version, fetched.sha256, report.openCommand)
             keepOnly(folder, setOfNotNull(ExtensionInstaller.packageFile(folder, release.version), present?.let { ExtensionInstaller.packageFile(folder, it.version) }))
             configure(agent.id)
             return report
         }
 
+        // A version that cannot work here is not fetched again every day; the next one is.
+        if (report.versionFailed) change { it.withRejected(agent.id, release.version) }
         withContext(Dispatchers.IO) { Files.deleteIfExists(fetched.file.toPath()) }
         if (present == null) {
             extensions.uninstall(agent.id, extensionId)
@@ -195,7 +197,11 @@ internal class OpenVsxCatalog(
         }
         val restored = putBack(agent, extensionId, namespace, vscode, present.version, folder)
         configure(agent.id)
-        val after = if (restored) "Version ${present.version} is back in place." else "Version ${present.version} could not be put back; repair it from the Computer screen."
+        val after = if (restored) {
+            "Version ${present.version} is back in place."
+        } else {
+            "Version ${present.version} could not be put back; repair it from the Computer screen."
+        }
         throw PackageRejected("${agent.displayName} ${release.version} did not pass its test on this phone (${report.note}). $after")
     }
 
@@ -282,15 +288,18 @@ internal class OpenVsxCatalog(
         )
     }
 
-    /** Deletes the agent's room, its kept packages and its record. */
-    private suspend fun forget(agentId: String) {
+    /**
+     * Deletes the agent's room, its kept packages and its record. Once the room starts going, the
+     * rest goes too: a cancelled caller never leaves one without the other.
+     */
+    private suspend fun forget(agentId: String) = withContext(NonCancellable) {
         env.deleteRoom(agentId)
         withContext(Dispatchers.IO) { Trees.delete(File(packages, agentId).toPath()) }
         change { it.withoutAgent(agentId) }
     }
 
-    private suspend fun record(agentId: String, version: String, sha256: String) =
-        change { it.withInstall(InstallRecord(agentId, version, sha256, env.clock.now())) }
+    private suspend fun record(agentId: String, version: String, sha256: String, openCommand: String? = null) =
+        change { it.withInstall(InstallRecord(agentId, version, sha256, env.clock.now(), openCommand)) }
 
     /** The room's settings and companion are written again: code-server rewrote its extension list. */
     private suspend fun configure(agentId: String) {
@@ -325,8 +334,9 @@ internal class OpenVsxCatalog(
     private fun waiting(current: AgentsState, onlyOfficial: Boolean): List<AgentCandidate> =
         if (onlyOfficial) emptyList() else current.candidates
 
+    /** The agent as installed: its version, and the command that opens that version. */
     private fun withVersion(agent: AgentInfo, current: AgentsState): AgentInfo =
-        current.install(agent.id)?.let { agent.copy(version = it.version) } ?: agent
+        current.install(agent.id)?.let { agent.copy(version = it.version, openCommand = it.openCommand ?: agent.openCommand) } ?: agent
 
     private fun newer(candidate: String, installed: String): Boolean {
         val next = SemVer.parse(candidate) ?: return false

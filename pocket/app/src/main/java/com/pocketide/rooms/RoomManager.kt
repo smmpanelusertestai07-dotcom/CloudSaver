@@ -1,6 +1,7 @@
 package com.pocketide.rooms
 
 import com.pocketide.bridge.BridgedPort
+import com.pocketide.bridge.ListenerScan
 import com.pocketide.core.AppDirs
 import com.pocketide.linux.ComputerState
 import com.pocketide.linux.LinuxCommand
@@ -56,6 +57,9 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     private val holds = WorkHolds(env::setBusy)
     private val waitedBuilds: MutableSet<Pair<String, Long>> = ConcurrentHashMap.newKeySet()
 
+    /** Google's Remote Control daemon running in a room ([startRemoteControl]), keyed by agent id. */
+    private val remoteControls = ConcurrentHashMap<String, Process>()
+
     /** Headless runs (scheduled tasks) going on in each room, keyed by agent id. */
     private val headless = HashMap<String, Int>()
 
@@ -83,10 +87,15 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         @Volatile var sessionId: String,
     ) {
         val pid: Int? = ProcFacts.pidOf(process)
+
         @Volatile var bridge: BridgedPort? = null
+
         @Volatile var url: String = ""
+
         @Volatile var memoryBytes: Long = 0
+
         @Volatile var signInStamp: Long? = null
+
         var watcher: Job? = null
     }
 
@@ -186,7 +195,7 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
     override suspend fun stop(agentId: String) = stopWith(agentId, StopReason.OWNER, "Stopped. Nothing was lost; open it again to continue.")
 
     override suspend fun stopAll() {
-        val agents = live.keys + mutableStates.value.keys
+        val agents = live.keys + mutableStates.value.keys + remoteControls.keys
         for (agentId in agents) stopWith(agentId, StopReason.OWNER, "Stopped. Nothing was lost; open it again to continue.")
         terminals.stopAll()
     }
@@ -315,6 +324,36 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             }
         }
     }
+
+    override suspend fun startRemoteControl(agentId: String): String {
+        val profile = profile(agentId)?.takeIf { it.engine == Engine.AGY_HUB } ?: throw IllegalStateException(RemoteControl.ONLY_ANTIGRAVITY)
+        computerProblem()?.let { throw IllegalStateException(it) }
+        engineProblem(profile)?.let { throw IllegalStateException(it) }
+        return lock(agentId).withLock {
+            if (remoteControls[agentId]?.isAlive == true) return@withLock RemoteControl.DASHBOARD
+            // The daemon lives on after this screen: the engine's service keeps the computer running.
+            if (!env.keepEngineAlive()) ring(agentId).add("[PocketIDE] Android did not let the engine's service start now.")
+            val scan = ListenerScan(ownUid = android.os.Process.myUid())
+            val before = withContext(Dispatchers.IO) { scan.scan(allPorts()).map { it.port }.toSet() }
+            val command = RoomEngines.headless(dirs, agentId, RemoteControl.startCommand(), AppDirs.GUEST_HOME, roomEnvironment(agentId, emptyMap()))
+            val process = withContext(Dispatchers.IO) { env.computer.start(command) }
+            env.scope.launch(Dispatchers.IO) { pump(agentId, process) }
+            delay(RemoteControl.SETTLE_MS)
+            if (!process.isAlive && process.exitValue() != 0) throw IllegalStateException(RemoteControl.notStarted(ring(agentId).last(LAST_WORDS)))
+            val opened = withContext(Dispatchers.IO) { scan.scan(allPorts()).map { it.port }.toSet() - before }
+            val answers = withContext(Dispatchers.IO) { opened.associateWith { Loopback.get(it, "/", maxBody = HUB_PAGE_BYTES) } }
+            RemoteControl.problem(answers)?.let { why ->
+                env.computer.stop(process)
+                ring(agentId).add("[PocketIDE] Remote Control opened ports ${opened.sorted()}; it was stopped again.")
+                throw IllegalStateException(why)
+            }
+            remoteControls[agentId] = process
+            RemoteControl.DASHBOARD
+        }
+    }
+
+    /** Every TCP port: Android may hide the socket table, and then each one is tried on the loopback. */
+    private fun allPorts(): List<Int> = (1..MAX_PORT).toList()
 
     private fun headlessStarted(agentId: String) {
         val first = synchronized(headless) {
@@ -558,8 +597,9 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             HubGuard.GUARDED -> null
             HubGuard.GIVES_TOKEN_AWAY -> openToOtherApps(room, givesTokenAway(name), "served this launch's token to a request that did not have it")
             HubGuard.ANSWERS_WITHOUT_TOKEN -> openToOtherApps(room, answersWithoutToken(name), "answered a request without this launch's token")
-            HubGuard.REFUSES_TOKEN -> "$name's screen could not open: its hub refused this launch's key. " +
-                "An update of $name may have changed how its screen signs in."
+            HubGuard.REFUSES_TOKEN ->
+                "$name's screen could not open: its hub refused this launch's key. " +
+                    "An update of $name may have changed how its screen signs in."
             HubGuard.NO_ANSWER -> "$name stopped answering while it started."
         }
     }
@@ -691,6 +731,7 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
             recordStop(agentId, reason, message)
         }
         terminals.stopAgent(agentId)
+        remoteControls.remove(agentId)?.let(env.computer::stop)
         // A scheduled task still running in the room keeps using PocketIDE's tools.
         if (!runningHeadless(agentId)) env.phoneBridge.stop(agentId)
         publish(agentId, RoomState.Stopped)
@@ -830,8 +871,11 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
 
     /** When the hub's sign-in file last changed (read from its metadata only), or null. */
     private fun hubSignInStamp(agentId: String): Long? =
-        if (agentId != RoomProfiles.ANTIGRAVITY) null
-        else RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
+        if (agentId != RoomProfiles.ANTIGRAVITY) {
+            null
+        } else {
+            RoomFiles(dirs.roomHome(agentId), guardSecrets = true).lastModified(HUB_SIGN_IN)
+        }
 
     // --- tools
 
@@ -957,6 +1001,7 @@ internal class RoomManager(private val env: RoomsEnv, private val sampleMs: Long
         const val BUILD_WAIT_MAX_MS = 60 * 60_000L
         const val HUB_SIGN_IN = ".gemini/jetski-standalone-oauth-token"
         const val HUB_PAGE_BYTES = 512 * 1024
+        const val MAX_PORT = 65_535
         const val CANNOT_START = "The phone cannot take another agent right now."
         const val UNKNOWN_AGENT = "PocketIDE does not know this agent. Add it from More agents first."
         const val BROWSER_OFF = "The test browser stays off in this project: it is someone else's code, and a web page could " +

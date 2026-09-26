@@ -40,11 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.CandidateFacts
 import com.pocketide.agents.DoctorReport
+import com.pocketide.agents.mobileDataQuestion
 import com.pocketide.core.Ist
 import com.pocketide.docs.DocLinks
 import com.pocketide.docs.DocsContent
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.AgentInfo
+import com.pocketide.sync.NeedsMobileData
 import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
@@ -59,6 +61,7 @@ import com.pocketide.ui.manage.LinkRow
 import com.pocketide.ui.manage.ManageFormat
 import com.pocketide.ui.manage.ManagePage
 import com.pocketide.ui.manage.NavRow
+import com.pocketide.ui.manage.PlainError
 import com.pocketide.ui.manage.SectionLabel
 import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.ToneLine
@@ -87,8 +90,20 @@ fun MoreAgentsScreen(nav: PocketNav) {
     val onlyOfficial = settings.onlyOfficialAgents
     var removing by remember { mutableStateOf<AgentInfo?>(null) }
     var report by remember { mutableStateOf<Pair<String, DoctorReport>?>(null) }
+    var askMobileData by remember { mutableStateOf<Pair<AgentCandidate, NeedsMobileData>?>(null) }
     val official = installed.filter { it.official }
     val added = installed.filter { !it.official }
+
+    fun add(candidate: AgentCandidate) {
+        runner.run(
+            key = "add:${candidate.extensionId}",
+            onFailure = { error ->
+                val question = mobileDataQuestion(error)
+                if (question != null) askMobileData = candidate to question else runner.say(PlainError.of(error))
+            },
+            onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
+        ) { graph.agents.add(candidate) }
+    }
 
     ManagePage("More agents", nav, runner) {
         item {
@@ -125,12 +140,7 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 }
             }
             items(fresh, key = { it.extensionId }) { candidate ->
-                CandidateCard(candidate, graph.agents.facts(candidate.extensionId), runner, nav) {
-                    runner.run(
-                        key = "add:${candidate.extensionId}",
-                        onSuccess = { result: DoctorReport -> report = candidate.displayName to result },
-                    ) { graph.agents.add(candidate) }
-                }
+                CandidateCard(candidate, graph.agents.facts(candidate.extensionId), runner, nav) { add(candidate) }
             }
         } else if (added.isNotEmpty()) {
             item { Hint("${ManageFormat.count(added.size, "agent")} you added ${if (added.size == 1) "is" else "are"} hidden while this is on.") }
@@ -159,11 +169,29 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 "your Drive until you delete them.",
             confirmLabel = "Remove",
             destructive = true,
-            onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.") { graph.agents.remove(agent.id) } },
+            // Saving and deleting take a while: leaving the screen must not stop it half way.
+            onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.", outlivesScreen = true) { graph.agents.remove(agent.id) } },
             onDismiss = { removing = null },
         )
     }
     report?.let { (name, result) -> DoctorDialog(name, result) { report = null } }
+    askMobileData?.let { (candidate, question) ->
+        AlertDialog(
+            onDismissRequest = { askMobileData = null },
+            title = { Text("Download ${question.size} on mobile data?") },
+            text = { Text("${candidate.displayName} is big, so it waits for Wi-Fi. It can download now on mobile data instead.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        askMobileData = null
+                        graph.dataBudget.allowOnce(question.kind, question.bytes)
+                        add(candidate)
+                    },
+                ) { Text("Use mobile data") }
+            },
+            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+        )
+    }
 }
 
 @Composable

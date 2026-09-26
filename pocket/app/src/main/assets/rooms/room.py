@@ -13,8 +13,9 @@ The steps touch files the app must never read, so they run here, in Linux:
     it (POCKETIDE_CLAUDE_KEEP lists the SHA-256 of each kept one): it is held in a file in the
     room and listed for the owner (POCKETIDE_HELD_REPORT), and a kept one comes back only while
     what was held still has that SHA-256. When that cannot be done, Claude is not started;
-  - Antigravity: if the hub has no sign-in yet but the CLI has one, the CLI's is copied for the
-    hub (owner-only), because some agy versions keep the two in different files.
+  - Antigravity: if the hub or the CLI has no sign-in yet but the other has one, it is copied
+    (owner-only), because some agy versions keep the two in different files. Scheduled tasks
+    start agy through this launcher too, so a sign-in made in the room's screen serves them.
 """
 
 import hashlib
@@ -298,22 +299,35 @@ def kept_digests(text):
 
 
 def share_antigravity_sign_in():
-    if os.path.lexists(HUB_TOKEN) or not regular_file(CLI_TOKEN):
-        return
-    folder = os.path.dirname(HUB_TOKEN)
+    """
+    One sign-in serves the room's screen (the hub) and the agy CLI (scheduled tasks, the >_ tab):
+    when exactly one of them has one, it is copied for the other. A link is never followed, and
+    a sign-in already there is never replaced.
+    """
+    if regular_file(CLI_TOKEN) and not os.path.lexists(HUB_TOKEN):
+        copy_private(CLI_TOKEN, HUB_TOKEN)
+        say("The hub had no sign-in; the Antigravity CLI's sign-in was copied for it.")
+    elif regular_file(HUB_TOKEN) and not os.path.lexists(CLI_TOKEN):
+        copy_private(HUB_TOKEN, CLI_TOKEN)
+        say("The Antigravity CLI had no sign-in; the hub's sign-in was copied for it.")
+
+
+def copy_private(source, target):
+    """Copies [source] to [target] owner-only, in one step: [target] appears whole or not at all."""
+    folder = os.path.dirname(target)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
     handle, temporary = tempfile.mkstemp(prefix=".pocketide-", dir=folder)
     os.close(handle)
     try:
-        shutil.copyfile(CLI_TOKEN, temporary, follow_symlinks=False)
+        shutil.copyfile(source, temporary, follow_symlinks=False)
         os.chmod(temporary, 0o600)
-        os.replace(temporary, HUB_TOKEN)
+        os.replace(temporary, target)
     except BaseException:
         try:
             os.unlink(temporary)
         except OSError:
             pass
         raise
-    say("The hub had no sign-in; the Antigravity CLI's sign-in was copied for it.")
 
 
 def main(argv):

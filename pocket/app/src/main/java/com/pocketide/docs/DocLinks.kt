@@ -29,6 +29,7 @@ internal object DocLinks {
     const val OPENAI_DATA_FAQ = "https://help.openai.com/en/articles/7730893-data-controls-faq"
     const val ANTIGRAVITY_SETTINGS = "https://antigravity.google/docs/settings"
     const val ANTIGRAVITY_TERMS = "https://antigravity.google/terms"
+    const val ANTIGRAVITY_REMOTE_CONTROL = "https://antigravity.google/docs/remote-control"
 
     /** Where each company shows the agent chats it keeps in the owner's account (checked 25 Sep 2026). */
     const val CLAUDE_CODE_WEB = "https://claude.ai/code"

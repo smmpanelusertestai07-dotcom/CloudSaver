@@ -678,6 +678,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var bigDismissed by rememberSaveable(sessionId) { mutableStateOf(false) }
     var startingFresh by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
+    var remoteControl by remember { mutableStateOf(false) }
     var immersive by rememberSaveable(sessionId) { mutableStateOf(false) }
     var handOffTo by remember(sessionId) { mutableStateOf<AgentInfo?>(null) }
     var renamingBranch by remember(sessionId) { mutableStateOf(false) }
@@ -782,6 +783,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onRetry = { tries++ },
                         onBack = nav::back,
                         onSetUp = nav::computer.takeIf { SetUpOffer.needsOwner(computer) },
+                        onRemoteControl = { remoteControl = true }.takeIf { agentId == com.pocketide.rooms.RoomProfiles.ANTIGRAVITY },
                     ) { url ->
                         AgentWebView(
                             url = url,
@@ -839,6 +841,28 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
             onDismiss = { stopping = false },
         )
     }
+    if (remoteControl) {
+        ConfirmDialog(
+            title = "Use Antigravity Remote Control?",
+            text = RemoteControlText.EXPLAINED,
+            confirmLabel = "Start",
+            destructive = false,
+            onConfirm = {
+                scope.act(snackbar, "Remote Control did not start") {
+                    nav.openExternal(graph.rooms.startRemoteControl(agentId))
+                }
+            },
+            onDismiss = { remoteControl = false },
+        )
+    }
+}
+
+/** Google's own Remote Control for Antigravity, offered while the in-app screen stays closed. */
+private object RemoteControlText {
+    const val OFFER = "Use Antigravity Remote Control (needs a phone test)"
+    const val EXPLAINED = "Antigravity's own Remote Control runs in its room here, and you use Antigravity on Google's Remote " +
+        "Control page in your browser, signed in with the same Google Account. PocketIDE opens no port of it to other " +
+        "apps, and turns it off again if Antigravity does. It has not been tried on a phone yet. Stopping the room stops it."
 }
 
 @Composable
@@ -869,20 +893,8 @@ private fun AgentBar(
         Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
                 Icon(
-                    if (panelTitle !=
-                        null
-                    ) {
-                        Icons.Filled.Close
-                    } else {
-                        Icons.AutoMirrored.Filled.ArrowBack
-                    },
-                    contentDescription = if (panelTitle !=
-                        null
-                    ) {
-                        "Close $panelTitle"
-                    } else {
-                        "Back"
-                    },
+                    if (panelTitle != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = if (panelTitle != null) "Close $panelTitle" else "Back",
                 )
             }
             AgentMark(agent, session.agentId, size = 26.dp)
@@ -971,12 +983,17 @@ private fun RoomContent(
     onBack: () -> Unit,
     /** Set while the computer is not set up (or set-up stopped): retrying cannot help, setting it up does. */
     onSetUp: (() -> Unit)?,
+    /** Set for Antigravity: its own Remote Control, when its screen cannot open here. */
+    onRemoteControl: (() -> Unit)?,
     ready: @Composable (String) -> Unit,
 ) {
     when (view) {
         is RoomView.Ready -> ready(view.url)
         is RoomView.Opening -> CenterMessage(view.step ?: "Opening $agentName…", progress = true)
-        is RoomView.Failed -> CenterMessage("$agentName did not start: ${view.why}") {
+        is RoomView.Failed -> CenterMessage(
+            "$agentName did not start: ${view.why}",
+            below = { if (onSetUp == null && onRemoteControl != null) TextButton(onClick = onRemoteControl) { Text(RemoteControlText.OFFER) } },
+        ) {
             if (onSetUp != null) {
                 Button(onClick = onSetUp) { Text(SetUpOffer.TITLE) }
             } else {
@@ -1065,7 +1082,12 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 @Composable
-private fun CenterMessage(text: String, progress: Boolean = false, actions: @Composable () -> Unit = {}) {
+private fun CenterMessage(
+    text: String,
+    progress: Boolean = false,
+    below: @Composable () -> Unit = {},
+    actions: @Composable () -> Unit = {},
+) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
@@ -1074,5 +1096,6 @@ private fun CenterMessage(text: String, progress: Boolean = false, actions: @Com
         if (progress) CircularProgressIndicator()
         Text(text, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { actions() }
+        below()
     }
 }
