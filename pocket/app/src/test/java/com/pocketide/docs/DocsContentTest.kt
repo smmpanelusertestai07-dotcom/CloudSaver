@@ -79,6 +79,20 @@ class DocsContentTest {
     }
 
     @Test
+    fun `security says which files wait for the owner before Drive, in the section Your data shows`() {
+        val label = "Settings that can run code"
+        val text = sectionText(requireSection("security"))
+        assertTrue(
+            text,
+            text.contains(
+                "A skill, subagent, command or command rule that can run code stays out of the Drive backup " +
+                    "until you keep it in Your data → $label.",
+            ),
+        )
+        assertTrue("Your data shows the section by that name", yourDataSource().contains("SectionLabel(\"$label\")"))
+    }
+
+    @Test
     fun `Privacy says where each official agent's chats are saved, and each agent's page says it too`() {
         assertEquals(OfficialAgents.all.map { it.id }, ChatHomes.all.map { it.agentId })
         val table = requireSection("privacy").blocks.filterIsInstance<DocBlock.Table>()
@@ -300,10 +314,15 @@ class DocsContentTest {
     }
 
     /** The agent screen's source, whose menu labels the docs quote. */
-    private fun agentMenuSource(): String {
-        val path = "src/main/java/com/pocketide/ui/screens/project/ProjectScreens.kt"
+    private fun agentMenuSource() = mainSource("ui/screens/project/ProjectScreens.kt")
+
+    /** Your data's source, whose section labels the docs name. */
+    private fun yourDataSource() = mainSource("ui/screens/data/YourDataScreen.kt")
+
+    private fun mainSource(file: String): String {
+        val path = "src/main/java/com/pocketide/$file"
         val source = listOf(File(path), File("app/$path")).firstOrNull { it.isFile }
-        return checkNotNull(source) { "ProjectScreens.kt not found" }.readText()
+        return checkNotNull(source) { "$path not found" }.readText()
     }
 
     private fun sectionText(section: DocSection) =

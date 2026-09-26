@@ -153,8 +153,8 @@ internal object GuideData {
                 "chats. It is asked only on a new phone; forget it and the chats are lost.",
         ),
         p(
-            "Save a key copy (Advanced) shows the key once, for a password manager. It covers losing the phone " +
-                "and GitHub together. Anyone with the copy and your Drive can read your chats.",
+            "Save a key copy (Advanced) shows the key once, for a password manager. Anyone with the copy and " +
+                "your Drive can read your chats.",
         ),
     )
 

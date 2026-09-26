@@ -22,7 +22,8 @@ internal object GuideSafety {
         p(
             "The app never takes a token, key or setting from the computer; only Variables enter a room. " +
                 "Settings that can run code, such as hooks, are rewritten at each room start; an agent's " +
-                "change stays only once you approve it.",
+                "change stays only once you approve it. A skill, subagent, command or command rule that can " +
+                "run code stays out of the Drive backup until you keep it in Your data → Settings that can run code.",
         ),
         p(
             "The agents' screens listen only on this phone, with a new secret each launch. App lock uses your " +
