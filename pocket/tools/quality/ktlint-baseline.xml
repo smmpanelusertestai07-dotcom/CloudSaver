@@ -62,12 +62,12 @@
         <error line="77" column="1" source="standard:no-consecutive-blank-lines" />
     </file>
     <file name="src/main/java/com/pocketide/core/AppDirs.kt">
-        <error line="30" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="32" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="34" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="36" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="38" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="40" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="31" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="33" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="35" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="37" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="39" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="41" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/core/Redact.kt">
         <error line="21" column="29" source="standard:multiline-loop" />
@@ -184,20 +184,20 @@
         <error line="103" column="13" source="standard:wrapping" />
     </file>
     <file name="src/main/java/com/pocketide/rooms/ConfigFiles.kt">
-        <error line="173" column="17" source="standard:wrapping" />
-        <error line="173" column="28" source="standard:wrapping" />
-        <error line="177" column="13" source="standard:wrapping" />
         <error line="179" column="17" source="standard:wrapping" />
         <error line="179" column="28" source="standard:wrapping" />
-        <error line="182" column="13" source="standard:wrapping" />
-        <error line="184" column="36" source="standard:wrapping" />
-        <error line="184" column="59" source="standard:wrapping" />
-        <error line="187" column="9" source="standard:wrapping" />
-        <error line="239" column="13" source="standard:wrapping" />
-        <error line="239" column="21" source="standard:wrapping" />
-        <error line="240" column="17" source="standard:wrapping" />
-        <error line="243" column="13" source="standard:wrapping" />
-        <error line="244" column="9" source="standard:wrapping" />
+        <error line="183" column="13" source="standard:wrapping" />
+        <error line="185" column="17" source="standard:wrapping" />
+        <error line="185" column="28" source="standard:wrapping" />
+        <error line="188" column="13" source="standard:wrapping" />
+        <error line="190" column="36" source="standard:wrapping" />
+        <error line="190" column="59" source="standard:wrapping" />
+        <error line="193" column="9" source="standard:wrapping" />
+        <error line="245" column="13" source="standard:wrapping" />
+        <error line="245" column="21" source="standard:wrapping" />
+        <error line="246" column="17" source="standard:wrapping" />
+        <error line="249" column="13" source="standard:wrapping" />
+        <error line="250" column="9" source="standard:wrapping" />
     </file>
     <file name="src/main/java/com/pocketide/rooms/McpTools.kt">
         <error line="51" column="5" source="standard:spacing-between-declarations-with-comments" />
@@ -269,21 +269,21 @@
         <error line="178" column="26" source="standard:multiline-if-else" />
     </file>
     <file name="src/main/java/com/pocketide/sync/Reconciler.kt">
-        <error line="164" column="31" source="standard:parameter-list-wrapping" />
-        <error line="164" column="41" source="standard:parameter-list-wrapping" />
-        <error line="164" column="60" source="standard:parameter-list-wrapping" />
-        <error line="164" column="78" source="standard:parameter-list-wrapping" />
-        <error line="164" column="104" source="standard:parameter-list-wrapping" />
-        <error line="164" column="130" source="standard:parameter-list-wrapping" />
-        <error line="164" column="152" source="standard:parameter-list-wrapping" />
-        <error line="164" column="161" source="standard:max-line-length" />
-        <error line="190" column="29" source="standard:binary-expression-wrapping" />
-        <error line="190" column="161" source="standard:max-line-length" />
-        <error line="197" column="86" source="standard:function-literal" />
-        <error line="197" column="114" source="standard:function-literal" />
-        <error line="197" column="131" source="standard:multiline-if-else" />
-        <error line="197" column="161" source="standard:max-line-length" />
-        <error line="197" column="164" source="standard:multiline-if-else" />
+        <error line="163" column="31" source="standard:parameter-list-wrapping" />
+        <error line="163" column="41" source="standard:parameter-list-wrapping" />
+        <error line="163" column="60" source="standard:parameter-list-wrapping" />
+        <error line="163" column="78" source="standard:parameter-list-wrapping" />
+        <error line="163" column="104" source="standard:parameter-list-wrapping" />
+        <error line="163" column="130" source="standard:parameter-list-wrapping" />
+        <error line="163" column="152" source="standard:parameter-list-wrapping" />
+        <error line="163" column="161" source="standard:max-line-length" />
+        <error line="189" column="29" source="standard:binary-expression-wrapping" />
+        <error line="189" column="161" source="standard:max-line-length" />
+        <error line="196" column="86" source="standard:function-literal" />
+        <error line="196" column="114" source="standard:function-literal" />
+        <error line="196" column="131" source="standard:multiline-if-else" />
+        <error line="196" column="161" source="standard:max-line-length" />
+        <error line="196" column="164" source="standard:multiline-if-else" />
     </file>
     <file name="src/main/java/com/pocketide/sync/Rules.kt">
         <error line="11" column="5" source="standard:spacing-between-declarations-with-comments" />
@@ -473,11 +473,11 @@
         <error line="266" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/rooms/ConfigFilesTest.kt">
-        <error line="196" column="35" source="standard:mixed-condition-operators" />
-        <error line="282" column="160" source="standard:max-line-length" />
-        <error line="289" column="24" source="standard:binary-expression-wrapping" />
-        <error line="289" column="161" source="standard:max-line-length" />
-        <error line="291" column="161" source="standard:max-line-length" />
+        <error line="242" column="35" source="standard:mixed-condition-operators" />
+        <error line="328" column="160" source="standard:max-line-length" />
+        <error line="335" column="24" source="standard:binary-expression-wrapping" />
+        <error line="335" column="161" source="standard:max-line-length" />
+        <error line="337" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/rooms/McpToolsTest.kt">
         <error line="86" column="25" source="standard:binary-expression-wrapping" />
@@ -485,11 +485,11 @@
     </file>
     <file name="src/test/java/com/pocketide/rooms/RoomConfiguratorTest.kt">
         <error line="50" column="161" source="standard:max-line-length" />
-        <error line="195" column="161" source="standard:max-line-length" />
-        <error line="223" column="161" source="standard:max-line-length" />
-        <error line="226" column="92" source="standard:function-literal" />
-        <error line="226" column="161" source="standard:max-line-length" />
-        <error line="226" column="165" source="standard:function-literal" />
+        <error line="197" column="161" source="standard:max-line-length" />
+        <error line="225" column="161" source="standard:max-line-length" />
+        <error line="228" column="92" source="standard:function-literal" />
+        <error line="228" column="161" source="standard:max-line-length" />
+        <error line="228" column="165" source="standard:function-literal" />
     </file>
     <file name="src/test/java/com/pocketide/rooms/RoomFilesTest.kt">
         <error line="38" column="161" source="standard:max-line-length" />
