@@ -31,6 +31,9 @@ internal interface TaskScheduler {
     fun schedule(task: ScheduledTask, update: Boolean = true)
     fun cancel(taskId: String)
     fun runOnce(taskId: String, sessionId: String)
+
+    /** Takes every task's jobs out, those of tasks this process never read included. */
+    fun cancelAll()
 }
 
 /**
@@ -82,6 +85,10 @@ internal object ScheduleWork {
 
         override fun runOnce(taskId: String, sessionId: String) {
             work.enqueueUniqueWork(ONCE + taskId, ExistingWorkPolicy.KEEP, once(taskId, sessionId))
+        }
+
+        override fun cancelAll() {
+            work.cancelAllWorkByTag(TAG)
         }
     }
 }

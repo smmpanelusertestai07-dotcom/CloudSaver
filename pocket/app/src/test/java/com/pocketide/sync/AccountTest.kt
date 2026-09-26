@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.core.Settings
 import com.pocketide.google.DriveAuthResult
 import com.pocketide.model.Project
 import kotlinx.coroutines.runBlocking
@@ -192,6 +193,24 @@ class AccountTest {
         val index = phone.remoteIndex()!!
         assertTrue(index.sessions.isEmpty())
         assertTrue(index.projects.isEmpty())
+    }
+
+    @Test
+    fun noOldSettingReachesTheNextVaultAfterDeleteEverything() = runBlocking {
+        val phone = syncedPhone()
+        phone.settings.update {
+            it.copy(keepChatsMonths = 12, driveLimitGb = 5, onlyOfficialAgents = true, extraPassword = true, privacyChecklistDone = true)
+        }
+        phone.engine.syncNow()
+        assertEquals(12, SyncedSettings.parse(phone.remoteIndex()!!.settingsJson!!)!!.keepChatsMonths)
+
+        phone.engine.deleteEverything()
+        // Erased as the owner was told: set-up starts over, with no extra password on a key that is gone.
+        assertEquals(Settings(), phone.settings.settings.value)
+        phone.settings.update { it.copy(onboardingDone = true) }
+        phone.engine.syncNow()
+
+        assertEquals(SyncedSettings.of(Settings()), SyncedSettings.parse(phone.remoteIndex()!!.settingsJson!!))
     }
 
     @Test

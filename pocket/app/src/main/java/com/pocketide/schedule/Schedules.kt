@@ -26,4 +26,10 @@ interface Schedules {
     suspend fun save(task: ScheduledTask)
     suspend fun remove(id: String)
     suspend fun runNow(id: String): String?
+
+    /**
+     * "Delete everything" removed the tasks' file: no task runs again, and a task saved afterwards
+     * starts a new list, so the old ones are never written back.
+     */
+    suspend fun forgetEverything() = Unit
 }

@@ -261,6 +261,10 @@ class TaskSchedulesTest {
         override fun runOnce(taskId: String, sessionId: String) {
             once += taskId to sessionId
         }
+        var cancelledAll = 0
+        override fun cancelAll() {
+            cancelledAll++
+        }
     }
 
     private val scheduler = FakeScheduler()
@@ -319,6 +323,25 @@ class TaskSchedulesTest {
         whyNot = null
         assertEquals("s-new", s.runNow("t1"))
         assertEquals(listOf("t1" to "s-new"), scheduler.once)
+    }
+
+    @Test
+    fun noOldTaskRunsOrComesBackAfterDeleteEverything() = runTest {
+        val file = File(temp.root, "schedules.json")
+        val s = schedules(file)
+        s.save(task())
+        s.save(task().copy(id = "t2", title = "Weekly clean-up"))
+        // Delete everything removes the file first, then the module forgets what it holds.
+        file.delete()
+        s.forgetEverything()
+        assertEquals("every task's job leaves WorkManager", 1, scheduler.cancelledAll)
+        assertTrue(s.tasks.value.isEmpty())
+
+        // A run that ends afterwards, and a task saved afterwards, never write the old ones back.
+        s.recordRun("t1", 9_000, "s-9")
+        s.save(task().copy(id = "t3", title = "New"))
+        val reread = schedules(file).apply { load() }
+        assertEquals(listOf("t3"), reread.tasks.value.map { it.id })
     }
 
     @Test

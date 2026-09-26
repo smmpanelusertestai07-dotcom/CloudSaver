@@ -1,5 +1,6 @@
 package com.pocketide.sync
 
+import com.pocketide.core.Settings
 import com.pocketide.google.DriveException
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
@@ -167,7 +168,9 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             ports.forgetLocal()
             ports.wipeSecureStore()
             ports.forgetVaultKey()
-            ports.settings.update { it.copy(onboardingDone = false) }
+            // Settings are erased too, as the owner was told: no old choice reaches the next vault, and
+            // set-up starts over (the extra password wrapped the old key's Half G, which is gone).
+            ports.settings.update { Settings() }
             flows.status.value = SyncStatus.Idle
             flows.waiting.value = emptyList()
             flows.leaseHolder.value = null

@@ -79,6 +79,15 @@ internal class TaskSchedules(
         return session.id
     }
 
+    override suspend fun forgetEverything() {
+        lock.withLock {
+            scheduler.cancelAll()
+            withContext(io) { Files.deleteIfExists(file.toPath()) }
+            state.value = emptyList()
+            loaded.complete(Unit)
+        }
+    }
+
     /** Called by a run when it ends. */
     suspend fun recordRun(taskId: String, at: Long, sessionId: String) {
         load()

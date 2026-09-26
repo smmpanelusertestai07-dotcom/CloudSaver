@@ -137,6 +137,7 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
     override suspend fun forgetLocal() {
         graph.sessions.forgetEverything()
         graph.projects.forgetEverything()
+        graph.schedules.forgetEverything()
     }
 
     override fun localSessions(): List<SessionRecord> = graph.sessions.all.value
