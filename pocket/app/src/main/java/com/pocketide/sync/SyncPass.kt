@@ -111,14 +111,18 @@ internal class SyncPass(
             SyncedSettings.of(ports.settings.settings.value).json() != state.settingsPushed
     }
 
-    /** A file that is new, changed size or time, or went missing, or one that waits for Drive's version. */
+    /**
+     * A file that is new, changed size or time, or went missing, or one that waits for Drive's
+     * version. A file that can run code and still waits for the owner, unchanged, is no news.
+     */
     private fun filesChanged(run: Run, book: SessionBook): Boolean {
         val tracks = run.state.tracks
         if (tracks.values.any { it.behindDrive }) return true
         val found = kit.scanner.scan(book.matcher, tracks, ports::roomRunning)
         val changed = found.any { c ->
             val t = tracks[c.key]
-            book.uploadable(c.sessionId) && (t == null || t.size != c.facts.size || t.modifiedAt != c.facts.modifiedAt)
+            val moved = t == null || t.size != c.facts.size || t.modifiedAt != c.facts.modifiedAt
+            book.uploadable(c.sessionId) && moved && !CodeGate.waiting(run.state.held, c)
         }
         val seen = found.map { it.key }.toSet()
         return changed || tracks.any { (key, t) -> key != SECRETS_KEY && t.onPhone && key !in seen && gone(t) }
@@ -194,9 +198,11 @@ internal class SyncPass(
     /**
      * Queues every new byte and changed file, and notes files that disappeared. Returns the
      * sessions whose databases were left for a later run because they changed within [QUIET_MS].
+     * A file that can run code is queued only as the gate allows ([CodeGate]).
      */
     fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
         val maker = run.maker()
+        val gate = CodeGate(run.state.held, run.state.keptCode)
         val entries = dropStranded(run, index).filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
         val pendingBySha = entries.filter { it.blob && !it.kind.appendOnly }
@@ -232,10 +238,11 @@ internal class SyncPass(
             }
             if (track != null && track.sessionId == null && c.sessionId != null) track = track.copy(sessionId = c.sessionId)
             val known = Known.of(track, waiting)
-            val result = if (c.kind.appendOnly) {
-                maker.transcript(c, known, compact = compactAllowed && foldDue(known, c.facts.size, run.now))
-            } else {
-                maker.whole(c, known) { sha -> pendingBySha[sha] ?: indexBySha[sha] }
+            val verdict = gate.judge(c, known)
+            val result = when {
+                verdict == CodeGate.Verdict.Stays -> MakeResult.Unchanged
+                c.kind.appendOnly -> maker.transcript(c, known, compact = compactAllowed && foldDue(known, c.facts.size, run.now))
+                else -> gate.check(verdict, maker.whole(c, known) { sha -> pendingBySha[sha] ?: indexBySha[sha] }, run)
             }
             val base = track ?: FileTrack(kind = c.kind, agentId = c.agentId, path = c.path, sessionId = c.sessionId)
             when (result) {
@@ -257,7 +264,8 @@ internal class SyncPass(
             }
         }
         noteMissing(run, tracks, seen, book)
-        run.state = run.state.copy(tracks = tracks)
+        run.state = run.state.copy(tracks = tracks, held = gate.held(seen))
+        CodeGate.publish(run)
         return deferred
     }
 
@@ -507,21 +515,23 @@ internal class SyncPass(
     }
 
     /**
-     * One upload. It is marked as started first, so after a kill Drive is asked whether the file
-     * already arrived (names are random, so a match is ours) instead of sending it twice.
+     * One upload. It is marked as started first, with the time, so after a kill Drive is asked
+     * whether the file already arrived (names are random, so a match is ours) instead of sending
+     * it twice. Such a file is as old as that attempt, whenever it is found: another phone's sweep
+     * counts from then ([Committer.confirmUploads]).
      */
     private suspend fun uploadOne(run: Run, drive: DriveStore, e: QueueEntry) {
         if (e.attempted) {
             val arrived = drive.find(e.name)
             if (arrived != null && (arrived.size == e.storedBytes || arrived.size <= 0)) {
-                kit.queue.update(run.cipher, e.copy(driveId = arrived.id, uploadedAt = run.now))
+                kit.queue.update(run.cipher, e.copy(driveId = arrived.id))
                 return
             }
-        } else {
-            kit.queue.update(run.cipher, e.copy(attempted = true))
         }
+        val started = e.copy(attempted = true, uploadedAt = run.now)
+        kit.queue.update(run.cipher, started)
         val file = drive.upload(e.name, kit.queue.blobFile(e.id))
-        kit.queue.update(run.cipher, e.copy(attempted = true, driveId = file.id, uploadedAt = run.now))
+        kit.queue.update(run.cipher, started.copy(driveId = file.id))
     }
 
     /** Another phone holds the lease: keep what this phone had as conflict copies, then stop. */

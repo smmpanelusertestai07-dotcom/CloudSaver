@@ -18,6 +18,18 @@ internal object SecretMask {
      */
     private val whole by lazy { ownShapes + SecretPatterns.tokenShapes }
 
+    /** Every private-key label the check-post knows: "OPENSSH PRIVATE KEY", OpenPGP's "PGP PRIVATE KEY BLOCK"… */
+    private const val KEY_LABEL = "(?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?"
+
+    /** One character of a JSON string, an escape counting as one: a pasted key's line breaks are `\n` there. */
+    private const val IN_STRING = """(?:[^"\\\n]|\\.)"""
+
+    /**
+     * A pasted private key, header to footer. With no footer on the line (part of a key was
+     * pasted), what follows the header in its JSON string goes too: the key is its body.
+     */
+    private val privateKey = Regex("-----BEGIN $KEY_LABEL-----(?:$IN_STRING*?-----END $KEY_LABEL-----|$IN_STRING*)")
+
     private val ownShapes = listOf(
         Regex("gh[pousr]_[A-Za-z0-9]{20,}"),
         Regex("github_pat_[A-Za-z0-9_]{20,}"),
@@ -31,7 +43,7 @@ internal object SecretMask {
         Regex("glpat-[0-9A-Za-z_-]{20,}"),
         Regex("npm_[0-9A-Za-z]{30,}"),
         Regex("eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"),
-        Regex("-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"),
+        privateKey,
     )
 
     /** `password=…`, `"api_key": "…"`: only the value is masked. */

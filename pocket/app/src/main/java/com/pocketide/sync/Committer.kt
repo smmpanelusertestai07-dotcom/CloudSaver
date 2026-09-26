@@ -98,18 +98,41 @@ internal class Committer(private val kit: SyncKit) {
     }
 
     /**
-     * Uploads that waited long for their record are looked for in Drive again: another phone's
-     * daily sweep cannot know they wait here and may have removed them. One that is gone is sent
-     * again, never recorded with an id that no longer exists.
+     * Uploads that wait for their record, checked by the clock another phone's daily sweep goes
+     * by: how long ago the upload was made, which a successful look never moves on. The sweep
+     * cannot know they wait here and removes a file no index names once it is
+     * [Maintenance.ORPHAN_GRACE_MS] old. So one older than [RESEND_AFTER_MS] is sent again as a
+     * new file instead of trusted, and one older than [CONFIRM_AFTER_MS] is looked for at every
+     * record; one that is gone is sent again, never recorded with an id that no longer exists.
+     * An upload the index already names is recorded work, and is left alone.
      */
     suspend fun confirmUploads(run: Run, drive: DriveStore) {
         val now = run.now
+        val recorded = run.index?.objects.orEmpty().map { it.name }.toSet()
         for (e in run.entries()) {
-            if (!e.blob || e.driveId == null || now - e.uploadedAt < CONFIRM_AFTER_MS) continue
-            val found = drive.find(e.name)?.takeIf { it.size == e.storedBytes || it.size <= 0 }
-            val next = if (found != null) e.copy(driveId = found.id, uploadedAt = now) else e.copy(driveId = null, attempted = false, uploadedAt = -1)
-            kit.queue.update(run.cipher, next)
+            if (!e.blob || e.driveId == null || e.name in recorded) continue
+            val age = now - e.uploadedAt
+            if (e.uploadedAt < 0 || age < 0 || age >= RESEND_AFTER_MS) {
+                resend(run, e)
+            } else if (age >= CONFIRM_AFTER_MS && gone(drive, e)) {
+                kit.queue.update(run.cipher, e.copy(driveId = null, attempted = false, uploadedAt = -1))
+            }
         }
+    }
+
+    /** Drive no longer holds [e]'s upload as it was sent. */
+    private suspend fun gone(drive: DriveStore, e: QueueEntry): Boolean =
+        drive.find(e.name)?.takeIf { it.size == e.storedBytes || it.size <= 0 } == null
+
+    /**
+     * Sends [e] again under a new name, so Drive's copy is new, and lets the old copy go
+     * ([deleteUnused]). Entries that reuse its content follow it to the new name.
+     */
+    private fun resend(run: Run, e: QueueEntry) {
+        val name = Codec.objectName()
+        kit.queue.update(run.cipher, e.copy(name = name, driveId = null, attempted = false, uploadedAt = -1))
+        for (reusing in run.entries().filter { !it.blob && it.name == e.name }) kit.queue.update(run.cipher, reusing.copy(name = name))
+        run.state = run.state.copy(driveDeletes = run.state.driveDeletes + (e.name to e.driveId.orEmpty()))
     }
 
     /** Deletes Drive files the index no longer names. Stops quietly when Drive cannot be reached. */
@@ -236,6 +259,9 @@ internal class Committer(private val kit: SyncKit) {
 
         /** Uploads older than this are confirmed in Drive before they are recorded. */
         const val CONFIRM_AFTER_MS = 6 * Durations.HOUR
+
+        /** Uploads older than this are sent again rather than recorded: half the sweep's grace, so clocks may differ. */
+        const val RESEND_AFTER_MS = Maintenance.ORPHAN_GRACE_MS / 2
     }
 }
 

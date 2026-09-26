@@ -105,30 +105,36 @@ class TemplateGateTest {
     @Test
     fun onlyTheReleaseTemplateNamesSecrets() {
         for (file in files) {
-            val names = Regex("secrets\\.([A-Z0-9_]+)").findAll(file.readText()).map { it.groupValues[1] }.toSet()
+            val text = file.readText()
+            val names = Regex("secrets\\.([A-Z0-9_]+)").findAll(text).map { it.groupValues[1] }.toSet()
             if (file.name == "android-release.yml") {
                 assertEquals(setOf("ANDROID_KEYSTORE_BASE64", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD"), names)
+                val reads = EXPRESSION.findAll(text).map { it.groupValues[1].trim() }.filter { SECRETS_CONTEXT.containsMatchIn(it) }.toList()
+                assertTrue("${file.name} reads each Secret by its name only: $reads", reads.all { NAMED_SECRET.matches(it) })
             } else {
-                assertTrue("${file.name} must not read Secrets", names.isEmpty())
+                assertTrue("${file.name} must not read Secrets", !readsSecrets(text))
             }
-            assertTrue("${file.name} must not use GITHUB_TOKEN", !file.readText().contains("GITHUB_TOKEN"))
+            assertTrue("${file.name} must not use GITHUB_TOKEN", !text.contains("GITHUB_TOKEN"))
         }
     }
 
     /**
      * Anything the repository's code runs in a job can change what that job's later steps run, so
-     * a job given Secrets must not check the repository out or build it.
+     * a job given Secrets must not check the repository out or build it; and Secrets given before
+     * `jobs:` reach every job, the build too.
      */
     @Test
     fun secretsReachOnlyAJobThatNeverRunsTheRepositorysCode() {
         val jobHeader = Regex("^ {2}[A-Za-z0-9_-]+:$")
         for (file in files) {
             val lines = file.readLines()
+            val top = lines.take(lines.indexOf("jobs:")).joinToString("\n")
+            assertTrue("${file.name}: Secrets set before jobs: reach every job", !readsSecrets(top))
             val jobs = lines.drop(lines.indexOf("jobs:") + 1)
             val starts = jobs.indices.filter { jobHeader.matches(jobs[it]) }
             for ((index, start) in starts.withIndex()) {
                 val job = jobs.subList(start, starts.getOrElse(index + 1) { jobs.size }).joinToString("\n")
-                if (!job.contains("secrets.")) continue
+                if (!readsSecrets(job)) continue
                 val name = "${file.name} ${jobs[start].trim()}"
                 assertTrue("$name must not check out the repository", !job.contains("actions/checkout@"))
                 assertTrue("$name must not run the repository's build", !job.contains("gradlew"))
@@ -142,9 +148,35 @@ class TemplateGateTest {
     @Test
     fun onlyTheTemplatesThatReadSecretsAreMarkedSo() {
         for (template in TemplateCatalog.all) {
-            val readsSecrets = File(folder, "${template.id}.yml").readText().contains("secrets.")
-            assertEquals(template.id, readsSecrets, template.usesSecrets)
+            assertEquals(template.id, readsSecrets(File(folder, "${template.id}.yml").readText()), template.usesSecrets)
         }
+    }
+
+    @Test
+    fun everyFormOfTheSecretsContextIsSeen() {
+        listOf(
+            "run: echo \${{ secrets.KEY }}", "run: echo \"\${{ toJSON(secrets) }}\"", "run: echo \"\${{ secrets['KEY'] }}\"",
+            "run: echo \${{ fromJSON(toJSON( secrets )).KEY }}", "secrets: inherit", "if: secrets.KEY != ''",
+        ).forEach { assertTrue(it, readsSecrets("    steps:\n      - $it\n")) }
+        listOf("run: cat docs/secrets.md", "run: echo \${{ inputs.secrets }}", "run: echo \${{ steps.secrets.outputs.x }}")
+            .forEach { assertTrue(it, !readsSecrets("    steps:\n      - $it\n")) }
+    }
+
+    /**
+     * Whether [text] reads the secrets context in any form (secrets.NAME, secrets['NAME'],
+     * toJSON(secrets), in a `${{ }}` expression or an `if:`) or passes Secrets on to another
+     * workflow (`secrets: inherit`): the rule tools/gates/templates.py checks.
+     */
+    private fun readsSecrets(text: String): Boolean =
+        (EXPRESSION.findAll(text) + CONDITION.findAll(text)).any { SECRETS_CONTEXT.containsMatchIn(it.groupValues[1]) } ||
+            PASSES_SECRETS.containsMatchIn(text)
+
+    private companion object {
+        val EXPRESSION = Regex("\\$\\{\\{([\\s\\S]*?)\\}\\}")
+        val CONDITION = Regex("(?m)^\\s*(?:- )?if:(.*)$")
+        val SECRETS_CONTEXT = Regex("(?<![\\w.])secrets\\b")
+        val NAMED_SECRET = Regex("secrets\\.[A-Z0-9_]+")
+        val PASSES_SECRETS = Regex("(?m)^\\s*(?:- )?secrets\\s*:")
     }
 
     @Test

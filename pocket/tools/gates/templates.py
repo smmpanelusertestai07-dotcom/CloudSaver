@@ -7,16 +7,23 @@ A template runs in someone's own GitHub account and spends their Actions minutes
   - pins every action to a full commit SHA, so a moved tag cannot change what runs;
   - keeps Secrets away from the repository's code: a job that reads a Secret never checks the
     repository out, because anything the build runs in a job (gradlew, build scripts) can change
-    what that job's later steps run, and so read the Secrets they are given.
+    what that job's later steps run, and so read the Secrets they are given. Secrets given at the
+    workflow's top level reach every job, the build too, and Secrets passed on to another
+    workflow go where this gate cannot look: both are refused.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
 import actions_rules
 import common
 import yaml_lite
+
+EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+# The secrets context in any form: secrets.NAME, secrets['NAME'], toJSON(secrets), ...
+SECRETS_CONTEXT = re.compile(r"(?<![\w.])secrets\b")
 
 
 def template_dir(root: Path) -> Path:
@@ -26,6 +33,35 @@ def template_dir(root: Path) -> Path:
 def checks_out(job: dict) -> bool:
     steps = job.get("steps") or []
     return any(isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/checkout@") for step in steps)
+
+
+def uses_secrets(node) -> bool:
+    """True when a value under node reads the secrets context: in a ${{ }} expression, or in an
+    `if:`, which is an expression without the braces."""
+    for path, value in actions_rules.walk(node):
+        if not isinstance(value, str):
+            continue
+        expressions = [value] if path and path[-1] == "if" else EXPRESSION.findall(value)
+        if any(SECRETS_CONTEXT.search(expression) for expression in expressions):
+            return True
+    return False
+
+
+def secrets_problems(name: str, workflow: dict) -> list[str]:
+    problems = []
+    for key, value in workflow.items():
+        if key != "jobs" and uses_secrets(value):
+            problems.append(f"{name}: the workflow-level '{key}' uses Secrets, and every job gets it, the build too; "
+                            "use the Secrets in a job of their own, without a checkout")
+    for job_name, job in (workflow.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        if job.get("secrets") is not None:
+            problems.append(f"{name}: job {job_name} passes Secrets to another workflow, whose steps this gate cannot check")
+        if uses_secrets(job) and checks_out(job):
+            problems.append(f"{name}: job {job_name} reads Secrets and checks out the repository, whose code could "
+                            "take them; use the Secrets in a job of their own, without a checkout")
+    return problems
 
 
 def check_template(name: str, text: str) -> list[str]:
@@ -53,10 +89,7 @@ def check_template(name: str, text: str) -> list[str]:
     for grant in grants:
         problems.append(f"{name}: grants write access to {grant}; templates only read")
 
-    for job_name, job in (workflow.get("jobs") or {}).items():
-        if isinstance(job, dict) and "secrets." in str(job) and checks_out(job):
-            problems.append(f"{name}: job {job_name} reads Secrets and checks out the repository, whose code could "
-                            "take them; use the Secrets in a job of their own, without a checkout")
+    problems += secrets_problems(name, workflow)
 
     for line, reference, _comment in actions_rules.uses_lines(text):
         why = actions_rules.pin_problem(reference)
