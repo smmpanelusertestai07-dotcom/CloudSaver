@@ -255,14 +255,17 @@ class SafetyTest {
     fun theOwnersClaudeSkillsSubagentsAndCommandsReachDriveAsMemory() = runBlocking {
         val phone = TestPhone(accounts, clock)
         val kept = listOf(
-            ".claude/skills/release-notes/SKILL.md", ".claude/skills/release-notes/scripts/collect.py",
-            ".claude/agents/reviewer.md", ".claude/commands/git/tidy.md", ".claude/output-styles/terse.md",
+            ".claude/skills/release-notes/SKILL.md", ".claude/agents/reviewer.md", ".claude/commands/git/tidy.md",
+            ".claude/output-styles/terse.md",
         )
         for (p in kept) phone.homeFile("claude", p).writeText("mine: $p")
+        // A script bundled with a skill can be run by it: it waits for the owner (CodeGateTest).
+        phone.homeFile("claude", ".claude/skills/release-notes/scripts/collect.py").writeText("print('notes')")
         phone.homeFile("claude", ".claude/skills/deploy/.env").writeText("SECRET")
         phone.engine.syncNow()
         val objects = phone.remoteIndex()!!.objects
         assertEquals(kept.sorted(), objects.map { it.path }.sorted())
         assertTrue(objects.all { it.kind == ObjectKind.MEMORY })
+        assertEquals(listOf(".claude/skills/release-notes/scripts/collect.py"), phone.engine.heldFiles.value.map { it.path })
     }
 }

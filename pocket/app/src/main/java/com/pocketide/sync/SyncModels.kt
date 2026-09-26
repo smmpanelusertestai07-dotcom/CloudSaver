@@ -87,6 +87,22 @@ internal data class RetentionNotice(val rule: String, val noticeAt: Long, val du
 @Serializable
 internal data class RestoreJob(val choice: RestoreChoice, val startedAt: Long)
 
+/**
+ * A version of a file that can run code, found in a room and kept off Drive until the owner
+ * keeps it ([CodeGate]): what the owner is shown, and the size and time it had, so an unchanged
+ * file is not read again at every run.
+ */
+@Serializable
+internal data class HeldMark(
+    val agentId: String,
+    val path: String,
+    val sha256: String,
+    val size: Long,
+    val modifiedAt: Long,
+    val reasons: List<String>,
+    val text: String,
+)
+
 @Serializable
 internal enum class MoveStage { COPYING, REKEY, VERIFIED, ERASING, DONE }
 
@@ -134,6 +150,10 @@ internal data class SyncState(
     val computerDayBeforeSent: Boolean = false,
     /** When each kind of notification was last posted, so each is shown at most once a day. */
     val alerts: Map<String, Long> = emptyMap(),
+    /** Files that can run code, waiting on this phone for the owner: file key → the version found. */
+    val held: Map<String, HeldMark> = emptyMap(),
+    /** The versions of such files the owner kept, which may go to Drive: file key → SHA-256. */
+    val keptCode: Map<String, String> = emptyMap(),
 )
 
 /**

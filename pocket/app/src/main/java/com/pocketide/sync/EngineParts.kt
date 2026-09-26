@@ -36,6 +36,7 @@ internal class SyncFlows {
     val backups = MutableStateFlow<Map<String, SessionBackup>>(emptyMap())
     val computerRemovalAt = MutableStateFlow<Long?>(null)
     val backgroundLimit = MutableStateFlow<String?>(null)
+    val held = MutableStateFlow<List<HeldFile>>(emptyList())
 }
 
 /**
@@ -95,13 +96,17 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
      * Signed in to another account (not by a move): its vault is a different one. Queued entries
      * were made against the old vault (pieces continuing its chains, files reused from it, uploads
      * with its ids), so they go and the next scan sends the phone's files to the new vault whole.
-     * Conflict copies are complete on their own and exist nowhere else: they are sent there.
+     * Conflict copies are complete on their own and exist nowhere else: they are sent there. What
+     * the owner decided about this phone's files that can run code holds for any account.
      */
     private fun startOverWith(account: String) {
         val (copies, rest) = entries().partition { it.conflict }
         rest.forEach { kit.queue.remove(it.id) }
         copies.forEach { kit.queue.update(cipher, it.copy(driveId = null, attempted = false)) }
-        state = SyncState(account = account, erased = state.erased, alerts = state.alerts, pendingConflicts = state.pendingConflicts)
+        state = SyncState(
+            account = account, erased = state.erased, alerts = state.alerts, pendingConflicts = state.pendingConflicts,
+            held = state.held, keptCode = state.keptCode,
+        )
         index = null
         kit.flows.driveSessions.value = emptyList()
         kit.flows.driveProjects.value = emptyList()
@@ -233,6 +238,8 @@ internal object Plain {
     const val SYNCING = "Syncing chats"
     const val RESTORING = "Restoring your data"
     const val RESTORE_WAITS = "Restore continues on Wi-Fi."
+    const val HELD_CHANGED = "The file changed since it was shown. Look at it again."
+    const val HELD_NOT_REMOVED = "PocketIDE could not remove the file. Try again."
     const val BACKGROUND_OFF =
         "Background use is turned off for PocketIDE, so chats back up only while the app is open. Turn it on in Android's settings for PocketIDE."
     const val BACKGROUND_RESTRICTED =

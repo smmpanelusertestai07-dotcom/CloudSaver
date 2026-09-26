@@ -44,6 +44,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     override val backups: StateFlow<Map<String, SessionBackup>> = flows.backups
     override val computerRemovalAt: StateFlow<Long?> = flows.computerRemovalAt
     override val backgroundLimit: StateFlow<String?> = flows.backgroundLimit
+    override val heldFiles: StateFlow<List<HeldFile>> = flows.held
 
     /** Shows what Drive held at the last sync, so the app starts offline with it. */
     suspend fun warmUp() {
@@ -56,6 +57,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             flows.computerRemovalAt.value = run.state.computerNoticeDue
             flows.storage.value = Views.storage(run, index, ports.settings.settings.value, flows.storage.value)
             Views.publishWaiting(run, pass.book(run))
+            CodeGate.publish(run)
         }
     }
 
@@ -129,6 +131,40 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
 
     override suspend fun cleanNow(): Long = act { run -> maintenance.cleanNow(run) }
 
+    override suspend fun keepHeldFile(file: HeldFile) {
+        val kept = act { run ->
+            val (key, mark) = heldEntry(run, file) ?: return@act false
+            run.state = run.state.copy(held = run.state.held - key, keptCode = run.state.keptCode + (key to mark.sha256))
+            run.save()
+            CodeGate.publish(run)
+            true
+        }
+        if (!kept) throw SyncException(Plain.HELD_CHANGED)
+        ports.scheduler.requestSoon()
+    }
+
+    override suspend fun removeHeldFile(file: HeldFile) {
+        val problem = act { run ->
+            val (key, mark) = heldEntry(run, file) ?: return@act Plain.HELD_CHANGED
+            val removed = try {
+                CodeGate.remove(ports.dirs, mark)
+            } catch (_: java.io.IOException) {
+                return@act Plain.HELD_NOT_REMOVED
+            }
+            // Gone, or changed: either way the next scan judges what is there now.
+            run.state = run.state.copy(held = run.state.held - key)
+            run.save()
+            CodeGate.publish(run)
+            if (removed) null else Plain.HELD_CHANGED
+        }
+        ports.scheduler.requestSoon()
+        problem?.let { throw SyncException(it) }
+    }
+
+    /** The waiting version [file] shows, with its file key; null when that version no longer waits. */
+    private fun heldEntry(run: Run, file: HeldFile): Pair<String, HeldMark>? =
+        run.state.held.entries.firstOrNull { (_, m) -> m.agentId == file.agentId && m.path == file.path && m.sha256 == file.sha256 }?.toPair()
+
     override suspend fun eraseForever(sessionIds: List<String>) {
         act { run ->
             run.state = run.state.copy(eraseQueue = run.state.eraseQueue + sessionIds)
@@ -181,6 +217,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             flows.move.value = MoveState.Idle
             flows.backups.value = emptyMap()
             flows.computerRemovalAt.value = null
+            flows.held.value = emptyList()
         }
     }
 
