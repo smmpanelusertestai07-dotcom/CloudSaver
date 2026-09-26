@@ -81,7 +81,7 @@ fun LockScreen(reason: LockReason) {
     LimitedScreens { nav ->
         when (reason) {
             LockReason.GitHubDisconnected -> GitHubDisconnected()
-            LockReason.DriveDisconnected -> DriveDisconnected()
+            LockReason.DriveDisconnected -> DriveDisconnected(nav)
             is LockReason.StorageFull -> StorageFull(reason.googleStorageFull, nav)
             is LockReason.OtherPhone -> OtherPhone(reason.deviceName)
             is LockReason.Unsupported -> Unsupported(reason.why)
@@ -236,7 +236,7 @@ private fun ChangeGitHubApp(graph: AppGraph, openUrl: (String) -> Unit, onSaved:
 }
 
 @Composable
-private fun DriveDisconnected() {
+private fun DriveDisconnected(nav: PocketNav) {
     val graph = rememberGraph()
     val recheck = rememberRecheck(graph)
     ShellPage {
@@ -249,7 +249,7 @@ private fun DriveDisconnected() {
         )
         ConnectionStatus(graph)
         Gap(24.dp)
-        DriveConnectPanel(auth = graph.driveAuth, onAuthorized = { recheck.run() }, label = "Reconnect Google Drive")
+        DriveConnectPanel(auth = graph.driveAuth, onAuthorized = { recheck.run() }, onOpenHelp = nav::help, label = "Reconnect Google Drive")
         RecheckResult(recheck)
         WhatHappened(
             "Access ends when PocketIDE is removed from your Google account's third-party connections, " +

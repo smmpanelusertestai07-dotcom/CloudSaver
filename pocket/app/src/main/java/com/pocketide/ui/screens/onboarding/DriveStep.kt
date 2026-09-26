@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
  * rebuilt from the Drive and GitHub halves; a first phone gets a new key. Nothing to write down.
  */
 @Composable
-fun DriveStepScreen(onDone: () -> Unit) {
+fun DriveStepScreen(onDone: () -> Unit, onOpenHelp: (sectionId: String) -> Unit) {
     val graph = rememberGraph()
     val context = LocalContext.current
     val email by graph.driveAuth.email.collectAsStateWithLifecycle()
@@ -122,6 +122,7 @@ fun DriveStepScreen(onDone: () -> Unit) {
                     authorizedEmail = it
                     justAuthorized = true
                 },
+                onOpenHelp = onOpenHelp,
             )
             FinePrint("Disconnect later and the app locks until you reconnect. Nothing is lost.")
         } else {

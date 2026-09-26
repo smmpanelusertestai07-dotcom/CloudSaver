@@ -113,7 +113,7 @@ fun OnboardingFlow() {
             when (shown) {
                 OnboardingStep.WELCOME -> WelcomeScreen(onContinue = { go(OnboardingStep.GITHUB) }, onOpenHelp = nav::help)
                 OnboardingStep.GITHUB -> GitHubStepScreen(onDone = { go(OnboardingStep.DRIVE) })
-                OnboardingStep.DRIVE -> DriveStepScreen(onDone = { go(OnboardingStep.COMPUTER) })
+                OnboardingStep.DRIVE -> DriveStepScreen(onDone = { go(OnboardingStep.COMPUTER) }, onOpenHelp = nav::help)
                 OnboardingStep.COMPUTER -> ComputerStepScreen(onDone = { go(OnboardingStep.PRIVACY) })
                 OnboardingStep.PRIVACY -> PrivacyChecklistScreen(onDone = {})
             }

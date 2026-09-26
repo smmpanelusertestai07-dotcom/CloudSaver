@@ -11,7 +11,8 @@ sealed interface DriveAuthResult {
     data class Authorized(val email: String?) : DriveAuthResult
     /** The owner must approve in Google's own sheet; launch [intent] and call [DriveAuth.completeConsent]. */
     data class NeedsConsent(val intent: PendingIntent) : DriveAuthResult
-    data class Failed(val why: String) : DriveAuthResult
+    /** [unknownBuild]: Google does not know this build, and Help's Google Cloud set-up has the fix. */
+    data class Failed(val why: String, val unknownBuild: Boolean = false) : DriveAuthResult
 }
 
 /**

@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pocketide.core.Redact
+import com.pocketide.docs.DocLinks
+import com.pocketide.docs.OwnerSetUp
 import com.pocketide.google.DriveAuth
 import com.pocketide.google.DriveAuthResult
 import com.pocketide.ui.components.Tone
@@ -33,19 +35,24 @@ private sealed interface DriveLink {
     data object Idle : DriveLink
     data object Working : DriveLink
     data object Cancelled : DriveLink
-    data class Failed(val why: String) : DriveLink
+    /** [helpSection]: the Help page that has the fix, when the owner has something to set up. */
+    data class Failed(val why: String, val helpSection: String? = null) : DriveLink
     data object Done : DriveLink
 }
+
+/** The Help page with the fix for a failed Drive sign-in, or null when trying again is the fix. */
+internal fun helpFor(failed: DriveAuthResult.Failed): String? = OwnerSetUp.googleCloud.id.takeIf { failed.unknownBuild }
 
 /**
  * Google's own consent sheet for `drive.appdata`: ask silently first, show Google's sheet only
  * when it is needed, then finish with its result. Used by set-up and by the "Drive disconnected"
- * lock.
+ * lock, where Help ([onOpenHelp]) is the only way to the steps for a build Google does not know.
  */
 @Composable
 fun DriveConnectPanel(
     auth: DriveAuth,
     onAuthorized: (email: String?) -> Unit,
+    onOpenHelp: (sectionId: String) -> Unit,
     label: String = "Continue with Google",
     enabled: Boolean = true,
 ) {
@@ -71,7 +78,7 @@ fun DriveConnectPanel(
                     link = DriveLink.Failed("Google's sign-in could not open. Try again.")
                 }
             }
-            is DriveAuthResult.Failed -> link = DriveLink.Failed(Redact.text(result.why))
+            is DriveAuthResult.Failed -> link = DriveLink.Failed(Redact.text(result.why), helpFor(result))
         }
     }
 
@@ -102,7 +109,13 @@ fun DriveConnectPanel(
         when (val current = link) {
             DriveLink.Cancelled -> NoticeCard("Google's window was closed before you allowed access. Nothing changed.", Tone.WARN)
             // Selectable: a build Google does not know shows its package and SHA-1 for the owner to copy.
-            is DriveLink.Failed -> SelectionContainer { NoticeCard(current.why, Tone.ERROR) }
+            is DriveLink.Failed -> {
+                SelectionContainer { NoticeCard(current.why, Tone.ERROR) }
+                current.helpSection?.let { section ->
+                    SecondaryAction("Open the set-up steps", onClick = { onOpenHelp(section) })
+                    QuietAction("Google Cloud console: Clients", onClick = { External.openUrl(context, DocLinks.GOOGLE_CLOUD_CLIENTS) })
+                }
+            }
             else -> Unit
         }
         if (link != DriveLink.Done) {
