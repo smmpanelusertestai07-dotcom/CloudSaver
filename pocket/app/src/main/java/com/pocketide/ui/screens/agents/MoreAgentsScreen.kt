@@ -188,7 +188,12 @@ fun MoreAgentsScreen(nav: PocketNav) {
         AlertDialog(
             onDismissRequest = { askMobileData = null },
             title = { Text("Download ${question.size} on mobile data?") },
-            text = { Text("${candidate.displayName} is big, so it waits for Wi-Fi. It can download now on mobile data instead.") },
+            text = {
+                Text(
+                    "${candidate.displayName} is big, so it waits for Wi-Fi. It is not added yet: tap Add again on Wi-Fi, " +
+                        "or download it now on mobile data.",
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -198,7 +203,7 @@ fun MoreAgentsScreen(nav: PocketNav) {
                     },
                 ) { Text("Use mobile data") }
             },
-            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Wait for Wi-Fi") } },
+            dismissButton = { TextButton(onClick = { askMobileData = null }) { Text("Not now") } },
         )
     }
 }
