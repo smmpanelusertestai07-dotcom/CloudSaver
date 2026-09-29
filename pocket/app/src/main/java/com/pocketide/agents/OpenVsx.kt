@@ -11,6 +11,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okio.BufferedSource
 import java.io.IOException
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -185,9 +186,7 @@ internal class OpenVsx(
     suspend fun text(url: HttpUrl, limit: Int): String = String(bytes(url, limit), Charsets.UTF_8)
 
     suspend fun bytes(url: HttpUrl, limit: Int): ByteArray =
-        get(url) { body -> body ?: throw IOException("Open VSX has no file at ${url.encodedPath}") }.also {
-            if (it.size > limit) throw IOException("An answer from Open VSX was larger than expected")
-        }
+        get(url, limit) { body -> body ?: throw IOException("Open VSX has no file at ${url.encodedPath}") }
 
     private suspend inline fun <reified T> json(url: HttpUrl): T? {
         val bytes = get(url) { it } ?: return null
@@ -198,18 +197,22 @@ internal class OpenVsx(
         }
     }
 
-    /** The body, or null for 404; [use] sees it and decides. */
-    private suspend fun <R> get(url: HttpUrl, use: (ByteArray?) -> R): R {
+    /** The body, or null for 404; [use] sees it and decides. A body over [limit] bytes is refused unread. */
+    private suspend fun <R> get(url: HttpUrl, limit: Int = MAX_JSON_BYTES, use: (ByteArray?) -> R): R {
         client.newCall(Request.Builder().url(url).header("Accept", "application/json").build()).await().use { response ->
             if (response.code == 404) return use(null)
             if (response.code == 429) throw RegistryBusy()
             if (!response.isSuccessful) throw IOException("Open VSX answered ${response.code}")
-            val source = response.body.source()
-            if (source.request(MAX_JSON_BYTES + 1L)) throw IOException("An answer from Open VSX was larger than expected")
-            val bytes = source.readByteArray()
+            val bytes = response.body.source().readAtMost(limit)
             onBytes(bytes.size.toLong())
             return use(bytes)
         }
+    }
+
+    /** The whole body, refused unread when it is over [limit] bytes. */
+    private fun BufferedSource.readAtMost(limit: Int): ByteArray {
+        if (request(limit + 1L)) throw IOException("An answer from Open VSX was larger than expected")
+        return readByteArray()
     }
 
     private fun api(vararg segments: String): HttpUrl =
@@ -224,7 +227,12 @@ internal class OpenVsx(
         private const val VERSION_PAGES = 20
         private const val MAX_CHECKSUM_BYTES = 1024
         private const val MAX_KEY_BYTES = 16 * 1024
-        private const val MAX_SIGZIP_BYTES = 64 * 1024
+
+        /**
+         * The .sigzip holds the 64-byte signature PocketIDE reads next to a manifest of every file in
+         * the package, which grows with it: Codex's was 478 KB in September 2026 (1.3 MB unpacked).
+         */
+        private const val MAX_SIGZIP_BYTES = 16 * 1024 * 1024
         private val SHA256_HEX = Regex("[0-9a-f]{64}")
         private val WHITESPACE = Regex("\\s+")
     }

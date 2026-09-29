@@ -110,7 +110,6 @@
     <ID>SwallowedException:Trees.kt$FileModes$unsupported: UnsupportedOperationException</ID>
     <ID>ThrowsCount:AgentStore.kt$AgentStore$private suspend fun newest(namespace: String, name: String): ExtensionRelease</ID>
     <ID>ThrowsCount:Ide.kt$Ide$private suspend fun awaitHealthy(port: Int, process: Process)</ID>
-    <ID>ThrowsCount:OpenVsx.kt$OpenVsx$private suspend fun &lt;R&gt; get(url: HttpUrl, use: (ByteArray?) -&gt; R): R</ID>
     <ID>ThrowsCount:Projects.kt$Projects$fun create(name: String): String</ID>
     <ID>ThrowsCount:VerifiedDownload.kt$VerifiedDownload$private suspend fun receive(url: HttpUrl, part: File, expected: Expected, onProgress: (Long, Long) -&gt; Unit)</ID>
     <ID>TooGenericExceptionCaught:ComputerSetup.kt$ComputerSetup$failure: Exception</ID>
