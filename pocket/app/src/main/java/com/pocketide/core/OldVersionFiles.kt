@@ -31,8 +31,8 @@ internal object OldVersionFiles {
     /** 4.x's GitHub sign-in was deleted. */
     private const val DONE_V5 = "v5-removed"
 
-    /** The only sealed file this version writes ([com.pocketide.core.KeyStore]), and its partial write. */
-    private val KEPT_SECURE = setOf("keys", "keys.tmp")
+    /** The only sealed files this version writes: the owner's keys ([KeyStore]), and their write in progress. */
+    private val KEPT_SECURE = SecureStore.fileNames(KeyStore.STORE)
 
     /** The settings, and the backup Android keeps of them while it writes. */
     private const val SETTINGS_PREFS = "pocketide.settings."

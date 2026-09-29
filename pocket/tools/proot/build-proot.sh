@@ -8,14 +8,15 @@
 #
 # It builds the release marked "build": true in sources.json the way Termux packages it
 # (make -C src PROOT_WITH_LIBANDROID_SHMEM=true, ARG_MAX=131072), with the NDK's plain sysroot
-# instead of Termux's patched one, and with two changes: talloc and libandroid-shmem are linked in
-# statically, so the app would ship just two files and nothing needs renaming or patching; and
+# instead of Termux's patched one, and with these changes: talloc and libandroid-shmem are linked
+# in statically, so the app would ship just two files and nothing needs renaming or patching; the
+# patches the release lists (in patches/, each saying what it fixes) are applied to PRoot; and
 # every download is checked against its pinned SHA-256 before it is unpacked.
 #
 # Output, in OUT_DIR:
 #   jniLibs/<ABI>/libproot.so         the proot executable (Android extracts only lib*.so)
 #   jniLibs/<ABI>/libproot-loader.so  the loader, which the app names in PROOT_LOADER
-#   sources/                          the three source archives, exactly as verified
+#   sources/                          the three source archives, exactly as verified, and the patches
 #   PROVENANCE.txt                    versions, checksums, NDK and flags
 #
 # Usage: build-proot.sh OUT_DIR [ABI]     (ABI: arm64-v8a, the default, or x86_64)
@@ -65,6 +66,19 @@ if len(builds) != 1:
     sys.exit("sources.json must mark exactly one release with build: true")
 part = builds[0][sys.argv[2]]
 print("\n".join([part["url"], *part.get("mirrors", [])]))
+PY
+}
+
+# The patches the release lists, one path (relative to this folder) per line; none prints nothing.
+release_patches() {
+  python3 - "$SOURCES_JSON" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+builds = [r for r in data["releases"] if r.get("build")]
+if len(builds) != 1:
+    sys.exit("sources.json must mark exactly one release with build: true")
+for patch in builds[0].get("patches", []):
+    print(patch)
 PY
 }
 
@@ -174,9 +188,13 @@ EOF
 }
 
 build_proot() {
-  local archive="$1" version="$2" dir
+  local archive="$1" version="$2" dir patch
   unzip -q "$archive" -d "$WORK"
   dir=$(find "$WORK" -maxdepth 1 -type d -name 'proot-*' | head -n 1)
+  while IFS= read -r patch; do
+    patch -d "$dir" -p1 --forward --batch < "$HERE/$patch" || die "$patch does not apply to PRoot $version"
+    cp "$HERE/$patch" "$OUT/sources/"
+  done < <(release_patches)
   # PRoot's makefile appends to these (+=), so they go through the environment, not the
   # command line, which would replace its own flags.
   # The backslashes survive into make's shell, which turns \" into the quotes of a C string.
@@ -207,6 +225,7 @@ write_provenance() {
     printf 'NDK %s, clang target %s\n' "$NDK_VERSION" "$TARGET"
     printf 'libandroid-shmem: make libandroid-shmem.a with CFLAGS=-O2 -D_PATH_TMP="%s"\n' "$SHMEM_TMP"
     printf 'make -C src PROOT_WITH_LIBANDROID_SHMEM=true --eval=%s\n' "'$MISSING_INCLUDES'"
+    printf 'Patches applied to PRoot first (patch -p1, copies in sources/): %s\n' "$(release_patches | tr '\n' ' ')"
     printf 'CPPFLAGS=%s\nCFLAGS=%s\nLDFLAGS=%s\n\n' "$CPPFLAGS" "$CFLAGS" "$LDFLAGS"
     printf 'Sources (verified by SHA-256 before use; copies in sources/):\n'
     (cd "$OUT/sources" && sha256sum -- *)

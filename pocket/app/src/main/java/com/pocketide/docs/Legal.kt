@@ -50,6 +50,10 @@ internal object Legal {
                 "with npm's registry (npm); they see the request, like any website does.",
         ),
         p(
+            "If an error stops the app, PocketIDE keeps what it was on this phone and shows it, with a button to copy it for " +
+                "a report. It goes nowhere unless you share it.",
+        ),
+        p(
             "Permissions: internet, network state, notifications, the foreground service that keeps the computer running, and " +
                 "biometrics for App lock. No storage, camera, microphone, location, contacts or accounts access.",
         ),

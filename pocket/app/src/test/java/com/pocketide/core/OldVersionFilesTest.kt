@@ -30,7 +30,7 @@ class OldVersionFilesTest {
         // This version's own, and the web page's.
         val kept = listOf(
             put(folders.files, "computer/home/projects/app/main.kt"),
-            put(folders.noBackup, "secure/keys"),
+            put(folders.noBackup, "secure/keys.bin"),
             put(folders.data, "shared_prefs/pocketide.settings.xml"),
             put(folders.data, "shared_prefs/pocketide.settings.xml.bak"),
             put(folders.data, "shared_prefs/WebViewChromiumPrefs.xml"),
@@ -50,13 +50,26 @@ class OldVersionFilesTest {
         val folders = folders()
         put(folders.noBackup, "old-versions-removed")
         val gitHub = put(folders.noBackup, "secure/github.token")
-        val keys = put(folders.noBackup, "secure/keys")
+        val keys = put(folders.noBackup, "secure/keys.bin")
 
         assertTrue(OldVersionFiles.removeOnce(folders))
 
         assertFalse(gitHub.exists())
         assertTrue(keys.exists())
         assertFalse("runs once", OldVersionFiles.removeOnce(folders))
+    }
+
+    @Test
+    fun `the keys it keeps are the files the secure store writes`() {
+        val folders = folders()
+        val store = SecureStore(folders.secure, PlainBox)
+        store.putString(KeyStore.STORE, "[]")
+        put(folders.noBackup, "secure/github.token")
+        // A retry at a later start (the first could not delete everything) finds keys saved since.
+        OldVersionFiles.removeOnce(folders)
+
+        assertEquals(setOf("keys.bin"), folders.secure.list()?.toSet())
+        assertEquals("[]", store.getString(KeyStore.STORE))
     }
 
     @Test
@@ -90,6 +103,13 @@ class OldVersionFilesTest {
             cache = File(data, "cache").apply { mkdirs() },
             data = data,
         )
+    }
+
+    /** Seals nothing: these tests are about which files stay. */
+    private object PlainBox : SecretBox {
+        override fun seal(plain: ByteArray) = plain
+
+        override fun open(sealed: ByteArray) = sealed
     }
 
     private fun put(dir: File, path: String): File = File(dir, path).apply {

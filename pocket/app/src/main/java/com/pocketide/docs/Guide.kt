@@ -57,8 +57,8 @@ internal object Guide {
             row("Delete the computer", "Deletes all of it, projects included."),
         ),
         tip(
-            "On an agent's screen, the key bar above the keyboard has Esc, Tab, Ctrl+C, the arrows and Enter. The menu (⋮) " +
-                "opens a terminal in your project's folder.",
+            "On an agent's screen, the key bar above the keyboard has Esc, Tab, Ctrl+C, the arrows and Enter, and in a " +
+                "terminal, Paste. The menu (⋮) opens a terminal in your project's folder.",
         ),
         link("Open the Computer screen", "app:computer"),
     )
@@ -81,14 +81,17 @@ internal object Guide {
                 "ChatGPT (Codex), Continue with Google (Antigravity). The page opens in Chrome, as Google allows its " +
                 "sign-in only in a real browser, and returns to the agent on this phone by itself.",
         ),
-        p("Or sign in with the terminal: Sign in (the arrow at the top) opens one with the agent's command already typed."),
+        p(
+            "Or sign in with the terminal: Sign in (the arrow at the top; for Antigravity's agy, Home > its menu) opens one with " +
+                "the agent's command already typed.",
+        ),
         table(
             listOf("Agent", "Typed for you", "Then"),
             *Agent.entries.map { row(it.displayName, it.signInCommand, signInThen(it)) }.toTypedArray(),
         ),
         info(
-            "Google keeps Antigravity's screen and its terminal (agy) signed in separately. Signing in on one does not sign " +
-                "in the other.",
+            "Antigravity signs in on its own screen: Continue with Google. Google keeps that screen and its terminal tool " +
+                "(agy) signed in separately, so sign in agy in the terminal only to use agy there (Home > Antigravity's menu).",
         ),
         p(
             "More agents: Home > Add agents searches Open VSX. Only publishers Open VSX has verified can be installed, and " +
@@ -185,8 +188,8 @@ internal object Guide {
     private fun signInThen(agent: Agent): String = if (agent.sharedSignInFile != null) {
         "Press Enter and sign in in Chrome. Come back: the screen reloads, signed in."
     } else {
-        "Press Enter twice (Google OAuth) and sign in in Chrome. Copy the code the page shows, paste it in the terminal, " +
-            "press Enter. Antigravity then runs in the terminal."
+        "Press Enter twice (Google OAuth) and sign in in Chrome. Copy the code the page shows, come back, tap the " +
+            "terminal, then Paste above the keyboard and Enter. Antigravity then runs in the terminal."
     }
 
     private val permissions = section(

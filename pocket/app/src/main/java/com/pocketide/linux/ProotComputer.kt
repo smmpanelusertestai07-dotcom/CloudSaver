@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.storage.StorageManager
 import com.pocketide.core.Clock
 import com.pocketide.core.Http
+import com.pocketide.core.LogBackgroundFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +47,7 @@ internal class ProotComputer(
     private val clock: Clock,
     private val beforeFirstWrite: suspend () -> Unit = {},
 ) : Computer {
-    private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO + LogBackgroundFailure)
     private val oneAtATime = Mutex()
     private val nativeLibraries = File(context.applicationInfo.nativeLibraryDir)
     private val host = ProotHost(nativeLibraries, dirs.prootTmp)

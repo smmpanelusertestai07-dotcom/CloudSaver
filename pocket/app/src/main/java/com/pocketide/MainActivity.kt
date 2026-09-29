@@ -33,6 +33,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // An error stopped the app last time, and Android did not let its note open then.
+        if (StopNote.pending(this) != null) {
+            startActivity(Intent(this, StoppedActivity::class.java))
+            finish()
+            return
+        }
         systemBars(graph.settings.settings.value.theme)
         if (savedInstanceState == null) take(intent)
         lifecycleScope.launch {

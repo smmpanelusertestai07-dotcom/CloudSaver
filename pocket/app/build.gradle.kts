@@ -28,8 +28,8 @@ val emulatorLibs: String = (project.findProperty("pocketide.emulatorLibs") as St
 
 // The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
 // from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
-// before it, and 5.0.0 (50000) installs over 4.1.0 (40100). tools/gates/version.py checks both.
-val appVersion = "5.0.0"
+// before it, and 5.0.4 (50004) installs over 4.1.0 (40100). tools/gates/version.py checks both.
+val appVersion = "5.0.4"
 
 fun versionCodeOf(version: String): Int {
     val parts = version.split(".").map { it.toIntOrNull() ?: -1 }
@@ -191,6 +191,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
     implementation(libs.okhttp)

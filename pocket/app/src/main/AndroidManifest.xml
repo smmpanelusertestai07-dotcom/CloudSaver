@@ -73,6 +73,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Says that an error stopped the app, with details to copy (StopNote). Its own process,
+             so it opens whatever went wrong in the app's. -->
+        <activity
+            android:name=".StoppedActivity"
+            android:exported="false"
+            android:process=":stopped" />
+
         <!-- Keeps the app, and with it the computer's programs, running while it is in the background. -->
         <service
             android:name=".ide.ComputerService"

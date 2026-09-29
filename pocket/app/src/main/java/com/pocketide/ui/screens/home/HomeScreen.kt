@@ -437,7 +437,7 @@ internal fun ListRow(leading: @Composable () -> Unit, title: String, subtitle: S
  * terminal's sign-in, else its command-line tool (Antigravity's screen signs in on its own).
  */
 internal fun signInLabel(agent: Agent): String =
-    if (agent.sharedSignInFile != null) "Sign in with the terminal" else "${agent.signInCommand} in the terminal"
+    if (agent.sharedSignInFile != null) "Sign in with the terminal" else "Sign in ${agent.signInCommand} (terminal only)"
 
 /** Decimal megabytes, as Android's own storage screen counts them. */
 internal fun megabytes(bytes: Long): String = String.format(Locale.ENGLISH, "%.0f MB", bytes / BYTES_PER_MB)

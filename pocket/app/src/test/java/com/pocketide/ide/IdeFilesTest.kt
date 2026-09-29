@@ -28,12 +28,22 @@ class IdeFilesTest {
             "workbench.statusBar.visible" to "false",
             "workbench.secondarySideBar.defaultVisibility" to "maximized",
             "chat.disableAIFeatures" to "true",
-            "extensions.autoUpdate" to "false",
             "telemetry.telemetryLevel" to "off",
             "editor.fontSize" to "15",
         ).forEach { (key, value) -> assertEquals(key, value, settings[key]?.jsonPrimitive?.content) }
         val terminalEnv = settings["terminal.integrated.env.linux"] as JsonObject
         assertEquals("Terminal links open in the phone's browser", IdeFiles.BROWSER, terminalEnv["BROWSER"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `VS Code's own gallery is off, so only PocketIDE installs and updates the agents`() {
+        val env = IdeFiles.serverEnvironment(mapOf("MY_KEY" to "1", "EXTENSIONS_GALLERY" to "the owner's"))
+        assertEquals("{}", env["EXTENSIONS_GALLERY"])
+        assertEquals("1", env["MY_KEY"])
+        assertEquals(IdeFiles.BROWSER, env["BROWSER"])
+        // Ignored in machine settings (an application setting), so the app does not pretend to set it there.
+        val settings = AppJson.parseToJsonElement(IdeFiles.machineSettings(fontSize = 15)) as JsonObject
+        assertNull(settings["extensions.autoUpdate"])
     }
 
     @Test

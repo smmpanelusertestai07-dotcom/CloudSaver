@@ -1,8 +1,10 @@
 package com.pocketide.ui.web
 
 import com.pocketide.ui.screens.workspace.acceptsOnlyImages
+import com.pocketide.ui.screens.workspace.pasteLine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -73,5 +75,19 @@ class WebPolicyTest {
         assertFalse(acceptsOnlyImages(listOf("image/png", ".pdf")))
         assertFalse(acceptsOnlyImages(emptyList()))
         assertFalse(acceptsOnlyImages(listOf("")))
+    }
+
+    @Test
+    fun `Paste types one line into the terminal, and never runs anything`() {
+        assertEquals("4/0AVGzR1A-code", pasteLine("4/0AVGzR1A-code"))
+        // Copied with its line break at the end, as a page often gives it.
+        assertEquals("git status", pasteLine("git status\r\n"))
+        // A line break inside would press Enter halfway through.
+        assertNull(pasteLine("echo one\nrm -rf ~/projects"))
+        assertNull(pasteLine("one\rtwo"))
+        assertNull(pasteLine(null))
+        assertNull(pasteLine(""))
+        assertNull(pasteLine("  \n"))
+        assertNull(pasteLine("x".repeat(2001)))
     }
 }

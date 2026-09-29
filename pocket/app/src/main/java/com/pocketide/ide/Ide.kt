@@ -2,6 +2,7 @@ package com.pocketide.ide
 
 import android.content.Context
 import com.pocketide.core.Http
+import com.pocketide.core.LogBackgroundFailure
 import com.pocketide.core.await
 import com.pocketide.linux.Computer
 import com.pocketide.linux.ComputerState
@@ -73,7 +74,7 @@ class Ide(
     /** Keeps the app running while code-server does (the foreground service), or lets it go. */
     private val keepAlive: (Boolean) -> Unit,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + LogBackgroundFailure)
     private val oneAtATime = Mutex()
     private val mutableState = MutableStateFlow<IdeState>(IdeState.Off)
     val state: StateFlow<IdeState> = mutableState.asStateFlow()
@@ -111,7 +112,13 @@ class Ide(
     }
 
     /** Shows [agentId]'s screen full screen in the open window. */
-    fun show(agentId: String) = request(JsonObject(mapOf("do" to JsonPrimitive("show"), "agent" to JsonPrimitive(agentId))))
+    fun show(agentId: String) = request(JsonObject(mapOf("do" to JsonPrimitive("show"), "agent" to JsonPrimitive(agentId)))) {
+        // An agent installed since code-server started is not in the list the companion read then.
+        writeHome(AGENTS, IdeFiles.agentsList(agents()).toByteArray())
+    }
+
+    /** Back over an editor (an agent's settings, a file): it closes, and the agent shows again. */
+    fun closeEditor() = request(JsonObject(mapOf("do" to JsonPrimitive("close"))))
 
     /** Opens a terminal titled [title] in [folder] with [text] typed but not run. */
     fun terminal(title: String, text: String, folder: String) = request(
@@ -124,6 +131,9 @@ class Ide(
             ),
         ),
     )
+
+    /** Types [line] into the terminal on screen, not run: the key bar's Paste. */
+    fun type(line: String) = request(JsonObject(mapOf("do" to JsonPrimitive("type"), "text" to JsonPrimitive(line))))
 
     private suspend fun launch(): IdeState.On {
         val computerState = computer.state.value
@@ -157,7 +167,7 @@ class Ide(
                     "--extensions-dir", IdeFiles.EXTENSIONS,
                     LinuxDirs.GUEST_PROJECTS,
                 ),
-                env = keys() + mapOf("BROWSER" to IdeFiles.BROWSER),
+                env = IdeFiles.serverEnvironment(keys()),
                 workDir = LinuxDirs.GUEST_PROJECTS,
             ),
         )
@@ -253,15 +263,19 @@ class Ide(
         if (wasRunning) keepAlive(false)
     }
 
-    /** A request file for the companion: written whole and renamed into place, so it is never read half written. */
-    private fun request(body: JsonObject) {
+    /**
+     * A request file for the companion, written whole and renamed into place, so it is never read
+     * half written, after [first] (what the companion must find ready for it).
+     */
+    private fun request(body: JsonObject, first: suspend () -> Unit = {}) {
+        // Named by the time of asking, so the companion takes requests in the order they were made.
+        val name = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
         scope.launch {
+            runCatching { first() }
             runCatching {
                 val folder = dirs.companionRequests
                 folder.mkdirs()
                 folder.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > STALE_REQUEST_MS }?.forEach { it.delete() }
-                // Named by time first, so the companion takes them in the order they were made.
-                val name = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
                 home.write("/${LinuxDirs.COMPANION_REQUESTS}/$name.json", body.toString().toByteArray())
             }
         }

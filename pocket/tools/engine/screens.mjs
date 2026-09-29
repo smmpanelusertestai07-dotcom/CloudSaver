@@ -1,8 +1,10 @@
 // The agent screens, as the app shows them: code-server and the port forwarder started inside the
 // engine test's computer with the app's flags (ide/Ide.kt), a phone-sized browser holding the
 // session cookie the app sets, and each screen asked for through the companion's request files,
-// as the app asks. Each agent must show its own screen (its sign-in, with nobody signed in), and
-// the sign-in terminal must show its command typed after the prompt. A picture of each is saved.
+// as the app asks. Each agent must show its own screen (its sign-in, with nobody signed in), the
+// sign-in terminal must show its command typed after the prompt, Paste must type one line (and
+// refuse two), and after a reload (as after a sign-in) the agent must come back with Do Not Disturb
+// switched on once. A picture of each screen is saved.
 //
 // Usage: node screens.mjs <out dir>
 // Environment: ENGINE (work folder, with home/ bound at /root), GUEST (tools/engine/guest.sh),
@@ -36,6 +38,8 @@ const AGENTS = [
   { id: 'google.google-antigravity', name: 'antigravity', words: 'Continue with Google' },
 ];
 const SIGN_IN = { title: 'Sign in: Antigravity', text: 'agy' };
+// What the Paste check types: a sign-in code's shape, after the command.
+const PASTED = ' 4/0AVGzR1A-paste-check';
 
 const log = (...parts) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...parts);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -101,6 +105,31 @@ async function textWithin(frame) {
   return text;
 }
 
+// The terminal's text, its rows joined back up: on a phone-wide screen a long prompt wraps, and
+// what is typed after it may start on the next row.
+async function terminalText(page) {
+  const rows = await page.evaluate(() => [...document.querySelectorAll('.xterm-rows > div')].map((r) => r.innerText));
+  return rows.join('').replace(/\u00a0/g, ' ').trimEnd();
+}
+
+// True when [typed] is what follows the prompt, the last thing in the terminal.
+function afterPrompt(text, typed) {
+  return text.endsWith(typed) && /[#$] $/.test(text.slice(0, text.length - typed.length).slice(-2));
+}
+
+// The text of VS Code's notices popped up over the screen (with Do Not Disturb on, errors only).
+async function toasts(page) {
+  return page.evaluate(() => [...document.querySelectorAll('.notification-toast-container')]
+    .filter((toast) => toast.offsetParent !== null)
+    .map((toast) => toast.innerText.replace(/\s+/g, ' ').trim()));
+}
+
+// How many times the companion's log says [line].
+function companionSaid(line) {
+  const file = path.join(HOME, '.pocketide/companion.log');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter((entry) => entry.includes(line)).length : 0;
+}
+
 // The agent's own webview (VS Code names its extension in the frame's address) and its text.
 async function agentText(page, id) {
   let text = '';
@@ -120,7 +149,8 @@ async function main() {
   fs.writeFileSync(path.join(HOME, '.pocketide/code-server.yaml'), `hashed-password: "${token}"\n`, { mode: 0o600 });
 
   start(['/opt/code-server/lib/node', '/opt/pocketide/forwarder.js', String(forwarderPort)], 'forwarder');
-  start(['/usr/bin/env', 'BROWSER=/opt/pocketide/bin/xdg-open', '/opt/code-server/bin/code-server',
+  // The environment the app gives code-server (IdeFiles.serverEnvironment): VS Code's own gallery off.
+  start(['/usr/bin/env', 'BROWSER=/opt/pocketide/bin/xdg-open', 'EXTENSIONS_GALLERY={}', '/opt/code-server/bin/code-server',
     '--bind-addr', `127.0.0.1:${port}`, '--auth', 'password', '--config', `${G}/.pocketide/code-server.yaml`,
     '--disable-telemetry', '--disable-update-check', '--disable-workspace-trust', '--disable-getting-started-override',
     '--proxy-domain', `{{port}}.localhost:${forwarderPort}`, '--reconnection-grace-time', '300',
@@ -160,6 +190,7 @@ async function main() {
       await sleep(3000);
     }
     await page.screenshot({ path: path.join(OUT, `${agent.name}.png`) });
+    for (const toast of await toasts(page)) notes.push(`${agent.id}: a notice over its screen: ${toast.slice(0, 160)}`);
     if (text.length < 20) failures.push(`${agent.id}: its screen stayed empty for ${AGENT_MS / 60000} minutes`);
     else if (!text.includes(agent.words)) notes.push(`${agent.id}: shows its screen, without the words "${agent.words}"`);
     log(`${agent.name}: ${text.slice(0, 120)}`);
@@ -169,14 +200,49 @@ async function main() {
   const until = Date.now() + AGENT_MS;
   let rows = '';
   while (Date.now() < until) {
-    rows = await page.evaluate(() => [...document.querySelectorAll('.xterm-rows')].map((r) => r.innerText).join('\n'));
-    if (new RegExp(`[#$] ${SIGN_IN.text}\\s*$`, 'm').test(rows)) break;
+    rows = await terminalText(page);
+    if (afterPrompt(rows, SIGN_IN.text)) break;
     await sleep(2000);
   }
   await page.screenshot({ path: path.join(OUT, 'sign-in-terminal.png') });
-  if (!new RegExp(`[#$] ${SIGN_IN.text}\\s*$`, 'm').test(rows)) {
+  if (!afterPrompt(rows, SIGN_IN.text)) {
     failures.push(`the sign-in terminal does not show "${SIGN_IN.text}" typed after its prompt: ${JSON.stringify(rows.slice(-200))}`);
   }
+
+  // The key bar's Paste: one line lands after what is typed, and text with a line break (which
+  // would run what came before it) is refused.
+  request({ do: 'type', text: 'echo refused\necho twice' });
+  await sleep(6000);
+  request({ do: 'type', text: PASTED });
+  const pasteUntil = Date.now() + 60000;
+  while (Date.now() < pasteUntil) {
+    rows = await terminalText(page);
+    if (rows.includes(PASTED)) break;
+    await sleep(2000);
+  }
+  if (!afterPrompt(rows, SIGN_IN.text + PASTED)) {
+    failures.push(`Paste did not type "${PASTED}" after "${SIGN_IN.text}": ${JSON.stringify(rows.slice(-200))}`);
+  }
+  if (rows.includes('refused')) failures.push('Paste typed text with a line break in it');
+
+  // After a terminal sign-in the app reloads the page and asks for the agent again: the new
+  // window's companion shows it, and leaves Do Not Disturb as the first window set it.
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: START_MS });
+  await page.waitForSelector('.monaco-workbench', { timeout: START_MS });
+  const again = AGENTS[0];
+  const reloadUntil = Date.now() + AGENT_MS;
+  while (companionSaid('] activated') < 2 && Date.now() < reloadUntil) await sleep(2000);
+  request({ do: 'show', agent: again.id });
+  let shown = '';
+  while (Date.now() < reloadUntil) {
+    shown = await agentText(page, again.id);
+    if (shown.length >= 20) break;
+    await sleep(3000);
+  }
+  await page.screenshot({ path: path.join(OUT, 'after-reload.png') });
+  if (shown.length < 20) failures.push(`after a reload, ${again.id}'s screen did not come back`);
+  const quieted = companionSaid('do not disturb: on');
+  if (quieted !== 1) failures.push(`Do Not Disturb was switched ${quieted} times in one code-server run, not once: ${companionSaid('do not disturb')} log lines`);
   await browser.close();
 
   const companion = path.join(HOME, '.pocketide/companion.log');
@@ -186,7 +252,7 @@ async function main() {
     failures.forEach((failure) => console.error(`FAIL: ${failure}`));
     process.exitCode = 1;
   } else {
-    log('every agent screen and the sign-in terminal showed as the app shows them');
+    log('every agent screen, the sign-in terminal, Paste and a reload worked as the app uses them');
   }
 }
 

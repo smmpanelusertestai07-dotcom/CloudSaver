@@ -4,9 +4,13 @@
 #
 #  1. Every shell script passes bash -n and ShellCheck, the forwarder and the companion parse, and
 #     the Python tools' tests pass.
-#  2. Termux's PRoot, from the source sources.json pins, is built for this machine.
+#  2. Termux's PRoot, from the source sources.json pins (with its patches), is built for this
+#     machine.
 #  3. The Ubuntu base the app pins (checked by SHA-256 and size) becomes the computer through the
 #     app's bootstrap.sh; a second run installs nothing; update.sh ends with "pocketide-fixed <n>".
+#     From here on, everything the computer runs is under the seccomp filter Android puts an app
+#     under, with the syscalls of Android 10 (the oldest the app supports) for this architecture,
+#     as on a phone (android_policy.py, android-seccomp.c).
 #  4. The pinned code-server, the three official agents (the releases the app would pick, checked
 #     against Open VSX's SHA-256) and PocketIDE's companion are installed with code-server's own
 #     installer, and the agents' command-line tools answer.
@@ -19,7 +23,8 @@
 # instead of downloading Playwright's), ENGINE_EXTRA_CA (a CA file Linux must trust, behind a
 # proxy that re-signs HTTPS), ENGINE_PROOT_SRC (a checkout of the pinned PRoot tag, where
 # GitHub's archive cannot be downloaded).
-# Usage: engine-test.sh    (needs python3, node 22, curl, make, gcc, shellcheck and libtalloc-dev)
+# Usage: engine-test.sh    (needs python3, node 22, curl, make, patch, libtalloc-dev, ShellCheck
+#                           and gcc with a static glibc)
 set -euo pipefail
 shopt -s inherit_errexit
 
@@ -81,9 +86,10 @@ lint() {
   python3 -m unittest discover -s "$TOOLS/tests" -t "$TOOLS" || fail "the Python tools' tests failed (above)"
 }
 
-# Termux's PRoot, from the release sources.json marks for building, for this machine.
+# Termux's PRoot, from the release sources.json marks for building, with its patches, for this
+# machine.
 build_proot() {
-  local fields url sha256 version dir
+  local fields url sha256 version dir patch
   say "== PRoot for $(uname -m)"
   fields=$(python3 - "$TOOLS/proot/sources.json" <<'PY'
 import json, sys
@@ -102,6 +108,15 @@ PY
     unzip -q "$ENGINE/dl/proot-$version.zip" -d "$ENGINE/proot-src"
   fi
   dir=$(find "$ENGINE/proot-src" -mindepth 1 -maxdepth 1 -type d -name 'proot-*' | head -n 1)
+  while IFS= read -r patch; do
+    patch -d "$dir" -p1 --forward --batch --quiet < "$TOOLS/proot/$patch" || die "$patch does not apply to PRoot $version"
+  done < <(python3 - "$TOOLS/proot/sources.json" <<'PY'
+import json, sys
+release = [r for r in json.load(open(sys.argv[1], encoding="utf-8"))["releases"] if r.get("build")][0]
+for patch in release.get("patches", []):
+    print(patch)
+PY
+)
   # Without the loader for 32-bit programs, as the app ships only the 64-bit one (and an arm64
   # machine's gcc has no -m32 to build it with). Ubuntu arm64 and amd64 are 64-bit throughout.
   make -s -C "$dir/src" HAS_LOADER_32BIT= proot loader/loader > /dev/null
@@ -110,6 +125,23 @@ PY
   export PROOT PROOT_LOADER
   "$PROOT" --version > /dev/null || die "PRoot $version did not build"
   say "ok   PRoot $version"
+}
+
+# Android's app seccomp filter around everything the computer runs (guest.sh), with the syscalls
+# Android 10, the oldest Android the app supports, allows on this architecture.
+android_policy() {
+  local count
+  say "== Android's app seccomp filter (Android 10, $(uname -m))"
+  mkdir -p "$ENGINE/rootfs/usr/local/bin"
+  cc -O2 -static -o "$ENGINE/rootfs/usr/local/bin/android-seccomp" "$TOOLS/engine/android-seccomp.c" \
+    || die "android-seccomp.c did not build"
+  python3 "$TOOLS/engine/android_policy.py" --api 29 --cache "$ENGINE/bionic" > "$ENGINE/android-policy.txt" \
+    || die "could not read Android's syscall lists"
+  count=$(tr ',' '\n' < "$ENGINE/android-policy.txt" | grep -c .)
+  ENGINE_ANDROID_SECCOMP="$ENGINE/android-policy.txt"
+  export ENGINE_ANDROID_SECCOMP
+  guest /bin/true || die "the computer does not start under Android's filter"
+  say "ok   $count syscalls allowed, every other one blocked with SIGSYS"
 }
 
 # The pinned Ubuntu base, unpacked the way the app unpacks it (no owners), with the files the
@@ -218,6 +250,8 @@ main() {
   need node
   need curl
   need make
+  need cc
+  need patch
   need shellcheck
   case "$(uname -m)" in
     aarch64 | arm64) ARCH=arm64 OPENVSX=linux-arm64 ;;
@@ -231,6 +265,7 @@ main() {
   lint
   build_proot
   make_base
+  android_policy
   set_up
   install_ide
   screens
@@ -239,7 +274,7 @@ main() {
     say "$failures failure(s)."
     exit 1
   fi
-  summary "### Engine test passed on $(uname -m): Ubuntu set up, updated, and all three agents shown"
+  summary "### Engine test passed on $(uname -m) under Android 10's app seccomp filter: Ubuntu set up, updated, and all three agents shown"
   say "Engine test passed."
 }
 

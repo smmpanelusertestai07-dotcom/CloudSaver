@@ -41,6 +41,16 @@ object IdeFiles {
     private val pretty = Json { prettyPrint = true }
 
     /**
+     * code-server's environment: the owner's [keys], links opened in the phone's browser, and VS
+     * Code's own extension gallery off. PocketIDE installs and updates the agents itself, each
+     * package checked against its signature; the gallery would update them behind it, on mobile data
+     * too. No setting stops that here: extensions.autoUpdate is an application setting, which VS
+     * Code takes only from the owner's own settings, never from the machine settings below.
+     */
+    fun serverEnvironment(keys: Map<String, String>): Map<String, String> =
+        keys + mapOf("BROWSER" to BROWSER, "EXTENSIONS_GALLERY" to NO_GALLERY)
+
+    /**
      * VS Code settings for a phone screen with the agents in front: no status, menu or activity
      * bar, the agents' side bar full screen, Enter for a new line (Send sends), no built-in AI chat
      * next to the official agents, no telemetry, and no updates behind PocketIDE's back (it checks
@@ -108,6 +118,9 @@ object IdeFiles {
 
     private const val TRUSTED = "linkProtectionTrustedDomains"
 
+    /** A gallery with no address: code-server then has none. */
+    private const val NO_GALLERY = "{}"
+
     /** Where the agents send the owner to sign in, and GitHub for its own sign-in. */
     val SIGN_IN_SITES = listOf(
         "https://claude.ai", "https://claude.com", "https://*.claude.com", "https://*.anthropic.com",
@@ -145,8 +158,6 @@ object IdeFiles {
         "diffEditor.renderSideBySide" to JsonPrimitive(false),
         "files.autoSave" to JsonPrimitive("afterDelay"),
         "extensions.ignoreRecommendations" to JsonPrimitive(true),
-        "extensions.autoUpdate" to JsonPrimitive(false),
-        "extensions.autoCheckUpdates" to JsonPrimitive(false),
         "update.mode" to JsonPrimitive("none"),
         "chat.disableAIFeatures" to JsonPrimitive(true),
         "telemetry.telemetryLevel" to JsonPrimitive("off"),

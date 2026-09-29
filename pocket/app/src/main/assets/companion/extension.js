@@ -1,9 +1,14 @@
-// PocketIDE Companion: shows the agent the owner picked in PocketIDE full screen, and opens the
-// sign-in terminal with its command already typed, so the owner only presses Enter.
+// PocketIDE Companion: shows the agent the owner picked in PocketIDE full screen, opens the
+// sign-in terminal with its command already typed (the owner only presses Enter), types what the
+// owner pastes, and keeps VS Code's own notices from covering the agent (Do Not Disturb). A phone
+// shows one thing at a time: an editor that opens over the agent (an agent's settings, a file, a
+// terminal) takes the whole screen, and the agent comes back when the last one closes.
 //
 // The app asks through small request files it drops into ~/.pocketide/requests:
 //   {"do": "show", "agent": "<extension id>"}
 //   {"do": "terminal", "title": "...", "text": "...", "cwd": "/root/projects/..."}
+//   {"do": "type", "text": "..."}      one line the owner pasted, typed into the terminal on screen
+//   {"do": "close"}                    Back over an editor: close it, and show the agent again
 // ~/.pocketide/agents.json lists the agents and how each one opens. Only a window whose screen
 // is connected takes a request: after a reload the old window lingers for a while without a
 // screen, and a request it took would open where nobody sees it.
@@ -28,10 +33,20 @@ const ATTEMPTS = 20;
 const RETRY_MS = 1500;
 const CHECK_MS = 2000;
 const SHELL_WAIT_MS = 8000;
+// A request still running after this lets the next ones go: one command VS Code never answers must
+// not stop every later request.
+const REQUEST_MS = 60 * 1000;
+// How often the log may say that requests wait for a screen that does not answer.
+const SILENT_LOG_MS = 30 * 1000;
+const MAX_TYPED = 2000;
+const DO_NOT_DISTURB = 'notifications.toggleDoNotDisturbMode';
 const SPARE_CONTAINERS = ['pocketide-agent-1', 'pocketide-agent-2', 'pocketide-agent-3',
   'pocketide-agent-4', 'pocketide-agent-5', 'pocketide-agent-6'];
 
 let busy = false;
+let lastSilentLog = 0;
+// The agent on screen, to bring back when the editors over it close.
+let current = null;
 
 function log(message) {
   try {
@@ -52,6 +67,7 @@ function activate(context) {
   } catch (unwritable) {
     return;
   }
+  quiet().catch(() => undefined);
   const check = () => { takeRequests(isStopped).catch(() => undefined); };
   check();
   try {
@@ -63,9 +79,48 @@ function activate(context) {
   }
   const timer = setInterval(check, CHECK_MS);
   context.subscriptions.push({ dispose: () => clearInterval(timer) });
+  context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs((event) => {
+    onTabs(event, isStopped).catch(() => undefined);
+  }));
 }
 
 function deactivate() {}
+
+// VS Code's own notices pop up over the bottom of the agent's screen, where its message box is (an
+// extension's download progress, for one). With Do Not Disturb on, only errors pop up. VS Code keeps
+// the mode in the page's storage, which starts empty with each code-server run (the app gives each
+// run a new port), and has only a toggle: so it is switched once per run, by the first window.
+async function quiet() {
+  const key = runKey();
+  const marker = path.join(HOME, '.pocketide', `quiet-${key}`);
+  try {
+    fs.writeFileSync(marker, '', { flag: 'wx' });
+  } catch (switchedAlready) {
+    return;
+  }
+  for (const name of fs.readdirSync(path.dirname(marker))) {
+    if (name.startsWith('quiet-') && name !== `quiet-${key}`) fs.rmSync(path.join(path.dirname(marker), name), { force: true });
+  }
+  const known = new Set(await vscode.commands.getCommands(true));
+  try {
+    if (!known.has(DO_NOT_DISTURB)) throw new Error('no such command');
+    await vscode.commands.executeCommand(DO_NOT_DISTURB);
+    log('do not disturb: on');
+  } catch (failed) {
+    fs.rmSync(marker, { force: true });
+    log(`do not disturb: ${String(failed && failed.message ? failed.message : failed).slice(0, 200)}`);
+  }
+}
+
+// This code-server run: the server's process id and start time (the extension host is its child).
+function runKey() {
+  try {
+    const stat = fs.readFileSync(`/proc/${process.ppid}/stat`, 'utf8');
+    return `${process.ppid}-${stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]}`;
+  } catch (unreadable) {
+    return String(process.ppid);
+  }
+}
 
 // The agents PocketIDE knows, from the file the app keeps up to date.
 function readAgents() {
@@ -110,14 +165,33 @@ async function takeRequests(stopped) {
   busy = true;
   try {
     const names = pending();
-    if (names.length === 0 || !(await connected())) return;
+    if (names.length === 0) return;
+    if (!(await connected())) {
+      if (Date.now() - lastSilentLog > SILENT_LOG_MS) {
+        lastSilentLog = Date.now();
+        log(`the screen does not answer; ${names.length} waiting`);
+      }
+      return;
+    }
     for (const name of names) {
       const request = claim(name);
-      if (request) await handle(request, stopped);
+      if (request) await within(handle(request, stopped), REQUEST_MS, () => log(`request ${request.do} still running; the next go ahead`));
     }
   } finally {
     busy = false;
   }
+}
+
+// [work], or [ms] of it: [late] runs when it is still going then, and the caller moves on.
+function within(work, ms, late) {
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      late();
+      resolve();
+    }, ms);
+  });
+  return Promise.race([Promise.resolve(work).then(() => undefined, () => undefined), timeout]).finally(() => clearTimeout(timer));
 }
 
 function pending() {
@@ -160,14 +234,54 @@ async function handle(request, stopped) {
       return show(String(request.agent || ''), stopped);
     case 'terminal':
       return terminal(request);
+    case 'type':
+      return type(request);
+    case 'close':
+      return close(stopped);
     default:
       return undefined;
   }
 }
 
+// An editor that opens while an agent is on screen (its settings, a file it shows, a terminal)
+// would share a phone-wide screen three ways with the side bars; it gets the screen instead. When
+// the last editor closes, the agent comes back.
+async function onTabs(event, stopped) {
+  if (stopped()) return;
+  if (event.opened.length > 0) {
+    await editorAlone();
+    log(`editor opened: ${event.opened.length}`);
+  } else if (event.closed.length > 0 && openTabs() === 0 && current) {
+    log('last editor closed');
+    await show(current, stopped);
+  }
+}
+
+async function editorAlone() {
+  for (const command of ['workbench.action.closeSidebar', 'workbench.action.closeAuxiliaryBar', 'workbench.action.closePanel']) {
+    await run(command);
+  }
+}
+
+function openTabs() {
+  return vscode.window.tabGroups.all.reduce((count, group) => count + group.tabs.length, 0);
+}
+
+// Back over an editor: it closes, and the agent shows again (at once when other editors stay open
+// behind it; otherwise the tab listener brings it back).
+async function close(stopped) {
+  await run('workbench.action.closeActiveEditor');
+  log('closed an editor');
+  if (current && openTabs() > 0) await show(current, stopped);
+}
+
 async function show(agentId, stopped) {
   const agent = readAgents().find((entry) => entry.id.toLowerCase() === agentId.toLowerCase());
-  if (!agent) return;
+  if (!agent) {
+    log(`show ${agentId}: not in the agents list`);
+    return;
+  }
+  current = agent.id;
   await placeViews(agent, stopped);
   const commands = (Array.isArray(agent.open) ? agent.open : [])
     .concat((Array.isArray(agent.views) ? agent.views : []).map((view) => view + '.focus'))
@@ -196,6 +310,19 @@ async function terminal(request) {
     await shellReady(shell);
     shell.sendText(text, false);
   }
+}
+
+// The line the owner pasted with the app's Paste key, typed into the terminal on screen but not
+// run. One line only: a line break would run what came before it. Its text is not logged.
+function type(request) {
+  const text = typeof request.text === 'string' ? request.text.slice(0, MAX_TYPED) : '';
+  const shell = vscode.window.activeTerminal;
+  if (!text || /[\r\n]/.test(text) || !shell) {
+    log('nothing typed');
+    return;
+  }
+  shell.sendText(text, false);
+  log(`typed ${text.length} characters`);
 }
 
 // Resolves when [shell]'s shell integration starts (its prompt is up), or after a few seconds.

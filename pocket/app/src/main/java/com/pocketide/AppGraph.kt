@@ -9,6 +9,7 @@ import com.pocketide.core.Clock
 import com.pocketide.core.Http
 import com.pocketide.core.KeyStore
 import com.pocketide.core.KeystoreBox
+import com.pocketide.core.LogBackgroundFailure
 import com.pocketide.core.SecureStore
 import com.pocketide.core.SettingsStore
 import com.pocketide.core.createSettingsStore
@@ -37,7 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * and the settings. PocketIDE has no server of its own.
  */
 class AppGraph(val context: Context) {
-    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + LogBackgroundFailure)
     val clock: Clock = Clock.SYSTEM
 
     /** Completed once the start-up housekeeping (deleting what older versions left) has finished. */

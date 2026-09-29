@@ -12,8 +12,10 @@ name: pocketide
 #            and each agent's screen and the sign-in terminal as the app shows them (pictures kept)
 #   pins     every download the app pins, re-checked against its publisher
 #   proot    PRoot from pinned sources for Android: arm64 as a build check, x86-64 for the emulator
-#   device   on an Android 11 emulator: the instrumented tests, the screen tour, then the whole app
+#   device   on an Android 15 emulator: the instrumented tests, the screen tour, then the whole app
 #            end to end (set-up from the internet, code-server, every agent's screen, a sign-in link)
+#   opens    the signed release APK (shrunk by R8) opens on Android 11, 12 and 15 emulators,
+#            as a new install and over 4.1.0
 #   release  main only, and only with the owner's stable key: tag pocketide-v<version>, once, with
 #            the exact source of the PRoot inside the APK
 on:
@@ -319,11 +321,11 @@ jobs:
           name: PocketIDE-engine-inputs
           path: pocket/app/build
 
-      - name: ShellCheck, and talloc to build PRoot with
+      - name: ShellCheck, and talloc and patch to build PRoot with
         run: |
           set -euo pipefail
           sudo apt-get update -q
-          sudo apt-get install -y -q shellcheck libtalloc-dev gawk > /dev/null
+          sudo apt-get install -y -q shellcheck libtalloc-dev gawk patch > /dev/null
           node --version
 
       - name: Engine test
@@ -371,11 +373,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: NDK and gawk
+      - name: NDK, gawk and patch
         run: |
           set -euo pipefail
-          # PRoot's makefile needs gawk (strtonum); the runner's awk may be mawk.
-          command -v gawk > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q gawk; }
+          # PRoot's makefile needs gawk (strtonum); the runner's awk may be mawk. patch applies
+          # the patches sources.json lists.
+          if ! command -v gawk > /dev/null || ! command -v patch > /dev/null; then
+            sudo apt-get update -q && sudo apt-get install -y -q gawk patch
+          fi
           ndk=$(python3 -c 'import json; print(json.load(open("pocket/tools/proot/sources.json"))["ndk"])')
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           (yes || true) | "$sdkmanager" --licenses > /dev/null
@@ -401,10 +406,11 @@ jobs:
           if-no-files-found: error
 
   device:
-    name: On an Android 11 emulator, end to end
+    name: On an Android 15 emulator, end to end
     # The emulator is x86-64, so the app is built with the x86-64 PRoot from the proot job; the
     # rest (Ubuntu, code-server, the agents) is fetched for x86-64 by the app itself, as a phone
-    # fetches it for arm64.
+    # fetches it for arm64. Android 15: code-server's VS Code needs a recent WebView, which phones
+    # get from the Play Store and an emulator only from a recent system image.
     needs: [proot]
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -442,13 +448,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Start an Android 11 emulator
+      - name: Start an Android 15 emulator
         timeout-minutes: 25
         run: |
           set -euo pipefail
           sdk="${ANDROID_HOME:?the runner has no Android SDK}"
           tools="$sdk/cmdline-tools/latest/bin"
-          image="system-images;android-30;google_apis;x86_64"
+          image="system-images;android-35;google_apis;x86_64"
           (yes || true) | "$tools/sdkmanager" --licenses > /dev/null
           "$tools/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" platform-tools emulator "$image" > /dev/null
           # The runner sets XDG_CONFIG_HOME, so avdmanager and the emulator would otherwise look for
@@ -529,7 +535,8 @@ jobs:
           set -euo pipefail
           adb="$ANDROID_HOME/platform-tools/adb"
           "$adb" logcat -c
-          ("$adb" logcat -s PocketIDE-E2E:I > "$RUNNER_TEMP/e2e-logcat.txt" 2>&1 &)
+          # The steps, the app's own log, the page's console (chromium) and any crash.
+          ("$adb" logcat -v time -s PocketIDE-E2E:I PocketIDE:V chromium:I AndroidRuntime:E > "$RUNNER_TEMP/e2e-logcat.txt" 2>&1 &)
           result=$("$adb" shell am instrument -w -e e2e true -e class com.pocketide.e2e.ComputerE2E \
             com.pocketide.debug.test/androidx.test.runner.AndroidJUnitRunner | tr -d '\r')
           echo "$result" | tail -n 60
@@ -539,6 +546,8 @@ jobs:
             "$adb" exec-out run-as com.pocketide.debug cat "files/e2e/$name" > "$e2e/$name"
           done
           "$adb" exec-out run-as com.pocketide.debug cat files/computer/home/.pocketide/companion.log > "$e2e/companion.log" 2> /dev/null || true
+          # code-server's own logs: the extension host's and each agent's output.
+          "$adb" exec-out run-as com.pocketide.debug tar -cf - files/computer/home/.local/share/code-server/logs > "$e2e/code-server-logs.tar" 2> /dev/null || true
           [ -f "$e2e/steps.txt" ] && cat "$e2e/steps.txt"
           if ! grep -q '^OK (' <<< "$result"; then
             echo "::error::The end-to-end run failed; its output and steps are above."
@@ -568,9 +577,189 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  opens:
+    name: The release APK opens on Android ${{ matrix.android }} (new, and over 4.1.0)
+    # The signed release APK itself, as a phone gets it. R8 shrinks it, which the debug build the
+    # device job tests is not, so only this job would see a crash R8 causes. It must open and keep
+    # running on a new install (past the welcome screen to Home, the tabs and Set up) and over the
+    # last published release, as an owner updates. The emulator is x86-64; these images run the
+    # arm64-only APK through ARM translation (Android 13's image has none, so it cannot install it).
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - android: "11"
+            api: 30
+          - android: "12"
+            api: 31
+          - android: "15"
+            api: 35
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: PocketIDE-apk
+          path: dist
+
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Start an Android ${{ matrix.android }} emulator
+        timeout-minutes: 25
+        env:
+          API: ${{ matrix.api }}
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:?the runner has no Android SDK}"
+          tools="$sdk/cmdline-tools/latest/bin"
+          image="system-images;android-$API;google_apis;x86_64"
+          (yes || true) | "$tools/sdkmanager" --licenses > /dev/null
+          "$tools/sdkmanager" --install platform-tools emulator "$image" > /dev/null
+          # See the device job: one AVD folder for avdmanager and the emulator.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | "$tools/avdmanager" create avd --force --name opens --package "$image" --device pixel_5 > /dev/null
+          log="$RUNNER_TEMP/emulator.log"
+          nohup "$sdk/emulator/emulator" -avd opens -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -memory 3072 -camera-back none -camera-front none \
+            > "$log" 2>&1 &
+          pid=$!
+          adb="$sdk/platform-tools/adb"
+          "$adb" start-server > /dev/null 2>&1
+          booted() { [ "$("$adb" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; }
+          for _ in $(seq 1 180); do
+            if ! kill -0 "$pid" 2> /dev/null; then
+              echo "::error::The emulator quit while starting; its log follows."
+              cat "$log"
+              exit 1
+            fi
+            booted && break
+            sleep 5
+          done
+          if ! booted; then
+            echo "::error::The emulator did not finish starting within 15 minutes; its log follows."
+            cat "$log"
+            exit 1
+          fi
+          for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+            "$adb" shell settings put global "$scale" 0
+          done
+          echo "ABIs: $("$adb" shell getprop ro.product.cpu.abilist | tr -d '\r')"
+
+      - name: Open it, new and over 4.1.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STABLE_KEY: ${{ needs.build.outputs.stable_key }}
+        run: |
+          set -euo pipefail
+          adb="$ANDROID_HOME/platform-tools/adb"
+          pkg=com.pocketide
+          out="$RUNNER_TEMP/opens"
+          mkdir -p "$out"
+          apk=$(find dist -name 'PocketIDE-*-release.apk' | head -n 1)
+          [ -n "$apk" ] || { echo "::error::The build job produced no release APK"; exit 1; }
+          failed=0
+
+          launch() { "$adb" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true; }
+
+          # Taps the first thing on the screen whose text is $1; false when there is none.
+          tap() {
+            local bounds
+            "$adb" shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || return 1
+            bounds=$("$adb" exec-out cat /sdcard/ui.xml | grep -o "text=\"$1\"[^>]*bounds=\"[^\"]*\"" | head -n 1 \
+              | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/') || true
+            [ -n "$bounds" ] || return 1
+            read -r left top right bottom <<< "$bounds"
+            "$adb" shell input tap $(((left + right) / 2)) $(((top + bottom) / 2))
+          }
+
+          # After [what] was done, the app must still be running with no crash in the log after
+          # $2 seconds (30 by default); keeps a picture of the screen and the log either way.
+          check() {
+            local name=$1
+            sleep "${2:-30}"
+            "$adb" exec-out screencap -p > "$out/$name.png" || true
+            "$adb" logcat -d > "$out/$name-log.txt" || true
+            "$adb" logcat -d -b crash > "$out/$name-crash.txt" || true
+            if grep -q "Process: $pkg," "$out/$name-crash.txt" || ! "$adb" shell pidof "$pkg" > /dev/null 2>&1; then
+              echo "::error::PocketIDE stopped ($name). Its crash:"
+              cat "$out/$name-crash.txt"
+              grep -E "AndroidRuntime|FATAL|$pkg" "$out/$name-log.txt" | tail -n 80 || true
+              failed=1
+            else
+              echo "PocketIDE opened and kept running ($name)."
+            fi
+            "$adb" logcat -c || true
+            "$adb" logcat -b crash -c || true
+          }
+
+          # A new install: the welcome screen, then Home.
+          "$adb" install "$apk"
+          "$adb" logcat -c || true
+          launch
+          check new
+          for _ in 1 2 3; do
+            tap "Get started" && break
+            "$adb" shell input swipe 540 1800 540 600 300
+          done
+          # Android 13 and newer ask for the notification permission here, as an owner sees it
+          # (granting it beforehand would skip the request, and a crash in it once went unseen).
+          sleep 5
+          tap "Allow" || true
+          check home
+          # The other tabs, then Set up: it starts the foreground service and the downloads. On an
+          # x86-64 emulator the arm64 Linux cannot run, so set-up ends in an error the app shows;
+          # the app itself must keep running.
+          for tab in Computer Settings Home; do
+            tap "$tab" || echo "::warning::No $tab tab on the screen"
+            check "tab-$(tr '[:upper:]' '[:lower:]' <<< "$tab")" 10
+          done
+          if tap "Set up"; then
+            check set-up 90
+          else
+            echo "::warning::No Set up button on Home"
+          fi
+          "$adb" shell am force-stop "$pkg"
+          launch
+          check home-again
+
+          # An update, as an owner of 4.1.0 gets it: that release installed and opened first.
+          "$adb" uninstall "$pkg" > /dev/null
+          if [ "$STABLE_KEY" = true ]; then
+            gh release download pocketide-v4.1.0 --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir "$RUNNER_TEMP/old"
+            old=$(find "$RUNNER_TEMP/old" -name '*.apk' | head -n 1)
+            "$adb" install "$old"
+            launch
+            sleep 20
+            "$adb" install -r "$apk"
+            "$adb" logcat -c || true
+            launch
+            check over-4.1.0
+            "$adb" shell am force-stop "$pkg"
+            launch
+            check over-4.1.0-again
+          else
+            echo "::warning::This APK is signed with a throwaway key, so the update over 4.1.0 was not tried."
+          fi
+          exit "$failed"
+
+      - name: Upload what it showed
+        if: success() || failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: PocketIDE-opens-android-${{ matrix.android }}
+          path: ${{ runner.temp }}/opens/
+          if-no-files-found: ignore
+          retention-days: 14
+
   release:
     name: Publish pocketide-v${{ needs.build.outputs.version }}
-    needs: [build, engine, pins, device]
+    needs: [build, opens, engine, pins, device]
     # Only the owner's own key makes an APK that installs over the one before it.
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.stable_key == 'true'
     runs-on: ubuntu-latest

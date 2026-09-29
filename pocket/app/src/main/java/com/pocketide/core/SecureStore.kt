@@ -69,7 +69,7 @@ class SecureStore(private val dir: File, private val box: SecretBox) {
     fun put(name: String, value: ByteArray) {
         dir.mkdirs()
         val target = file(name)
-        val temp = File(dir, "$name.tmp")
+        val temp = File(dir, "$name$PARTIAL")
         temp.writeBytes(box.seal(value))
         if (!temp.renameTo(target)) {
             target.delete()
@@ -100,6 +100,14 @@ class SecureStore(private val dir: File, private val box: SecretBox) {
 
     private fun file(name: String): File {
         require(name.matches(Regex("[A-Za-z0-9._-]+"))) { "Bad secure name" }
-        return File(dir, "$name.bin")
+        return File(dir, "$name$SEALED")
+    }
+
+    companion object {
+        private const val SEALED = ".bin"
+        private const val PARTIAL = ".tmp"
+
+        /** The names of the files that hold [name] in the folder: the sealed blob, and its write in progress. */
+        fun fileNames(name: String): Set<String> = setOf("$name$SEALED", "$name$PARTIAL")
     }
 }

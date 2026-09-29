@@ -91,7 +91,7 @@ fun SettingsScreen(onKeys: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
 
         SectionCard("Agents") {
             Link(Icons.Outlined.Key, "Keys", "API keys and tokens the agents and your apps use", onKeys)
-            Toggle(Icons.Outlined.Keyboard, "Keyboard keys", "Esc, Tab, Ctrl+C, arrows and Enter above the keyboard", settings.keyBar) { on ->
+            Toggle(Icons.Outlined.Keyboard, "Keyboard keys", "Esc, Tab, Ctrl+C, arrows, Enter and Paste above the keyboard", settings.keyBar) { on ->
                 update { it.copy(keyBar = on) }
             }
             Toggle(
