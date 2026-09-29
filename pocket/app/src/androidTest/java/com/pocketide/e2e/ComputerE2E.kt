@@ -3,6 +3,7 @@ package com.pocketide.e2e
 import android.graphics.Bitmap
 import android.os.SystemClock
 import android.util.Log
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +66,8 @@ class ComputerE2E {
 
     @Test
     fun setsUpAndShowsEveryAgent() {
+        // code-server's VS Code draws in the WebView, so the steps say which one this device has.
+        note("webview: " + (WebView.getCurrentWebViewPackage()?.let { "${it.packageName} ${it.versionName}" } ?: "none"))
         runBlocking {
             graph.setUp()
             val end = withTimeout(SET_UP_MS) {

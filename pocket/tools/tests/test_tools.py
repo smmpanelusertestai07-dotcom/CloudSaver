@@ -25,6 +25,7 @@ import yaml_lite
 sys.path.insert(0, str(TOOLS / "proot"))
 sys.path.insert(0, str(TOOLS / "engine"))
 import agents  # noqa: E402
+import android_policy  # noqa: E402
 import gpl_notice  # noqa: E402
 
 
@@ -114,6 +115,41 @@ class AgentDownload(unittest.TestCase):
             self.assertEqual("26.908.40401", agents.release("openai.chatgpt", "linux-arm64", (1, 139, 1))["version"])
 
 
+class AndroidPolicy(unittest.TestCase):
+    LISTS = {"allow": {"SYSCALLS.TXT": "", "WHITELIST.TXT": ""}, "block": {"BLACKLIST.TXT": ""}}
+    TEXTS = {
+        "SYSCALLS.TXT": "\n".join([
+            "# comment",
+            "int __openat:openat(int, const char*, int, mode_t) all",
+            "int fstatat64|fstatat:newfstatat(int, const char*, struct stat*, int) arm64,x86_64",
+            "ssize_t pread64|pread(int, void*, size_t, off_t) lp64",
+            "int __llseek:_llseek(int, unsigned long, unsigned long, off64_t*, int) arm,x86",
+            "int renameat(int, const char*, int, const char*) all",
+        ]),
+        "WHITELIST.TXT": "int rename(const char*, const char*) x86_64\nint setresuid(uid_t, uid_t, uid_t) lp64",
+        "BLACKLIST.TXT": "int setresuid(uid_t, uid_t, uid_t) lp64",
+    }
+
+    def test_reads_bionic_s_syscall_lists(self):
+        self.assertEqual({"openat", "newfstatat", "pread64", "renameat", "rename"},
+                         android_policy.allowed(self.TEXTS, self.LISTS, "x86_64"))
+        self.assertEqual({"openat", "newfstatat", "pread64", "renameat"},
+                         android_policy.allowed(self.TEXTS, self.LISTS, "arm64"))
+
+    def test_the_pinned_lists_are_android_10_s(self):
+        lists = android_policy.LISTS[29]
+        self.assertIn("290c0cb5044b643e5d6cbcb1a5b275541ca3a89e", lists["url"])
+        self.assertEqual({"SYSCALLS.TXT", "SECCOMP_WHITELIST_COMMON.TXT", "SECCOMP_WHITELIST_APP.TXT"}, set(lists["allow"]))
+        self.assertTrue(all(len(sha) == 64 for sha in {**lists["allow"], **lists["block"]}.values()))
+
+    def test_numbers_come_from_this_machine_s_kernel_headers(self):
+        if shutil.which(os.environ.get("CC", "cc")) is None:
+            self.skipTest("no C compiler")
+        found = android_policy.numbers({"openat", "no_such_syscall"})
+        self.assertEqual(1, len(found))
+        self.assertEqual({"x86_64": 257, "aarch64": 56}.get(os.uname().machine, found[0]), found[0])
+
+
 class GplNotice(unittest.TestCase):
     RELEASES = [
         {"version": "5.1.107.94", "build": True, "origin": "Built by CI.",
@@ -145,6 +181,21 @@ class GplNotice(unittest.TestCase):
 
     def test_exactly_one_release_is_built_from_source(self):
         self.assertEqual(1, sum(1 for r in gpl_notice.releases() if r.get("build")))
+
+    def test_every_patch_to_proot_is_here_and_says_what_it_fixes(self):
+        for release in gpl_notice.releases():
+            for patch in release.get("patches", []):
+                text = (TOOLS / "proot" / patch).read_text(encoding="utf-8")
+                head = text.split("--- a/", 1)[0].strip()
+                self.assertTrue(head, f"{patch} starts with no word on what it fixes")
+                self.assertIn("+++ b/src/", text, f"{patch} is not a patch -p1 of PRoot's source")
+        built = [r for r in gpl_notice.releases() if r.get("build")][0]
+        self.assertEqual(["patches/x86_64-seccomp-sysnum.patch", "patches/link2symlink-count-on-success.patch"],
+                         built.get("patches", []))
+
+    def test_the_notice_lists_the_patches(self):
+        release = dict(self.RELEASES[0], patches=["patches/fix.patch"])
+        self.assertIn("  patches/fix.patch", gpl_notice.notice(release, "5.0.0"))
 
     def test_a_gpl_part_without_a_pinned_archive_blocks_the_release(self):
         with self.assertRaises(gpl_notice.NoticeError) as caught:

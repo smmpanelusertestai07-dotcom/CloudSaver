@@ -12,7 +12,7 @@ name: pocketide
 #            and each agent's screen and the sign-in terminal as the app shows them (pictures kept)
 #   pins     every download the app pins, re-checked against its publisher
 #   proot    PRoot from pinned sources for Android: arm64 as a build check, x86-64 for the emulator
-#   device   on an Android 11 emulator: the instrumented tests, the screen tour, then the whole app
+#   device   on an Android 15 emulator: the instrumented tests, the screen tour, then the whole app
 #            end to end (set-up from the internet, code-server, every agent's screen, a sign-in link)
 #   release  main only, and only with the owner's stable key: tag pocketide-v<version>, once, with
 #            the exact source of the PRoot inside the APK
@@ -319,11 +319,11 @@ jobs:
           name: PocketIDE-engine-inputs
           path: pocket/app/build
 
-      - name: ShellCheck, and talloc to build PRoot with
+      - name: ShellCheck, and talloc and patch to build PRoot with
         run: |
           set -euo pipefail
           sudo apt-get update -q
-          sudo apt-get install -y -q shellcheck libtalloc-dev gawk > /dev/null
+          sudo apt-get install -y -q shellcheck libtalloc-dev gawk patch > /dev/null
           node --version
 
       - name: Engine test
@@ -371,11 +371,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: NDK and gawk
+      - name: NDK, gawk and patch
         run: |
           set -euo pipefail
-          # PRoot's makefile needs gawk (strtonum); the runner's awk may be mawk.
-          command -v gawk > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q gawk; }
+          # PRoot's makefile needs gawk (strtonum); the runner's awk may be mawk. patch applies
+          # the patches sources.json lists.
+          if ! command -v gawk > /dev/null || ! command -v patch > /dev/null; then
+            sudo apt-get update -q && sudo apt-get install -y -q gawk patch
+          fi
           ndk=$(python3 -c 'import json; print(json.load(open("pocket/tools/proot/sources.json"))["ndk"])')
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           (yes || true) | "$sdkmanager" --licenses > /dev/null
@@ -401,10 +404,11 @@ jobs:
           if-no-files-found: error
 
   device:
-    name: On an Android 11 emulator, end to end
+    name: On an Android 15 emulator, end to end
     # The emulator is x86-64, so the app is built with the x86-64 PRoot from the proot job; the
     # rest (Ubuntu, code-server, the agents) is fetched for x86-64 by the app itself, as a phone
-    # fetches it for arm64.
+    # fetches it for arm64. Android 15: code-server's VS Code needs a recent WebView, which phones
+    # get from the Play Store and an emulator only from a recent system image.
     needs: [proot]
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -442,13 +446,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Start an Android 11 emulator
+      - name: Start an Android 15 emulator
         timeout-minutes: 25
         run: |
           set -euo pipefail
           sdk="${ANDROID_HOME:?the runner has no Android SDK}"
           tools="$sdk/cmdline-tools/latest/bin"
-          image="system-images;android-30;google_apis;x86_64"
+          image="system-images;android-35;google_apis;x86_64"
           (yes || true) | "$tools/sdkmanager" --licenses > /dev/null
           "$tools/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" platform-tools emulator "$image" > /dev/null
           # The runner sets XDG_CONFIG_HOME, so avdmanager and the emulator would otherwise look for

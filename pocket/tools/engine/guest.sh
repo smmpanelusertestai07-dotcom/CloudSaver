@@ -4,7 +4,9 @@
 # clean environment with the app's basics. Only a proxy the runner itself uses is passed on.
 #
 # Usage: guest.sh <command...>
-# Environment: ENGINE (the work folder: rootfs/, home/, tmp/, shm/), PROOT and PROOT_LOADER.
+# Environment: ENGINE (the work folder: rootfs/, home/, tmp/, shm/), PROOT and PROOT_LOADER;
+# ENGINE_ANDROID_SECCOMP, a file of syscall numbers: the command runs under Android's app
+# seccomp filter with those allowed (android-seccomp.c, which the engine test installs).
 set -euo pipefail
 
 : "${ENGINE:?set ENGINE to the work folder of the engine test}"
@@ -24,10 +26,15 @@ if [ -f "$ENGINE/rootfs/usr/local/share/ca-certificates/engine-proxy.crt" ]; the
   proxy+=("NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/engine-proxy.crt")
 fi
 
+android=()
+if [ -n "${ENGINE_ANDROID_SECCOMP:-}" ]; then
+  android=(/usr/local/bin/android-seccomp "$(cat "$ENGINE_ANDROID_SECCOMP")" --)
+fi
+
 mkdir -p "$ENGINE/tmp" "$ENGINE/shm"
 exec env -i PATH=/usr/bin:/bin PROOT_TMP_DIR="$ENGINE/tmp" PROOT_LOADER="$PROOT_LOADER" \
   PROOT_NO_SECCOMP=1 PROOT_NO_MOUNTINFO=1 \
   "$PROOT" --link2symlink --kill-on-exit -0 -r "$ENGINE/rootfs" \
   -b /dev -b /proc -b /sys -b "$ENGINE/shm:/dev/shm" -b "$ENGINE/home:/root" -w /root \
   /usr/bin/env -i HOME=/root USER=root LOGNAME=root SHELL=/bin/bash PATH="$GUEST_PATH" \
-  TERM=xterm-256color LANG=C.UTF-8 TZ=UTC TMPDIR=/tmp "${proxy[@]}" "$@"
+  TERM=xterm-256color LANG=C.UTF-8 TZ=UTC TMPDIR=/tmp "${proxy[@]}" "${android[@]}" "$@"

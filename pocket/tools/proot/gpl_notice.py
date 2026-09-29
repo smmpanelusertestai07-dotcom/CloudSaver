@@ -110,6 +110,9 @@ def notice(release: dict, app_version: str) -> str:
             "The build script is pocket/tools/proot/build-proot.sh in this repository, at the commit",
             "this release was built from.",
         ]
+    if release.get("patches"):
+        lines += ["Patches applied to PRoot's source first (in pocket/tools/proot/, each saying what it fixes):"]
+        lines += [f"  {patch}" for patch in release["patches"]]
     if release.get("binaries"):
         lines += ["", "SHA-256 of the files inside the APK (lib/arm64-v8a/):"]
         lines += [f"  {sha256}  {name}" for name, sha256 in sorted(release["binaries"].items())]

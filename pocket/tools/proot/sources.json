@@ -5,7 +5,11 @@
     {
       "version": "5.1.107.94",
       "build": true,
-      "origin": "Built from source by PocketIDE's CI (pocket/tools/proot/build-proot.sh), with 16 KB page alignment. Not shipped in any APK yet: the CI job is a build check whose output is kept as an artifact for a later release, once it has been tested on a phone.",
+      "origin": "Built from source by PocketIDE's CI (pocket/tools/proot/build-proot.sh), with 16 KB page alignment and the patches listed here. Not shipped in any APK yet: the CI job is a build check whose output is kept as an artifact for a later release, once it has been tested on a phone.",
+      "patches": [
+        "patches/x86_64-seccomp-sysnum.patch",
+        "patches/link2symlink-count-on-success.patch"
+      ],
       "proot": {
         "license": "GPL-2.0",
         "tag": "v5.1.107.94",
