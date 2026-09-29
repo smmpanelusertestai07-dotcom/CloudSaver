@@ -535,7 +535,8 @@ jobs:
           set -euo pipefail
           adb="$ANDROID_HOME/platform-tools/adb"
           "$adb" logcat -c
-          ("$adb" logcat -s PocketIDE-E2E:I > "$RUNNER_TEMP/e2e-logcat.txt" 2>&1 &)
+          # The steps, the app's own log, the page's console (chromium) and any crash.
+          ("$adb" logcat -v time -s PocketIDE-E2E:I PocketIDE:V chromium:I AndroidRuntime:E > "$RUNNER_TEMP/e2e-logcat.txt" 2>&1 &)
           result=$("$adb" shell am instrument -w -e e2e true -e class com.pocketide.e2e.ComputerE2E \
             com.pocketide.debug.test/androidx.test.runner.AndroidJUnitRunner | tr -d '\r')
           echo "$result" | tail -n 60

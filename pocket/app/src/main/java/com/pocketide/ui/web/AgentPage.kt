@@ -89,11 +89,16 @@ class AgentPage(private val app: Context) {
         return view
     }
 
-    /** Called when the screen goes away: the page keeps running, on the application's context. */
-    fun detach() {
+    /**
+     * Called when the screen [host] goes away: the page keeps running, on the application's context.
+     * A screen that took the page since keeps it: Compose makes the next screen's view before it
+     * disposes of the screen that one replaces.
+     */
+    fun detach(host: PageHost) {
+        if (this.host !== host) return
         web?.let { (it.parent as? ViewGroup)?.removeView(it) }
         wrapper?.baseContext = app
-        host = null
+        this.host = null
     }
 
     /** Ends the page: code-server stopped, or the owner deleted the computer. */

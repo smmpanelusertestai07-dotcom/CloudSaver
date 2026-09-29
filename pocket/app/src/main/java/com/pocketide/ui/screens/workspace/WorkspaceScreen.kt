@@ -166,12 +166,6 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
     val pickPictures = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(), answer)
 
     LaunchedEffect(Unit) { runCatching { graph.ide.start() } }
-    DisposableEffect(Unit) {
-        onDispose {
-            graph.page.detach()
-            pendingFiles?.onReceiveValue(null)
-        }
-    }
     BackHandler { back() }
 
     val host = remember {
@@ -203,6 +197,12 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
             override fun onPageState(state: PageState) {
                 page = state
             }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            graph.page.detach(host)
+            pendingFiles?.onReceiveValue(null)
         }
     }
 
