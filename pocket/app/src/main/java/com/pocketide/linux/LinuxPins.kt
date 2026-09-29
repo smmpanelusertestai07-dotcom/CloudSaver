@@ -53,7 +53,8 @@ object LinuxPins {
      */
     const val UBUNTU_SUPPORT_ENDS = 1_938_038_400_000L
 
-    private const val UBUNTU_BASE = "https://cdimage.ubuntu.com/ubuntu-base/releases/26.04/release"
+    // The point release's own folder: the plain 26.04 one moves on to each newer point release.
+    private const val UBUNTU_BASE = "https://cdimage.ubuntu.com/ubuntu-base/releases/$UBUNTU_VERSION/release"
 
     fun ubuntuBase(arch: Arch): PinnedDownload = when (arch) {
         Arch.ARM64 -> PinnedDownload(

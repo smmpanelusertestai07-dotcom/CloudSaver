@@ -16,7 +16,11 @@ import java.nio.file.StandardCopyOption
 internal interface SetupHost {
     fun dnsServers(): List<InetAddress>
 
+    /** Bytes the computer may still use, cached files Android can clear included. */
     fun freeBytes(): Long
+
+    /** Asks Android to clear cached files until [bytes] fit, after [freeBytes] said they would. */
+    fun makeRoom(bytes: Long)
 }
 
 /** Where set-up keeps things: the rootfs, the one being unpacked beside it, downloads, and its record. */
@@ -243,6 +247,7 @@ internal class ComputerSetup(
             if (!staged && host.freeBytes() < pin.bytes + CODE_SERVER_SPACE) {
                 return@withContext UpdateOutcome.Failed("There is not enough free space to update code-server.")
             }
+            if (!staged) host.makeRoom(pin.bytes + CODE_SERVER_SPACE)
             publish(ComputerState.Updating("code-server ${pin.version}"))
             try {
                 switchCodeServer(record, pin, staged, hold, release)
@@ -328,6 +333,7 @@ internal class ComputerSetup(
                 "Free about ${"%.1f".format(needed)} GB on the phone, then tap Set up again. It continues where it stopped.",
             )
         }
+        if (space > 0) host.makeRoom(space + SPARE_SPACE)
     }
 
     private suspend fun placeUbuntu(bar: Bar): SetupRecord {
@@ -414,7 +420,12 @@ internal class ComputerSetup(
     }
 
     private enum class Stage(val weight: Int) {
-        DOWNLOAD_UBUNTU(5), UNPACK_UBUNTU(7), TOOLS(48), DOWNLOAD_CODE_SERVER(20), UNPACK_CODE_SERVER(16), CHECK(4),
+        DOWNLOAD_UBUNTU(5),
+        UNPACK_UBUNTU(7),
+        TOOLS(48),
+        DOWNLOAD_CODE_SERVER(20),
+        UNPACK_CODE_SERVER(16),
+        CHECK(4),
     }
 
     /** One bar across the stages this run still has to do; it never moves backwards. */

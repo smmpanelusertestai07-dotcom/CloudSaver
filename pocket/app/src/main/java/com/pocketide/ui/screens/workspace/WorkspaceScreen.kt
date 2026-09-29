@@ -380,7 +380,11 @@ private fun Failed(state: IdeState.Failed, onRetry: () -> Unit, onHelp: () -> Un
 @Composable
 private fun PageOverlay(page: PageState, onReload: () -> Unit) {
     when (page) {
-        is PageState.Loading -> if (page.progress in 1 until FULL) LinearProgressIndicator(progress = { page.progress / 100f }, modifier = Modifier.fillMaxWidth())
+        is PageState.Loading -> if (page.progress in
+            1 until FULL
+        ) {
+            LinearProgressIndicator(progress = { page.progress / 100f }, modifier = Modifier.fillMaxWidth())
+        }
         is PageState.Failed, PageState.Stopped -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
                 val message = if (page is PageState.Failed) page.message else "Android stopped the page to free memory. The agents kept working."

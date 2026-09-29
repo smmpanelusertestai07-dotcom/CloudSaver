@@ -125,49 +125,54 @@ private fun MainScreens() {
             // The pages run behind the bottom bar, which blurs them; each one ends with room to scroll clear of it.
             val bar = if (showBar) padding.calculateBottomPadding() else 0.dp
             CompositionLocalProvider(LocalBottomBarPadding provides bar) {
-            NavHost(
-                nav,
-                startDestination = HomeRoute,
-                modifier = Modifier.fillMaxSize().hazeSource(haze).padding(if (fullScreen) PaddingValues() else PaddingValues(top = padding.calculateTopPadding())),
-            ) {
-                composable<HomeRoute> {
-                    HomeScreen(
-                        onOpenAgent = { id -> nav.navigate(WorkspaceRoute(agentId = id)) },
-                        onSignIn = { id, command, title -> nav.navigate(WorkspaceRoute(agentId = id, terminal = true, command = command, title = title)) },
-                        onTerminal = { nav.navigate(WorkspaceRoute(terminal = true, title = "Terminal")) },
-                        onAddAgents = { nav.navigate(AddAgentsRoute) },
-                        onComputer = { nav.openTab(Tab.COMPUTER) },
-                        onHelp = { nav.navigate(HelpRoute) },
-                        onHelpPage = { nav.navigate(HelpPageRoute(it)) },
-                    )
+                NavHost(
+                    nav,
+                    startDestination = HomeRoute,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(haze)
+                        .padding(if (fullScreen) PaddingValues() else PaddingValues(top = padding.calculateTopPadding())),
+                ) {
+                    composable<HomeRoute> {
+                        HomeScreen(
+                            onOpenAgent = { id -> nav.navigate(WorkspaceRoute(agentId = id)) },
+                            onSignIn = { id, command, title -> nav.navigate(WorkspaceRoute(agentId = id, terminal = true, command = command, title = title)) },
+                            onTerminal = { nav.navigate(WorkspaceRoute(terminal = true, title = "Terminal")) },
+                            onAddAgents = { nav.navigate(AddAgentsRoute) },
+                            onComputer = { nav.openTab(Tab.COMPUTER) },
+                            onHelp = { nav.navigate(HelpRoute) },
+                            onHelpPage = { nav.navigate(HelpPageRoute(it)) },
+                        )
+                    }
+                    composable<ComputerRoute> {
+                        ComputerScreen(onHelp = { nav.navigate(HelpRoute) }, onHelpPage = { nav.navigate(HelpPageRoute(it)) })
+                    }
+                    composable<SettingsRoute> {
+                        SettingsScreen(
+                            onKeys = { nav.navigate(KeysRoute) },
+                            onYourData = { nav.navigate(DataRoute) },
+                            onHelp = { nav.navigate(HelpRoute) },
+                            onHelpPage = { nav.navigate(HelpPageRoute(it)) },
+                        )
+                    }
+                    composable<WorkspaceRoute> { backStack ->
+                        val route = backStack.toRoute<WorkspaceRoute>()
+                        WorkspaceScreen(
+                            route = route,
+                            onBack = { nav.popBackStack() },
+                            onHelpPage = { nav.navigate(HelpPageRoute(it)) },
+                        )
+                    }
+                    composable<AddAgentsRoute> { AddAgentsScreen(onBack = { nav.popBackStack() }) }
+                    composable<KeysRoute> { KeysScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
+                    composable<DataRoute> { YourDataScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
+                    composable<HelpRoute> { HelpScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(HelpPageRoute(it)) }) }
+                    composable<HelpPageRoute> { backStack ->
+                        HelpPageScreen(id = backStack.toRoute<HelpPageRoute>().id, onBack = {
+                            nav.popBackStack()
+                        }, onOpen = { nav.navigate(HelpPageRoute(it)) })
+                    }
                 }
-                composable<ComputerRoute> {
-                    ComputerScreen(onHelp = { nav.navigate(HelpRoute) }, onHelpPage = { nav.navigate(HelpPageRoute(it)) })
-                }
-                composable<SettingsRoute> {
-                    SettingsScreen(
-                        onKeys = { nav.navigate(KeysRoute) },
-                        onYourData = { nav.navigate(DataRoute) },
-                        onHelp = { nav.navigate(HelpRoute) },
-                        onHelpPage = { nav.navigate(HelpPageRoute(it)) },
-                    )
-                }
-                composable<WorkspaceRoute> { backStack ->
-                    val route = backStack.toRoute<WorkspaceRoute>()
-                    WorkspaceScreen(
-                        route = route,
-                        onBack = { nav.popBackStack() },
-                        onHelpPage = { nav.navigate(HelpPageRoute(it)) },
-                    )
-                }
-                composable<AddAgentsRoute> { AddAgentsScreen(onBack = { nav.popBackStack() }) }
-                composable<KeysRoute> { KeysScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
-                composable<DataRoute> { YourDataScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
-                composable<HelpRoute> { HelpScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(HelpPageRoute(it)) }) }
-                composable<HelpPageRoute> { backStack ->
-                    HelpPageScreen(id = backStack.toRoute<HelpPageRoute>().id, onBack = { nav.popBackStack() }, onOpen = { nav.navigate(HelpPageRoute(it)) })
-                }
-            }
             }
         }
     }

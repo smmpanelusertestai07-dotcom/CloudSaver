@@ -158,8 +158,11 @@ private fun ComputerCard(state: ComputerState, onSetUp: () -> Unit, onComputer: 
                 Text("Setting up your computer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Gap(8.dp)
                 val fraction = state.fraction
-                if (fraction != null) LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
-                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (fraction != null) {
+                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
                 Gap(8.dp)
                 Text(state.step, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (state.bytesTotal > 0) {
@@ -429,6 +432,9 @@ internal fun ListRow(leading: @Composable () -> Unit, title: String, subtitle: S
     }
 }
 
-internal fun megabytes(bytes: Long): String = String.format(Locale.ENGLISH, "%.0f MB", bytes / 1e6)
+/** Decimal megabytes, as Android's own storage screen counts them. */
+internal fun megabytes(bytes: Long): String = String.format(Locale.ENGLISH, "%.0f MB", bytes / BYTES_PER_MB)
+
+private const val BYTES_PER_MB = 1e6
 
 private const val COMPANION = "pocketide.companion"

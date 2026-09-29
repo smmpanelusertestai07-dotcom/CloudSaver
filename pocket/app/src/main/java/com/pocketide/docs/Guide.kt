@@ -76,9 +76,9 @@ internal object Guide {
                 "itself.",
         ),
         p(
-            "Sign in with the agent's own button on its screen: Claude.ai Subscription (Claude Code shows it when you " +
-                "first need it), Sign in with ChatGPT (Codex), Continue with Google (Antigravity). The page opens in Chrome, " +
-                "as Google allows its sign-in only in a real browser, and returns to the agent on this phone by itself.",
+            "Sign in with the agent's own button on its screen: Claude.ai Subscription (Claude Code), Sign in with " +
+                "ChatGPT (Codex), Continue with Google (Antigravity). The page opens in Chrome, as Google allows its " +
+                "sign-in only in a real browser, and returns to the agent on this phone by itself.",
         ),
         p("Or sign in with the terminal: Sign in (the arrow at the top) opens one with the agent's command already typed."),
         table(
@@ -187,6 +187,25 @@ internal object Guide {
             "press Enter. Antigravity then runs in the terminal."
     }
 
+    private val permissions = section(
+        "permissions",
+        "Permissions",
+        "What PocketIDE may do on your phone, and why.",
+        table(
+            listOf("Android permission", "Why"),
+            row("INTERNET", "To set up and update the computer, and for the agents to reach their companies"),
+            row("ACCESS_NETWORK_STATE", "To update on Wi-Fi only (unless you allow mobile data), and to give Linux the phone's DNS"),
+            row("POST_NOTIFICATIONS", "The \"Computer is on\" notice with its Stop button, and sign-in pages that wait for you; you can refuse it"),
+            row("FOREGROUND_SERVICE", "To keep the computer running while you use other apps"),
+            row("FOREGROUND_SERVICE_SPECIAL_USE", "The kind of background work that is, as Android requires it named"),
+            row("USE_BIOMETRIC", "App lock, with your phone's own screen lock"),
+        ),
+        p(
+            "No storage, camera, microphone, location, contacts or accounts access. Files you attach for an agent are " +
+                "picked with Android's own picker, one choice at a time.",
+        ),
+    )
+
     /** The guide, in reading order. */
-    val all: List<DocSection> = listOf(start, computer, agents, keys, projects, background, trouble, yourData)
+    val all: List<DocSection> = listOf(start, computer, agents, keys, projects, background, trouble, yourData, permissions)
 }

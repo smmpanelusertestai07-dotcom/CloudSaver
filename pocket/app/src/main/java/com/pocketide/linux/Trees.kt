@@ -62,28 +62,31 @@ internal object Trees {
     /** Deletes [path] and everything under it; links are deleted as links. */
     fun delete(path: Path) {
         if (GuestRoot.attributesOf(path) == null) return
-        Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                // A folder Linux made read-only must become writable again before it can be emptied.
-                if (!Files.isWritable(dir)) FileModes.set(dir, FileModes.forDirectory(0))
-                return FileVisitResult.CONTINUE
-            }
+        Files.walkFileTree(
+            path,
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    // A folder Linux made read-only must become writable again before it can be emptied.
+                    if (!Files.isWritable(dir)) FileModes.set(dir, FileModes.forDirectory(0))
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                Files.deleteIfExists(file)
-                return FileVisitResult.CONTINUE
-            }
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    Files.deleteIfExists(file)
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
-                if (exc !is NoSuchFileException) Files.deleteIfExists(file)
-                return FileVisitResult.CONTINUE
-            }
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                    if (exc !is NoSuchFileException) Files.deleteIfExists(file)
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                Files.deleteIfExists(dir)
-                return FileVisitResult.CONTINUE
-            }
-        })
+                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                    Files.deleteIfExists(dir)
+                    return FileVisitResult.CONTINUE
+                }
+            },
+        )
     }
 
     /**
@@ -109,14 +112,17 @@ internal object Trees {
     fun bytes(path: Path): Long {
         if (GuestRoot.attributesOf(path) == null) return 0
         var total = 0L
-        Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (attrs.isRegularFile) total += attrs.size()
-                return FileVisitResult.CONTINUE
-            }
+        Files.walkFileTree(
+            path,
+            object : SimpleFileVisitor<Path>() {
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (attrs.isRegularFile) total += attrs.size()
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
-        })
+                override fun visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
+            },
+        )
         return total
     }
 

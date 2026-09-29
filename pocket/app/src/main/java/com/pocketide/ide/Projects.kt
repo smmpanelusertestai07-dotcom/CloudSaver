@@ -25,7 +25,13 @@ class Projects(private val dirs: LinuxDirs) {
 
     /** The folder inside Linux an agent opens for [name]; all projects when it is empty or gone. */
     fun guestFolder(name: String): String =
-        if (name.isNotEmpty() && problem(name) == null && File(dirs.projects, name).isDirectory) "${LinuxDirs.GUEST_PROJECTS}/$name" else LinuxDirs.GUEST_PROJECTS
+        if (name.isNotEmpty() && problem(name) == null &&
+            File(dirs.projects, name).isDirectory
+        ) {
+            "${LinuxDirs.GUEST_PROJECTS}/$name"
+        } else {
+            LinuxDirs.GUEST_PROJECTS
+        }
 
     companion object {
         private val NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")

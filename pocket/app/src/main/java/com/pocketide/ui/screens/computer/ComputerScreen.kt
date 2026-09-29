@@ -209,8 +209,11 @@ private fun StatusCard(state: ComputerState, ide: IdeState, onStop: () -> Unit, 
                 is ComputerState.Installing -> {
                     Gap(8.dp)
                     val fraction = state.fraction
-                    if (fraction != null) LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
-                    else LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (fraction != null) {
+                        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
                     Gap(6.dp)
                     Text(state.step, style = MaterialTheme.typography.bodyMedium)
                 }

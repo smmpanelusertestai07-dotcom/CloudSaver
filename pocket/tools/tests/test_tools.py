@@ -6,13 +6,11 @@ import hashlib
 import importlib.util
 import io
 import os
-import re
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
-import urllib.parse
 import unittest
 import zipfile
 from pathlib import Path
@@ -80,30 +78,19 @@ class SecretsFile(unittest.TestCase):
         text = secrets_file.render(self.FACTS, "owner/repo", "release.jks")
         for expected in ("Name:\nPOCKETIDE_KEYSTORE_B64\nSecret:\nQUJD\n", "Name:\nPOCKETIDE_STORE_PASS\nSecret:\nstore-pass\n",
                          "Name:\nPOCKETIDE_KEY_PASS\nSecret:\nkey-pass\n", "Name:\nPOCKETIDE_KEY_ALIAS\nSecret:\npocketide\n",
-                         "Name:\nPOCKETIDE_GITHUB_APP_CLIENT_ID\n", "Name:\nPOCKETIDE_GITHUB_APP_SLUG\n",
                          "App: PocketIDE", "GitHub repository: owner/repo", "Package: com.pocketide", "SHA-1:   AA:BB",
-                         "SHA-256: CC:DD", "Enable Device Flow", "Plan (Read-only)", "Codespaces lifecycle admin (Read and write)",
-                         "Workflows (Read and write)", "Codespaces user secrets (Read and write)",
-                         "https://github.com/owner/repo/settings/secrets/actions/new", "Run workflow"):
+                         "SHA-256: CC:DD", "https://github.com/owner/repo/settings/secrets/actions/new", "Run workflow"):
             self.assertIn(expected, text)
-        link = next(line for line in text.splitlines() if line.startswith("https://github.com/settings/apps/new?"))
-        query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(link).query))
-        self.assertEqual("https://github.com/owner/repo", query["url"])
-        self.assertEqual("false", query["webhook_active"])
-        self.assertEqual(("write", "read", "write"), (query["workflows"], query["plan"], query["codespaces_user_secrets"]))
         # Each secret stands apart from the next, and no version number dates the file.
         self.assertIn("Secret:\nQUJD\n\n\n2) The key store password", text)
         self.assertNotIn("PocketIDE 4", text)
+        # Version 5 signs in to nothing: no GitHub App, and no variables to fill in.
+        for gone in ("GitHub App", "VARIABLES", "CLIENT_ID", "Device Flow"):
+            self.assertNotIn(gone, text)
         # Every link is a full address, so it opens with a tap in any text viewer.
         for line in text.splitlines():
-            if "github.com/" in line and "apps/<name>" not in line:
+            if "github.com/" in line:
                 self.assertTrue(line.startswith("https://"), line)
-
-    def test_the_app_form_asks_for_what_the_app_asks_for(self):
-        # One list of permissions, in the app's form link and in this file's: they must not drift apart.
-        kotlin = (REPO / "pocket/app/src/main/java/com/pocketide/github/GitHubAppLink.kt").read_text()
-        block = kotlin[kotlin.index("val PERMISSIONS"):kotlin.index(")", kotlin.index("linkedMapOf("))]
-        self.assertEqual(secrets_file.APP_PERMISSIONS, re.findall(r'"(\w+)" to "(\w+)"', block))
 
     def test_the_file_is_private_and_never_overwritten_silently(self):
         with tempfile.TemporaryDirectory() as work:

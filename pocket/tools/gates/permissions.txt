@@ -3,15 +3,16 @@
 # when an android.permission line is not explained in Help > Permissions.
 # ${applicationId} stands for the package name, which differs between release and debug.
 
-# GitHub and the cloud computer's page; offline is told apart from signed out.
+# Setting up and updating the computer, and the agents reaching their companies; Wi-Fi is told
+# apart from mobile data for the daily updates, and the phone's DNS servers are read for Linux.
 android.permission.INTERNET
 android.permission.ACCESS_NETWORK_STATE
 
-# The optional background connection to a running cloud computer, with its Stop button.
+# The computer keeps running in the background while it is on, with its Stop button.
 android.permission.FOREGROUND_SERVICE
 android.permission.FOREGROUND_SERVICE_SPECIAL_USE
 
-# The "Cloud computer is on" notice, asked once.
+# The "Computer is on" notice and sign-in pages that wait for the owner, asked once.
 android.permission.POST_NOTIFICATIONS
 
 # App lock, with the phone's own screen lock.

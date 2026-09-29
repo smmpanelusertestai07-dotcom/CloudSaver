@@ -184,7 +184,10 @@ class OpenVsxFixture {
         return when (name) {
             vsixName(extension, version) -> MockResponse.Builder().body(Buffer().write(vsix)).build()
             "${vsixName(extension, version)}.sha256" -> text(if (version.wrongChecksum) sha256(byteArrayOf(1)) else sha256(vsix))
-            "${vsixName(extension, version)}.sigzip" -> MockResponse.Builder().body(Buffer().write(sigzip(sign(vsix, if (version.wrongSignature) otherKey else key)))).build()
+            "${vsixName(extension, version)}.sigzip" -> {
+                val signature = sign(vsix, if (version.wrongSignature) otherKey else key)
+                MockResponse.Builder().body(Buffer().write(sigzip(signature))).build()
+            }
             "package.json" -> text(version.packageJson)
             else -> null
         }
@@ -198,7 +201,12 @@ class OpenVsxFixture {
         fun sign(bytes: ByteArray, key: KeyPair): ByteArray =
             Signature.getInstance("Ed25519").apply { initSign(key.private); update(bytes) }.sign()
 
-        fun sigzip(signature: ByteArray): ByteArray = zip(mapOf(".signature.manifest" to "{}".toByteArray(), ".signature.sig" to signature, ".signature.p7s" to ByteArray(0)))
+        fun sigzip(signature: ByteArray): ByteArray = zip(
+            mapOf(
+                ".signature.manifest" to "{}".toByteArray(), ".signature.sig" to signature,
+                ".signature.p7s" to ByteArray(0),
+            ),
+        )
 
         fun zip(entries: Map<String, ByteArray>): ByteArray {
             val out = ByteArrayOutputStream()

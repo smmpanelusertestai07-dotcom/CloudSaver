@@ -59,7 +59,7 @@ FILES = {
         'object Guide {\n    private val permissions = section(\n        "permissions",\n'
         '        table(listOf("Permission", "Why"), row("INTERNET", "To reach GitHub.")),\n    )\n'
         "    val all = listOf(permissions)\n}\n",
-    "app/build.gradle.kts": 'val appVersion = "4.0.0"\n\nfun versionCodeOf(version: String): Int {\n'
+    "app/build.gradle.kts": 'val appVersion = "5.0.0"\n\nfun versionCodeOf(version: String): Int {\n'
                             '    val (major, minor, patch) = version.split(".").map { it.toInt() }\n'
                             '    return major * 10000 + minor * 100 + patch\n}\n\n'
                             'android {\n    defaultConfig {\n        versionCode = versionCodeOf(appVersion)\n'

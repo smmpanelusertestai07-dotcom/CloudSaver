@@ -27,6 +27,7 @@ const LIVE_PROBE_MS = 2500;
 const ATTEMPTS = 20;
 const RETRY_MS = 1500;
 const CHECK_MS = 2000;
+const SHELL_WAIT_MS = 8000;
 const SPARE_CONTAINERS = ['pocketide-agent-1', 'pocketide-agent-2', 'pocketide-agent-3',
   'pocketide-agent-4', 'pocketide-agent-5', 'pocketide-agent-6'];
 
@@ -190,7 +191,27 @@ async function terminal(request) {
   }
   const shell = vscode.window.createTerminal({ name: title, cwd, location: vscode.TerminalLocation.Editor });
   shell.show(false);
-  if (text) shell.sendText(text, false);
+  if (text) {
+    // Typed once the shell shows its prompt, so the command appears after it, not before.
+    await shellReady(shell);
+    shell.sendText(text, false);
+  }
+}
+
+// Resolves when [shell]'s shell integration starts (its prompt is up), or after a few seconds.
+function shellReady(shell) {
+  if (shell.shellIntegration) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      listener.dispose();
+      resolve();
+    };
+    const timer = setTimeout(done, SHELL_WAIT_MS);
+    const listener = vscode.window.onDidChangeTerminalShellIntegration((event) => {
+      if (event.terminal === shell) done();
+    });
+  });
 }
 
 async function retried(action, stopped) {

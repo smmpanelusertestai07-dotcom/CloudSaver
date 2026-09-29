@@ -115,7 +115,10 @@ fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
             title = { Text("Delete everything?") },
             text = {
                 DialogBody {
-                    Text("Your projects, chats, sign-ins, keys and settings are deleted from this phone. This cannot be undone. Push anything you want to keep to GitHub first.")
+                    Text(
+                        "Your projects, chats, sign-ins, keys and settings are deleted from this phone. This cannot be undone. " +
+                            "Push anything you want to keep to GitHub first.",
+                    )
                 }
             },
             confirmButton = {

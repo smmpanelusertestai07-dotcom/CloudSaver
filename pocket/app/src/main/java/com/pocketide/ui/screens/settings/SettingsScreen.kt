@@ -145,7 +145,9 @@ private fun Link(icon: ImageVector, title: String, detail: String?, onClick: () 
         headlineContent = { Text(title) },
         supportingContent = detail?.let { { Text(it) } },
         leadingContent = { Icon(icon, contentDescription = null) },
-        trailingContent = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trailingContent = {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         modifier = Modifier.clickable(onClick = onClick),
     )

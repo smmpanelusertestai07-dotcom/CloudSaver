@@ -162,7 +162,9 @@ private fun ResultRow(entry: SearchEntry, installed: Boolean, refusal: String?, 
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(entry.namespace, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (entry.verified) Icon(Icons.Outlined.Verified, contentDescription = "Verified publisher", tint = toneColor(Tone.OK), modifier = Modifier.size(16.dp))
+                    if (entry.verified) {
+                        Icon(Icons.Outlined.Verified, contentDescription = "Verified publisher", tint = toneColor(Tone.OK), modifier = Modifier.size(16.dp))
+                    }
                     Text("· ${downloads(entry.downloadCount)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

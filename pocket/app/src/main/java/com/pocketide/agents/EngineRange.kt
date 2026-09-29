@@ -78,7 +78,9 @@ class EngineRange private constructor(private val alternatives: List<List<Bound>
             var pending = ""
             for (token in tokens) {
                 if (token.isEmpty()) continue
-                if (token in setOf("^", "~", "~>", ">=", "<=", ">", "<", "=")) pending += token else {
+                if (token in setOf("^", "~", "~>", ">=", "<=", ">", "<", "=")) {
+                    pending += token
+                } else {
                     joined += pending + token
                     pending = ""
                 }

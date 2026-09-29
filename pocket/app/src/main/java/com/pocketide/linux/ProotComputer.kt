@@ -2,6 +2,7 @@ package com.pocketide.linux
 
 import android.content.Context
 import android.os.Build
+import android.os.storage.StorageManager
 import com.pocketide.core.Clock
 import com.pocketide.core.Http
 import kotlinx.coroutines.CancellationException
@@ -67,10 +68,23 @@ internal class ProotComputer(
     private val gate = ReentrantReadWriteLock()
     private var closedBecause: String? = null
 
+    private val storage = context.getSystemService(StorageManager::class.java)
+
     private val phone = object : SetupHost {
         override fun dnsServers(): List<InetAddress> = dns.servers()
-        override fun freeBytes(): Long = dirs.base.parentFile?.usableSpace ?: 0
+
+        // What can be written, cached files Android would clear for it included.
+        override fun freeBytes(): Long = storageUuid()?.let { runCatching { storage.getAllocatableBytes(it) }.getOrNull() }
+            ?: dirs.base.parentFile?.freeSpace
+            ?: 0
+
+        // Has Android clear those cached files now, before the downloads need the room.
+        override fun makeRoom(bytes: Long) {
+            storageUuid()?.let { uuid -> runCatching { storage.allocateBytes(uuid, bytes) } }
+        }
     }
+
+    private fun storageUuid(): UUID? = runCatching { storage.getUuidForPath(context.filesDir) }.getOrNull()
 
     private val mutableState = MutableStateFlow<ComputerState>(ComputerState.NotInstalled)
     override val state: StateFlow<ComputerState> = mutableState.asStateFlow()
