@@ -14,7 +14,7 @@ name: pocketide
 #   proot    PRoot from pinned sources for Android: arm64 as a build check, x86-64 for the emulator
 #   device   on an Android 15 emulator: the instrumented tests, the screen tour, then the whole app
 #            end to end (set-up from the internet, code-server, every agent's screen, a sign-in link)
-#   opens    the signed release APK (shrunk by R8) opens on Android 11, 13 and 15 emulators,
+#   opens    the signed release APK (shrunk by R8) opens on Android 11, 12 and 15 emulators,
 #            as a new install and over 4.1.0
 #   release  main only, and only with the owner's stable key: tag pocketide-v<version>, once, with
 #            the exact source of the PRoot inside the APK
@@ -578,9 +578,9 @@ jobs:
     name: The release APK opens on Android ${{ matrix.android }} (new, and over 4.1.0)
     # The signed release APK itself, as a phone gets it. R8 shrinks it, which the debug build the
     # device job tests is not, so only this job would see a crash R8 causes. It must open and keep
-    # running on a new install (and past the welcome screen to Home), and over the last published
-    # release, as an owner updates. The emulator is x86-64; Android 11 and newer images run an
-    # arm64-only APK through ARM translation.
+    # running on a new install (past the welcome screen to Home, the tabs and Set up) and over the
+    # last published release, as an owner updates. The emulator is x86-64; these images run the
+    # arm64-only APK through ARM translation (Android 13's image has none, so it cannot install it).
     needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -590,8 +590,8 @@ jobs:
         include:
           - android: "11"
             api: 30
-          - android: "13"
-            api: 33
+          - android: "12"
+            api: 31
           - android: "15"
             api: 35
     steps:
@@ -675,11 +675,11 @@ jobs:
             "$adb" shell input tap $(((left + right) / 2)) $(((top + bottom) / 2))
           }
 
-          # After [what] was done, the app must still be running with no crash in the log; keeps
-          # a picture of the screen and the log either way.
+          # After [what] was done, the app must still be running with no crash in the log after
+          # $2 seconds (30 by default); keeps a picture of the screen and the log either way.
           check() {
             local name=$1
-            sleep 30
+            sleep "${2:-30}"
             "$adb" exec-out screencap -p > "$out/$name.png" || true
             "$adb" logcat -d > "$out/$name-log.txt" || true
             "$adb" logcat -d -b crash > "$out/$name-crash.txt" || true
@@ -706,6 +706,18 @@ jobs:
             "$adb" shell input swipe 540 1800 540 600 300
           done
           check home
+          # The other tabs, then Set up: it starts the foreground service and the downloads. On an
+          # x86-64 emulator the arm64 Linux cannot run, so set-up ends in an error the app shows;
+          # the app itself must keep running.
+          for tab in Computer Settings Home; do
+            tap "$tab" || echo "::warning::No $tab tab on the screen"
+            check "tab-$(tr '[:upper:]' '[:lower:]' <<< "$tab")" 10
+          done
+          if tap "Set up"; then
+            check set-up 90
+          else
+            echo "::warning::No Set up button on Home"
+          fi
           "$adb" shell am force-stop "$pkg"
           launch
           check home-again
