@@ -11,8 +11,8 @@ catches a publisher that replaced or withdrew a file before an owner's phone fin
   open-vsx.org         the registry's own .sha256 for the file
   anything else        downloaded and hashed here
 
-Environment: GITHUB_TOKEN (optional) raises the API rate limit.
-Usage: check-pins.py
+Environment: GITHUB_TOKEN (optional) raises the API rate limit; POCKETIDE_PINS, another pins.json.
+Usage: check-pins.py      (reads app/build/engine/pins.json, which the app's unit tests write)
 """
 from __future__ import annotations
 
@@ -128,9 +128,13 @@ def verifier(url: str):
 
 
 def main() -> int:
-    found = pins.all_pins()
+    try:
+        found = pins.all_pins()
+    except (OSError, ValueError, KeyError) as error:
+        print(f"check-pins: {error}", file=sys.stderr)
+        return 1
     if not found:
-        print("No pinned downloads found in the Kotlin sources.", file=sys.stderr)
+        print("No pinned downloads in pins.json.", file=sys.stderr)
         return 1
     failures = 0
     for pin in found:

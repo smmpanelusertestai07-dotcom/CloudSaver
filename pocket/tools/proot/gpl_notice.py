@@ -179,11 +179,17 @@ def fetch_sources(release: dict, directory: Path) -> list[Path]:
     return saved
 
 
+def proot_family(name: str) -> bool:
+    """PRoot's own files and the libraries it links: the rest of lib/ is AndroidX's, under Apache 2.0."""
+    return name.startswith("libproot") or "talloc" in name or "shmem" in name
+
+
 def native_libraries(apk: Path) -> dict[str, bytes]:
-    """The APK's arm64 native libraries by file name."""
+    """The APK's arm64 PRoot libraries by file name."""
     with zipfile.ZipFile(apk) as archive:
         names = [n for n in archive.namelist() if n.startswith(LIB_DIR) and n.endswith(".so")]
-        return {name[len(LIB_DIR):]: archive.read(name) for name in names if "/" not in name[len(LIB_DIR):]}
+        return {name[len(LIB_DIR):]: archive.read(name) for name in names
+                if "/" not in name[len(LIB_DIR):] and proot_family(name[len(LIB_DIR):])}
 
 
 def _suffix(url: str) -> str:
