@@ -1,20 +1,22 @@
 package com.pocketide.ui.screens.onboarding
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,33 +39,40 @@ import com.pocketide.AppGraph
 import com.pocketide.agents.Agent
 import com.pocketide.docs.DocsContent
 import com.pocketide.ui.components.AgentLogo
-import com.pocketide.ui.components.GitHubLogo
-import com.pocketide.ui.components.VsCodeLogo
 import com.pocketide.ui.screens.help.HelpPageScreen
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.IconTile
+import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.ShellPage
 
 /**
- * First run: the welcome with the terms, GitHub sign-in, then the repositories PocketIDE may use.
- * Each step follows from what is already true, so leaving half-way resumes at the right step.
+ * First run: what PocketIDE is, with the terms, then leave to Home, where the computer is set up
+ * with one tap. No account is needed for PocketIDE itself: each agent signs in to its own maker.
  */
 @Composable
 fun Onboarding(graph: AppGraph) {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     var reading by remember { mutableStateOf<String?>(null) }
+    // Android 13 and newer ask before an app shows notifications: the "computer is on" notice with
+    // its Stop button, and a sign-in page a program opened while PocketIDE was in the background.
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        graph.settings.update { it.copy(onboardingDone = true) }
+    }
     val page = reading
-    val signedIn = account
     when {
         page != null -> HelpPageScreen(id = page, onBack = { reading = null }, onOpen = { reading = it })
-        settings.termsAccepted < DocsContent.TERMS_VERSION -> WelcomeScreen(
+        else -> WelcomeScreen(
             onRead = { reading = it },
-            onContinue = { graph.settings.update { it.copy(termsAccepted = DocsContent.TERMS_VERSION) } },
+            onContinue = {
+                graph.settings.update { it.copy(termsAccepted = DocsContent.TERMS_VERSION) }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && settings.termsAccepted < DocsContent.TERMS_VERSION) {
+                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    graph.settings.update { it.copy(onboardingDone = true) }
+                }
+            },
         )
-        signedIn == null -> SignInScreen(graph, onRead = { reading = it })
-        else -> AllowReposScreen(graph, signedIn.login, onDone = { graph.settings.update { it.copy(onboardingDone = true) } })
     }
 }
 
@@ -78,32 +87,28 @@ internal fun WelcomeScreen(onRead: (String) -> Unit, onContinue: () -> Unit) {
         Gap(28.dp)
         Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Feature(
-                icon = { VsCodeLogo(size = 30.dp) },
-                title = "Your own cloud computer",
-                text = "A GitHub Codespace: Ubuntu and real VS Code on GitHub's servers, only for you.",
+                icon = { IconTile(Icons.Outlined.Terminal, size = 40.dp) },
+                title = "A Linux computer inside the app",
+                text = "Ubuntu 26.04 LTS and VS Code (code-server), running on this phone. No cloud, no rented server.",
             )
             Feature(
                 icon = { AgentLogo(Agent.CLAUDE, size = 36.dp) },
-                title = "Three official AI agents",
-                text = "Claude Code by Anthropic, Codex by OpenAI and Antigravity by Google, each full screen.",
+                title = "The official AI agents",
+                text = "Claude Code by Anthropic, Codex by OpenAI and Antigravity by Google, each with its own screen, full screen. Add more from Open VSX.",
             )
             Feature(
                 icon = { IconTile(Icons.Outlined.Lock, size = 40.dp) },
-                title = "Private by default",
-                text = "New projects are private repositories. This phone keeps only your sign-in and settings.",
+                title = "Private by design",
+                text = "Your projects, chats and sign-ins stay inside PocketIDE's own storage. No other app can read them, and PocketIDE has no server.",
             )
             Feature(
-                icon = { GitHubLogo(size = 30.dp) },
-                title = "One account: GitHub",
-                text = "No server of ours and no other cloud. Code, computer and builds stay in your GitHub account.",
+                icon = { IconTile(Icons.Outlined.Autorenew, size = 40.dp) },
+                title = "Keeps itself up to date",
+                text = "Ubuntu's security fixes and new agent versions install by themselves, checked before they are used.",
             )
         }
         Gap(28.dp)
-        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
-            GitHubLogo(size = 20.dp)
-            Spacer(Modifier.width(12.dp))
-            Text("Continue with GitHub", style = MaterialTheme.typography.titleMedium)
-        }
+        PrimaryAction("Get started", onClick = onContinue)
         Gap(12.dp)
         TermsLine(onRead)
     }

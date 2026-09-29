@@ -1,52 +1,70 @@
 package com.pocketide.ui.web
 
-import com.pocketide.ui.screens.computer.acceptsOnlyImages
+import com.pocketide.ui.screens.workspace.acceptsOnlyImages
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WebPolicyTest {
+    private val port = 41234
+
     @Test
-    fun `GitHub's sign-in and the computer stay in the app`() {
+    fun `only this phone's code-server stays in the app`() {
         listOf(
-            "https://github.com/login?return_to=%2Fcodespaces",
-            "https://github.com/sessions/two-factor",
-            "https://fuzzy-space-guide-1234.github.dev/",
-            "https://fuzzy-space-guide-1234-9000.app.github.dev/",
-        ).forEach { assertEquals(it, Navigation.STAY, WebPolicy.navigation(it)) }
+            "http://127.0.0.1:$port/?folder=/root/projects",
+            "http://127.0.0.1:$port/stable-abc/static/out/vs/code/browser/workbench/workbench.html",
+        ).forEach { assertEquals(it, Navigation.STAY, WebPolicy.navigation(it, port)) }
+        assertTrue(WebPolicy.isIdePage("http://127.0.0.1:$port/", port))
+        assertFalse(WebPolicy.isIdePage("http://127.0.0.1:${port + 1}/", port))
+        assertFalse(WebPolicy.isIdePage("http://localhost:$port/", port))
     }
 
     @Test
-    fun `every other company's page opens in Chrome`() {
+    fun `every company's page, and this phone's other servers, open in Chrome`() {
         listOf(
             "https://accounts.google.com/o/oauth2/v2/auth?client_id=x",
-            "https://claude.ai/oauth/authorize",
+            "https://claude.com/cai/oauth/authorize",
             "https://auth.openai.com/authorize",
-            "https://github.dev/",
-            "https://evilgithub.dev/",
-            "https://github.com.evil.example/login",
-        ).forEach { assertEquals(it, Navigation.CHROME, WebPolicy.navigation(it)) }
+            "https://github.com/login/device",
+            "http://localhost:1455/auth/callback?code=x",
+            "http://127.0.0.1:${port + 1}/",
+            "http://5173.localhost:40000/",
+        ).forEach { assertEquals(it, Navigation.CHROME, WebPolicy.navigation(it, port)) }
+        // With code-server stopped, its old address is only another local page.
+        assertEquals(Navigation.CHROME, WebPolicy.navigation("http://127.0.0.1:$port/", null))
     }
 
     @Test
-    fun `anything that is not https goes nowhere`() {
+    fun `plain http to another computer, and anything that is not the web, goes nowhere`() {
         listOf(
             "http://github.com/login",
+            "http://evil.example/",
+            "http://localhost.evil.example/",
             "intent://scan/#Intent;scheme=zxing;end",
             "javascript:alert(1)",
             "file:///data/data/com.pocketide/shared_prefs",
-            "vscode://anthropic.claude-code/callback",
+            "code-oss://google.google-antigravity/auth",
             "not a url",
-        ).forEach { assertEquals(it, Navigation.BLOCK, WebPolicy.navigation(it)) }
+        ).forEach { assertEquals(it, Navigation.BLOCK, WebPolicy.navigation(it, port)) }
     }
 
     @Test
-    fun `the page starts only on a codespace's own address`() {
-        assertTrue(WebPolicy.isComputerPage("https://fuzzy-space-guide-1234.github.dev"))
-        assertFalse(WebPolicy.isComputerPage("https://fuzzy-space-guide-1234-9000.app.github.dev"))
-        assertFalse(WebPolicy.isComputerPage("http://fuzzy-space-guide-1234.github.dev"))
-        assertFalse(WebPolicy.isComputerPage("https://github.com/codespaces"))
+    fun `the agents' sign-in pages open without a question, look-alikes do not`() {
+        val sites = listOf("https://accounts.google.com", "https://*.openai.com", "https://claude.ai")
+        listOf(
+            "https://accounts.google.com/o/oauth2/auth?client_id=x",
+            "https://auth.openai.com/oauth/authorize",
+            "https://claude.ai/oauth/authorize",
+        ).forEach { assertTrue(it, WebPolicy.isSignInSite(it, sites)) }
+        listOf(
+            "http://accounts.google.com/",
+            "https://accounts.google.com.evil.example/",
+            "https://evilopenai.com/",
+            "https://openai.com/",
+            "https://claude.ai.example/",
+            "not a url",
+        ).forEach { assertFalse(it, WebPolicy.isSignInSite(it, sites)) }
     }
 
     @Test

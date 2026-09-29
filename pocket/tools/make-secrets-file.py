@@ -26,6 +26,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -140,6 +141,23 @@ def gather(args: argparse.Namespace) -> KeyFacts:
     return KeyFacts(b64, store_pass, key_pass, alias, sha1, sha256)
 
 
+# The same permissions as the app's own form link (GitHubAppLink.PERMISSIONS); a test checks both.
+APP_PERMISSIONS = [
+    ("contents", "write"), ("metadata", "read"), ("administration", "write"), ("repository_creation", "write"),
+    ("workflows", "write"), ("actions", "read"), ("codespaces", "write"), ("codespaces_lifecycle_admin", "write"),
+    ("codespaces_metadata", "read"), ("plan", "read"), ("codespaces_user_secrets", "write"),
+]
+APP_DESCRIPTION = ("PocketIDE: agentic development on your phone. Signs you in with GitHub's device flow; uses your "
+                   "repositories, Codespaces and Actions for you.")
+
+
+def new_app_link(site: str) -> str:
+    """GitHub's "Register new GitHub App" form, filled in by its documented URL parameters."""
+    query = [("name", "PocketIDE"), ("description", APP_DESCRIPTION), ("url", site), ("public", "true"),
+             ("webhook_active", "false"), *APP_PERMISSIONS]
+    return "https://github.com/settings/apps/new?" + urllib.parse.urlencode(query, quote_via=urllib.parse.quote)
+
+
 def render(facts: KeyFacts, repo: str | None, keystore_name: str) -> str:
     """The owner's file: the four secrets spaced apart, GitHub's own field names, full links."""
     today = dt.datetime.now(dt.timezone.utc).strftime("%d %b %Y")
@@ -193,26 +211,31 @@ that <name>
 
 
 GITHUB APP (how PocketIDE signs in; no client secret, no private key)
-Make it here:
-https://github.com/settings/apps/new
-- GitHub App name: anything unique, for example PocketIDE-<your GitHub name>
-- Homepage URL: {site}
-- Callback URL: leave empty. Tick "Enable Device Flow". Webhook: untick "Active".
-- Repository permissions:
-    Actions: Read-only
-    Administration: Read and write
-    Codespaces: Read and write
-    Codespaces lifecycle admin: Read and write
-    Codespaces metadata: Read-only
-    Contents: Read and write
-    Metadata: Read-only
-    Repository creation: Read and write (if GitHub lists it)
-- Account permissions:
-    Plan: Read-only
-- Where can this GitHub App be installed: Only on this account. Then: Create GitHub App.
-Then install it on your repositories (All repositories is simplest):
+1) Open GitHub's form, already filled in: name, homepage, every permission, no webhook.
+{new_app_link(site)}
+
+2) Tick "Enable Device Flow" (the one box GitHub cannot fill in for you).
+
+3) Tap "Create GitHub App". If GitHub says the name is taken, add your name, for example
+PocketIDE-yourname, and tap it again.
+
+4) On the App's page, copy the Client ID into variable 1 above, and the name in the App's
+address (github.com/apps/<name>) into variable 2.
+
+5) Install it: Install App (on the left), your account, All repositories, Install.
+
+It asks for these permissions, and nothing more:
+- Repository: Contents (Read and write), Workflows (Read and write), Administration (Read and
+  write, only to make new private repositories), Repository creation where GitHub lists it,
+  Codespaces (Read and write), Codespaces lifecycle admin (Read and write), Codespaces metadata
+  (Read-only), Actions (Read-only), Metadata (Read-only).
+- Account: Plan (Read-only), Codespaces user secrets (Read and write).
+It is public (any account can install it), so people who install your PocketIDE builds can
+sign in; it gives you no access to their accounts.
+
+Made the App before? Add Workflows and Codespaces user secrets on its Permissions page:
 https://github.com/settings/apps
-Already have the App? Add any missing permission above, then accept it here:
+then accept the change for your account here:
 https://github.com/settings/installations
 
 

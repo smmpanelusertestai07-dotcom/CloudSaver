@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Info
@@ -29,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -36,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.pocketide.docs.DocBlock
+import com.pocketide.docs.DocsContent
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
@@ -193,16 +196,18 @@ private fun NoteBlock(note: DocBlock.Note) {
 @Composable
 private fun LinkRow(label: String, url: String, onOpen: (String) -> Unit) {
     val context = LocalContext.current
-    TextButton(
-        onClick = {
-            if (url.startsWith(HELP_SCHEME)) onOpen(url.removePrefix(HELP_SCHEME)) else Browser.open(context, url)
-        },
-    ) {
-        Icon(if (url.startsWith(HELP_SCHEME)) Icons.AutoMirrored.Outlined.MenuBook else Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
+    val openPlace = LocalOpenPlace.current
+    val (icon, open) = when {
+        url.startsWith(DocsContent.HELP_SCHEME) -> Icons.AutoMirrored.Outlined.MenuBook to { onOpen(url.removePrefix(DocsContent.HELP_SCHEME)) }
+        url.startsWith(DocsContent.APP_SCHEME) -> Icons.AutoMirrored.Outlined.ArrowForward to { openPlace(url.removePrefix(DocsContent.APP_SCHEME)) }
+        else -> Icons.AutoMirrored.Outlined.OpenInNew to { Browser.open(context, url) }
+    }
+    TextButton(onClick = open) {
+        Icon(icon, contentDescription = null)
         Spacer(Modifier.width(8.dp))
         Text(label)
     }
 }
 
-/** A doc link to another Help page, such as `help:your-data`. */
-const val HELP_SCHEME = "help:"
+/** Opens a place in the app by its id (`app:keys` opens Settings > Keys); the app's navigation provides it. */
+val LocalOpenPlace = staticCompositionLocalOf<(String) -> Unit> { {} }

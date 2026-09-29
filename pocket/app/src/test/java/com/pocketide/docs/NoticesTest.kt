@@ -42,8 +42,8 @@ class NoticesTest {
     }
 
     @Test
-    fun `nothing of the phone computer is still listed`() {
-        val gone = listOf("PRoot", "talloc", "JGit", "Bouncy Castle", "xterm", "code-server")
+    fun `nothing of an earlier version is still listed`() {
+        val gone = listOf("JGit", "Bouncy Castle", "xterm", "Codespaces", "Octicons", "Codicons", "desktop-lite")
         assertTrue(gone.filter { ownText.contains(it) }.toString(), gone.none { ownText.contains(it) })
     }
 
@@ -61,13 +61,18 @@ class NoticesTest {
             "AndroidX" to "Apache License 2.0",
             "Kotlin" to "Apache License 2.0",
             "OkHttp" to "Apache License 2.0",
-            "Octicons" to "MIT License",
-            "Codicons" to "CC BY 4.0",
+            "Haze" to "Apache License 2.0",
+            "PRoot" to "GNU General Public License, version 2",
+            "talloc" to "GNU Lesser General Public License, version 3 or later",
+            "libandroid-shmem" to "BSD 3-Clause licence",
         )
 
         val FULL_TEXTS = listOf(
             "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
-            "Permission is hereby granted, free of charge",
+            "GNU GENERAL PUBLIC LICENSE Version 2, June 1991",
+            "GNU LESSER GENERAL PUBLIC LICENSE Version 3, 29 June 2007",
+            "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007",
+            "Redistribution and use in source and binary forms",
         )
     }
 }

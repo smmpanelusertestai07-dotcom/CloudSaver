@@ -3,18 +3,18 @@ package com.pocketide.docs
 /** The few words PocketIDE uses, in plain language. */
 internal object Glossary {
     val all: List<GlossaryEntry> = listOf(
-        term("Cloud computer", "Your GitHub Codespace: a private machine on GitHub's servers, one per project."),
-        term("Codespace", "GitHub's name for a cloud computer made from a repository."),
-        term("Agent", "An AI that writes and runs code for you: Claude Code, Codex or Antigravity."),
+        term("Computer", "Ubuntu Linux inside PocketIDE, on this phone, where the agents work."),
+        term("Ubuntu", "The Linux system the computer runs; 26.04 is a long-term support (LTS) release."),
+        term("LTS", "Long-term support: Ubuntu publishes security fixes for five years."),
+        term("PRoot", "The program that runs Ubuntu inside an app without root or a virtual machine."),
+        term("code-server", "VS Code for the web, running on the computer; the agents' screens live in it."),
+        term("Agent", "An AI that writes and runs code for you: Claude Code, Codex, Antigravity, or one you add."),
         term("Extension", "An add-on for VS Code. Each agent is its maker's own extension."),
-        term("Repository", "A project's folder of code on GitHub, with its full history."),
-        term("Private", "Only you, and people you invite, can see it."),
-        term("Push", "Sending new commits from the computer to GitHub."),
-        term("Branch", "A separate line of work in a repository; the default branch is usually main."),
-        term("Core-hour", "One hour of one processor core. An hour on a 2-core computer is 2 core-hours."),
-        term("GB-month", "One gigabyte stored for a whole month: how GitHub counts storage."),
-        term("Idle", "No activity: no typing, no file changes, no terminal output."),
-        term("GitHub Actions", "GitHub's machines that build and test your project from workflow files."),
-        term("Settings Sync", "A VS Code feature that copies settings between devices. Keep it off for Codespaces."),
+        term("Open VSX", "The open registry of VS Code extensions, where PocketIDE gets the agents."),
+        term("Verified publisher", "A publisher whose ownership Open VSX has checked."),
+        term("Terminal", "The computer's command line."),
+        term("Key", "A setting a program reads from its environment, like an API key or a token."),
+        term("Project", "A folder in ~/projects on the computer."),
+        term("Repository", "A project's code and full history, on GitHub or on the computer."),
     )
 }

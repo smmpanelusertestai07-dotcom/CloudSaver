@@ -4,126 +4,94 @@ package com.pocketide.docs
 internal object Faq {
     val all: List<FaqEntry> = listOf(
         faq(
-            "sign-in-twice",
-            "computer",
-            "Why does the computer screen ask me to sign in to GitHub again?",
-            "The computer's page is GitHub's own website, and it keeps its own sign-in, apart from the app's. Sign in once with " +
-                "your password and two-factor code; it stays signed in on this phone.",
-            "Passkeys and \"Continue with Google\" work only in a real browser. If you use them, add a password on GitHub, or " +
-                "use ⋯ > Open in Chrome.",
+            "account",
+            "start",
+            "Do I need a PocketIDE account, or GitHub?",
+            "No. PocketIDE has no account and no server. Each agent signs in to its own maker: a Claude, ChatGPT or Google " +
+                "account, or an API key. GitHub is only needed if you want to keep your projects there.",
         ),
         faq(
-            "agent-missing",
+            "set-up-size",
+            DocsContent.COMPUTER_ID,
+            "Why is the set-up so big, and can I stop it?",
+            "It downloads Ubuntu, its tools, VS Code (code-server) and the three agents: about 800 MB, about 3 GB once " +
+                "unpacked. You can leave the app or lose the connection: tap Set up again and it continues where it stopped.",
+        ),
+        faq(
+            "sign-in-chrome",
             "agents",
-            "An agent is not on the screen.",
-            "On a new computer, VS Code installs the agents in the first minute. Then tap the agent's icon at the top of the " +
-                "page, or choose it under ⋯.",
-            "If it is still missing, open ⋯ > Command palette, type \"Extensions: Show Installed\", and check it is there.",
-        ),
-        faq(
-            "stopped-mid-task",
-            "computer",
-            "The computer stopped while an agent was working.",
-            "GitHub stops a computer after its idle time. Typing, taps and terminal output count as activity; an agent " +
-                "working alone in its panel may not, and one waiting for your answer does not. For long tasks, choose a longer " +
-                "idle time in Settings (up to 4 hours); it applies to computers made after the change.",
-        ),
-        faq(
-            "hours-used-up",
-            "usage",
-            "GitHub says my hours are used up.",
-            "The free allowance starts again on the 1st of each month. Until then, GitHub will not start computers unless you " +
-                "set a spending limit on GitHub. Stop computers when you are done to make the hours last.",
-        ),
-        faq(
-            "code-safe",
-            "your-data",
-            "Is my code safe if a computer is deleted?",
-            "What was pushed to GitHub is safe. Files only in the computer go with it; the card on Home warns when a " +
-                "computer has code that is not on GitHub yet.",
-        ),
-        faq(
-            "who-sees-chats",
-            "safety",
-            "Can anyone else see my chats?",
-            "They are inside your own cloud computer, which only you can open. What you ask an agent also goes to its " +
-                "company, under your account and their policy.",
-        ),
-        faq(
-            "slow-typing",
-            "computer",
-            "Typing in the editor feels slow.",
-            "The computer is in a GitHub data centre, so every key travels there and back. Chatting with an agent is not " +
-                "affected much; a steady connection, or Wi-Fi, helps the editor.",
-        ),
-        faq(
-            "updates",
-            "agents",
-            "How do the agents get updated?",
-            "VS Code updates them by itself, from each publisher's own listing. PocketIDE does not pin versions.",
-        ),
-        faq(
-            "which-secrets",
-            "safety",
-            "Which GitHub secrets does what? Do I need any?",
-            "Your projects need none: each agent signs in with its own account. If a tool wants an API key, add it as a " +
-                "Codespaces secret (Settings > Codespaces secrets): it reaches your computers as an environment variable, " +
-                "for the repositories you pick.",
-            "Actions secrets and variables are for builds on GitHub Actions; PocketIDE's own build uses four secrets and " +
-                "two variables. Dependabot secrets are only for private package registries, and Agents secrets only for " +
-                "GitHub's Copilot agent.",
-        ),
-        faq(
-            "email-private",
-            "your-data",
-            "Can people see my email address?",
-            "Commits pushed to a public repository show the author's email, unless GitHub hides it. Turn on \"Keep my email " +
-                "addresses private\" (Settings > Keep your email private); new commits then use a no-reply address.",
-        ),
-        faq(
-            "voice",
-            "agents",
-            "Can I speak instead of typing?",
-            "Yes: use your keyboard's microphone key (Gboard and most phone keyboards have one). It types into the agent's " +
-                "box like any text.",
-        ),
-        faq(
-            "never-charged",
-            "usage",
-            "How do I make sure GitHub never charges me?",
-            "Without a payment method on GitHub, use simply stops at the free allowance. With one, keep the budget at \$0 " +
-                "with \"Stop usage when budget limit is reached\" (Settings > Spending limit).",
+            "Why does sign-in open Chrome?",
+            "Google allows its sign-in only in a real browser, and Chrome keeps your saved passwords. The sign-in page returns " +
+                "to the agent on this phone by itself, and after a sign-in in the terminal the agent's screen reloads signed " +
+                "in. Only Antigravity in the terminal (agy) shows a code to copy into the terminal instead.",
         ),
         faq(
             "agents-internet",
             "agents",
-            "Can the agents use the internet? Do I need to set anything up?",
-            "Yes: the computer is online, and each agent asks before it runs commands or opens sites, by its own rules. " +
-                "Nothing to build: each agent brings its own tools, and PocketIDE adds two browser tools for all three. " +
-                "Keys go in Codespaces secrets only if you use API keys instead of signing in.",
+            "Can the agents use the internet?",
+            "Yes, like on any computer: to install packages, read documentation and call web services. Codex runs its " +
+                "commands in its own sandbox, which blocks the network by default; you can choose another mode in Codex's own " +
+                "settings, where it explains each one.",
         ),
         faq(
-            "desktop-missing",
-            "computer",
-            "⋯ > Desktop shows an error.",
-            "Computers made before PocketIDE 4.1 have no desktop. Open the project from Home and accept the set-up update, " +
-                "then rebuild the computer: ⋯ > Command palette > \"Codespaces: Rebuild Container\". Your project's files " +
-                "stay; the agents' chats go with the old container.",
+            "api-keys",
+            DocsContent.KEYS_ID,
+            "Where do I put an API key or a token?",
+            "Settings > Keys. Each key is an environment variable that the agents, their command-line tools and the terminal " +
+                "see. It is sealed on this phone and never leaves it. Restart code-server after adding one.",
         ),
         faq(
-            "mobile-tools",
-            "builds",
-            "What about Maestro, mobile-mcp and other phone-testing tools?",
-            "They need an Android phone or emulator they can reach, and a cloud computer has neither. Agents can use them " +
-                "on GitHub Actions, where an emulator runs, and record videos you open on GitHub.",
-            "A2UI, from Google, is not a testing tool: it lets agents describe screens as data.",
+            "to-github",
+            "projects",
+            "How do I put a project on GitHub?",
+            "Open the terminal in the project, run gh auth login once (GitHub's page opens in Chrome), then git push. Or ask " +
+                "the agent to do it: it uses the same terminal.",
         ),
         faq(
-            "why-not-phone",
-            "start",
-            "Why not run the computer on the phone?",
-            "PocketIDE 3 did, and it was heavy: gigabytes of downloads, and too slow on many phones. A cloud computer " +
-                "runs the same for everyone, and the phone stays light.",
+            "android-builds",
+            "projects",
+            "Can I build an Android app here?",
+            "Not on the phone itself: Google's Android build tools exist only for x86-64 computers, and a phone cannot run an " +
+                "Android emulator inside an app. Push the project to GitHub and build it on GitHub Actions; an agent can write " +
+                "the workflow.",
+        ),
+        faq(
+            "more-agents",
+            "agents",
+            "Which other agents can I add?",
+            "Any extension on Open VSX from a publisher Open VSX has verified, built for this phone or for every platform: " +
+                "Home > Add agents. Microsoft's own extensions cannot be installed: Microsoft allows them only in its products.",
+        ),
+        faq(
+            "stops-background",
+            DocsContent.BACKGROUND_ID,
+            "The agents stop when I switch apps.",
+            "Set PocketIDE's battery use to Unrestricted, and on Android 12 and newer lift the limit on an app's extra " +
+                "programs. Agents in the background shows both, step by step.",
+        ),
+        faq(
+            "battery",
+            DocsContent.COMPUTER_ID,
+            "Does it drain the battery?",
+            "Only while an agent works: then the phone does what a laptop would, and gets warm on long tasks. When no agent " +
+                "is working, code-server waits quietly. Stop the computer from its notification when you are done.",
+        ),
+        faq(
+            "other-apps",
+            DocsContent.YOUR_DATA_ID,
+            "Can other apps see my projects or chats?",
+            "Not in storage: they are in PocketIDE's private storage, which Android gives no other app. code-server listens " +
+                "only on the phone itself and asks for a password that only PocketIDE has. Like on a computer, though, a " +
+                "program that listens on the phone's own network can be reached by other apps on the phone: a web app an " +
+                "agent runs, or Antigravity's local server while its screen is open. Install only apps you trust.",
+        ),
+        faq(
+            "old-version",
+            DocsContent.COMPUTER_ID,
+            "I used an earlier PocketIDE. What happens to it?",
+            "Version 5 runs the computer on the phone. It removed what earlier versions kept on the phone, including the " +
+                "GitHub sign-in of version 4. Codespaces you made with version 4 stay in your GitHub account until you delete " +
+                "them there.",
         ),
     )
 }

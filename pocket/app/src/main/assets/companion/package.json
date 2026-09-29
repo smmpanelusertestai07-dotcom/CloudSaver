@@ -1,0 +1,37 @@
+{
+  "name": "companion",
+  "displayName": "PocketIDE Companion",
+  "description": "Shows the agent you pick in PocketIDE full screen, and opens its sign-in terminal with the command typed.",
+  "version": "5.0.0",
+  "publisher": "pocketide",
+  "license": "Apache-2.0",
+  "engines": { "vscode": "^1.94.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": true },
+    "virtualWorkspaces": true
+  },
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        { "id": "pocketide-agent-1", "title": "Agent", "icon": "agent.svg" },
+        { "id": "pocketide-agent-2", "title": "Agent", "icon": "agent.svg" },
+        { "id": "pocketide-agent-3", "title": "Agent", "icon": "agent.svg" },
+        { "id": "pocketide-agent-4", "title": "Agent", "icon": "agent.svg" },
+        { "id": "pocketide-agent-5", "title": "Agent", "icon": "agent.svg" },
+        { "id": "pocketide-agent-6", "title": "Agent", "icon": "agent.svg" }
+      ]
+    },
+    "views": {
+      "pocketide-agent-1": [{ "id": "pocketide.placeholder1", "name": "Agent", "when": "pocketide.never" }],
+      "pocketide-agent-2": [{ "id": "pocketide.placeholder2", "name": "Agent", "when": "pocketide.never" }],
+      "pocketide-agent-3": [{ "id": "pocketide.placeholder3", "name": "Agent", "when": "pocketide.never" }],
+      "pocketide-agent-4": [{ "id": "pocketide.placeholder4", "name": "Agent", "when": "pocketide.never" }],
+      "pocketide-agent-5": [{ "id": "pocketide.placeholder5", "name": "Agent", "when": "pocketide.never" }],
+      "pocketide-agent-6": [{ "id": "pocketide.placeholder6", "name": "Agent", "when": "pocketide.never" }]
+    }
+  }
+}

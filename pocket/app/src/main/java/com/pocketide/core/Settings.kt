@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /**
- * The owner's choices, kept on this phone only. Nothing here is the owner's data: code and chats
- * live in their GitHub account, so none of it needs a backup.
+ * The owner's choices, kept on this phone only. A newer version's extra fields are ignored by an
+ * older one, and fields an older version wrote that this one no longer knows are dropped.
  */
 @Serializable
 data class Settings(
@@ -20,38 +20,18 @@ data class Settings(
     val onboardingDone: Boolean = false,
     /** Ask for the phone's screen lock when the app opens, and cover the app in Recents. */
     val appLock: Boolean = false,
-    /** The cloud computer the Computer tab opens: its codespace name. Empty = none chosen yet. */
-    val lastComputer: String = "",
-    val newComputer: NewComputerChoices = NewComputerChoices(),
-    /** Keep the connection open while PocketIDE is in the background, with a notification and a Stop button. */
-    val stayConnected: Boolean = true,
-    /** Show Esc, Tab, arrows and Send above the keyboard on the computer screen. */
+    /** Show Esc, Tab, Ctrl, arrows and Enter above the keyboard on the agent screen. */
     val keyBar: Boolean = true,
-    /**
-     * The owner's own GitHub App, entered in the app when the build carries none (or a different
-     * one). Both values are public. Empty = use the build's.
-     */
-    val gitHubAppClientId: String = "",
-    val gitHubAppSlug: String = "",
+    /** The project the agents work in: a folder in ~/projects; empty = the projects folder itself. */
+    val project: String = "",
+    /** Automatic updates may use mobile data, not only Wi-Fi. */
+    val updatesOnMobileData: Boolean = false,
+    /** When the automatic updates last finished (UTC epoch ms); 0 = never. */
+    val lastUpdate: Long = 0,
 )
 
-/** What a new cloud computer gets. GitHub fixes the idle time and auto-delete time when it creates one. */
-@Serializable
-data class NewComputerChoices(
-    /** GitHub's machine type name; empty = the smallest (2 cores), which uses the fewest free hours. */
-    val machine: String = "",
-    /** Stops by itself after this many minutes without activity (GitHub allows 5 to 240). */
-    val idleMinutes: Int = 30,
-    /** Deleted by GitHub after this many days stopped and unused (GitHub allows 0 to 30). */
-    val keepDays: Int = 30,
-)
-
-/**
- * The settings after "Delete PocketIDE's data from this phone": every choice back to its default.
- * This copy's GitHub App stays, because without it an owner whose build carries none could not
- * sign in again.
- */
-fun Settings.afterDeleteEverything(): Settings = Settings(gitHubAppClientId = gitHubAppClientId, gitHubAppSlug = gitHubAppSlug)
+/** The settings after "Delete everything": every choice back to its default. */
+fun Settings.afterDeleteEverything(): Settings = Settings()
 
 /** Settings on this phone, observed by every screen and module. */
 interface SettingsStore {

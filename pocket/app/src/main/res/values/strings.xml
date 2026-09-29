@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PocketIDE</string>
-    <string name="computer_channel_name">Cloud computer</string>
-    <string name="computer_channel_description">Shown while PocketIDE stays connected to your running cloud computer, with a Stop button.</string>
-    <string name="computer_fgs_subtype">Keeps the app\'s connection to the user\'s own running GitHub Codespace open in the background, shows that it is running, and lets the user stop it.</string>
-    <string name="computer_on_title">Cloud computer is on</string>
-    <string name="computer_on_text">%1$s · Agents keep working on GitHub. It stops by itself when idle.</string>
-    <string name="computer_stop">Stop computer</string>
-    <string name="computer_stopped_title">Cloud computer stopped</string>
-    <string name="computer_stopped_text">%1$s stopped, so it no longer uses your hours. Open it again any time.</string>
+    <string name="computer_channel_name">Computer</string>
+    <string name="computer_channel_description">Shown while PocketIDE\'s computer is on, so the agents keep working when you use other apps. Has a Stop button.</string>
+    <string name="computer_fgs_subtype">Runs the user\'s own Linux computer (code-server and the AI agents they started) on the phone while the user works in other apps or the screen is off, shows that it is running, and lets the user stop it.</string>
+    <string name="computer_on_title">PocketIDE\'s computer is on</string>
+    <string name="computer_on_text">Agents keep working while you use other apps.</string>
+    <string name="computer_stop">Stop</string>
+    <string name="links_channel_name">Sign-in pages</string>
+    <string name="links_channel_description">A sign-in page a program on the computer asked to open while PocketIDE was not on the screen.</string>
+    <string name="link_title">Tap to open the sign-in page</string>
 </resources>

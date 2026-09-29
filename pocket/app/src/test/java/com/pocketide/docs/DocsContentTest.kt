@@ -1,6 +1,7 @@
 package com.pocketide.docs
 
 import com.pocketide.agents.Agent
+import com.pocketide.linux.LinuxPins
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,8 +30,8 @@ class DocsContentTest {
         val ids = DocsContent.sections.map { it.id }
         assertEquals(ids.distinct(), ids)
         listOf(
-            DocsContent.TERMS_ID, DocsContent.PRIVACY_ID, DocsContent.NOTICES_ID,
-            DocsContent.OWNER_SET_UP_ID, DocsContent.YOUR_DATA_ID, DocsContent.USAGE_ID,
+            DocsContent.TERMS_ID, DocsContent.PRIVACY_ID, DocsContent.NOTICES_ID, DocsContent.YOUR_DATA_ID,
+            DocsContent.COMPUTER_ID, DocsContent.KEYS_ID, DocsContent.BACKGROUND_ID, DocsContent.TROUBLE_ID,
         ).forEach { assertTrue(it, DocsContent.section(it) != null) }
     }
 
@@ -48,37 +49,58 @@ class DocsContentTest {
     }
 
     @Test
-    fun `nothing of the phone computer or Drive design is left`() {
-        val gone = listOf("proot", "Google Drive", "vault", "keyring", "Recently deleted", "rootfs", "code-server")
-        val found = gone.filter { everything.contains(it, ignoreCase = true) }
+    fun `nothing of the cloud computer or Drive design is left`() {
+        // The one answer for owners of an earlier version names what that version made.
+        val current = everything.replace(DocsContent.faq.single { it.id == "old-version" }.answer.joinToString(" ", transform = ::blockText), "")
+        val gone = listOf("Codespace", "cloud computer", "GitHub App", "free hours", "core-hour", "Google Drive", "vault", "Recently deleted")
+        val found = gone.filter { current.contains(it, ignoreCase = true) }
         assertTrue("old design words in the docs: $found", found.isEmpty())
     }
 
     @Test
-    fun `facts that change carry the day they were checked`() {
-        assertTrue(everything.contains(DocsContent.CHECKED_ON) || everything.contains(com.pocketide.usage.Allowance.CHECKED_ON))
-        assertTrue(DocsContent.section(DocsContent.USAGE_ID)!!.let(::textOf).contains("as of"))
+    fun `the versions the docs name are the ones the app installs`() {
+        val computer = textOf(DocsContent.section(DocsContent.COMPUTER_ID)!!)
+        assertTrue(computer.contains(LinuxPins.UBUNTU_VERSION))
+        assertTrue(computer.contains(LinuxPins.CODE_SERVER_VERSION))
     }
 
     @Test
-    fun `links are https, and no placeholder is left`() {
+    fun `links are https or lead somewhere in the app that exists, and no placeholder is left`() {
         val links = DocsContent.sections.flatMap { it.blocks }.filterIsInstance<DocBlock.Link>().map { it.url }
         assertTrue(links.isNotEmpty())
-        assertTrue(links.filterNot { it.startsWith("https://") }.toString(), links.all { it.startsWith("https://") })
+        val broken = links.filterNot { url ->
+            url.startsWith("https://") ||
+                (url.startsWith(DocsContent.HELP_SCHEME) && DocsContent.section(url.removePrefix(DocsContent.HELP_SCHEME)) != null) ||
+                (url.startsWith(DocsContent.APP_SCHEME) && AppPlace.of(url.removePrefix(DocsContent.APP_SCHEME)) != null)
+        }
+        assertTrue(broken.toString(), broken.isEmpty())
+        assertTrue("an in-app link", links.any { it.startsWith(DocsContent.APP_SCHEME) })
         assertTrue(listOf("TODO", "FIXME", "lorem").none { everything.contains(it, ignoreCase = true) })
+    }
+
+    @Test
+    fun `search finds settings and answers too, not only pages`() {
+        assertTrue(DocsContent.searchPlaces("app lock").any { it == AppPlace.SETTINGS })
+        assertTrue(DocsContent.searchPlaces("api key").any { it == AppPlace.KEYS })
+        assertTrue(DocsContent.searchPlaces("reset").any { it == AppPlace.COMPUTER })
+        assertTrue(DocsContent.searchQuestions("github").any { it.id == "to-github" })
+        assertTrue(DocsContent.search("child process").any { it.id == DocsContent.BACKGROUND_ID })
     }
 
     @Test
     fun `every agent is named with its maker, sign-in and chats folder`() {
         val page = textOf(DocsContent.section("agents")!!)
         Agent.entries.forEach { agent ->
-            assertTrue(agent.name, page.contains(agent.displayName) && page.contains(agent.maker) && page.contains(agent.chatsFolder))
+            assertTrue(
+                agent.name,
+                page.contains(agent.displayName) && page.contains(agent.maker) && page.contains(agent.chatsFolder) && page.contains(agent.signInCommand),
+            )
         }
     }
 
     @Test
     fun `search finds pages by every word`() {
-        assertTrue(DocsContent.search("free hours").any { it.id == DocsContent.USAGE_ID })
+        assertTrue(DocsContent.search("reset ubuntu").any { it.id == DocsContent.COMPUTER_ID })
         assertTrue(DocsContent.search("zzzz").isEmpty())
         assertTrue(DocsContent.search("  ").isEmpty())
     }

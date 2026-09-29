@@ -13,7 +13,7 @@ class OldVersionFilesTest {
     val tmp = TemporaryFolder()
 
     @Test
-    fun `an update from 3_0 deletes the old computer and keeps this version's sign-in and settings`() {
+    fun `an update from 3_0 deletes the old computer and keeps this version's computer, keys and settings`() {
         val folders = folders()
         // What 3.0.0 kept: the Linux, a project copy, an agent's sign-in, its sealed tokens, the Google account's name.
         val old = listOf(
@@ -29,7 +29,8 @@ class OldVersionFilesTest {
         )
         // This version's own, and the web page's.
         val kept = listOf(
-            put(folders.noBackup, "secure/github"),
+            put(folders.files, "computer/home/projects/app/main.kt"),
+            put(folders.noBackup, "secure/keys"),
             put(folders.data, "shared_prefs/pocketide.settings.xml"),
             put(folders.data, "shared_prefs/pocketide.settings.xml.bak"),
             put(folders.data, "shared_prefs/WebViewChromiumPrefs.xml"),
@@ -41,7 +42,21 @@ class OldVersionFilesTest {
 
         old.forEach { assertFalse("$it should be gone", it.exists()) }
         kept.forEach { assertTrue("$it should stay", it.exists()) }
-        assertEquals(emptyList<String>(), folders.files.list()?.toList())
+        assertEquals(listOf("computer"), folders.files.list()?.toList())
+    }
+
+    @Test
+    fun `an update from 4_x deletes the GitHub sign-in and keeps the keys`() {
+        val folders = folders()
+        put(folders.noBackup, "old-versions-removed")
+        val gitHub = put(folders.noBackup, "secure/github.token")
+        val keys = put(folders.noBackup, "secure/keys")
+
+        assertTrue(OldVersionFiles.removeOnce(folders))
+
+        assertFalse(gitHub.exists())
+        assertTrue(keys.exists())
+        assertFalse("runs once", OldVersionFiles.removeOnce(folders))
     }
 
     @Test
