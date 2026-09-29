@@ -167,7 +167,7 @@ class Ide(
                     "--extensions-dir", IdeFiles.EXTENSIONS,
                     LinuxDirs.GUEST_PROJECTS,
                 ),
-                env = keys() + mapOf("BROWSER" to IdeFiles.BROWSER),
+                env = IdeFiles.serverEnvironment(keys()),
                 workDir = LinuxDirs.GUEST_PROJECTS,
             ),
         )

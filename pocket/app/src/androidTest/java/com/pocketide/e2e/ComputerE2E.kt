@@ -1,8 +1,12 @@
 package com.pocketide.e2e
 
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +43,8 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * The whole app on this device, end to end, as a new owner uses it: Set up (Ubuntu from the
@@ -148,9 +154,53 @@ class ComputerE2E {
             }
             SystemClock.sleep(POLL_MS)
         }
+        // What the page, Linux and the screen were doing when the wait ran out.
+        note("page answers: ${pageAnswers()}")
+        note("busiest programs:\n${busiestPrograms()}")
+        runCatching { shoot("waiting") }.onFailure { note("no picture: ${it.message}") }
         val said = if (companionLog.isFile) companionLog.readText().takeLast(MAX_LOG) else "(no companion log)"
         throw AssertionError("The companion never logged \"$line\":\n$said")
     }
+
+    /** Whether the page's JavaScript still runs: it answers a one-line script within a few seconds. */
+    private fun pageAnswers(): String {
+        val asked = CountDownLatch(1)
+        val answered = CountDownLatch(1)
+        var found = false
+        // Posted, not run with runOnMainSync, so a busy main thread is reported instead of waited on.
+        Handler(Looper.getMainLooper()).post {
+            val page = webViewIn(compose.activity.window.decorView)
+            found = page != null
+            page?.evaluateJavascript("document.readyState") { answered.countDown() }
+            asked.countDown()
+        }
+        return when {
+            !asked.await(PROBE_MS, TimeUnit.MILLISECONDS) -> "the app's main thread is busy"
+            !found -> "no page on the screen"
+            answered.await(PROBE_MS, TimeUnit.MILLISECONDS) -> "yes"
+            else -> "no answer in ${PROBE_MS / 1000} s"
+        }
+    }
+
+    private fun webViewIn(view: View): WebView? = when (view) {
+        is WebView -> view
+        is ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { webViewIn(view.getChildAt(it)) }
+        else -> null
+    }
+
+    /** The app's programs (Linux's among them), by the processor time each has used. */
+    private fun busiestPrograms(): String = File("/proc").listFiles().orEmpty()
+        .filter { dir -> dir.name.all(Char::isDigit) }
+        .mapNotNull { dir ->
+            val command = runCatching { File(dir, "cmdline").readText().replace('\u0000', ' ').trim() }.getOrNull()
+            val fields = runCatching { File(dir, "stat").readText().substringAfterLast(')').trim().split(' ') }.getOrNull()
+            if (command.isNullOrEmpty() || fields == null) return@mapNotNull null
+            val ticks = (fields.getOrNull(UTIME)?.toLongOrNull() ?: 0) + (fields.getOrNull(STIME)?.toLongOrNull() ?: 0)
+            ticks to command.take(MAX_COMMAND)
+        }
+        .sortedByDescending { it.first }
+        .take(MAX_PROGRAMS)
+        .joinToString("\n") { (ticks, command) -> "  ${ticks / TICKS_PER_SECOND} s  $command" }
 
     private fun status(url: String): Int = (URL(url).openConnection() as HttpURLConnection).run {
         instanceFollowRedirects = false
@@ -192,5 +242,13 @@ class ComputerE2E {
         const val MAX_NOTE = 200
         const val MAX_LOG = 4000
         const val PASTED = " --version"
+        const val PROBE_MS = 5000L
+        const val MAX_PROGRAMS = 12
+        const val MAX_COMMAND = 160
+        const val TICKS_PER_SECOND = 100
+
+        /** utime and stime in /proc/<pid>/stat, counted from the field after the command's name. */
+        const val UTIME = 11
+        const val STIME = 12
     }
 }

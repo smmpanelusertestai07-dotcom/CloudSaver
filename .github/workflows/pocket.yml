@@ -546,6 +546,8 @@ jobs:
             "$adb" exec-out run-as com.pocketide.debug cat "files/e2e/$name" > "$e2e/$name"
           done
           "$adb" exec-out run-as com.pocketide.debug cat files/computer/home/.pocketide/companion.log > "$e2e/companion.log" 2> /dev/null || true
+          # code-server's own logs: the extension host's and each agent's output.
+          "$adb" exec-out run-as com.pocketide.debug tar -cf - files/computer/home/.local/share/code-server/logs > "$e2e/code-server-logs.tar" 2> /dev/null || true
           [ -f "$e2e/steps.txt" ] && cat "$e2e/steps.txt"
           if ! grep -q '^OK (' <<< "$result"; then
             echo "::error::The end-to-end run failed; its output and steps are above."

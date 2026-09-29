@@ -149,7 +149,8 @@ async function main() {
   fs.writeFileSync(path.join(HOME, '.pocketide/code-server.yaml'), `hashed-password: "${token}"\n`, { mode: 0o600 });
 
   start(['/opt/code-server/lib/node', '/opt/pocketide/forwarder.js', String(forwarderPort)], 'forwarder');
-  start(['/usr/bin/env', 'BROWSER=/opt/pocketide/bin/xdg-open', '/opt/code-server/bin/code-server',
+  // The environment the app gives code-server (IdeFiles.serverEnvironment): VS Code's own gallery off.
+  start(['/usr/bin/env', 'BROWSER=/opt/pocketide/bin/xdg-open', 'EXTENSIONS_GALLERY={}', '/opt/code-server/bin/code-server',
     '--bind-addr', `127.0.0.1:${port}`, '--auth', 'password', '--config', `${G}/.pocketide/code-server.yaml`,
     '--disable-telemetry', '--disable-update-check', '--disable-workspace-trust', '--disable-getting-started-override',
     '--proxy-domain', `{{port}}.localhost:${forwarderPort}`, '--reconnection-grace-time', '300',

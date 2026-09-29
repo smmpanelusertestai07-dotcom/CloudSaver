@@ -33,12 +33,18 @@ const ATTEMPTS = 20;
 const RETRY_MS = 1500;
 const CHECK_MS = 2000;
 const SHELL_WAIT_MS = 8000;
+// A request still running after this lets the next ones go: one command VS Code never answers must
+// not stop every later request.
+const REQUEST_MS = 60 * 1000;
+// How often the log may say that requests wait for a screen that does not answer.
+const SILENT_LOG_MS = 30 * 1000;
 const MAX_TYPED = 2000;
 const DO_NOT_DISTURB = 'notifications.toggleDoNotDisturbMode';
 const SPARE_CONTAINERS = ['pocketide-agent-1', 'pocketide-agent-2', 'pocketide-agent-3',
   'pocketide-agent-4', 'pocketide-agent-5', 'pocketide-agent-6'];
 
 let busy = false;
+let lastSilentLog = 0;
 // The agent on screen, to bring back when the editors over it close.
 let current = null;
 
@@ -159,14 +165,33 @@ async function takeRequests(stopped) {
   busy = true;
   try {
     const names = pending();
-    if (names.length === 0 || !(await connected())) return;
+    if (names.length === 0) return;
+    if (!(await connected())) {
+      if (Date.now() - lastSilentLog > SILENT_LOG_MS) {
+        lastSilentLog = Date.now();
+        log(`the screen does not answer; ${names.length} waiting`);
+      }
+      return;
+    }
     for (const name of names) {
       const request = claim(name);
-      if (request) await handle(request, stopped);
+      if (request) await within(handle(request, stopped), REQUEST_MS, () => log(`request ${request.do} still running; the next go ahead`));
     }
   } finally {
     busy = false;
   }
+}
+
+// [work], or [ms] of it: [late] runs when it is still going then, and the caller moves on.
+function within(work, ms, late) {
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      late();
+      resolve();
+    }, ms);
+  });
+  return Promise.race([Promise.resolve(work).then(() => undefined, () => undefined), timeout]).finally(() => clearTimeout(timer));
 }
 
 function pending() {
