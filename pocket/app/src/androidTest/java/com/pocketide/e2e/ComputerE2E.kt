@@ -148,6 +148,10 @@ class ComputerE2E {
     private fun awaitCompanion(line: String) {
         val deadline = SystemClock.uptimeMillis() + COMPANION_MS
         while (SystemClock.uptimeMillis() < deadline) {
+            // In a Compose test the screen recomposes, and its effects run, only when the test lets
+            // Compose's clock go on: without this, a new route set a moment ago is never composed,
+            // and the screen never sends its request.
+            compose.waitForIdle()
             if (companionLog.isFile && companionLog.readText().contains(line)) {
                 note("companion: $line")
                 return
