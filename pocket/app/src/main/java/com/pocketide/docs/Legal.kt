@@ -46,8 +46,8 @@ internal object Legal {
         p(
             "What leaves the phone: each agent sends its company what it needs to work (your prompts, and the code and files " +
                 "it reads) under your account there and that company's policy; PocketIDE cannot delete their copy. Downloads " +
-                "come from Ubuntu, GitHub (code-server's releases), Open VSX and Google (Antigravity's tool); they see the " +
-                "request, like any website does.",
+                "come from Ubuntu, GitHub (code-server's releases), Open VSX, Google (Antigravity's tool), and nodejs.org " +
+                "with npm's registry (npm); they see the request, like any website does.",
         ),
         p(
             "Permissions: internet, network state, notifications, the foreground service that keeps the computer running, and " +

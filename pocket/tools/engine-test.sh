@@ -102,7 +102,9 @@ PY
     unzip -q "$ENGINE/dl/proot-$version.zip" -d "$ENGINE/proot-src"
   fi
   dir=$(find "$ENGINE/proot-src" -mindepth 1 -maxdepth 1 -type d -name 'proot-*' | head -n 1)
-  make -s -C "$dir/src" proot loader/loader > /dev/null
+  # Without the loader for 32-bit programs, as the app ships only the 64-bit one (and an arm64
+  # machine's gcc has no -m32 to build it with). Ubuntu arm64 and amd64 are 64-bit throughout.
+  make -s -C "$dir/src" HAS_LOADER_32BIT= proot loader/loader > /dev/null
   PROOT="$dir/src/proot"
   PROOT_LOADER="$dir/src/loader/loader"
   export PROOT PROOT_LOADER

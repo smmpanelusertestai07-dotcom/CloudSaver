@@ -46,7 +46,7 @@ import java.net.URL
  * opens. Each screen is saved as a picture under files/e2e, with a log of every step, which CI
  * reads back with run-as.
  *
- * Runs only when asked (`am instrument -e e2e true`): it downloads about 800 MB and takes a while.
+ * Runs only when asked (`am instrument -e e2e true`): it downloads about 1 GB and takes a while.
  */
 @RunWith(AndroidJUnit4::class)
 class ComputerE2E {

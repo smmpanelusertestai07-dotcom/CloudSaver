@@ -143,7 +143,7 @@ private fun ComputerCard(state: ComputerState, onSetUp: () -> Unit, onComputer: 
                 Gap(4.dp)
                 Text(
                     "One tap installs Ubuntu 26.04 LTS, VS Code (code-server) and the three official agents inside PocketIDE. " +
-                        "It downloads about 800 MB, needs about 3 GB free, and takes 15 to 30 minutes; Wi-Fi is best. " +
+                        "It downloads about 1 GB, needs about 3 GB free, and takes 15 to 30 minutes; Wi-Fi is best. " +
                         "If anything interrupts it, it continues where it stopped.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -309,7 +309,7 @@ private fun AgentList(
                 onOpen = { onOpen(agent.extensionId) },
                 onInstall = { scope.launch { runCatching { graph.agents.install(agent.publisher, agent.extensionName) } } },
                 menu = listOf(
-                    "Sign in with the terminal" to { onSignIn(agent.extensionId, agent.signInCommand, "Sign in: ${agent.displayName}") },
+                    signInLabel(agent) to { onSignIn(agent.extensionId, agent.signInCommand, "Sign in: ${agent.displayName}") },
                 ),
             )
         }
@@ -431,6 +431,13 @@ internal fun ListRow(leading: @Composable () -> Unit, title: String, subtitle: S
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/**
+ * The terminal sign-in, named for what it signs in: the agent itself where its screen shares the
+ * terminal's sign-in, else its command-line tool (Antigravity's screen signs in on its own).
+ */
+internal fun signInLabel(agent: Agent): String =
+    if (agent.sharedSignInFile != null) "Sign in with the terminal" else "${agent.signInCommand} in the terminal"
 
 /** Decimal megabytes, as Android's own storage screen counts them. */
 internal fun megabytes(bytes: Long): String = String.format(Locale.ENGLISH, "%.0f MB", bytes / BYTES_PER_MB)

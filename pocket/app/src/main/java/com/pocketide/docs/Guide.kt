@@ -15,7 +15,7 @@ internal object Guide {
                 "and keep working while you use other apps.",
         ),
         steps(
-            "On Home, tap Set up. It installs Ubuntu, VS Code and the three agents (about 800 MB; Wi-Fi is best).",
+            "On Home, tap Set up. It installs Ubuntu, VS Code and the three agents (about 1 GB to download; Wi-Fi is best).",
             "Tap Claude Code, Codex or Antigravity. Its own screen opens, full screen.",
             "Sign in to that agent once, with the button on its screen: the sign-in page opens in Chrome and comes back " +
                 "by itself.",
@@ -43,7 +43,8 @@ internal object Guide {
             "Installed: git, curl, Python 3 (with venv), Node.js and npm, ripgrep, jq, SQLite, SSH, GitHub's gh, and VS Code " +
                 "for the web (code-server ${LinuxPins.CODE_SERVER_VERSION}). Agents install more with apt when a project needs it.",
             "Every download is checked before it is used: Ubuntu's image and code-server against checksums pinned in the app, " +
-                "Ubuntu's packages by apt against Ubuntu's signatures, agents against Open VSX's checksum and signature.",
+                "Ubuntu's packages by apt against Ubuntu's signatures, agents against Open VSX's checksum and signature, npm " +
+                "against the checksum its registry publishes.",
             "Updates run by themselves once a day while the computer is on: Ubuntu's updates (security fixes included), newer " +
                 "agent releases, and the code-server this app version brings. On Wi-Fi only, unless you allow mobile data.",
             "Space: about 3 GB with the three agents. The Computer screen shows what it takes.",
@@ -172,7 +173,8 @@ internal object Guide {
             "On the phone, inside PocketIDE: the computer, your projects, each agent's sign-in, settings and chats, your keys " +
                 "(sealed) and PocketIDE's settings. Android's backup does not copy them.",
             "What leaves the phone: what you ask an agent, and the code it reads, goes to its company under your account " +
-                "there. Downloads come from Ubuntu, code-server's GitHub releases, Open VSX and Google (Antigravity's agy).",
+                "there. Downloads come from Ubuntu, code-server's GitHub releases, Open VSX, Google (Antigravity's agy) " +
+                "and npm (from nodejs.org and npm's registry).",
             "Programs on the computer can reach the internet, like on any computer, and run with PocketIDE's access on the " +
                 "phone: install only what you trust.",
             "Delete: Settings > Your data > Delete everything, or uninstall PocketIDE.",

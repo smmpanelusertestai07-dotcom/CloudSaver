@@ -70,6 +70,7 @@ import com.pocketide.ide.IdeFiles
 import com.pocketide.ide.IdeState
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.WorkspaceRoute
+import com.pocketide.ui.screens.home.signInLabel
 import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.PrimaryAction
@@ -201,6 +202,7 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
         TopBar(
             title = terminalTitle ?: title,
             onBack = back,
+            signInLabel = agent?.let(::signInLabel),
             onSignIn = agent?.let { { signInWith(it) } },
             onRefresh = { if (terminalTitle == null && route.agentId.isNotEmpty()) reloadAndShow() else graph.page.reload() },
             onTerminal = { openTerminal("Terminal", "") },
@@ -283,6 +285,7 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
 private fun TopBar(
     title: String,
     onBack: () -> Unit,
+    signInLabel: String?,
     onSignIn: (() -> Unit)?,
     onRefresh: () -> Unit,
     onTerminal: () -> Unit,
@@ -300,7 +303,7 @@ private fun TopBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (onSignIn != null) IconButton(onClick = onSignIn) { Icon(Icons.AutoMirrored.Outlined.Login, contentDescription = "Sign in with the terminal") }
+            if (onSignIn != null) IconButton(onClick = onSignIn) { Icon(Icons.AutoMirrored.Outlined.Login, contentDescription = signInLabel) }
             IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, contentDescription = "Reload the screen") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More") }

@@ -47,6 +47,7 @@ import app.cloudsaver.util.Volumes
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -119,8 +120,22 @@ class HomeFilesE2eTest {
     @get:Rule
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 
+    /**
+     * Composition's coroutines run on the main thread, as they do in the app.
+     *
+     * Left at its default this rule runs every LaunchedEffect and produceState
+     * on an unconfined test dispatcher, so a coroutine carries on on whichever
+     * thread woke it: the Files thumbnails finish on an IO thread, the details
+     * dialog's database read on Room's, and each then publishes its snapshot
+     * changes from there. A dialog that has just been dismissed is off its
+     * window but not yet taken apart, and Compose ran its invalidations inline
+     * on that background thread while the main thread was dismantling the same
+     * dialog - "Detected multithreaded access to SnapshotStateObserver", once,
+     * on an API 35 emulator. A standard dispatcher queues those continuations
+     * for the main thread, which drains them whenever the test waits for idle.
+     */
     @get:Rule
-    val compose = createEmptyComposeRule()
+    val compose = createEmptyComposeRule(effectContext = StandardTestDispatcher())
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context: Context get() = instrumentation.targetContext

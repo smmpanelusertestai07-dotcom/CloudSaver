@@ -14,7 +14,7 @@ internal object Faq {
             "set-up-size",
             DocsContent.COMPUTER_ID,
             "Why is the set-up so big, and can I stop it?",
-            "It downloads Ubuntu, its tools, VS Code (code-server) and the three agents: about 800 MB, about 3 GB once " +
+            "It downloads Ubuntu, its tools, VS Code (code-server) and the three agents: about 1 GB, about 3 GB once " +
                 "unpacked. You can leave the app or lose the connection: tap Set up again and it continues where it stopped.",
         ),
         faq(
