@@ -190,7 +190,8 @@ class GplNotice(unittest.TestCase):
                 self.assertTrue(head, f"{patch} starts with no word on what it fixes")
                 self.assertIn("+++ b/src/", text, f"{patch} is not a patch -p1 of PRoot's source")
         built = [r for r in gpl_notice.releases() if r.get("build")][0]
-        self.assertEqual(["patches/x86_64-seccomp-sysnum.patch", "patches/link2symlink-count-on-success.patch"],
+        self.assertEqual(["patches/x86_64-seccomp-sysnum.patch", "patches/link2symlink-count-on-success.patch",
+                          "patches/arm-seccomp-sysarg1.patch"],
                          built.get("patches", []))
 
     def test_the_notice_lists_the_patches(self):
