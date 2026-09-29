@@ -700,11 +700,14 @@ jobs:
           "$adb" logcat -c || true
           launch
           check new
-          "$adb" shell pm grant "$pkg" android.permission.POST_NOTIFICATIONS 2> /dev/null || true
           for _ in 1 2 3; do
             tap "Get started" && break
             "$adb" shell input swipe 540 1800 540 600 300
           done
+          # Android 13 and newer ask for the notification permission here, as an owner sees it
+          # (granting it beforehand would skip the request, and a crash in it once went unseen).
+          sleep 5
+          tap "Allow" || true
           check home
           # The other tabs, then Set up: it starts the foreground service and the downloads. On an
           # x86-64 emulator the arm64 Linux cannot run, so set-up ends in an error the app shows;
