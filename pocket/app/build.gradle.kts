@@ -10,9 +10,6 @@ plugins {
 }
 
 // Owner configuration comes from Gradle properties or the environment, never from the source.
-// CI passes the GitHub App's client ID (an Actions variable) and the signing certificate's
-// SHA-256; a local build without them still compiles and runs, and the app explains what is
-// missing instead of failing.
 fun config(name: String): String {
     val local = Properties().apply {
         val file = rootProject.file("local.properties")
@@ -26,10 +23,13 @@ fun config(name: String): String {
 
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+/** An extra jniLibs folder with PRoot for x86-64, for the end-to-end test on the Android emulator. */
+val emulatorLibs: String = (project.findProperty("pocketide.emulatorLibs") as String?).orEmpty()
+
 // The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
 // from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
-// before it, and 4.0.0 (40000) installs over 3.0.0 (30000). tools/gates/version.py checks both.
-val appVersion = "4.1.0"
+// before it, and 5.0.0 (50000) installs over 4.1.0 (40100). tools/gates/version.py checks both.
+val appVersion = "5.0.0"
 
 fun versionCodeOf(version: String): Int {
     val parts = version.split(".").map { it.toIntOrNull() ?: -1 }
@@ -49,16 +49,24 @@ android {
         versionCode = versionCodeOf(appVersion)
         versionName = appVersion
 
+        // PRoot, the one native program, is built for phones (arm64). The end-to-end test adds an
+        // x86-64 build for the Android emulator with -Ppocketide.emulatorLibs=<folder of jniLibs>.
+        ndk {
+            abiFilters += "arm64-v8a"
+            if (emulatorLibs.isNotEmpty()) abiFilters += "x86_64"
+        }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "GITHUB_APP_CLIENT_ID", quoted(config("POCKETIDE_GITHUB_APP_CLIENT_ID")))
-        buildConfigField("String", "GITHUB_APP_SLUG", quoted(config("POCKETIDE_GITHUB_APP_SLUG")))
-        buildConfigField("String", "SIGNING_CERT_SHA256", quoted(config("POCKETIDE_SIGNING_CERT_SHA256").lowercase()))
-        // Where the app looks for its updates. CI passes the repository its release job publishes to
-        // (tools/gates/workflow.py checks it), so a moved project moves its phones with it; the
-        // fallback serves local builds only.
+        // Where the app's releases are published. CI passes the repository its release job
+        // publishes to (tools/gates/workflow.py checks it); the fallback serves local builds only.
         buildConfigField("String", "RELEASES_REPO", quoted(config("POCKETIDE_RELEASES_REPO").ifEmpty { "smmpanelusertestai07-dotcom/CloudSaver" }))
-        buildConfigField("String", "RELEASE_TAG_PREFIX", quoted("pocketide-v"))
+    }
+
+    sourceSets {
+        getByName("main") {
+            if (emulatorLibs.isNotEmpty()) jniLibs.srcDir(emulatorLibs)
+        }
     }
 
     buildTypes {
@@ -86,6 +94,9 @@ android {
     }
 
     packaging {
+        // PRoot and its loader are run from the app's native library folder, the one place Android
+        // lets an app run programs of its own (W^X), so the libraries are extracted at install.
+        jniLibs { useLegacyPackaging = true }
         resources {
             excludes += setOf(
                 "/META-INF/{AL2.0,LGPL2.1}",
@@ -183,6 +194,7 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
     implementation(libs.okhttp)
+    implementation(libs.haze)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.compose.ui.tooling)

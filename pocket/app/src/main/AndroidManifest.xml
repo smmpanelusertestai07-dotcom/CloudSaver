@@ -16,11 +16,17 @@
         tools:node="remove" />
 
     <queries>
-        <!-- Chrome (or another browser) for Custom Tabs: sign-in pages and links open there. -->
+        <!-- Chrome (or another browser) for Custom Tabs: sign-in pages and links open there, and a
+             web app an agent runs on this phone (http://localhost). -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="http" />
         </intent>
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
@@ -57,11 +63,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- After a sign-in in Chrome, an agent's "Return to the editor" link (code-server's
+                 own scheme, code-oss:) brings PocketIDE back to the front. Nothing is read from it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="code-oss" />
+            </intent-filter>
         </activity>
 
-        <!-- Keeps the connection to a running cloud computer while the app is in the background. -->
+        <!-- Keeps the app, and with it the computer's programs, running while it is in the background. -->
         <service
-            android:name=".cloud.ComputerService"
+            android:name=".ide.ComputerService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

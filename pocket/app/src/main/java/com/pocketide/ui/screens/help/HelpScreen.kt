@@ -40,19 +40,41 @@ import com.pocketide.ui.shell.SectionLabel
 fun HelpScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     var query by remember { mutableStateOf("") }
     val found = remember(query) { DocsContent.search(query) }
+    val places = remember(query) { DocsContent.searchPlaces(query) }
+    val questions = remember(query) { DocsContent.searchQuestions(query) }
+    val openPlace = LocalOpenPlace.current
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
         TitleRow("Help", onBack)
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            label = { Text("Search Help") },
+            label = { Text("Search Help and settings") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         if (query.isNotBlank()) {
-            SectionLabel("Found")
-            if (found.isEmpty()) Text("Nothing matches. Try one word, such as \"hours\" or \"sign in\".")
+            if (found.isEmpty() && places.isEmpty() && questions.isEmpty()) {
+                SectionLabel("Found")
+                Text("Nothing matches. Try one word, such as \"hours\", \"keys\" or \"sign in\".")
+            }
+            if (places.isNotEmpty()) SectionLabel("In the app")
+            places.forEach { place ->
+                ListItem(
+                    headlineContent = { Text(place.title) },
+                    supportingContent = { Text(place.about) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.clickable { openPlace(place.id) },
+                )
+            }
+            if (found.isNotEmpty()) SectionLabel("Guide")
             found.forEach { SectionRow(it, onOpen) }
+            if (questions.isNotEmpty()) SectionLabel("Questions")
+            questions.forEach { entry ->
+                Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(entry.question, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    entry.answer.forEach { DocBlockView(it, onOpen) }
+                }
+            }
         } else {
             SectionLabel("Guide")
             DocsContent.guide.forEach { SectionRow(it, onOpen) }

@@ -4,449 +4,444 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.Agent
-import com.pocketide.cloud.Computer
-import com.pocketide.cloud.ComputerService
-import com.pocketide.cloud.ComputersView
+import com.pocketide.agents.InstallStep
+import com.pocketide.agents.InstalledExtension
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
-import com.pocketide.ui.components.ActionRow
+import com.pocketide.ide.Projects
+import com.pocketide.linux.ComputerState
 import com.pocketide.ui.components.AgentLogo
-import com.pocketide.ui.components.Formats
-import com.pocketide.ui.components.GitHubLogo
-import com.pocketide.ui.components.StatusChip
+import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.ExtensionLogo
+import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.Tone
-import com.pocketide.ui.components.toneColor
-import com.pocketide.ui.screens.computer.label
-import com.pocketide.ui.screens.computer.machineLine
-import com.pocketide.ui.screens.computer.tone
-import com.pocketide.ui.shell.BrandMark
+import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
+import com.pocketide.ui.shell.OutlinedCard
+import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.SectionLabel
-import com.pocketide.ui.web.Browser
-import com.pocketide.usage.CloudUsage
-import kotlinx.coroutines.CancellationException
+import com.pocketide.ui.shell.ShellPage
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
- * The owner's day starts here: the three agents, the cloud computers (read live from GitHub),
- * new projects, and this month's hours.
+ * Home: the computer's state with its one set-up button, the project the agents work in, the
+ * agents (each opens full screen), and the terminal.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList") // One callback per place Home leads to.
 fun HomeScreen(
-    onOpenComputer: (Agent?) -> Unit,
-    onNewProject: () -> Unit,
-    onOpenRepo: () -> Unit,
-    onUsage: () -> Unit,
+    onOpenAgent: (String) -> Unit,
+    onSignIn: (agentId: String, command: String, title: String) -> Unit,
+    onTerminal: () -> Unit,
+    onAddAgents: () -> Unit,
+    onComputer: () -> Unit,
     onHelp: () -> Unit,
+    onHelpPage: (String) -> Unit,
 ) {
-    val context = LocalContext.current
-    val graph = context.graph
-    val scope = rememberCoroutineScope()
-    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val view by graph.computers.view.collectAsStateWithLifecycle()
-    var refreshing by remember { mutableStateOf(false) }
-    var problem by remember { mutableStateOf<String?>(null) }
-    var toDelete by remember { mutableStateOf<Computer?>(null) }
-    var needsProject by remember { mutableStateOf(false) }
-
-    val refresh: () -> Unit = {
-        scope.launch {
-            refreshing = true
-            problem = runCatchingMessage { graph.computers.refresh() }
-            refreshing = false
-        }
-    }
-    LaunchedEffect(Unit) { refresh() }
-    val usage by produceState<CloudUsage?>(null) {
-        value = try {
-            graph.usage.read()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    val computers = when (val v = view) {
-        is ComputersView.Ready -> v.computers
-        is ComputersView.Failed -> v.last
-        ComputersView.Loading -> emptyList()
-    }
-    val open = { computer: Computer, agent: Agent? ->
-        graph.settings.update { it.copy(lastComputer = computer.name) }
-        onOpenComputer(agent)
-    }
-
-    PullToRefreshBox(isRefreshing = refreshing, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
-        HomeList(
-            login = account?.login,
-            view = view,
-            computers = computers,
-            problem = problem,
-            usage = usage,
-            now = graph.clock.now(),
-            actions = HomeActions(
-                onHelp = onHelp,
-                onAgent = { agent ->
-                    val target = computers.firstOrNull { it.name == settings.lastComputer } ?: computers.firstOrNull()
-                    if (target == null) needsProject = true else open(target, agent)
-                },
-                onNewProject = onNewProject,
-                onOpenRepo = onOpenRepo,
-                onUsage = onUsage,
-                computer = ComputerActions(
-                    onOpen = { open(it, null) },
-                    onStop = { computer ->
-                        scope.launch {
-                            problem = runCatchingMessage { graph.computers.stop(computer.name) }
-                            if (problem == null) {
-                                ComputerService.disconnect(context)
-                                if (graph.computerPage.computerName == computer.name) graph.computerPage.release()
-                            }
-                        }
-                    },
-                    onChrome = { Browser.open(context, it.webUrl) },
-                    onDelete = { toDelete = it },
-                ),
-            ),
-        )
-    }
-
-    toDelete?.let { computer ->
-        DeleteComputerDialog(
-            computer = computer,
-            onDismiss = { toDelete = null },
-            onConfirm = {
-                toDelete = null
-                scope.launch {
-                    problem = runCatchingMessage { graph.computers.delete(computer.name) }
-                    if (problem == null && settings.lastComputer == computer.name) {
-                        graph.settings.update { it.copy(lastComputer = "") }
-                        ComputerService.disconnect(context)
-                        graph.computerPage.release()
-                    }
-                }
-            },
-        )
-    }
-    if (needsProject) {
-        AlertDialog(
-            onDismissRequest = { needsProject = false },
-            title = { Text("First, a project") },
-            text = { Text("Agents work inside a project's cloud computer. Make a new project, or open one of your repositories.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    needsProject = false
-                    onNewProject()
-                }) { Text("New project") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    needsProject = false
-                    onOpenRepo()
-                }) { Text("Open a repository") }
-            },
-        )
-    }
-}
-
-/** Everything the Home list can ask for. */
-private class HomeActions(
-    val onHelp: () -> Unit,
-    val onAgent: (Agent) -> Unit,
-    val onNewProject: () -> Unit,
-    val onOpenRepo: () -> Unit,
-    val onUsage: () -> Unit,
-    val computer: ComputerActions,
-)
-
-/** What a computer's card can ask for. */
-private class ComputerActions(
-    val onOpen: (Computer) -> Unit,
-    val onStop: (Computer) -> Unit,
-    val onChrome: (Computer) -> Unit,
-    val onDelete: (Computer) -> Unit,
-)
-
-@Composable
-private fun HomeList(
-    login: String?,
-    view: ComputersView,
-    computers: List<Computer>,
-    problem: String?,
-    usage: CloudUsage?,
-    now: Long,
-    actions: HomeActions,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { Header(login = login, onHelp = actions.onHelp) }
-        item { SectionLabel("Agents") }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Agent.entries.forEach { agent -> AgentTile(agent, Modifier.weight(1f)) { actions.onAgent(agent) } }
-            }
-        }
-        item {
-            SectionLabel("Cloud computers")
-            ActionRow {
-                FilledTonalButton(onClick = actions.onNewProject) {
-                    Icon(Icons.Outlined.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("New project")
-                }
-                OutlinedButton(onClick = actions.onOpenRepo) {
-                    Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Open a repository")
-                }
-            }
-        }
-        problem?.let { item { NoticeCard(it, Tone.ERROR) } }
-        if (view is ComputersView.Loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        if (view is ComputersView.Ready && computers.isEmpty()) item { EmptyComputers() }
-        items(computers, key = { it.name }) { computer ->
-            ComputerCard(
-                computer = computer,
-                now = now,
-                onOpen = { actions.computer.onOpen(computer) },
-                onStop = { actions.computer.onStop(computer) },
-                onChrome = { actions.computer.onChrome(computer) },
-                onDelete = { actions.computer.onDelete(computer) },
-            )
-        }
-        usage?.let { item { UsageStrip(it, actions.onUsage) } }
-    }
-}
-
-@Composable
-private fun Header(login: String?, onHelp: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        BrandMark(44.dp)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text("PocketIDE", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(DocsContent.TAGLINE, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-        }
-        IconButton(onClick = onHelp) { Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = "Help") }
-    }
-    if (login != null) {
-        Spacer(Modifier.padding(top = 8.dp))
+    val graph = LocalContext.current.graph
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
+    val installed by graph.agents.installed.collectAsStateWithLifecycle()
+    val activity by graph.agents.activity.collectAsStateWithLifecycle()
+    val problem by graph.agents.problem.collectAsStateWithLifecycle()
+    val ready = computer == ComputerState.Ready || computer is ComputerState.Updating
+    LaunchedEffect(ready) { if (ready) runCatching { graph.agents.refresh() } }
+    ShellPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            GitHubLogo(size = 18.dp)
-            Spacer(Modifier.width(8.dp))
-            Text("Signed in as $login", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun AgentTile(agent: Agent, modifier: Modifier, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            AgentLogo(agent, size = 44.dp)
-            Spacer(Modifier.padding(top = 8.dp))
-            // The whole name, a little smaller if it must be, on a small phone with large text.
-            val name = MaterialTheme.typography.titleSmall
-            BasicText(
-                agent.displayName,
-                style = name.copy(color = LocalContentColor.current, textAlign = TextAlign.Center),
-                maxLines = 1,
-                autoSize = TextAutoSize.StepBased(minFontSize = MIN_AGENT_NAME, maxFontSize = name.fontSize),
-            )
-            Text(agent.maker, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun EmptyComputers() {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(14.dp))
             Text(
-                "No cloud computer yet. Make a new project, or open one of your repositories: GitHub makes its computer in a minute or two.",
-                style = MaterialTheme.typography.bodyMedium,
+                "PocketIDE",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f).semantics { heading() },
+            )
+            IconButton(onClick = onHelp) { Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = "Help") }
+        }
+        Text(DocsContent.TAGLINE, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Gap(16.dp)
+        ComputerCard(computer, onSetUp = graph::setUp, onComputer = onComputer, onHelpPage = onHelpPage)
+        if (ready) {
+            Gap(12.dp)
+            ProjectChip()
+        }
+        SectionLabel("Agents")
+        AgentList(
+            installed = installed,
+            ready = ready,
+            activity = activity,
+            onOpen = onOpenAgent,
+            onSignIn = onSignIn,
+            onAddAgents = onAddAgents,
+        )
+        problem?.let {
+            Gap(12.dp)
+            NoticeCard(it, tone = Tone.ERROR, title = "The last install did not finish")
+        }
+        SectionLabel("Tools")
+        OutlinedCard {
+            ListRow(
+                leading = { Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(28.dp)) },
+                title = "Terminal",
+                subtitle = "Ubuntu's command line, in the project's folder",
+                enabled = ready,
+                onClick = onTerminal,
             )
         }
     }
 }
 
 @Composable
-private fun ComputerCard(computer: Computer, now: Long, onOpen: () -> Unit, onStop: () -> Unit, onChrome: () -> Unit, onDelete: () -> Unit) {
-    var menu by remember { mutableStateOf(false) }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(computer.repo.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+private fun ComputerCard(state: ComputerState, onSetUp: () -> Unit, onComputer: () -> Unit, onHelpPage: (String) -> Unit) {
+    when (state) {
+        ComputerState.NotInstalled -> OutlinedCard {
+            Column(Modifier.padding(16.dp)) {
+                Text("Set up your computer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Gap(4.dp)
+                Text(
+                    "One tap installs Ubuntu 26.04 LTS, VS Code (code-server) and the three official agents inside PocketIDE. " +
+                        "It downloads about 1 GB, needs about 3 GB free, and takes 15 to 30 minutes; Wi-Fi is best. " +
+                        "If anything interrupts it, it continues where it stopped.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Gap(12.dp)
+                PrimaryAction("Set up", onClick = onSetUp)
+                TextButton(onClick = { onHelpPage(DocsContent.COMPUTER_ID) }, modifier = Modifier.fillMaxWidth()) { Text("What is installed, and where") }
+            }
+        }
+        is ComputerState.Installing -> OutlinedCard {
+            Column(Modifier.padding(16.dp)) {
+                Text("Setting up your computer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Gap(8.dp)
+                val fraction = state.fraction
+                if (fraction != null) {
+                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Gap(8.dp)
+                Text(state.step, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (state.bytesTotal > 0) {
                     Text(
-                        "${computer.repo.owner} · ${if (computer.repo.isPrivate) "Private" else "Public"}",
+                        "${megabytes(state.bytesDone)} of ${megabytes(state.bytesTotal)} downloaded",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                StatusChip(computer.state.label(), computer.state.tone())
-                Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Open in Chrome") }, onClick = {
-                            menu = false
-                            onChrome()
-                        })
-                        DropdownMenuItem(text = { Text("Delete computer…") }, onClick = {
-                            menu = false
-                            onDelete()
+                Gap(4.dp)
+                Text(
+                    "You can leave the app: it keeps going, and a notification shows it is on.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        is ComputerState.Broken -> Column {
+            NoticeCard(state.fix, tone = Tone.ERROR, title = state.why)
+            Gap(12.dp)
+            PrimaryAction("Set up again", onClick = onSetUp)
+        }
+        ComputerState.Ready, is ComputerState.Updating -> OutlinedCard {
+            ListRow(
+                leading = { Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(28.dp)) },
+                title = "Your computer",
+                subtitle = if (state is ComputerState.Updating) "Ready · updating ${state.what}" else "Ready · Ubuntu 26.04 LTS on this phone",
+                onClick = onComputer,
+            )
+        }
+    }
+}
+
+/** The project the agents open; tap to pick another or make a new one. */
+@Composable
+private fun ProjectChip() {
+    val graph = LocalContext.current.graph
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    var open by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    var projects by remember { mutableStateOf(emptyList<String>()) }
+    Box {
+        AssistChip(
+            onClick = {
+                projects = graph.projects.list()
+                open = true
+            },
+            label = { Text("Project: " + settings.project.ifEmpty { "all projects" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("All projects") }, onClick = {
+                graph.settings.update { it.copy(project = "") }
+                open = false
+            })
+            projects.forEach { name ->
+                DropdownMenuItem(text = { Text(name) }, onClick = {
+                    graph.settings.update { it.copy(project = name) }
+                    open = false
+                })
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("New project…") },
+                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                onClick = {
+                    open = false
+                    creating = true
+                },
+            )
+        }
+    }
+    if (creating) {
+        NewProjectDialog(
+            onDone = { name ->
+                graph.settings.update { it.copy(project = name) }
+                creating = false
+            },
+            onCancel = { creating = false },
+        )
+    }
+}
+
+@Composable
+private fun NewProjectDialog(onDone: (String) -> Unit, onCancel: () -> Unit) {
+    val graph = LocalContext.current.graph
+    var name by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        properties = KeepTypedInput,
+        title = { Text("New project") },
+        text = {
+            DialogBody {
+                Text("A folder for one project. To work on a project from GitHub, make it here, then run git clone in the terminal.")
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it.trim()
+                        error = null
+                    },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    isError = error != null,
+                    supportingText = error?.let { { Text(it) } },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                error = Projects.problem(name) ?: runCatching { graph.projects.create(name) }.exceptionOrNull()?.message
+                if (error == null) onDone(name)
+            }) { Text("Make it") }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+@Composable
+@Suppress("LongParameterList") // The list, its state, and one callback per action on a row.
+private fun AgentList(
+    installed: List<InstalledExtension>,
+    ready: Boolean,
+    activity: InstallStep?,
+    onOpen: (String) -> Unit,
+    onSignIn: (String, String, String) -> Unit,
+    onAddAgents: () -> Unit,
+) {
+    val graph = LocalContext.current.graph
+    val scope = rememberCoroutineScope()
+    val byId = installed.associateBy { it.id }
+    val others = installed.filter { it.isAgent && it.official == null && it.id != COMPANION }
+    OutlinedCard {
+        Agent.entries.forEachIndexed { index, agent ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            val have = byId[agent.extensionId]
+            AgentRow(
+                logo = { AgentLogo(agent, size = 40.dp) },
+                name = agent.displayName,
+                maker = agent.maker,
+                installed = have != null,
+                ready = ready,
+                busy = activity != null,
+                onOpen = { onOpen(agent.extensionId) },
+                onInstall = { scope.launch { runCatching { graph.agents.install(agent.publisher, agent.extensionName) } } },
+                menu = listOf(
+                    signInLabel(agent) to { onSignIn(agent.extensionId, agent.signInCommand, "Sign in: ${agent.displayName}") },
+                ),
+            )
+        }
+        others.forEach { extension ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AgentRow(
+                logo = { ExtensionLogo(extension.displayName, size = 40.dp) },
+                name = extension.displayName,
+                maker = extension.id.substringBefore('.'),
+                installed = true,
+                ready = ready,
+                busy = activity != null,
+                onOpen = { onOpen(extension.id) },
+                onInstall = {},
+                menu = listOf("Remove" to { scope.launch { runCatching { graph.agents.remove(extension.id) } } }),
+            )
+        }
+        activity?.let { step ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            InstallProgress(step)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        ListRow(
+            leading = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(28.dp)) },
+            title = "Add agents",
+            subtitle = "More agents and extensions from Open VSX",
+            enabled = ready,
+            onClick = onAddAgents,
+        )
+    }
+}
+
+@Composable
+@Suppress("LongParameterList") // A row shows one agent: what it is, its state, and what can be done with it.
+private fun AgentRow(
+    logo: @Composable () -> Unit,
+    name: String,
+    maker: String,
+    installed: Boolean,
+    ready: Boolean,
+    busy: Boolean,
+    onOpen: () -> Unit,
+    onInstall: () -> Unit,
+    menu: List<Pair<String, () -> Unit>>,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clickable(enabled = ready && installed, onClick = onOpen)
+            .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        logo()
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(maker, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        when {
+            !installed -> FilledTonalButton(onClick = onInstall, enabled = ready && !busy) { Text("Install") }
+            else -> Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (installed && menu.isNotEmpty()) {
+            Box {
+                IconButton(onClick = { menuOpen = true }, enabled = ready) { Icon(Icons.Outlined.MoreVert, contentDescription = "More for $name") }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    menu.forEach { (label, action) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                            menuOpen = false
+                            action()
                         })
                     }
                 }
             }
-            computer.machineLine()?.let { Detail(it) }
-            Detail(
-                listOfNotNull(
-                    "Used ${Formats.ago(computer.lastUsedAtMs, now)}",
-                    computer.idleMinutes?.let { "stops after ${Formats.minutes(it)} idle" },
-                ).joinToString(" · "),
-            )
-            if (computer.deletesAtMs != null && !computer.state.running) {
-                Detail("GitHub deletes it ${Formats.until(computer.deletesAtMs, now)} unless you open it", Tone.WARN)
-            }
-            if (computer.git?.safeToDelete == false) Detail("Has code that is not on GitHub yet", Tone.WARN)
-            if (!computer.setUpByPocketIde) Detail("Made outside PocketIDE: agents may need installing from Extensions", Tone.NEUTRAL)
-            ActionRow(Modifier.padding(top = 6.dp)) {
-                FilledTonalButton(onClick = onOpen) { Text(if (computer.state.running) "Open" else "Start and open") }
-                if (computer.state.running) OutlinedButton(onClick = onStop) { Text("Stop") }
-            }
         }
     }
 }
 
 @Composable
-private fun Detail(text: String, tone: Tone? = null) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = tone?.let { toneColor(it) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun UsageStrip(usage: CloudUsage, onClick: () -> Unit) {
-    val allowance = usage.allowance
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("This month", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            if (allowance != null) {
-                LinearProgressIndicator(
-                    progress = { (usage.coreHoursUsed / allowance.coreHours).toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    "${Formats.amount(usage.coreHoursUsed)} of ${allowance.coreHours} free core-hours used · " +
-                        "about ${Formats.amount(usage.hoursLeftOnTwoCores ?: 0.0)} hours left on 2 cores",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+private fun InstallProgress(step: InstallStep) {
+    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.width(14.dp))
+        val text = when (step) {
+            is InstallStep.Downloading -> if (step.total > 0) {
+                "Downloading ${step.name}: ${megabytes(step.done)} of ${megabytes(step.total)}"
             } else {
-                Text(usage.unavailableReason ?: "See your hours and minutes on the Usage tab.", style = MaterialTheme.typography.bodyMedium)
+                "Getting ${step.name} ready…"
             }
+            is InstallStep.Installing -> "Installing ${step.name}…"
         }
+        Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
-internal fun DeleteComputerDialog(computer: Computer, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    val unsaved = computer.git?.safeToDelete == false
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Delete ${computer.repo.name}'s computer?") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "GitHub deletes the computer with everything only it holds: the agents' chats and sign-ins, and files " +
-                        "not pushed to GitHub. Your repository and its code on GitHub stay.",
-                )
-                if (unsaved) NoticeCard("This computer has code that is not on GitHub yet. Push it first to keep it.", Tone.WARN)
-            }
-        },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete", color = toneColor(Tone.ERROR)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+internal fun ListRow(leading: @Composable () -> Unit, title: String, subtitle: String?, onClick: () -> Unit, enabled: Boolean = true) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Start,
+    ) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { leading() }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
-/** Runs [block]; returns null when it worked, or the one sentence to show when it did not. */
-internal suspend fun runCatchingMessage(block: suspend () -> Unit): String? = try {
-    block()
-    null
-} catch (cancelled: CancellationException) {
-    throw cancelled
-} catch (e: Exception) {
-    e.message ?: "Something went wrong. Try again."
-}
+/**
+ * The terminal sign-in, named for what it signs in: the agent itself where its screen shares the
+ * terminal's sign-in, else its command-line tool (Antigravity's screen signs in on its own).
+ */
+internal fun signInLabel(agent: Agent): String =
+    if (agent.sharedSignInFile != null) "Sign in with the terminal" else "${agent.signInCommand} in the terminal"
 
-/** The smallest a tile shrinks an agent's name to, rather than cut it short. */
-private val MIN_AGENT_NAME = 11.sp
+/** Decimal megabytes, as Android's own storage screen counts them. */
+internal fun megabytes(bytes: Long): String = String.format(Locale.ENGLISH, "%.0f MB", bytes / BYTES_PER_MB)
+
+private const val BYTES_PER_MB = 1e6
+
+private const val COMPANION = "pocketide.companion"

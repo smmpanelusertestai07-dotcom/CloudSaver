@@ -3,56 +3,74 @@ package com.pocketide.ui.web
 import java.net.URI
 import java.util.Locale
 
-/** Where a page in the computer screen wants to go, and what the app does about it. */
+/** Where a page in the agent screen wants to go, and what the app does about it. */
 enum class Navigation {
-    /** GitHub's own sign-in and the cloud computer itself: stays in the app. */
+    /** The phone's own code-server: stays in the app. */
     STAY,
 
     /** Any other web address, sign-ins to Google, Anthropic and OpenAI among them: Chrome. */
     CHROME,
 
-    /** Not a web address (intent:, file:, javascript:, plain http): goes nowhere. */
+    /** Not a web address (intent:, file:, javascript:), or plain http to another computer: goes nowhere. */
     BLOCK,
 }
 
 /**
- * URL rules for the computer screen. Pure Kotlin (java.net.URI), so they are tested on the JVM;
- * the WebView's clients call them.
+ * URL rules for the agent screen. Pure Kotlin (java.net.URI), so they are tested on the JVM; the
+ * WebView's clients call them.
  *
- * Only GitHub stays inside the app. Google refuses sign-in inside embedded web views, and a
- * browser the owner already trusts is the right place for every other company's sign-in page,
- * so everything else opens in Chrome (a Custom Tab), with its own cookies and password manager.
+ * Only code-server itself stays inside the app. Google refuses sign-in inside embedded web views,
+ * and a browser the owner already trusts is the right place for every company's sign-in page, so
+ * everything else opens in Chrome (a Custom Tab), with its own cookies and password manager. Plain
+ * http leaves the app only for this phone's own addresses: a sign-in's return page on localhost,
+ * or a web app an agent is running.
  */
 object WebPolicy {
-    /** Hosts the computer screen may show: github.com for sign-in, the computer on github.dev. */
-    private val GITHUB_HOSTS = setOf("github.com", "www.github.com")
+    private val LOOPBACK = setOf("127.0.0.1", "localhost", "[::1]", "::1")
 
-    /** VS Code for the web runs on `<codespace>.github.dev`; forwarded ports on `<codespace>-<port>.app.github.dev`. */
-    private const val CODESPACES_SUFFIX = ".github.dev"
-
-    fun navigation(url: String): Navigation {
+    /** [idePort] is the port code-server listens on, or null when it is not running. */
+    fun navigation(url: String, idePort: Int?): Navigation {
         val uri = parse(url) ?: return Navigation.BLOCK
-        val scheme = uri.scheme?.lowercase(Locale.ROOT)
-        val host = uri.host?.lowercase(Locale.ROOT) ?: return Navigation.BLOCK
         return when {
-            scheme != "https" -> Navigation.BLOCK
-            host in GITHUB_HOSTS -> Navigation.STAY
-            host.endsWith(CODESPACES_SUFFIX) && host.length > CODESPACES_SUFFIX.length -> Navigation.STAY
-            else -> Navigation.CHROME
+            idePort != null && isIdePage(uri, idePort) -> Navigation.STAY
+            isOpenable(uri) -> Navigation.CHROME
+            else -> Navigation.BLOCK
         }
     }
 
-    /** True for an https address, the only kind the app hands to Chrome. */
-    fun isWebLink(url: String): Boolean = parse(url)?.scheme?.lowercase(Locale.ROOT) == "https" && parse(url)?.host != null
+    /** An address Chrome may be given: https anywhere, or http to this phone. */
+    fun isWebLink(url: String): Boolean = parse(url)?.let(::isOpenable) == true
 
     /** The host an "open in Chrome" note names, so the owner sees where it goes. */
     fun hostOf(url: String): String? = parse(url)?.host?.lowercase(Locale.ROOT)
 
-    /** The computer's own address: the only page the WebView starts on. */
-    fun isComputerPage(url: String): Boolean {
-        val uri = parse(url) ?: return false
+    /**
+     * A sign-in page of a company whose agent runs here, from [sites]: https addresses of a host,
+     * where a host starting with "*." stands for its subdomains. It opens in Chrome without asking
+     * first, as code-server itself opens these sites.
+     */
+    fun isSignInSite(url: String, sites: List<String>): Boolean {
+        val uri = parse(url)?.takeIf { it.scheme.equals("https", ignoreCase = true) } ?: return false
         val host = uri.host?.lowercase(Locale.ROOT) ?: return false
-        return uri.scheme.equals("https", ignoreCase = true) && host.endsWith(CODESPACES_SUFFIX) && !host.endsWith(".app$CODESPACES_SUFFIX")
+        return sites.map { it.removePrefix("https://").lowercase(Locale.ROOT) }.any { site ->
+            if (site.startsWith("*.")) host.endsWith(site.substring(1)) else host == site
+        }
+    }
+
+    /** code-server's own page on this phone: the only page the agent screen starts on. */
+    fun isIdePage(url: String, idePort: Int): Boolean = parse(url)?.let { isIdePage(it, idePort) } == true
+
+    private fun isIdePage(uri: URI, idePort: Int): Boolean =
+        uri.scheme.equals("http", ignoreCase = true) && uri.host == "127.0.0.1" && uri.port == idePort
+
+    private fun isOpenable(uri: URI): Boolean {
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return false
+        return when (scheme) {
+            "https" -> true
+            "http" -> host in LOOPBACK || host.endsWith(".localhost")
+            else -> false
+        }
     }
 
     private fun parse(url: String): URI? = try {

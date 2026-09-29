@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.safeDrawing
@@ -44,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,6 +75,12 @@ import com.pocketide.ui.theme.Brand
 val ContentMaxWidth = 600.dp
 
 /**
+ * The height of the frosted bottom bar the page scrolls behind (0 where there is none): a page
+ * ends with this much room, so its last line can be scrolled clear of the bar.
+ */
+val LocalBottomBarPadding = compositionLocalOf { 0.dp }
+
+/**
  * The body of every full-page shell screen: edge-to-edge background, content inside the safe
  * area, scrolls when large fonts or landscape make it taller than the screen. A [Surface], so text
  * takes the theme's colour wherever the page is shown, the lock and first-run screens included.
@@ -82,8 +91,11 @@ fun ShellPage(
     centered: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val bar = LocalBottomBarPadding.current
+    // Under the bottom bar, the bar itself keeps clear of the phone's navigation area.
+    val insets = if (bar > 0.dp) WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal) else WindowInsets.safeDrawing
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(insets), contentAlignment = Alignment.TopCenter) {
             Column(
                 Modifier
                     .widthIn(max = ContentMaxWidth)
@@ -93,8 +105,10 @@ fun ShellPage(
                     .padding(horizontal = 24.dp, vertical = 20.dp),
                 verticalArrangement = if (centered) Arrangement.Center else Arrangement.Top,
                 horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-                content = content,
-            )
+            ) {
+                content()
+                if (bar > 0.dp) Spacer(Modifier.height(bar))
+            }
         }
     }
 }

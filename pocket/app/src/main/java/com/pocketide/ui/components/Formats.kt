@@ -13,7 +13,9 @@ object Formats {
     private const val MONTH = 30 * DAY
     private const val TWO_MONTHS = 2 * MONTH
     private const val MINUTES_PER_HOUR = 60
-    private const val GIB = 1024.0 * 1024 * 1024
+    private const val KB = 1_000L
+    private const val MB = 1_000_000L
+    private const val GB = 1_000_000_000L
     private const val WHOLE_FROM = 10
 
     fun ago(epochMs: Long?, now: Long): String {
@@ -40,8 +42,12 @@ object Formats {
         }
     }
 
-    /** Whole gigabytes for disks and RAM, as GitHub names its machines ("32 GB"). */
-    fun gigabytes(bytes: Long): String = "${(bytes / GIB).roundToLong()} GB"
+    /** A size the way Android's storage screen says it: decimal units, "850 MB", "2.4 GB". */
+    fun size(bytes: Long): String = when {
+        bytes >= GB -> String.format(Locale.ENGLISH, "%.1f GB", bytes / GB.toDouble())
+        bytes >= MB -> String.format(Locale.ENGLISH, "%.0f MB", bytes / MB.toDouble())
+        else -> String.format(Locale.ENGLISH, "%.0f KB", bytes / KB.toDouble())
+    }
 
     /** One decimal below 10, whole numbers above: 3.5 h, 42 h. */
     fun amount(value: Double): String =
@@ -54,6 +60,4 @@ object Formats {
     }
 
     fun days(value: Int): String = if (value == 1) "1 day" else "$value days"
-
-    fun usd(value: Double): String = String.format(Locale.ENGLISH, "$%.2f", value)
 }

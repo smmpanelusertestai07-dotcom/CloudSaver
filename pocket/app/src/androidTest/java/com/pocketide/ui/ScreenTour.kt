@@ -24,17 +24,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pocketide.core.ThemeMode
 import com.pocketide.docs.DocsContent
-import com.pocketide.graph
 import com.pocketide.ui.lock.HiddenContentCover
+import com.pocketide.ui.screens.agents.AddAgentsScreen
 import com.pocketide.ui.screens.computer.ComputerScreen
 import com.pocketide.ui.screens.data.YourDataScreen
 import com.pocketide.ui.screens.help.HelpPageScreen
 import com.pocketide.ui.screens.help.HelpScreen
 import com.pocketide.ui.screens.home.HomeScreen
-import com.pocketide.ui.screens.onboarding.SignInScreen
+import com.pocketide.ui.screens.keys.KeysScreen
 import com.pocketide.ui.screens.onboarding.WelcomeScreen
 import com.pocketide.ui.screens.settings.SettingsScreen
-import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.theme.PocketTheme
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -47,15 +46,13 @@ import java.io.File
  * Pictures of the app's screens as a new owner meets them, for the release notes and the owner.
  *
  * Runs only when asked (`am instrument -e tour true`), so the normal on-device run stays quick.
- * Each screen is drawn on this phone's real app state (signed out: the emulator has no GitHub
- * account) and saved as a PNG in the app's own files, under tour/, where CI reads it with run-as.
+ * Each screen is drawn on this phone's real app state (no computer set up yet) and saved as a PNG
+ * in the app's own files, under tour/, where CI reads it with run-as.
  */
 @RunWith(AndroidJUnit4::class)
 class ScreenTour {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
-
-    private val graph get() = compose.activity.graph
 
     @Before
     fun onlyWhenAsked() {
@@ -66,52 +63,57 @@ class ScreenTour {
 
     @Test fun welcomeDark() = shoot("01-welcome-dark", ThemeMode.DARK) { WelcomeScreen(onRead = {}, onContinue = {}) }
 
-    @Test fun signIn() = shoot("02-sign-in") { SignInScreen(graph, onRead = {}) }
+    @Test fun home() = shoot("02-home") { Home() }
 
-    @Test fun home() = shoot("03-home") { HomeScreen(onOpenComputer = {}, onNewProject = {}, onOpenRepo = {}, onUsage = {}, onHelp = {}) }
+    @Test fun homeDark() = shoot("02-home-dark", ThemeMode.DARK) { Home() }
 
-    @Test fun homeDark() = shoot("03-home-dark", ThemeMode.DARK) {
-        HomeScreen(onOpenComputer = {}, onNewProject = {}, onOpenRepo = {}, onUsage = {}, onHelp = {})
-    }
+    @Test fun computer() = shoot("03-computer") { ComputerScreen(onHelp = {}, onHelpPage = {}) }
 
-    @Test fun computer() = shoot("04-computer") { ComputerScreen(agentToShow = null, onAgentShown = {}, onHome = {}, onHelp = {}) }
+    @Test fun computerDark() = shoot("03-computer-dark", ThemeMode.DARK) { ComputerScreen(onHelp = {}, onHelpPage = {}) }
 
-    @Test fun usage() = shoot("05-usage") { UsageScreen(onHelp = {}) }
+    @Test fun addAgents() = shoot("04-add-agents") { AddAgentsScreen(onBack = {}) }
 
-    @Test fun settings() = shoot("06-settings") { SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {}) }
+    @Test fun keys() = shoot("05-keys") { KeysScreen(onBack = {}, onHelpPage = {}) }
+
+    @Test fun settings() = shoot("06-settings") { Settings() }
+
+    @Test fun settingsDark() = shoot("06-settings-dark", ThemeMode.DARK) { Settings() }
 
     @Test fun yourData() = shoot("07-your-data") { YourDataScreen(onBack = {}, onHelpPage = {}) }
 
     @Test fun help() = shoot("08-help") { HelpScreen(onBack = {}, onOpen = {}) }
 
-    @Test fun helpComputer() = shoot("09-help-computer") { HelpPageScreen(id = "computer", onBack = {}, onOpen = {}) }
+    @Test fun helpDark() = shoot("08-help-dark", ThemeMode.DARK) { HelpScreen(onBack = {}, onOpen = {}) }
+
+    @Test fun helpAgents() = shoot("09-help-agents") { HelpPageScreen(id = "agents", onBack = {}, onOpen = {}) }
 
     @Test fun terms() = shoot("10-terms") { HelpPageScreen(id = DocsContent.TERMS_ID, onBack = {}, onOpen = {}) }
 
-    // The dark theme, where text once came out black on black.
-    @Test fun signInDark() = shoot("11-sign-in-dark", ThemeMode.DARK) { SignInScreen(graph, onRead = {}) }
-
-    @Test fun settingsDark() = shoot("12-settings-dark", ThemeMode.DARK) { SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {}) }
-
-    @Test fun usageDark() = shoot("13-usage-dark", ThemeMode.DARK) { UsageScreen(onHelp = {}) }
-
-    @Test fun helpDark() = shoot("14-help-dark", ThemeMode.DARK) { HelpScreen(onBack = {}, onOpen = {}) }
-
     // A small phone (320 dp wide) with large text: nothing may run off the screen.
-    @Test fun homeSmall() = shoot("15-home-small-large-text", width = SMALL_PHONE, fontScale = LARGE_TEXT) {
-        HomeScreen(onOpenComputer = {}, onNewProject = {}, onOpenRepo = {}, onUsage = {}, onHelp = {})
-    }
+    @Test fun homeSmall() = shoot("11-home-small-large-text", width = SMALL_PHONE, fontScale = LARGE_TEXT) { Home() }
 
-    @Test fun settingsSmall() = shoot("16-settings-small-large-text", width = SMALL_PHONE, fontScale = LARGE_TEXT) {
-        SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {})
-    }
+    @Test fun settingsSmall() = shoot("12-settings-small-large-text", width = SMALL_PHONE, fontScale = LARGE_TEXT) { Settings() }
 
-    @Test fun welcomeSmallDark() = shoot("17-welcome-small-large-text-dark", ThemeMode.DARK, SMALL_PHONE, LARGE_TEXT) {
+    @Test fun welcomeSmallDark() = shoot("13-welcome-small-large-text-dark", ThemeMode.DARK, SMALL_PHONE, LARGE_TEXT) {
         WelcomeScreen(onRead = {}, onContinue = {})
     }
 
     // What Recents shows while App lock is on.
-    @Test fun recentsCover() = shoot("18-recents-cover") { HiddenContentCover() }
+    @Test fun recentsCover() = shoot("14-recents-cover") { HiddenContentCover() }
+
+    @Composable
+    private fun Home() = HomeScreen(
+        onOpenAgent = {},
+        onSignIn = { _, _, _ -> },
+        onTerminal = {},
+        onAddAgents = {},
+        onComputer = {},
+        onHelp = {},
+        onHelpPage = {},
+    )
+
+    @Composable
+    private fun Settings() = SettingsScreen(onKeys = {}, onYourData = {}, onHelp = {}, onHelpPage = {})
 
     private fun shoot(
         name: String,
@@ -132,7 +134,7 @@ class ScreenTour {
             }
         }
         compose.waitForIdle()
-        // Agent icons and GitHub's answers arrive over the network; give them a moment.
+        // Agent icons and Open VSX's answers arrive over the network; give them a moment.
         SystemClock.sleep(SETTLE_MS)
         compose.waitForIdle()
         val image = compose.onRoot().captureToImage().asAndroidBitmap()

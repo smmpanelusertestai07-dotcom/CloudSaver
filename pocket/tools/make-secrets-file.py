@@ -175,47 +175,6 @@ See all 4 saved:
 {site}/settings/secrets/actions
 
 
-REPOSITORY VARIABLES (2, not secret)
-Fill these in after you make the GitHub App below. For each one: Name, Value, Add variable.
-{site}/settings/variables/actions/new
-
-1) The App's Client ID (it starts with Iv)
-Name:
-POCKETIDE_GITHUB_APP_CLIENT_ID
-Value:
-copy it from the App's page
-
-2) The App's name in its link, github.com/apps/<name>
-Name:
-POCKETIDE_GITHUB_APP_SLUG
-Value:
-that <name>
-
-
-GITHUB APP (how PocketIDE signs in; no client secret, no private key)
-Make it here:
-https://github.com/settings/apps/new
-- GitHub App name: anything unique, for example PocketIDE-<your GitHub name>
-- Homepage URL: {site}
-- Callback URL: leave empty. Tick "Enable Device Flow". Webhook: untick "Active".
-- Repository permissions:
-    Actions: Read-only
-    Administration: Read and write
-    Codespaces: Read and write
-    Codespaces lifecycle admin: Read and write
-    Codespaces metadata: Read-only
-    Contents: Read and write
-    Metadata: Read-only
-    Repository creation: Read and write (if GitHub lists it)
-- Account permissions:
-    Plan: Read-only
-- Where can this GitHub App be installed: Only on this account. Then: Create GitHub App.
-Then install it on your repositories (All repositories is simplest):
-https://github.com/settings/apps
-Already have the App? Add any missing permission above, then accept it here:
-https://github.com/settings/installations
-
-
 CHECK
 Run the build: open the link, Run workflow, Branch: main, Run workflow.
 {site}/actions/workflows/pocket.yml

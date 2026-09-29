@@ -3,23 +3,39 @@ package com.pocketide.docs
 import android.content.Context
 import java.util.Locale
 
+/** Screens a Help link or a search result opens, by the id after `app:` in a link. */
+enum class AppPlace(val id: String, val title: String, val about: String) {
+    KEYS("keys", "Settings > Keys", "Keys and tokens for the agents and your apps: API keys, secrets, environment variables, GitHub token"),
+    SETTINGS("settings", "Settings", "Theme, dark, light, app lock, keyboard keys, updates on mobile data"),
+    DATA("data", "Settings > Your data", "Where your data is, storage, sizes, delete everything"),
+    COMPUTER("computer", "Computer", "Ubuntu, code-server, updates, restart, repair, reset, storage, processor"),
+    AGENTS("agents", "Home > Add agents", "Find and install more agents and extensions from Open VSX"),
+    ;
+
+    companion object {
+        fun of(id: String): AppPlace? = entries.firstOrNull { it.id == id }
+    }
+}
+
 /**
  * All in-app docs, versioned with the app. Facts that change carry the day they were checked;
- * live values (usage, computers, versions) are shown by the screens, not written here.
+ * live values (sizes, versions) are shown by the screens, not written here.
  */
 object DocsContent {
     const val TAGLINE = "Agentic development on your phone"
 
     /** Raised when the terms or the privacy policy change in a way the owner should see again. */
-    const val TERMS_VERSION = 4
+    const val TERMS_VERSION = 5
 
     // Page ids other screens open directly.
     const val TERMS_ID = "terms"
     const val PRIVACY_ID = "privacy"
     const val NOTICES_ID = "notices"
-    const val OWNER_SET_UP_ID = "owner-set-up"
     const val YOUR_DATA_ID = "your-data"
-    const val USAGE_ID = "usage"
+    const val COMPUTER_ID = "computer"
+    const val KEYS_ID = "keys"
+    const val BACKGROUND_ID = "background"
+    const val TROUBLE_ID = "trouble"
 
     /** The day the facts, prices and links were checked. */
     const val CHECKED_ON: String = DocLinks.CHECKED_ON
@@ -32,8 +48,8 @@ object DocsContent {
     /** Terms of use, privacy policy and open-source licences. */
     val legal: List<DocSection> = Legal.all
 
-    /** Every Help page, the owner's set-up included. */
-    val sections: List<DocSection> = Guide.all + Guide.ownerOnly + Legal.all
+    /** Every Help page. */
+    val sections: List<DocSection> = Guide.all + Legal.all
 
     val faq: List<FaqEntry> = Faq.all
 
@@ -47,15 +63,40 @@ object DocsContent {
     /** The questions that belong to this page. */
     fun faqFor(sectionId: String): List<FaqEntry> = faq.filter { it.sectionId == sectionId }
 
+    /** A link to a place in the app, such as `app:keys`, opens that screen. */
+    const val APP_SCHEME = "app:"
+
+    /** A link to another Help page, such as `help:your-data`. */
+    const val HELP_SCHEME = "help:"
+
     /** Pages whose title, summary or text contains every word of [query]. */
     fun search(query: String): List<DocSection> {
-        val words = query.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() }
+        val words = words(query)
         if (words.isEmpty()) return emptyList()
         return sections.filter { section ->
             val text = (listOf(section.title, section.summary) + section.blocks.map(::textOf)).joinToString(" ").lowercase(Locale.ROOT)
             words.all { it in text }
         }
     }
+
+    /** Questions whose question or answer contains every word of [query]. */
+    fun searchQuestions(query: String): List<FaqEntry> {
+        val words = words(query)
+        if (words.isEmpty()) return emptyList()
+        return faq.filter { entry ->
+            val text = (listOf(entry.question) + entry.answer.map(::textOf)).joinToString(" ").lowercase(Locale.ROOT)
+            words.all { it in text }
+        }
+    }
+
+    /** Screens of the app whose name or subject matches [query]: search finds settings too. */
+    fun searchPlaces(query: String): List<AppPlace> {
+        val words = words(query)
+        if (words.isEmpty()) return emptyList()
+        return AppPlace.entries.filter { place -> words.all { it in (place.title + " " + place.about).lowercase(Locale.ROOT) } }
+    }
+
+    private fun words(query: String): List<String> = query.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() }
 
     /** The full open-source notices from the APK's assets. */
     fun notices(context: Context): String =
