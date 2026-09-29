@@ -1,6 +1,7 @@
 package com.pocketide.ui.screens.computer
 
 import android.os.Build
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.agents.InstallStep
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
 import com.pocketide.ide.IdeState
@@ -47,6 +50,7 @@ import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.screens.home.megabytes
 import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OutlinedCard
@@ -54,7 +58,10 @@ import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.SecondaryAction
 import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.ShellPage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The computer: what it is, how much room it takes, its updates, and the four ways to put it
@@ -73,6 +80,15 @@ fun ComputerScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
     var confirm by remember { mutableStateOf<Confirm?>(null) }
     var busy by remember { mutableStateOf(false) }
     LaunchedEffect(state) { info = runCatching { graph.computer.info() }.getOrNull() }
+    // What runs in the background now, counted again every few seconds while this screen shows.
+    val installing by graph.agents.activity.collectAsStateWithLifecycle()
+    var programs by remember { mutableIntStateOf(0) }
+    LaunchedEffect(ide) {
+        while (true) {
+            programs = withContext(Dispatchers.IO) { runCatching { graph.computer.liveProcesses() }.getOrDefault(0) }
+            delay(PROGRAMS_POLL_MS)
+        }
+    }
     val ready = state == ComputerState.Ready || state is ComputerState.Updating
 
     ShellPage {
@@ -87,6 +103,7 @@ fun ComputerScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
         }
         Gap(12.dp)
         StatusCard(state, ide, onStop = { scope.launch { graph.stopEverything() } }, onSetUp = graph::setUp)
+        RunningNow(ide, programs, installing, update)
 
         if (ready) {
             info?.let { facts ->
@@ -247,6 +264,43 @@ private fun StatusCard(state: ComputerState, ide: IdeState, onStop: () -> Unit, 
         }
     }
 }
+
+/**
+ * What keeps the phone busy in the background, in plain words: code-server and the programs the
+ * agents started (the ongoing notification's Stop ends them), an agent's download, the updates.
+ */
+@Composable
+private fun RunningNow(ide: IdeState, programs: Int, installing: InstallStep?, update: UpdateStatus) {
+    val lines = buildList {
+        if (ide is IdeState.On) add(runningPrograms(programs))
+        installing?.let { step ->
+            add(
+                when (step) {
+                    is InstallStep.Downloading ->
+                        if (step.total > 0) "Downloading ${step.name}: ${megabytes(step.done)} of ${megabytes(step.total)}." else "Getting ${step.name} ready."
+                    is InstallStep.Installing -> "Installing ${step.name}."
+                },
+            )
+        }
+        if (update is UpdateStatus.Running) add("Updating: ${update.step}")
+    }
+    if (lines.isEmpty()) return
+    SectionLabel("Running now")
+    OutlinedCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+/** code-server and the programs under it; an agent's first start also fetches its own tool (Antigravity's agy). */
+internal fun runningPrograms(programs: Int): String = when {
+    programs <= 0 -> "code-server is on."
+    programs == 1 -> "code-server is on: 1 program is running."
+    else -> "code-server is on: $programs programs are running (code-server, and what the agents started)."
+}
+
+private const val PROGRAMS_POLL_MS = 5_000L
 
 @Composable
 private fun UpdateLines(status: UpdateStatus, lastUpdate: Long) {
