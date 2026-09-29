@@ -14,6 +14,10 @@ class PocketApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The screen that says an error stopped the app runs alone in its own process.
+        if (StopNote.isNoteProcess()) return
+        // Debug builds (the tests) keep Android's own handling, which reports the error to the test.
+        if (!BuildConfig.DEBUG) StopNote.install(this)
         graph = AppGraph(this)
         appLock = AppLock(graph.clock)
         ProcessLifecycleOwner.get().lifecycle.addObserver(appLock)

@@ -12,3 +12,8 @@
 # OkHttp ships its own consumer rules; these cover optional TLS providers.
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# The details of an error the owner copies (StopNote) must read without this build's mapping
+# file: classes and methods keep their names, with their line numbers. R8 still shrinks.
+-dontobfuscate
+-keepattributes SourceFile,LineNumberTable

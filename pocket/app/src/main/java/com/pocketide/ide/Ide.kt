@@ -2,6 +2,7 @@ package com.pocketide.ide
 
 import android.content.Context
 import com.pocketide.core.Http
+import com.pocketide.core.LogBackgroundFailure
 import com.pocketide.core.await
 import com.pocketide.linux.Computer
 import com.pocketide.linux.ComputerState
@@ -73,7 +74,7 @@ class Ide(
     /** Keeps the app running while code-server does (the foreground service), or lets it go. */
     private val keepAlive: (Boolean) -> Unit,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + LogBackgroundFailure)
     private val oneAtATime = Mutex()
     private val mutableState = MutableStateFlow<IdeState>(IdeState.Off)
     val state: StateFlow<IdeState> = mutableState.asStateFlow()

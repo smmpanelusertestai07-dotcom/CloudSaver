@@ -51,7 +51,8 @@ class KeyStore(private val secure: SecureStore) {
         .orEmpty()
 
     companion object {
-        private const val STORE = "keys"
+        /** The name the keys are sealed under in the [SecureStore]. */
+        internal const val STORE = "keys"
         private const val MAX_VALUE = 32 * 1024
         private val NAME = Regex("[A-Z_][A-Z0-9_]{0,63}")
 
