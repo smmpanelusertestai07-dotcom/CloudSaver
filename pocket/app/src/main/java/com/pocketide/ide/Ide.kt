@@ -125,6 +125,9 @@ class Ide(
         ),
     )
 
+    /** Types [line] into the terminal on screen, not run: the key bar's Paste. */
+    fun type(line: String) = request(JsonObject(mapOf("do" to JsonPrimitive("type"), "text" to JsonPrimitive(line))))
+
     private suspend fun launch(): IdeState.On {
         val computerState = computer.state.value
         if (computerState != ComputerState.Ready && computerState !is ComputerState.Updating) {

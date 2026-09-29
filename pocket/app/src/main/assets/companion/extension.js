@@ -1,9 +1,11 @@
-// PocketIDE Companion: shows the agent the owner picked in PocketIDE full screen, and opens the
-// sign-in terminal with its command already typed, so the owner only presses Enter.
+// PocketIDE Companion: shows the agent the owner picked in PocketIDE full screen, opens the
+// sign-in terminal with its command already typed (the owner only presses Enter), types what the
+// owner pastes, and keeps VS Code's own notices from covering the agent (Do Not Disturb).
 //
 // The app asks through small request files it drops into ~/.pocketide/requests:
 //   {"do": "show", "agent": "<extension id>"}
 //   {"do": "terminal", "title": "...", "text": "...", "cwd": "/root/projects/..."}
+//   {"do": "type", "text": "..."}      one line the owner pasted, typed into the terminal on screen
 // ~/.pocketide/agents.json lists the agents and how each one opens. Only a window whose screen
 // is connected takes a request: after a reload the old window lingers for a while without a
 // screen, and a request it took would open where nobody sees it.
@@ -28,6 +30,8 @@ const ATTEMPTS = 20;
 const RETRY_MS = 1500;
 const CHECK_MS = 2000;
 const SHELL_WAIT_MS = 8000;
+const MAX_TYPED = 2000;
+const DO_NOT_DISTURB = 'notifications.toggleDoNotDisturbMode';
 const SPARE_CONTAINERS = ['pocketide-agent-1', 'pocketide-agent-2', 'pocketide-agent-3',
   'pocketide-agent-4', 'pocketide-agent-5', 'pocketide-agent-6'];
 
@@ -52,6 +56,7 @@ function activate(context) {
   } catch (unwritable) {
     return;
   }
+  quiet().catch(() => undefined);
   const check = () => { takeRequests(isStopped).catch(() => undefined); };
   check();
   try {
@@ -66,6 +71,42 @@ function activate(context) {
 }
 
 function deactivate() {}
+
+// VS Code's own notices pop up over the bottom of the agent's screen, where its message box is (an
+// extension's download progress, for one). With Do Not Disturb on, only errors pop up. VS Code keeps
+// the mode in the page's storage, which starts empty with each code-server run (the app gives each
+// run a new port), and has only a toggle: so it is switched once per run, by the first window.
+async function quiet() {
+  const key = runKey();
+  const marker = path.join(HOME, '.pocketide', `quiet-${key}`);
+  try {
+    fs.writeFileSync(marker, '', { flag: 'wx' });
+  } catch (switchedAlready) {
+    return;
+  }
+  for (const name of fs.readdirSync(path.dirname(marker))) {
+    if (name.startsWith('quiet-') && name !== `quiet-${key}`) fs.rmSync(path.join(path.dirname(marker), name), { force: true });
+  }
+  const known = new Set(await vscode.commands.getCommands(true));
+  try {
+    if (!known.has(DO_NOT_DISTURB)) throw new Error('no such command');
+    await vscode.commands.executeCommand(DO_NOT_DISTURB);
+    log('do not disturb: on');
+  } catch (failed) {
+    fs.rmSync(marker, { force: true });
+    log(`do not disturb: ${String(failed && failed.message ? failed.message : failed).slice(0, 200)}`);
+  }
+}
+
+// This code-server run: the server's process id and start time (the extension host is its child).
+function runKey() {
+  try {
+    const stat = fs.readFileSync(`/proc/${process.ppid}/stat`, 'utf8');
+    return `${process.ppid}-${stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]}`;
+  } catch (unreadable) {
+    return String(process.ppid);
+  }
+}
 
 // The agents PocketIDE knows, from the file the app keeps up to date.
 function readAgents() {
@@ -160,6 +201,8 @@ async function handle(request, stopped) {
       return show(String(request.agent || ''), stopped);
     case 'terminal':
       return terminal(request);
+    case 'type':
+      return type(request);
     default:
       return undefined;
   }
@@ -196,6 +239,19 @@ async function terminal(request) {
     await shellReady(shell);
     shell.sendText(text, false);
   }
+}
+
+// The line the owner pasted with the app's Paste key, typed into the terminal on screen but not
+// run. One line only: a line break would run what came before it. Its text is not logged.
+function type(request) {
+  const text = typeof request.text === 'string' ? request.text.slice(0, MAX_TYPED) : '';
+  const shell = vscode.window.activeTerminal;
+  if (!text || /[\r\n]/.test(text) || !shell) {
+    log('nothing typed');
+    return;
+  }
+  shell.sendText(text, false);
+  log(`typed ${text.length} characters`);
 }
 
 // Resolves when [shell]'s shell integration starts (its prompt is up), or after a few seconds.

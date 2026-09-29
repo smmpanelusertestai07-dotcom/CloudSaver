@@ -42,8 +42,8 @@ import java.net.URL
 /**
  * The whole app on this device, end to end, as a new owner uses it: Set up (Ubuntu from the
  * internet, its tools, code-server and the three official agents), code-server started, each
- * agent's own screen in the app's page, a sign-in terminal, and a link a program inside Linux
- * opens. Each screen is saved as a picture under files/e2e, with a log of every step, which CI
+ * agent's own screen in the app's page, a sign-in terminal with a line pasted into it, and a link
+ * a program inside Linux opens. Each screen is saved as a picture under files/e2e, with a log of every step, which CI
  * reads back with run-as.
  *
  * Runs only when asked (`am instrument -e e2e true`): it downloads about 1 GB and takes a while.
@@ -111,6 +111,11 @@ class ComputerE2E {
         awaitCompanion("request terminal")
         SystemClock.sleep(TERMINAL_SETTLE_MS)
         shoot("sign-in-terminal")
+        // The key bar's Paste: the line reaches that terminal, typed after the command, not run.
+        graph.ide.type(PASTED)
+        awaitCompanion("typed ${PASTED.length} characters")
+        SystemClock.sleep(POLL_MS)
+        shoot("pasted")
 
         linkFromLinux()
         assertTrue("code-server kept running", graph.ide.state.value is IdeState.On)
@@ -183,5 +188,6 @@ class ComputerE2E {
         const val PNG_QUALITY = 100
         const val MAX_NOTE = 200
         const val MAX_LOG = 4000
+        const val PASTED = " --version"
     }
 }

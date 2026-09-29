@@ -1,6 +1,8 @@
 package com.pocketide.ui.screens.workspace
 
 import android.app.Activity
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
 import android.view.KeyEvent
 import android.webkit.ValueCallback
@@ -246,7 +248,14 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
                 IdeState.Off -> Waiting("Starting code-server…")
             }
         }
-        if (settings.keyBar && imeVisible()) KeyBar(onKey = graph.page::sendKey)
+        if (settings.keyBar && imeVisible()) {
+            // Paste only in a terminal: an agent's own box takes Android's paste (long press) itself.
+            val paste = {
+                val line = pasteLine(clipboardText(activity))
+                if (line != null) graph.ide.type(line) else Toast.makeText(activity, PASTE_ONE_LINE, Toast.LENGTH_LONG).show()
+            }
+            KeyBar(onKey = graph.page::sendKey, onPaste = paste.takeIf { terminalTitle != null })
+        }
     }
 
     signIn?.let { watch ->
@@ -322,9 +331,12 @@ private fun TopBar(
     }
 }
 
-/** Esc, Tab, Ctrl+C, the arrows and Enter: keys a phone's keyboard lacks, for the terminal and the editor. */
+/**
+ * Esc, Tab, Ctrl+C, the arrows and Enter: keys a phone's keyboard lacks, for the terminal and the
+ * editor. In a terminal, Paste comes first: it types what was copied (a sign-in code, a command).
+ */
 @Composable
-private fun KeyBar(onKey: (Int, Int) -> Unit) {
+private fun KeyBar(onKey: (Int, Int) -> Unit, onPaste: (() -> Unit)?) {
     val keys = listOf(
         "Esc" to (KeyEvent.KEYCODE_ESCAPE to 0),
         "Tab" to (KeyEvent.KEYCODE_TAB to 0),
@@ -340,6 +352,7 @@ private fun KeyBar(onKey: (Int, Int) -> Unit) {
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            if (onPaste != null) TextButton(onClick = onPaste, modifier = Modifier.heightIn(min = 44.dp)) { Text("Paste") }
             keys.forEach { (label, key) ->
                 TextButton(onClick = { onKey(key.first, key.second) }, modifier = Modifier.heightIn(min = 44.dp)) { Text(label) }
             }
@@ -404,12 +417,31 @@ private const val FULL = 100
 private const val SIGN_IN_WAIT_MS = 15 * 60 * 1000L
 private const val SIGN_IN_POLL_MS = 1500L
 private const val SIGN_IN_SETTLE_MS = 1500L
+private const val MAX_PASTE = 2000
+private const val PASTE_ONE_LINE = "Paste types one line: copy the sign-in code or the command, then tap Paste."
 
 /** A sign-in running in the terminal: the agent's account file, and when it last changed before. */
 private data class SignInWatch(val file: File, val before: Long)
 
 /** When [file] last changed (0 while it does not exist). */
 private suspend fun stampOf(file: File): Long = withContext(Dispatchers.IO) { file.lastModified() }
+
+/** The text on Android's clipboard, read only when the owner taps Paste. */
+private fun clipboardText(context: Context): String? = context.getSystemService(ClipboardManager::class.java)
+    ?.primaryClip
+    ?.takeIf { it.itemCount > 0 }
+    ?.getItemAt(0)
+    ?.coerceToText(context)
+    ?.toString()
+
+/**
+ * What Paste types into the terminal: [clip] without its last line breaks, when that is one line;
+ * else null. A line break inside would run what came before it, as if Enter were pressed.
+ */
+internal fun pasteLine(clip: String?): String? {
+    val line = clip?.trimEnd('\r', '\n') ?: return null
+    return line.takeIf { it.isNotBlank() && it.length <= MAX_PASTE && '\n' !in it && '\r' !in it }
+}
 
 /** True when a file input takes only pictures (image types only), which the photo picker serves. */
 internal fun acceptsOnlyImages(accepts: List<String>): Boolean {

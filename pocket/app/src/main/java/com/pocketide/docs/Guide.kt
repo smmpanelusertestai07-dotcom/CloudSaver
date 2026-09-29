@@ -57,8 +57,8 @@ internal object Guide {
             row("Delete the computer", "Deletes all of it, projects included."),
         ),
         tip(
-            "On an agent's screen, the key bar above the keyboard has Esc, Tab, Ctrl+C, the arrows and Enter. The menu (⋮) " +
-                "opens a terminal in your project's folder.",
+            "On an agent's screen, the key bar above the keyboard has Esc, Tab, Ctrl+C, the arrows and Enter, and in a " +
+                "terminal, Paste. The menu (⋮) opens a terminal in your project's folder.",
         ),
         link("Open the Computer screen", "app:computer"),
     )
@@ -185,8 +185,8 @@ internal object Guide {
     private fun signInThen(agent: Agent): String = if (agent.sharedSignInFile != null) {
         "Press Enter and sign in in Chrome. Come back: the screen reloads, signed in."
     } else {
-        "Press Enter twice (Google OAuth) and sign in in Chrome. Copy the code the page shows, paste it in the terminal, " +
-            "press Enter. Antigravity then runs in the terminal."
+        "Press Enter twice (Google OAuth) and sign in in Chrome. Copy the code the page shows, come back, tap the " +
+            "terminal, then Paste above the keyboard and Enter. Antigravity then runs in the terminal."
     }
 
     private val permissions = section(
