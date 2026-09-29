@@ -133,15 +133,21 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
         scope.launch { signIn = file?.let { SignInWatch(it, stampOf(it)) } }
         openTerminal("Sign in: ${signingIn.displayName}", signingIn.signInCommand)
     }
-    val back = {
-        graph.page.back {
-            if (terminalTitle != null && route.agentId.isNotEmpty()) {
-                terminalTitle = null
-                graph.ide.show(route.agentId)
-            } else {
-                onBack()
-            }
+    // From a terminal over an agent, Back goes to the agent; from the agent (or a plain terminal), out.
+    val leave = {
+        if (terminalTitle != null && route.agentId.isNotEmpty()) {
+            terminalTitle = null
+            graph.ide.show(route.agentId)
+        } else {
+            onBack()
         }
+    }
+    val back = {
+        graph.page.back(
+            // An editor over the agent that is not the terminal (an agent's settings, a file) closes.
+            onEditor = { if (terminalTitle == null && route.agentId.isNotEmpty()) graph.ide.closeEditor() else leave() },
+            otherwise = leave,
+        )
     }
     val start = { graph.scope.launch { runCatching { graph.ide.start() } } }
     val restart = {
@@ -205,7 +211,9 @@ fun WorkspaceScreen(route: WorkspaceRoute, onBack: () -> Unit, onHelpPage: (Stri
             title = terminalTitle ?: title,
             onBack = back,
             signInLabel = agent?.let(::signInLabel),
-            onSignIn = agent?.let { { signInWith(it) } },
+            // Antigravity's screen signs in on its own (Continue with Google); its terminal
+            // sign-in is for agy alone, so the screen offers none (Home's menu still does).
+            onSignIn = agent?.takeIf { it.sharedSignInFile != null }?.let { { signInWith(it) } },
             onRefresh = { if (terminalTitle == null && route.agentId.isNotEmpty()) reloadAndShow() else graph.page.reload() },
             onTerminal = { openTerminal("Terminal", "") },
             onRestart = { restart() },

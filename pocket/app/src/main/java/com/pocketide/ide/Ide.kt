@@ -112,7 +112,13 @@ class Ide(
     }
 
     /** Shows [agentId]'s screen full screen in the open window. */
-    fun show(agentId: String) = request(JsonObject(mapOf("do" to JsonPrimitive("show"), "agent" to JsonPrimitive(agentId))))
+    fun show(agentId: String) = request(JsonObject(mapOf("do" to JsonPrimitive("show"), "agent" to JsonPrimitive(agentId)))) {
+        // An agent installed since code-server started is not in the list the companion read then.
+        writeHome(AGENTS, IdeFiles.agentsList(agents()).toByteArray())
+    }
+
+    /** Back over an editor (an agent's settings, a file): it closes, and the agent shows again. */
+    fun closeEditor() = request(JsonObject(mapOf("do" to JsonPrimitive("close"))))
 
     /** Opens a terminal titled [title] in [folder] with [text] typed but not run. */
     fun terminal(title: String, text: String, folder: String) = request(
@@ -257,15 +263,19 @@ class Ide(
         if (wasRunning) keepAlive(false)
     }
 
-    /** A request file for the companion: written whole and renamed into place, so it is never read half written. */
-    private fun request(body: JsonObject) {
+    /**
+     * A request file for the companion, written whole and renamed into place, so it is never read
+     * half written, after [first] (what the companion must find ready for it).
+     */
+    private fun request(body: JsonObject, first: suspend () -> Unit = {}) {
+        // Named by the time of asking, so the companion takes requests in the order they were made.
+        val name = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
         scope.launch {
+            runCatching { first() }
             runCatching {
                 val folder = dirs.companionRequests
                 folder.mkdirs()
                 folder.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > STALE_REQUEST_MS }?.forEach { it.delete() }
-                // Named by time first, so the companion takes them in the order they were made.
-                val name = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
                 home.write("/${LinuxDirs.COMPANION_REQUESTS}/$name.json", body.toString().toByteArray())
             }
         }

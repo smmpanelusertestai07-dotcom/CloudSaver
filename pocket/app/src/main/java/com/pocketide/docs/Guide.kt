@@ -81,14 +81,17 @@ internal object Guide {
                 "ChatGPT (Codex), Continue with Google (Antigravity). The page opens in Chrome, as Google allows its " +
                 "sign-in only in a real browser, and returns to the agent on this phone by itself.",
         ),
-        p("Or sign in with the terminal: Sign in (the arrow at the top) opens one with the agent's command already typed."),
+        p(
+            "Or sign in with the terminal: Sign in (the arrow at the top; for Antigravity's agy, Home > its menu) opens one with " +
+                "the agent's command already typed.",
+        ),
         table(
             listOf("Agent", "Typed for you", "Then"),
             *Agent.entries.map { row(it.displayName, it.signInCommand, signInThen(it)) }.toTypedArray(),
         ),
         info(
-            "Google keeps Antigravity's screen and its terminal (agy) signed in separately. Signing in on one does not sign " +
-                "in the other.",
+            "Antigravity signs in on its own screen: Continue with Google. Google keeps that screen and its terminal tool " +
+                "(agy) signed in separately, so sign in agy in the terminal only to use agy there (Home > Antigravity's menu).",
         ),
         p(
             "More agents: Home > Add agents searches Open VSX. Only publishers Open VSX has verified can be installed, and " +

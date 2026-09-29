@@ -1,11 +1,14 @@
 // PocketIDE Companion: shows the agent the owner picked in PocketIDE full screen, opens the
 // sign-in terminal with its command already typed (the owner only presses Enter), types what the
-// owner pastes, and keeps VS Code's own notices from covering the agent (Do Not Disturb).
+// owner pastes, and keeps VS Code's own notices from covering the agent (Do Not Disturb). A phone
+// shows one thing at a time: an editor that opens over the agent (an agent's settings, a file, a
+// terminal) takes the whole screen, and the agent comes back when the last one closes.
 //
 // The app asks through small request files it drops into ~/.pocketide/requests:
 //   {"do": "show", "agent": "<extension id>"}
 //   {"do": "terminal", "title": "...", "text": "...", "cwd": "/root/projects/..."}
 //   {"do": "type", "text": "..."}      one line the owner pasted, typed into the terminal on screen
+//   {"do": "close"}                    Back over an editor: close it, and show the agent again
 // ~/.pocketide/agents.json lists the agents and how each one opens. Only a window whose screen
 // is connected takes a request: after a reload the old window lingers for a while without a
 // screen, and a request it took would open where nobody sees it.
@@ -36,6 +39,8 @@ const SPARE_CONTAINERS = ['pocketide-agent-1', 'pocketide-agent-2', 'pocketide-a
   'pocketide-agent-4', 'pocketide-agent-5', 'pocketide-agent-6'];
 
 let busy = false;
+// The agent on screen, to bring back when the editors over it close.
+let current = null;
 
 function log(message) {
   try {
@@ -68,6 +73,9 @@ function activate(context) {
   }
   const timer = setInterval(check, CHECK_MS);
   context.subscriptions.push({ dispose: () => clearInterval(timer) });
+  context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs((event) => {
+    onTabs(event, isStopped).catch(() => undefined);
+  }));
 }
 
 function deactivate() {}
@@ -203,14 +211,52 @@ async function handle(request, stopped) {
       return terminal(request);
     case 'type':
       return type(request);
+    case 'close':
+      return close(stopped);
     default:
       return undefined;
   }
 }
 
+// An editor that opens while an agent is on screen (its settings, a file it shows, a terminal)
+// would share a phone-wide screen three ways with the side bars; it gets the screen instead. When
+// the last editor closes, the agent comes back.
+async function onTabs(event, stopped) {
+  if (stopped()) return;
+  if (event.opened.length > 0) {
+    await editorAlone();
+    log(`editor opened: ${event.opened.length}`);
+  } else if (event.closed.length > 0 && openTabs() === 0 && current) {
+    log('last editor closed');
+    await show(current, stopped);
+  }
+}
+
+async function editorAlone() {
+  for (const command of ['workbench.action.closeSidebar', 'workbench.action.closeAuxiliaryBar', 'workbench.action.closePanel']) {
+    await run(command);
+  }
+}
+
+function openTabs() {
+  return vscode.window.tabGroups.all.reduce((count, group) => count + group.tabs.length, 0);
+}
+
+// Back over an editor: it closes, and the agent shows again (at once when other editors stay open
+// behind it; otherwise the tab listener brings it back).
+async function close(stopped) {
+  await run('workbench.action.closeActiveEditor');
+  log('closed an editor');
+  if (current && openTabs() > 0) await show(current, stopped);
+}
+
 async function show(agentId, stopped) {
   const agent = readAgents().find((entry) => entry.id.toLowerCase() === agentId.toLowerCase());
-  if (!agent) return;
+  if (!agent) {
+    log(`show ${agentId}: not in the agents list`);
+    return;
+  }
+  current = agent.id;
   await placeViews(agent, stopped);
   const commands = (Array.isArray(agent.open) ? agent.open : [])
     .concat((Array.isArray(agent.views) ? agent.views : []).map((view) => view + '.focus'))

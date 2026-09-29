@@ -63,6 +63,9 @@ interface PageHost {
  */
 class AgentPage(private val app: Context) {
     private var web: WebView? = null
+    private var zoom = 1f
+    private var fittedWidth = 0
+    private var tallest = 0
     private var wrapper: MutableContextWrapper? = null
     private var host: PageHost? = null
 
@@ -118,12 +121,42 @@ class AgentPage(private val app: Context) {
         view.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta))
     }
 
-    /** Back: closes the page's open menu, palette or dialog first; [otherwise] runs when none is open. */
-    fun back(otherwise: () -> Unit) {
+    /**
+     * Back: closes the page's open menu, palette or dialog first; [onEditor] runs when an editor
+     * covers the agent (a terminal, an agent's settings, a file), [otherwise] when neither is open.
+     */
+    fun back(onEditor: () -> Unit, otherwise: () -> Unit) {
         val view = web ?: return otherwise()
-        view.evaluateJavascript("window.__pocketide ? window.__pocketide.overlayOpen() : false") { open ->
-            if (open == "true") sendKey(KeyEvent.KEYCODE_ESCAPE) else otherwise()
+        view.evaluateJavascript("window.__pocketide ? window.__pocketide.backTarget() : 'none'") { target ->
+            when (target?.trim('"')) {
+                "overlay" -> sendKey(KeyEvent.KEYCODE_ESCAPE)
+                "editor" -> onEditor()
+                else -> otherwise()
+            }
         }
+    }
+
+    /**
+     * Zooms the page out on a short screen (see [PageFit]), from the WebView's height with the
+     * keyboard closed: the tallest it has been at its present width.
+     */
+    private fun fit(view: WebView) {
+        if (view.width == 0 || view.height == 0) return
+        if (view.width != fittedWidth) {
+            fittedWidth = view.width
+            tallest = 0
+        }
+        tallest = maxOf(tallest, view.height)
+        val next = PageFit.zoom(tallest / view.resources.displayMetrics.density)
+        if (next != zoom) {
+            zoom = next
+            applyZoom(view)
+        }
+    }
+
+    private fun applyZoom(view: WebView) {
+        val widthDp = view.width / view.resources.displayMetrics.density
+        view.evaluateJavascript("window.__pocketide && window.__pocketide.fit($zoom, $widthDp)", null)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -142,6 +175,8 @@ class AgentPage(private val app: Context) {
             // VS Code opens sign-in pages with window.open; each one goes to Chrome (onCreateWindow).
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = true
+            // The page's own viewport (width and scale) counts, so PageScript's fit() can zoom it out.
+            useWideViewPort = true
         }
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
@@ -153,6 +188,10 @@ class AgentPage(private val app: Context) {
         }
         view.webViewClient = PageClient()
         view.webChromeClient = ChromeClient()
+        zoom = 1f
+        fittedWidth = 0
+        tallest = 0
+        view.addOnLayoutChangeListener { changed, _, _, _, _, _, _, _, _ -> fit(changed as WebView) }
         view.setDownloadListener { _, _, _, _, _ -> host?.downloadRefused() }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(view, PageScript.SOURCE, setOf(server.origin))
@@ -192,6 +231,8 @@ class AgentPage(private val app: Context) {
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && port != null && WebPolicy.isIdePage(url, port)) {
                 view.evaluateJavascript(PageScript.SOURCE, null)
             }
+            // A page that loaded again starts at its own scale.
+            if (zoom < 1f) applyZoom(view)
             host?.onPageState(PageState.Ready)
         }
 
@@ -263,6 +304,27 @@ class AgentPage(private val app: Context) {
     }
 }
 
+/**
+ * How far the page zooms out on a short screen. VS Code lays out for the window it has, but an
+ * agent's own screen may need more height: Antigravity's welcome cuts off its Next button in a
+ * window under about 705 CSS pixels tall (measured at 360 wide), and a 720x1600 phone at 2x gives
+ * the page 672. A page shorter than [HEIGHT_DP] is drawn smaller until it has that much, never
+ * below [MIN_ZOOM]; at 0.9 that phone's page is 401x747 and the whole welcome shows.
+ */
+internal object PageFit {
+    const val HEIGHT_DP = 740f
+    const val MIN_ZOOM = 0.8f
+
+    /** The zoom for a WebView [heightDp] tall with the keyboard closed, in steps of 0.01. */
+    fun zoom(heightDp: Float): Float {
+        if (heightDp <= 0f) return 1f
+        val exact = (heightDp / HEIGHT_DP).coerceIn(MIN_ZOOM, 1f)
+        return kotlin.math.floor(exact * STEPS) / STEPS
+    }
+
+    private const val STEPS = 100f
+}
+
 /** Sentences for the agent screen's page problems. */
 internal object PageText {
     fun unreachable(detail: String?): String =
@@ -297,10 +359,31 @@ internal object PageScript {
           if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addStyle, { once: true });
           else addStyle();
           const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+          const overlayOpen = () => ['.quick-input-widget', '.monaco-dialog-box', '.context-view .monaco-menu']
+            .some((selector) => [...document.querySelectorAll(selector)].some(shown));
           window.__pocketide = {
-            overlayOpen() {
-              return ['.quick-input-widget', '.monaco-dialog-box', '.context-view .monaco-menu']
-                .some((selector) => [...document.querySelectorAll(selector)].some(shown));
+            overlayOpen,
+            // What Back closes first: a menu or dialog, then an editor over the agent (a terminal,
+            // an agent's settings or a file), else nothing.
+            backTarget() {
+              if (overlayOpen()) return 'overlay';
+              const editor = document.querySelector('.monaco-workbench .part.editor');
+              const open = editor && shown(editor) && editor.getBoundingClientRect().width > 40 &&
+                editor.querySelector('.editor-instance');
+              return open ? 'editor' : 'none';
+            },
+            // Draws the page at [zoom] (0.5 to 1) of a WebView [widthDp] wide: the workbench then
+            // lays out for a taller window, so a screen made for one fits.
+            fit(zoom, widthDp) {
+              const meta = document.querySelector('meta[name="viewport"]');
+              if (!meta) return false;
+              const z = Math.min(1, Math.max(0.5, Number(zoom) || 1));
+              const width = Math.round((Number(widthDp) || window.innerWidth) / z);
+              const content = z >= 1
+                ? 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no'
+                : `width=${'$'}{width}, initial-scale=${'$'}{z}, minimum-scale=${'$'}{z}, maximum-scale=${'$'}{z}, user-scalable=no`;
+              if (meta.getAttribute('content') !== content) meta.setAttribute('content', content);
+              return true;
             },
           };
         })();
