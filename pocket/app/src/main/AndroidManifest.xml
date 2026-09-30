@@ -67,6 +67,30 @@
             android:exported="false"
             android:theme="@style/Theme.PocketIDE.Tools" />
 
+        <!-- A sign-in from outside PocketIDE (it shows nothing itself): the bar on Antigravity's
+             screen (pocketide://signin), or a sign-in page that ended at localhost, shared to
+             PocketIDE. Exported, so it acts only on what a sign-in looks like. -->
+        <activity
+            android:name=".ui.tools.SignInActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.PocketIDE.Tools">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="signin"
+                    android:scheme="pocketide" />
+            </intent-filter>
+            <intent-filter android:label="@string/finish_sign_in">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- Says that an error stopped the app, with details to copy (StopNote). Its own process,
              so it opens whatever went wrong in the app's. -->
         <activity

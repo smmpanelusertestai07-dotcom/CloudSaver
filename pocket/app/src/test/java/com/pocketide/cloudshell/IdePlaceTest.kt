@@ -9,12 +9,12 @@ class IdePlaceTest {
     private val account = "dev@example.com"
 
     @Test
-    fun `each agent opens its own VS Code, and the tools open Cloud Shell's pages`() {
+    fun `each agent opens full screen, and the tools open Cloud Shell's pages`() {
         Agent.entries.forEach { agent ->
             val place = IdePlace.of(agent)
             assertEquals(agent, place.agent)
             assertEquals(agent.displayName, place.label)
-            assertEquals(CloudShell.vsCode(agent, account), place.url(account))
+            assertEquals(CloudShell.screen(agent, account), place.url(account))
         }
         assertEquals(CloudShell.terminal(account), IdePlace.TERMINAL.url(account))
         assertEquals(CloudShell.editor(account), IdePlace.FILES.url(account))

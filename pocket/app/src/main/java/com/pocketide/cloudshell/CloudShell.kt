@@ -9,16 +9,16 @@ import java.net.URLEncoder
  * Google Cloud Shell, PocketIDE's computer: Google's own Linux computer, free with a Google account.
  * Google allows its sign-in only in a real browser, so PocketIDE opens it in a Chrome tab, with the
  * account the owner picked in Android's own chooser. The set-up is one command, from a script
- * pinned by its SHA-256, that gives each agent its own VS Code, which Cloud Shell then starts by
- * itself whenever it starts.
+ * pinned by its SHA-256, that gives Claude Code and Codex each its own VS Code and Antigravity its
+ * own screen, which Cloud Shell then starts by itself whenever it starts.
  */
 object CloudShell {
     /** The commit that holds the setup script this app version gives out. */
-    const val SCRIPT_COMMIT = "a2497493a7eca8e217759fa5b7afe53f3c8850c7"
+    const val SCRIPT_COMMIT = "ca63f4149fc559715b37cb3feccad928698f7ade"
     const val SCRIPT_PATH = "pocket/cloudshell/pocketide-cloudshell.sh"
 
     /** The script's SHA-256: the command runs it only when the download matches. */
-    const val SCRIPT_SHA256 = "21893108d0993f128e3d738a9b590bec98745747d4a096ea1287dc86127064c6"
+    const val SCRIPT_SHA256 = "4346947e3671fbb14b9c501ed427f8328ee412f11f9041d0e9869a37328cc822"
     val SCRIPT_URL = "https://raw.githubusercontent.com/${BuildConfig.RELEASES_REPO}/$SCRIPT_COMMIT/$SCRIPT_PATH"
 
     /** Google deletes Cloud Shell's home folder after this many days without use. */
@@ -35,7 +35,6 @@ object CloudShell {
     const val RESET = "https://docs.cloud.google.com/shell/docs/resetting-cloud-shell"
     const val TERMS = "https://cloud.google.com/terms"
     const val PRIVACY = "https://cloud.google.com/terms/cloud-privacy-notice"
-    const val CODEX_DEVICE_SIGN_IN = "https://chatgpt.com/#settings/Security"
 
     /** The one command to paste into Cloud Shell: download the script, check it, run it. */
     val setupCommand: String =
@@ -43,10 +42,10 @@ object CloudShell {
             "echo \"$SCRIPT_SHA256  \$HOME/pocketide-cloudshell.sh\" | sha256sum -c - && " +
             "bash ~/pocketide-cloudshell.sh"
 
-    /** The first agent's VS Code port; each next agent takes the next one, as the script sets them up. */
+    /** The first agent's port; each next agent takes the next one, as the script sets them up. */
     private const val FIRST_PORT = 8080
 
-    /** Each agent's own VS Code: its port in Cloud Shell (Claude Code 8080, Codex 8081, Antigravity 8082) and its projects folder there. */
+    /** Each agent's port in Cloud Shell: Claude Code 8080, Codex 8081, Antigravity 8082. */
     fun port(agent: Agent): Int = FIRST_PORT + agent.ordinal
 
     fun projects(agent: Agent): String = when (agent) {
@@ -63,10 +62,17 @@ object CloudShell {
 
     fun console(account: String): String = "https://console.cloud.google.com/" + authUser(account, first = true)
 
-    /** [agent]'s own VS Code, through Cloud Shell's Web Preview, which only [account] can open. */
-    fun vsCode(agent: Agent, account: String): String =
-        "https://ssh.cloud.google.com/devshell/proxy?authuser=${encode(account)}&port=${port(agent)}" +
-            "&cloudshell_retry=true&devshellProxyPath=%2F&environment_name=default&environment_id=default"
+    /**
+     * [agent] full screen, through Cloud Shell's Web Preview, which only [account] can open: Claude
+     * Code's and Codex's own VS Code, and Antigravity's own screen, which the script's bridge shows.
+     */
+    fun screen(agent: Agent, account: String): String =
+        webPreview(port(agent), if (agent == Agent.ANTIGRAVITY) "/pocketide/" else "/", account)
+
+    /** [path] on Cloud Shell's [port], through Web Preview, which only [account] can open. */
+    internal fun webPreview(port: Int, path: String, account: String): String =
+        "https://ssh.cloud.google.com/devshell/proxy?authuser=${encode(account)}&port=$port" +
+            "&cloudshell_retry=true&devshellProxyPath=${encode(path)}&environment_name=default&environment_id=default"
 
     /**
      * True until the owner has picked an account and finished the set-up, and again when PocketIDE

@@ -3,7 +3,7 @@ package com.pocketide.cloudshell
 import com.pocketide.agents.Agent
 
 /**
- * What PocketIDE opens in Cloud Shell, each in a Chrome tab: an agent's own VS Code, Cloud Shell's
+ * What PocketIDE opens in Cloud Shell, each in a Chrome tab: an agent full screen, Cloud Shell's
  * terminal, or its editor, where the home folder's files show.
  */
 enum class IdePlace(val label: String) {
@@ -14,7 +14,7 @@ enum class IdePlace(val label: String) {
     FILES("Files"),
     ;
 
-    /** The agent whose VS Code this is, or null for Cloud Shell's own pages. */
+    /** The agent this place shows, or null for Cloud Shell's own pages. */
     val agent: Agent?
         get() = when (this) {
             CLAUDE -> Agent.CLAUDE
@@ -27,7 +27,7 @@ enum class IdePlace(val label: String) {
     fun url(account: String): String = when (this) {
         TERMINAL -> CloudShell.terminal(account)
         FILES -> CloudShell.editor(account)
-        CLAUDE, CODEX, ANTIGRAVITY -> CloudShell.vsCode(checkNotNull(agent), account)
+        CLAUDE, CODEX, ANTIGRAVITY -> CloudShell.screen(checkNotNull(agent), account)
     }
 
     companion object {

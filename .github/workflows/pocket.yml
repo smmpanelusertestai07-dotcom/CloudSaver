@@ -281,35 +281,67 @@ jobs:
       - name: ShellCheck
         run: shellcheck pocket/cloudshell/pocketide-cloudshell.sh
 
-      - name: Set up, then each agent's VS Code answers
+      - name: Set up, then each agent answers on its port
         run: |
           set -euo pipefail
           home="$RUNNER_TEMP/cloudshell-home"
           mkdir -p "$home"
           HOME="$home" bash pocket/cloudshell/pocketide-cloudshell.sh
+          # Claude Code's and Codex's VS Code on 8080 and 8081; Antigravity's own screen on 8082,
+          # asked for under another name, as Cloud Shell's Web Preview asks (agy answers only to
+          # localhost, so this proves the bridge passes it on).
           for port in 8080 8081 8082; do
             code=000
-            for _ in $(seq 1 60); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/" || true)
+            for _ in $(seq 1 90); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $port-cs-test.cloudshell.dev" "http://127.0.0.1:$port/" || true)
               case "$code" in 200 | 302) break ;; esac
               sleep 2
             done
             case "$code" in
               200 | 302) echo "Port $port answers ($code)." ;;
               *)
-                echo "::error::Nothing answered on port $port; the VS Code logs follow."
-                cat "$home"/.pocketide/vscode/*/code-server.log || true
+                echo "::error::Nothing answered on port $port ($code); the logs follow."
+                cat "$home"/.pocketide/vscode/*/code-server.log "$home/.pocketide/antigravity.log" "$home/.pocketide/bridge.log" || true
                 exit 1
                 ;;
             esac
           done
-          for agent in claude-code codex antigravity; do
+          curl -sf "http://127.0.0.1:8082/pocketide/" | grep -q 'Continue signing in with Google'
+          for agent in claude-code codex; do
             echo "$agent: $(ls "$home/.pocketide/vscode/$agent/extensions" | grep -v '^extensions.json$' | tr '\n' ' ')"
           done
+          echo "antigravity: agy $("$home/.gemini/bin/agy" --version)"
           du -sh "$home"
-          # Cloud Shell's own start: tidies, finds every VS Code running, installs nothing again.
+          # Cloud Shell's own start: tidies, finds everything running, installs nothing again.
           HOME="$home" "$home/.local/bin/pocketide" boot
           grep -q 'pocketide boot' "$home/.customize_environment"
+
+      - name: The sign-in return reaches an agent waiting on localhost
+        run: |
+          set -euo pipefail
+          # A stand-in for an agent's sign-in server: it answers only to localhost, and sends the
+          # browser on to its own page, as Codex's and Antigravity's do.
+          cat > "$RUNNER_TEMP/agent.py" <<'PY'
+          import http.server
+          class Agent(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.headers.get("Host") != "localhost:18555":
+                      self.send_response(401); self.end_headers(); return
+                  if self.path.startswith("/auth/callback?code=abc&state=xyz"):
+                      self.send_response(302); self.send_header("Location", "http://localhost:18555/done"); self.end_headers(); return
+                  self.send_response(200); self.end_headers(); self.wfile.write(b"signed in " + self.path.encode())
+          http.server.HTTPServer(("127.0.0.1", 18555), Agent).serve_forever()
+          PY
+          python3 "$RUNNER_TEMP/agent.py" &
+          sleep 1
+          test "$(curl -s http://127.0.0.1:8090/pocketide/health)" = ok
+          token=$(printf '%s' '/auth/callback?code=abc&state=xyz' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+          location=$(curl -s -o /dev/null -w '%{redirect_url}' -H 'Host: 8090-cs-test.cloudshell.dev' "http://127.0.0.1:8090/pocketide/callback/18555/$token")
+          case "$location" in */pocketide/callback/18555/*) ;; *) echo "::error::The agent's redirect left the bridge: $location"; exit 1 ;; esac
+          curl -s "$location" | grep -q '^signed in /done$'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/pocketide/callback/80/Lw)" = 400
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/pocketide/callback/18556/Lw)" = 502
+          echo "The sign-in return reaches the agent, and its redirect stays on the bridge."
 
   device:
     name: On an Android 15 emulator

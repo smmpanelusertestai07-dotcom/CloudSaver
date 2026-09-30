@@ -37,31 +37,34 @@ internal object Faq {
         faq(
             "chrome",
             DocsContent.IDE_ID,
-            "Why does VS Code open in Chrome, not inside the app?",
+            "Why do the agents open in Chrome, not inside the app?",
             "Cloud Shell needs your Google sign-in, and Google allows it only in a real browser. The Chrome tab is dressed as " +
-                "PocketIDE's: its arrow returns here, its tools button shows every agent, and Chrome's menu (⋮) switches between them.",
+                "PocketIDE's: its arrow returns here, its tools button shows every agent, and Chrome's menu (⋮) switches between " +
+                "them. Chrome keeps its own ⋮ in every tab; no app can remove it.",
         ),
         faq(
-            "codex-sign-in",
+            "sign-in-localhost",
             "agents",
-            "Codex's Sign in with ChatGPT ends at a localhost page.",
-            "That sign-in expects Codex to run on the phone itself. In Cloud Shell, sign in with a device code: turn it on in " +
-                "ChatGPT (Settings > Security), then run codex login --device-auth in Codex's Terminal and enter the code.",
+            "A sign-in ends at \"localhost refused to connect\".",
+            "The agent waits for that page in Cloud Shell, but on a phone it opens on the phone. PocketIDE usually catches it " +
+                "by itself; when it does not, tap PocketIDE's tools button at the top of that page (in Chrome's own app: ⋮ > " +
+                "Share > PocketIDE (Finish sign-in)), and PocketIDE hands it to the agent in Cloud Shell.",
         ),
         faq(
-            "antigravity-terminal",
+            "antigravity-screen",
             "agents",
-            "Why does Antigravity open in a terminal?",
-            "Its VS Code panel shows a page from Google's local server, which answers only to localhost, and Cloud Shell's " +
-                "Web Preview reaches it under another name, so the panel stays empty. Its command line, agy, is Google's own " +
-                "Antigravity agent and works fully there.",
+            "Why does Antigravity open without VS Code?",
+            "Google's Antigravity program (agy) has its own screen, the same one its VS Code panel shows, but serves it only to " +
+                "localhost. PocketIDE's bridge in your Cloud Shell passes it on to Web Preview, so Antigravity opens full screen, " +
+                "signed in with Google, no command line. Its projects are in ~/projects/antigravity.",
         ),
         faq(
             "more-extensions",
             "agents",
             "Can I add other extensions?",
-            "Yes: in any agent's VS Code, Extensions finds everything on Open VSX, and each VS Code keeps its own. They update " +
-                "by themselves. Microsoft's own extensions (Pylance, C# Dev Kit, Remote, Live Share) are not on Open VSX.",
+            "Yes: in Claude Code's or Codex's VS Code, Tools > Extensions finds everything on Open VSX, and Tools > Install " +
+                "from a link installs one that is not there, from its maker's .vsix link. Each VS Code keeps its own; Open VSX's " +
+                "update by themselves. Microsoft's own extensions (Pylance, C# Dev Kit, Remote, Live Share) are not on Open VSX.",
         ),
         faq(
             "to-github",

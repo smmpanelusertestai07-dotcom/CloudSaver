@@ -2,6 +2,7 @@ package com.pocketide.ui.tools
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -49,7 +50,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -59,27 +59,34 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.MainActivity
 import com.pocketide.agents.Agent
-import com.pocketide.cloudshell.CloudShell
 import com.pocketide.cloudshell.IdePlace
+import com.pocketide.cloudshell.SignInReturn
 import com.pocketide.graph
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.screens.cloudshell.signInSteps
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.theme.PocketTheme
-import com.pocketide.ui.web.Browser
 import com.pocketide.ui.web.IdeTab
 
 /**
- * PocketIDE's tools, over the Chrome tab an agent's VS Code is in: the tools button in the tab's
- * bar opens them, a tap outside (or Back) hides them again. Every agent with its logo, Cloud
- * Shell's terminal and files, back to PocketIDE, and how each agent signs in. Chrome's menu (⋮)
- * comes here too, with a place already picked. Not exported: only PocketIDE's own tab can open it.
+ * PocketIDE's tools, over the Chrome tab an agent is in: the tools button in the tab's bar opens
+ * them, a tap outside (or Back) hides them again. Every agent with its logo, Cloud Shell's terminal
+ * and files, back to PocketIDE, and how each agent signs in. Chrome's menu (⋮) comes here too, with
+ * a place already picked. On a sign-in page that ended at "localhost refused to connect", the tools
+ * button sends that return to Cloud Shell instead (Chrome hands over the page's address). Not
+ * exported: only PocketIDE's own tab can open it.
  */
 class IdeToolsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         IdePlace.named(intent.getStringExtra(IdeTab.EXTRA_PLACE))?.let {
             go(it)
+            return
+        }
+        intent.dataString?.let { SignInReturn.address(it, graph.settings.settings.value.cloudAccount) }?.let {
+            Toast.makeText(this, "Finishing the sign-in in Cloud Shell…", Toast.LENGTH_SHORT).show()
+            IdeTab.finishSignIn(it)
+            home()
             return
         }
         enableEdgeToEdge()
@@ -157,7 +164,9 @@ internal fun ToolsSheet(onPlace: (IdePlace) -> Unit, onHome: () -> Unit, onClose
                 }
                 AnimatedVisibility(help) { SignInHelp() }
                 Text(
-                    "Chrome's menu (⋮) switches agents too. The arrow at the top left returns to PocketIDE.",
+                    "A sign-in page that ends at \"localhost refused to connect\": tap this tools button on it, and " +
+                        "PocketIDE finishes the sign-in in Cloud Shell. Chrome's menu (⋮) switches agents too. The arrow " +
+                        "at the top left returns to PocketIDE.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp, end = 8.dp),
@@ -169,14 +178,10 @@ internal fun ToolsSheet(onPlace: (IdePlace) -> Unit, onHome: () -> Unit, onClose
 
 @Composable
 private fun SignInHelp() {
-    val context = LocalContext.current
     Column(Modifier.padding(end = 8.dp)) {
         Agent.entries.forEach { agent ->
             Text(agent.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
             Text(signInSteps(agent), style = MaterialTheme.typography.bodyMedium)
-            if (agent == Agent.CODEX) {
-                TextButton(onClick = { Browser.open(context, CloudShell.CODEX_DEVICE_SIGN_IN) }) { Text("Open ChatGPT settings") }
-            }
         }
     }
 }

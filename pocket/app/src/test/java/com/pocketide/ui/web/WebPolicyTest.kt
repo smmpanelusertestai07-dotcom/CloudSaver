@@ -16,7 +16,7 @@ class WebPolicyTest {
         (IdePlace.entries.map { it.url(account) } + CloudShell.console(account) + CloudShell.SCRIPT_URL).forEach {
             assertTrue(it, WebPolicy.isWebLink(it))
         }
-        (Agent.entries.flatMap { listOf(it.privacyUrl, it.termsUrl, it.docsUrl, it.openVsxUrl) } + CloudShell.CODEX_DEVICE_SIGN_IN).forEach {
+        Agent.entries.flatMap { listOf(it.privacyUrl, it.termsUrl, it.docsUrl, it.openVsxUrl) }.forEach {
             assertTrue(it, WebPolicy.isWebLink(it))
         }
     }

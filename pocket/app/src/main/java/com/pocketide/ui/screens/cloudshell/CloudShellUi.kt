@@ -8,7 +8,6 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -19,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.pocketide.agents.Agent
@@ -64,33 +62,26 @@ fun CommandBox(text: String) {
     }
 }
 
-/** How [agent] signs in inside its Cloud Shell VS Code. */
+/** How [agent] signs in, full screen in Cloud Shell. */
 fun signInSteps(agent: Agent): String = when (agent) {
     Agent.CLAUDE ->
-        "Open Claude Code in its VS Code and tap Sign in. Chrome opens: sign in, copy the code the page shows, come " +
-            "back and paste it where Claude Code asks."
+        "In Claude Code, tap Sign in. Chrome opens: sign in, copy the code the page shows, come back and paste it " +
+            "where Claude Code asks."
     Agent.CODEX ->
-        "Codex's own Sign in with ChatGPT expects the computer to be this phone. In Cloud Shell, use device code " +
-            "sign-in: turn it on in ChatGPT (Settings > Security), then in Codex's VS Code open the Terminal and run " +
-            "codex login --device-auth; open the link it shows and enter the code."
+        "In Codex, tap Sign in with ChatGPT and sign in. PocketIDE brings the sign-in back to Cloud Shell by itself. " +
+            "If the page ends at \"localhost refused to connect\", tap PocketIDE's tools button at the top of it."
     Agent.ANTIGRAVITY ->
-        "Antigravity opens as its own command line (agy), full screen. Pick Google OAuth, open the link it shows, sign " +
-            "in with Google, then copy the code the page shows and paste it back."
+        "Antigravity opens as Google's own Antigravity screen. Tap Continue with Google, then the blue bar " +
+            "\"Continue signing in with Google\", and sign in. PocketIDE brings the sign-in back to Cloud Shell by itself."
 }
 
 @Composable
 fun SignInHelpDialog(agent: Agent, onDismiss: () -> Unit) {
-    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Sign in to ${agent.displayName}") },
         text = {
-            Column {
-                Text(signInSteps(agent), style = MaterialTheme.typography.bodyMedium)
-                if (agent == Agent.CODEX) {
-                    TextButton(onClick = { Browser.open(context, CloudShell.CODEX_DEVICE_SIGN_IN) }) { Text("Open ChatGPT settings") }
-                }
-            }
+            Text(signInSteps(agent), style = MaterialTheme.typography.bodyMedium)
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
     )

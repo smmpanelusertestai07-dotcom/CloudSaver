@@ -74,21 +74,23 @@ internal object Guide {
             *Agent.entries.map { row("${it.displayName} (${it.maker})", it.signIn, it.chatsFolder) }.toTypedArray(),
         ),
         p(
-            "Each agent is its maker's own VS Code extension, from its verified publisher on Open VSX, in its own VS Code in " +
-                "your Cloud Shell. PocketIDE never talks to the AI companies itself.",
+            "Claude Code and Codex are their makers' own VS Code extensions, from their verified publishers on Open VSX, each " +
+                "in its own VS Code in your Cloud Shell. Antigravity is Google's own Antigravity screen, from Google's own " +
+                "program (agy) in your Cloud Shell. PocketIDE never talks to the AI companies itself.",
         ),
         steps(
             "Claude Code: in its panel, Sign in. Chrome opens: sign in, copy the code the page shows, come back and paste it.",
-            "Codex: its own Sign in with ChatGPT expects the computer to be the phone. In Cloud Shell use a device code: turn " +
-                "it on in ChatGPT (Settings > Security), then in Codex's VS Code open the Terminal, run codex login --device-auth, " +
-                "open the link and enter the code.",
-            "Antigravity: it opens as its own command line, agy. Pick Google OAuth, open the link it shows, sign in, and " +
-                "paste the code back.",
+            "Codex: Sign in with ChatGPT, and sign in. PocketIDE brings the sign-in back to Cloud Shell by itself.",
+            "Antigravity: Continue with Google, then the blue bar Continue signing in with Google, and sign in. PocketIDE " +
+                "brings the sign-in back to Cloud Shell by itself.",
+            "A sign-in page that ends at \"localhost refused to connect\": tap PocketIDE's tools button at the top of that " +
+                "page (in Chrome's own app: ⋮ > Share > PocketIDE (Finish sign-in)). The agent is signed in.",
         ),
         p(
-            "More extensions: in any agent's VS Code, Extensions (the four squares) finds any extension on Open VSX. Each VS " +
-                "Code keeps its own, and they update by themselves. Microsoft's own extensions are not on Open VSX (Microsoft " +
-                "allows them only in its products).",
+            "More extensions: in Claude Code's or Codex's VS Code, Tools (bottom left) > Extensions finds any extension on " +
+                "Open VSX, and Tools > Install from a link installs one Open VSX does not have, from its maker's .vsix link. " +
+                "Each VS Code keeps its own, and Open VSX's update by themselves. Microsoft's own extensions are not on Open " +
+                "VSX (Microsoft allows them only in its products).",
         ),
         link("Claude Code's guide", Agent.CLAUDE.docsUrl),
         link("Codex's guide", Agent.CODEX.docsUrl),
@@ -102,16 +104,22 @@ internal object Guide {
         table(
             listOf("In the Chrome tab", "What it does"),
             row("The arrow (top left)", "Back to PocketIDE"),
-            row("The tools button", "Every agent with its logo, the terminal, the files, and how each agent signs in"),
+            row(
+                "The tools button",
+                "Every agent with its logo, the terminal, the files, how each agent signs in; on a sign-in page that ended " +
+                    "at localhost, it finishes the sign-in",
+            ),
             row("Chrome's menu (⋮)", "The other agents, the terminal and the files"),
             row("Back", "The page before, then PocketIDE"),
         ),
         bullets(
-            "Each agent opens full screen: Claude Code and Codex in VS Code's side bar, maximized (its restore button at the " +
-                "top shows the files and the editor), Antigravity as its command line in a terminal.",
-            "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects.",
-            "VS Code's own keys (Esc, Tab, Ctrl) are not on most phone keyboards: a keyboard app with those keys helps in the " +
-                "terminal. Turning the phone sideways gives VS Code more room.",
+            "Each agent opens full screen: Claude Code and Codex in VS Code's side bar, maximized, and Antigravity as Google's " +
+                "own Antigravity screen.",
+            "In Claude Code's and Codex's VS Code, Tools (bottom left) opens the agent, the terminal, the files, search, Git, " +
+                "extensions and settings; the keyboard button next to it shows Esc, Tab, the arrows, Enter and Ctrl+C for the " +
+                "terminal, and hides them again.",
+            "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects. Turning " +
+                "the phone sideways gives VS Code more room.",
             "If VS Code does not open, Cloud Shell is probably stopped: tap Start Cloud Shell, wait for the terminal's prompt, " +
                 "then open the agent again.",
         ),
@@ -141,7 +149,8 @@ internal object Guide {
             row("VS Code does not open", "Start Cloud Shell, wait for the prompt, open the agent again."),
             row("Could not connect to port 8080 (or 8081, 8082)", "In the Terminal, run pocketide. Still nothing: Computer > Run the set-up again."),
             row("An agent is missing", "In the Terminal, run pocketide update."),
-            row("Codex's sign-in ends at localhost", "Sign in with a device code (The agents)."),
+            row("A sign-in ends at \"localhost refused to connect\"", "Tap PocketIDE's tools button at the top of that page (The agents)."),
+            row("Antigravity says it is starting", "Wait a few seconds; still there: in the Terminal, run pocketide update."),
             row("Chrome offers to turn on sync", "Tap No thanks: it is not needed."),
             row("Cloud Shell says the weekly quota is used", "It comes back the next week; Session information > Usage quota shows it."),
             row("The home folder is full", "Delete old projects or files; the first set-up needs about 2 GB free."),

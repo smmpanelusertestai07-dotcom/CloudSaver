@@ -91,7 +91,7 @@ class DocsContentTest {
         assertTrue(DocsContent.searchPlaces("hours").any { it == AppPlace.COMPUTER })
         assertTrue(DocsContent.searchPlaces("zip").any { it == AppPlace.DATA })
         assertTrue(DocsContent.searchQuestions("github").any { it.id == "to-github" })
-        assertTrue(DocsContent.search("device code").any { it.id == "agents" })
+        assertTrue(DocsContent.search("localhost refused").any { it.id == "agents" })
     }
 
     @Test

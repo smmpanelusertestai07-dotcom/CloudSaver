@@ -4,10 +4,12 @@ import com.pocketide.agents.Agent
 import com.pocketide.core.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.security.MessageDigest
+import java.util.Base64
 
 class CloudShellTest {
     private val script: File by lazy {
@@ -27,16 +29,26 @@ class CloudShellTest {
 
     @Test
     fun `each agent's port and projects folder are the ones the script sets up`() {
-        val agents = Regex("AGENTS=\"([^\"]+)\"").find(script.readText())?.groupValues?.get(1)
-        val entries = checkNotNull(agents) { "the script names its agents" }.split(" ").map { it.split(":") }
-        assertEquals(Agent.entries.size, entries.size)
-        Agent.entries.forEach { agent ->
+        val text = script.readText()
+        val agents = Regex("AGENTS=\"([^\"]+)\"").find(text)?.groupValues?.get(1)
+        val entries = checkNotNull(agents) { "the script names the agents it gives a VS Code" }.split(" ").map { it.split(":") }
+        val inVsCode = listOf(Agent.CLAUDE, Agent.CODEX)
+        assertEquals(inVsCode.size, entries.size)
+        inVsCode.forEach { agent ->
             val (key, port, extension) = entries.single { it[2].replace("/", ".") == agent.extensionId }
             assertEquals(agent.name, CloudShell.port(agent), port.toInt())
             assertEquals(agent.name, "~/projects/$key", CloudShell.projects(agent))
             assertTrue(extension.isNotBlank())
         }
-        assertEquals("ports are each agent's own", Agent.entries.size, Agent.entries.map(CloudShell::port).distinct().size)
+        // Antigravity's own screen: the bridge shows it on its port, agy works in its projects folder.
+        val screen = Regex("SCREEN_PORT = int\\(sys.argv\\[2]\\) if len\\(sys.argv\\) > 2 else (\\d+)").find(text)
+        assertEquals(CloudShell.port(Agent.ANTIGRAVITY), checkNotNull(screen) { "the bridge's screen port" }.groupValues[1].toInt())
+        assertTrue(text.contains("--add-dir=\"\$HOME/projects/antigravity\""))
+        assertEquals("~/projects/antigravity", CloudShell.projects(Agent.ANTIGRAVITY))
+        val returns = Regex("RETURN_PORT = int\\(sys.argv\\[1]\\) if len\\(sys.argv\\) > 1 else (\\d+)").find(text)
+        assertEquals(SignInReturn.PORT, checkNotNull(returns) { "the bridge's sign-in return port" }.groupValues[1].toInt())
+        val ports = Agent.entries.map(CloudShell::port) + SignInReturn.PORT
+        assertEquals("ports are each agent's own", ports.size, ports.distinct().size)
     }
 
     @Test
@@ -90,9 +102,63 @@ class CloudShellTest {
         assertTrue(CloudShell.editor(account).endsWith("&authuser=$encoded"))
         assertEquals("https://console.cloud.google.com/?authuser=$encoded", CloudShell.console(account))
         Agent.entries.forEach { agent ->
-            val url = CloudShell.vsCode(agent, account)
+            val url = CloudShell.screen(agent, account)
             assertTrue(url, url.startsWith("https://ssh.cloud.google.com/devshell/proxy?authuser=$encoded&port=${CloudShell.port(agent)}&"))
         }
         assertEquals("no account, no authuser", "https://shell.cloud.google.com/?show=terminal", CloudShell.terminal(""))
+    }
+
+    @Test
+    fun `Claude Code and Codex open their VS Code, Antigravity its own screen`() {
+        assertTrue(CloudShell.screen(Agent.CLAUDE, "a@b.c").contains("&devshellProxyPath=%2F&"))
+        assertTrue(CloudShell.screen(Agent.CODEX, "a@b.c").contains("&devshellProxyPath=%2F&"))
+        assertTrue(CloudShell.screen(Agent.ANTIGRAVITY, "a@b.c").contains("&port=8082&cloudshell_retry=true&devshellProxyPath=%2Fpocketide%2F&"))
+    }
+
+    @Test
+    fun `a sign-in page that ended at localhost goes back to Cloud Shell through the bridge`() {
+        val back = SignInReturn.address("http://localhost:1455/auth/callback?code=ac_1%2F2&state=xyz", "dev@example.com")
+        val path = "/auth/callback?code=ac_1%2F2&state=xyz"
+        val token = Base64.getUrlEncoder().withoutPadding().encodeToString(path.toByteArray())
+        assertEquals(
+            "https://ssh.cloud.google.com/devshell/proxy?authuser=dev%40example.com&port=8090&cloudshell_retry=true" +
+                "&devshellProxyPath=%2Fpocketide%2Fcallback%2F1455%2F$token&environment_name=default&environment_id=default",
+            back,
+        )
+        assertEquals(path, String(Base64.getUrlDecoder().decode(token)))
+        assertTrue(checkNotNull(SignInReturn.address("http://127.0.0.1:46831/", "a@b.c")).contains("%2Fcallback%2F46831%2F"))
+        assertTrue(checkNotNull(SignInReturn.address("http://localhost:46831", "a@b.c")).contains("%2Fcallback%2F46831%2F"))
+    }
+
+    @Test
+    fun `Antigravity's sign-in page names the phone port its return comes to`() {
+        val page = "https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=1.apps.googleusercontent.com" +
+            "&redirect_uri=http%3A%2F%2Flocalhost%3A34321%2Fauth%2Fcallback&response_type=code&state=s"
+        assertEquals(34321, SignInReturn.pagePort(page))
+        listOf(
+            page.replace("https://", "http://"),
+            page.replace("localhost%3A34321", "example.com%3A34321"),
+            page.replace("localhost%3A34321", "localhost%3A8090"),
+            page.replace("localhost%3A34321", "localhost"),
+            "https://accounts.google.com/o/oauth2/auth?redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback",
+            "https://example.com/",
+            "",
+        ).forEach { assertNull(it, SignInReturn.pagePort(it)) }
+    }
+
+    @Test
+    fun `nothing but a return to this phone's localhost goes to the bridge`() {
+        listOf(
+            "https://localhost:1455/auth/callback?code=1", // https: no agent's local sign-in server
+            "http://example.com:1455/auth/callback?code=1",
+            "http://localhost.example.com:1455/",
+            "http://localhost/auth/callback", // no port
+            "http://localhost:80/auth/callback",
+            "http://localhost:8090/pocketide/health", // the bridge itself
+            "http://localhost:70000/",
+            "intent://signin#Intent;end",
+            "not a link",
+            "",
+        ).forEach { assertNull(it, SignInReturn.address(it, "a@b.c")) }
     }
 }
