@@ -1,5 +1,7 @@
 package com.pocketide.ui.screens.computer
 
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -69,7 +71,8 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun ComputerScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
-    val graph = LocalContext.current.graph
+    val context = LocalContext.current
+    val graph = context.graph
     val state by graph.computer.state.collectAsStateWithLifecycle()
     val ide by graph.ide.state.collectAsStateWithLifecycle()
     val update by graph.updater.status.collectAsStateWithLifecycle()
@@ -113,6 +116,7 @@ fun ComputerScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                         InfoRow("System", facts.ubuntu ?: "Ubuntu")
                         InfoRow("VS Code", facts.codeServer?.let { "code-server $it" } ?: "code-server")
                         InfoRow("Processor", "${facts.cpu} · ${facts.cores} cores")
+                        InfoRow("Memory (RAM)", memory(context))
                         InfoRow("Phone", facts.android)
                         HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                         InfoRow("Your projects, sign-ins and chats", Formats.size(facts.homeBytes))
@@ -388,4 +392,11 @@ private fun ConfirmDialog(which: Confirm, onConfirm: () -> Unit, onCancel: () ->
         confirmButton = { TextButton(onClick = onConfirm) { Text(action) } },
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
     )
+}
+
+/** The phone's memory as Android counts it: what is free now, of all it has. */
+private fun memory(context: Context): String {
+    val manager = context.getSystemService(ActivityManager::class.java) ?: return "Unknown"
+    val memory = ActivityManager.MemoryInfo().also(manager::getMemoryInfo)
+    return "${Formats.size(memory.availMem)} free of ${Formats.size(memory.totalMem)}"
 }

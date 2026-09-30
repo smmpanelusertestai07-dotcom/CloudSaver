@@ -8,6 +8,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
 /** Sends a signal to one of this app's own processes. */
@@ -142,14 +144,30 @@ internal class ProcessKeeper(
 internal suspend fun drain(process: Process, mergedErrors: Boolean, onLine: (String) -> Unit, stop: (Process) -> Unit): Int =
     coroutineScope {
         try {
-            val output = launch(Dispatchers.IO) { process.inputStream.use { it.forEachLine(onLine = onLine) } }
+            val output = launch(Dispatchers.IO) { readLines(process.inputStream, onLine) }
             // Unread errors would fill the pipe and stall the program.
-            val errors = if (mergedErrors) null else launch(Dispatchers.IO) { process.errorStream.use { it.forEachLine { } } }
+            val errors = if (mergedErrors) null else launch(Dispatchers.IO) { readLines(process.errorStream) { } }
             val code = runInterruptible(Dispatchers.IO) { process.waitFor() }
-            output.join()
-            errors?.join()
+            // The program has ended; something it left behind may still hold its output open, and
+            // its last lines are not worth waiting for without end.
+            if (withTimeoutOrNull(OUTPUT_AFTER_END_MS) { output.join(); errors?.join() } == null) {
+                runCatching { process.inputStream.close() }
+                runCatching { process.errorStream.close() }
+            }
             code
         } finally {
             if (process.isAlive) stop(process)
         }
     }
+
+/** Reads [stream] to its end; a stream [drain] closed after its program ended ends here too. */
+private fun readLines(stream: InputStream, onLine: (String) -> Unit) {
+    try {
+        stream.use { it.forEachLine(onLine = onLine) }
+    } catch (expected: IOException) {
+        // Closed by drain: the program had ended, and something it left kept the output open.
+    }
+}
+
+/** How long [drain] waits for a program's last output once the program has ended. */
+private const val OUTPUT_AFTER_END_MS = 5_000L

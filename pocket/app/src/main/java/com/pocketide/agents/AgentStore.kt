@@ -3,6 +3,7 @@ package com.pocketide.agents
 import com.pocketide.core.AppJson
 import com.pocketide.core.SemVer
 import com.pocketide.ide.AgentScreen
+import com.pocketide.ide.IdeFiles
 import com.pocketide.linux.Arch
 import com.pocketide.linux.Computer
 import com.pocketide.linux.GuestRoot
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -208,12 +210,21 @@ class AgentStore internal constructor(
         return product["version"]?.jsonPrimitive?.contentOrNull?.let(SemVer::parse)
     }
 
+    /**
+     * Runs code-server's own extension command. VS Code's gallery stays off here too, as for the
+     * server: the package is already checked and on the phone, so nothing waits on a network that
+     * does not answer. A command that still has not ended after [CODE_SERVER_MS] is stopped, so
+     * an install never shows "Installing" for good.
+     */
     private suspend fun codeServer(vararg args: String) {
         val said = ArrayDeque<String>()
-        val code = computer.run(LinuxCommand(listOf(CODE_SERVER, "--user-data-dir", USER_DATA, "--extensions-dir", GUEST_EXTENSIONS) + args)) { line ->
-            if (line.isNotBlank()) said.addLast(line)
-            if (said.size > KEPT_LINES) said.removeFirst()
-        }
+        val argv = listOf(CODE_SERVER, "--user-data-dir", USER_DATA, "--extensions-dir", GUEST_EXTENSIONS) + args
+        val code = withTimeoutOrNull(CODE_SERVER_MS) {
+            computer.run(LinuxCommand(argv, env = IdeFiles.NO_GALLERY_ENVIRONMENT)) { line ->
+                if (line.isNotBlank()) said.addLast(line)
+                if (said.size > KEPT_LINES) said.removeFirst()
+            }
+        } ?: throw IOException("code-server did not finish in ${CODE_SERVER_MS / MINUTE_MS} minutes, so it was stopped. Try again.")
         if (code != 0) throw IOException("code-server: ${said.lastOrNull()?.take(MAX_SAID) ?: "exit code $code"}")
     }
 
@@ -257,6 +268,8 @@ class AgentStore internal constructor(
         const val MAX_JSON = 4L * 1024 * 1024
         const val KEPT_LINES = 5
         const val MAX_SAID = 160
+        const val MINUTE_MS = 60_000L
+        const val CODE_SERVER_MS = 10 * MINUTE_MS
 
         /** A version is also a file name here. */
         val SAFE_VERSION = Regex("[0-9A-Za-z][0-9A-Za-z.+-]{0,63}")

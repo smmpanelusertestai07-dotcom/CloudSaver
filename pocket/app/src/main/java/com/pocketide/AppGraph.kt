@@ -2,6 +2,7 @@ package com.pocketide
 
 import android.content.Context
 import com.pocketide.agents.AgentStore
+import com.pocketide.agents.InstalledExtension
 import com.pocketide.agents.OpenVsx
 import com.pocketide.agents.VerifiedDownload
 import com.pocketide.core.AppFolders
@@ -103,6 +104,22 @@ class AppGraph(val context: Context) {
             } finally {
                 settingUp.set(false)
                 keepAlive.release(KeepAlive.SET_UP)
+            }
+        }
+    }
+
+    /**
+     * Installs [namespace].[name] in the app's own scope with the app kept running, so leaving the
+     * screen or the app, or the screen turning off, does not stop it half way. [done] hears how it went.
+     */
+    fun installAgent(namespace: String, name: String, done: (Result<InstalledExtension>) -> Unit = {}) {
+        val holder = "install $namespace.$name"
+        keepAlive.hold(holder)
+        scope.launch {
+            try {
+                done(runCatching { agents.install(namespace, name) })
+            } finally {
+                keepAlive.release(holder)
             }
         }
     }

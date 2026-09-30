@@ -307,7 +307,7 @@ private fun AgentList(
                 ready = ready,
                 busy = activity != null,
                 onOpen = { onOpen(agent.extensionId) },
-                onInstall = { scope.launch { runCatching { graph.agents.install(agent.publisher, agent.extensionName) } } },
+                onInstall = { graph.installAgent(agent.publisher, agent.extensionName) },
                 menu = listOf(
                     signInLabel(agent) to { onSignIn(agent.extensionId, agent.signInCommand, "Sign in: ${agent.displayName}") },
                 ),

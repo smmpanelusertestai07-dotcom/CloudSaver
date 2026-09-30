@@ -128,15 +128,11 @@ fun AddAgentsScreen(onBack: () -> Unit) {
                         busy = activity != null,
                         onInstall = {
                             message = null
-                            scope.launch {
-                                try {
-                                    val done = graph.agents.install(entry.namespace, entry.name)
-                                    message = "${done.displayName} is installed. It is on Home." to Tone.OK
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (failure: Exception) {
-                                    message = (failure.message ?: "It could not be installed.") to Tone.ERROR
-                                }
+                            graph.installAgent(entry.namespace, entry.name) { result ->
+                                message = result.fold(
+                                    onSuccess = { done -> "${done.displayName} is installed. It is on Home." to Tone.OK },
+                                    onFailure = { failure -> (failure.message ?: "It could not be installed.") to Tone.ERROR },
+                                )
                             }
                         },
                     )

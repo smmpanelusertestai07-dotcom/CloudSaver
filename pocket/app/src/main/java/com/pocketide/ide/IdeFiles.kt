@@ -47,8 +47,10 @@ object IdeFiles {
      * too. No setting stops that here: extensions.autoUpdate is an application setting, which VS
      * Code takes only from the owner's own settings, never from the machine settings below.
      */
-    fun serverEnvironment(keys: Map<String, String>): Map<String, String> =
-        keys + mapOf("BROWSER" to BROWSER, "EXTENSIONS_GALLERY" to NO_GALLERY)
+    fun serverEnvironment(keys: Map<String, String>): Map<String, String> = keys + mapOf("BROWSER" to BROWSER) + NO_GALLERY_ENVIRONMENT
+
+    /** VS Code's own extension gallery off, for the server and for code-server's install command. */
+    val NO_GALLERY_ENVIRONMENT: Map<String, String> = mapOf("EXTENSIONS_GALLERY" to NO_GALLERY)
 
     /**
      * VS Code settings for a phone screen with the agents in front: no status, menu or activity
