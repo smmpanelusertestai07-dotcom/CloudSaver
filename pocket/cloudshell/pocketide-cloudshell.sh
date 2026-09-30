@@ -66,7 +66,7 @@ cat >"$BASE/layout/package.json" <<'JSON'
   "name": "layout",
   "displayName": "PocketIDE layout",
   "description": "Opens this VS Code's agent full screen, with the keys and tools a phone lacks.",
-  "version": "6.1.0",
+  "version": "6.1.1",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": { "vscode": "^1.94.0" },
@@ -214,6 +214,8 @@ function statusBar(context, agent) {
   };
   add('$(menu) Tools', 'PocketIDE tools: the agent, terminal, files, extensions', 'pocketide.tools', 2000).show();
   add('$(keyboard)', 'Keys: Esc, Tab, arrows, Enter, Ctrl+C', 'pocketide.keys', 1999).show();
+  // Full screen hides Chrome's own bar and menu too; Back leaves it.
+  add('$(screen-full)', 'Full screen (Back leaves it)', 'workbench.action.toggleFullScreen', 1990).show();
   const keys = KEYS.map(([label, sequence], index) =>
     add(label, `Send ${label} to the terminal`, { title: label, command: 'pocketide.key', arguments: [sequence] }, 1998 - index));
   let shown = false;
@@ -325,6 +327,16 @@ async function check() {
 }
 check();
 setInterval(check, 1500);
+// A tap on Antigravity's screen makes it full screen: Chrome's own bar and menu hide; Back leaves it.
+const frame = document.querySelector('iframe');
+const full = () => {
+  if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+};
+frame.addEventListener('load', () => {
+  try { frame.contentDocument.addEventListener('pointerdown', full); } catch (e) {}
+});
 </script></body></html>
 """
 
