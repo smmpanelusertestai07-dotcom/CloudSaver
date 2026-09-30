@@ -54,7 +54,103 @@ else
     ln -sfn "$CS_DIR/$CODE_SERVER_VERSION" "$CS_DIR/current"
 fi
 
-# 2. `pocketide`: starts each agent's VS Code that is not running, installs or updates the agents
+# 2. PocketIDE's layout extension, which each agent's VS Code gets: on a phone's narrow screen it
+# opens that VS Code's agent full screen. Claude Code and Codex open in the secondary side bar,
+# maximized; tap its restore button at the top to see the files and the editor again. Antigravity's
+# own panel cannot open through Cloud Shell's Web Preview (its local server answers only to
+# localhost), so Antigravity opens as its command line, agy, in a maximized terminal.
+# Each VS Code installs it once for each version: raise the version when either file changes.
+mkdir -p "$BASE/layout"
+cat >"$BASE/layout/package.json" <<'JSON'
+{
+  "name": "layout",
+  "displayName": "PocketIDE layout",
+  "description": "Opens this VS Code's agent full screen, as a phone needs it.",
+  "version": "6.0.1",
+  "publisher": "pocketide",
+  "license": "Apache-2.0",
+  "engines": { "vscode": "^1.94.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "capabilities": { "untrustedWorkspaces": { "supported": true }, "virtualWorkspaces": true },
+  "contributes": {
+    "configuration": {
+      "title": "PocketIDE",
+      "properties": {
+        "pocketide.agent": { "type": "string", "default": "", "description": "The agent this VS Code opens full screen." }
+      }
+    }
+  }
+}
+JSON
+cat >"$BASE/layout/extension.js" <<'JS'
+// PocketIDE layout: opens this VS Code's agent full screen, as a phone's narrow screen needs it.
+const vscode = require('vscode');
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// How each agent opens. Antigravity's panel loads Google's local server through code-server's
+// path proxy, whose pages that server refuses; its command line works, so it opens in a terminal
+// (the settings keep the panel maximized).
+const AGENTS = {
+  'claude-code': { open: ['claude-vscode.sidebar.open'] },
+  codex: { open: ['chatgpt.openSidebar'] },
+  antigravity: { terminal: path.join(os.homedir(), '.gemini', 'bin', 'agy'), name: 'Antigravity' },
+};
+const WAIT_MS = 90000;
+const STEP_MS = 1000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const run = (command, ...args) => Promise.resolve(vscode.commands.executeCommand(command, ...args)).then(() => true, () => false);
+
+// The agent's extension registers its commands once it has started: wait for them.
+async function ready(names) {
+  for (let waited = 0; waited < WAIT_MS; waited += STEP_MS) {
+    const known = new Set(await vscode.commands.getCommands(true));
+    if (names.every((name) => known.has(name))) return true;
+    await sleep(STEP_MS);
+  }
+  return false;
+}
+
+// Antigravity's extension fetches agy the first time it starts: wait for it.
+async function fetched(file) {
+  for (let waited = 0; waited < WAIT_MS; waited += STEP_MS) {
+    if (fs.existsSync(file)) return true;
+    await sleep(STEP_MS);
+  }
+  return false;
+}
+
+async function activate() {
+  const agent = AGENTS[vscode.workspace.getConfiguration('pocketide').get('agent', '')];
+  if (!agent) return;
+  if (agent.terminal) {
+    // A terminal VS Code kept from the last time (agy still running in it) is shown, not doubled.
+    const kept = vscode.window.terminals.find((terminal) => terminal.name === agent.name);
+    if (kept) {
+      kept.show();
+    } else if (await fetched(agent.terminal)) {
+      const terminal = vscode.window.createTerminal({ name: agent.name });
+      terminal.show();
+      terminal.sendText(agent.terminal);
+    }
+    await run('workbench.action.closeSidebar');
+    return;
+  }
+  if (!(await ready(agent.open))) return;
+  for (const command of agent.open) await run(command);
+  await run('workbench.action.maximizeAuxiliaryBar');
+}
+
+module.exports = { activate, deactivate() {} };
+JS
+
+# 3. `pocketide`: starts each agent's VS Code that is not running, installs or updates the agents
 # (`pocketide update`), and, when Cloud Shell starts (`pocketide boot`), tidies and updates too.
 cat >"$BIN/pocketide" <<'LAUNCHER'
 #!/usr/bin/env bash
@@ -64,31 +160,74 @@ AGENTS="claude-code:8080:anthropic/claude-code codex:8081:openai/chatgpt antigra
 BASE="$HOME/.pocketide"
 CODE="$BASE/code-server/current/bin/code-server"
 
-settings() { # the settings every agent's VS Code starts with: phone screen, no telemetry
-    cat <<'JSON'
-{
-  "workbench.startupEditor": "none",
-  "workbench.tips.enabled": false,
-  "workbench.reduceMotion": "on",
-  "window.autoDetectColorScheme": true,
-  "breadcrumbs.enabled": false,
-  "editor.minimap.enabled": false,
-  "editor.wordWrap": "on",
-  "editor.fontSize": 14,
-  "terminal.integrated.fontSize": 14,
-  "terminal.integrated.gpuAcceleration": "off",
-  "files.autoSave": "afterDelay",
-  "extensions.ignoreRecommendations": true,
-  "update.mode": "none",
-  "telemetry.telemetryLevel": "off",
-  "chat.disableAIFeatures": true,
-  "task.allowAutomaticTasks": "off",
-  "claudeCode.preferredLocation": "sidebar",
-  "claudeCode.useCtrlEnterToSend": true,
-  "chatgpt.openOnStartup": false,
-  "chatgpt.composerEnterBehavior": "cmdAlways"
+settings() { # $1: the agent; the settings its VS Code starts with: phone screen, no telemetry, its agent full screen
+    python3 - "$1" <<'PY'
+import json, sys
+agent = sys.argv[1]
+print(json.dumps({
+    "workbench.startupEditor": "none",
+    "workbench.tips.enabled": False,
+    "workbench.reduceMotion": "on",
+    "workbench.secondarySideBar.defaultVisibility": "hidden" if agent == "antigravity" else "maximized",
+    "workbench.panel.opensMaximized": "always" if agent == "antigravity" else "preserve",
+    "window.autoDetectColorScheme": True,
+    "breadcrumbs.enabled": False,
+    "editor.minimap.enabled": False,
+    "editor.wordWrap": "on",
+    "editor.fontSize": 14,
+    "terminal.integrated.fontSize": 14,
+    "terminal.integrated.gpuAcceleration": "off",
+    "files.autoSave": "afterDelay",
+    "extensions.ignoreRecommendations": True,
+    "update.mode": "none",
+    "telemetry.telemetryLevel": "off",
+    "chat.disableAIFeatures": True,
+    "task.allowAutomaticTasks": "off",
+    "pocketide.agent": agent,
+    "claudeCode.preferredLocation": "sidebar",
+    "claudeCode.useCtrlEnterToSend": True,
+    "chatgpt.openOnStartup": agent == "codex",
+    "chatgpt.composerEnterBehavior": "cmdAlways",
+}, indent=2))
+PY
 }
-JSON
+
+layout() { # $1: an agent's VS Code folder: PocketIDE's layout extension in it, once for each version
+    version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$BASE/layout/package.json" 2>/dev/null) || return 0
+    ls -d "$1/extensions/pocketide.layout-$version"* >/dev/null 2>&1 && return 0
+    vsix="$BASE/pocketide.layout-$version.vsix"
+    python3 - "$BASE/layout" "$vsix" "$version" <<'PY'
+import os, sys, zipfile
+source, out, version = sys.argv[1:4]
+types = ('<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+         '<Default Extension=".json" ContentType="application/json"/><Default Extension=".js" ContentType="application/javascript"/>'
+         '<Default Extension=".vsixmanifest" ContentType="text/xml"/></Types>')
+manifest = f"""<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="layout" Version="{version}" Publisher="pocketide" />
+    <DisplayName>PocketIDE layout</DisplayName>
+    <Description xml:space="preserve">Opens this VS Code's agent full screen, as a phone needs it.</Description>
+    <Categories>Other</Categories>
+    <Properties>
+      <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.94.0" />
+      <Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace" />
+    </Properties>
+  </Metadata>
+  <Installation><InstallationTarget Id="Microsoft.VisualStudio.Code" /></Installation>
+  <Dependencies />
+  <Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" /></Assets>
+</PackageManifest>
+"""
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as package:
+    package.writestr("[Content_Types].xml", types)
+    package.writestr("extension.vsixmanifest", manifest)
+    for name in ("package.json", "extension.js"):
+        package.write(os.path.join(source, name), "extension/" + name)
+PY
+    "$CODE" --user-data-dir "$1" --extensions-dir "$1/extensions" --install-extension "$vsix" --force >/dev/null ||
+        echo "PocketIDE's layout extension was not installed in $1." >&2
+    rm -f "$vsix"
 }
 
 pick() { # namespace name target -> "version download-url sha256-url" of the newest release
@@ -201,7 +340,8 @@ update() {
         agent=${rest#*:} ns=${agent%/*} name=${agent#*/}
         data="$BASE/vscode/$key"
         mkdir -p "$data/Machine" "$data/extensions" "$HOME/projects/$key"
-        settings >"$data/Machine/settings.json"
+        settings "$key" >"$data/Machine/settings.json"
+        layout "$data"
         choice=$(pick "$ns" "$name" linux-x64 || pick "$ns" "$name" universal) || { echo "Open VSX has no release of $ns.$name now." >&2; continue; }
         read -r version download sha <<<"$choice"
         if ls -d "$data/extensions/$ns.$name-$version"* >/dev/null 2>&1; then
@@ -299,12 +439,12 @@ if grep -q 'chatgpt.openOnStartup' "$OLD_DATA/Machine/settings.json" 2>/dev/null
     fi
 fi
 
-# 3. The agents, each in its own VS Code.
+# 4. The agents, each in its own VS Code.
 say "Installing the three agents, each in its own VS Code..."
 installed=yes
 "$BIN/pocketide" update || installed=no
 
-# 4. Cloud Shell runs ~/.customize_environment as root each time it starts: PocketIDE's part
+# 5. Cloud Shell runs ~/.customize_environment as root each time it starts: PocketIDE's part
 # starts the agents' VS Code as you, before you open anything. A terminal starts them too.
 if ! grep -q 'PocketIDE' "$HOME/.customize_environment" 2>/dev/null; then
     [ -f "$HOME/.customize_environment" ] || printf '#!/bin/sh\n' >"$HOME/.customize_environment"
@@ -328,13 +468,13 @@ if [ "$installed" = no ]; then
 fi
 say "Done. Go back to PocketIDE and tap Set-up is done."
 cat <<'NEXT'
-In PocketIDE, tap an agent: its own VS Code opens. Sign in to each agent once:
+In PocketIDE, tap an agent: its own VS Code opens, the agent full screen. Sign in once:
   Claude Code  - its panel's Sign in: open the link, sign in, paste the code back.
   Codex        - first turn on device code sign-in in ChatGPT (Settings > Security), then in
                  Codex's VS Code open the Terminal, run `codex login --device-auth` and enter
                  the code it shows.
-  Antigravity  - its panel's Sign in. If the page ends at localhost, run `agy` in its VS Code's
-                 Terminal, open the link it shows and paste the code back.
+  Antigravity  - it opens as its command line (agy): pick Google OAuth, open the link it
+                 shows, sign in, and paste the code back.
 Your files:    projects in ~/projects/claude-code, ~/projects/codex and ~/projects/antigravity;
                chats and sign-ins in ~/.claude, ~/.codex and ~/.gemini.
 NEXT
