@@ -40,7 +40,8 @@ internal object Faq {
             "Why do the agents open in Chrome, not inside the app?",
             "Cloud Shell needs your Google sign-in, and Google allows it only in a real browser. The Chrome tab is dressed as " +
                 "PocketIDE's: its arrow returns here, its tools button shows every agent, and Chrome's menu (⋮) switches between " +
-                "them. Chrome keeps its own ⋮ in every tab; no app can remove it.",
+                "them. Chrome keeps its own ⋮ in every tab, but full screen hides it: the full-screen button in VS Code's " +
+                "status bar, or a tap on Antigravity's screen. Back leaves full screen.",
         ),
         faq(
             "sign-in-localhost",

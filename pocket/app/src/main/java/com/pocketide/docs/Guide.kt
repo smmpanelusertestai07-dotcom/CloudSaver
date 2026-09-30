@@ -117,7 +117,8 @@ internal object Guide {
                 "own Antigravity screen.",
             "In Claude Code's and Codex's VS Code, Tools (bottom left) opens the agent, the terminal, the files, search, Git, " +
                 "extensions and settings; the keyboard button next to it shows Esc, Tab, the arrows, Enter and Ctrl+C for the " +
-                "terminal, and hides them again.",
+                "terminal, and hides them again; the full-screen button hides Chrome's bar and ⋮ (Back leaves full screen).",
+            "Antigravity's screen goes full screen at the first tap.",
             "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects. Turning " +
                 "the phone sideways gives VS Code more room.",
             "If VS Code does not open, Cloud Shell is probably stopped: tap Start Cloud Shell, wait for the terminal's prompt, " +

@@ -63,8 +63,8 @@ object IdeTab {
 
     fun open(context: Context, place: IdePlace) {
         val account = context.graph.settings.settings.value.cloudAccount
-        // Codex's Sign in with ChatGPT returns to localhost:1455: PocketIDE catches it on the phone.
-        if (place.agent == Agent.CODEX) SignInCatcher.catchOn(CODEX_SIGN_IN_PORT, account)
+        // Codex's Sign in with ChatGPT returns to port 1455, or 1457 when 1455 is busy: PocketIDE catches it on the phone.
+        if (place.agent == Agent.CODEX) CODEX_SIGN_IN_PORTS.forEach { SignInCatcher.catchOn(it, account) }
         page(context, place.url(account), current = place)
     }
 
@@ -121,6 +121,6 @@ object IdeTab {
 
     private const val ICON_DP = 24
 
-    /** The port Codex's own sign-in server listens on, in Cloud Shell as on any computer. */
-    private const val CODEX_SIGN_IN_PORT = 1455
+    /** The ports Codex's own sign-in server listens on (1455, or 1457 when 1455 is busy), in Cloud Shell as anywhere. */
+    private val CODEX_SIGN_IN_PORTS = listOf(1455, 1457)
 }
