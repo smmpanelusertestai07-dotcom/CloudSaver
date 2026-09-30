@@ -40,6 +40,17 @@ class CloudShellTest {
     }
 
     @Test
+    fun `each agent's VS Code opens its agent full screen`() {
+        val text = script.readText()
+        assertTrue(text.contains("\"pocketide.agent\": agent"))
+        // The layout extension knows every agent the script sets up, by the same key.
+        val layout = text.substringAfter("const AGENTS = {").substringBefore("};")
+        val keys = Regex("AGENTS=\"([^\"]+)\"").find(text)!!.groupValues[1].split(" ").map { it.substringBefore(":") }
+        keys.forEach { key -> assertTrue(key, layout.contains("'$key':") || layout.contains("\n  $key:")) }
+        assertTrue(text.contains("\"workbench.secondarySideBar.defaultVisibility\""))
+    }
+
+    @Test
     fun `the script keeps to the home folder and to Google's rules`() {
         val text = script.readText()
         // Only root's start-up hook uses sudo, and only to drop to the owner's own account.

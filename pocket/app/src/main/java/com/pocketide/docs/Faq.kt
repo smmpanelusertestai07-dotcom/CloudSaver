@@ -49,6 +49,14 @@ internal object Faq {
                 "ChatGPT (Settings > Security), then run codex login --device-auth in Codex's Terminal and enter the code.",
         ),
         faq(
+            "antigravity-terminal",
+            "agents",
+            "Why does Antigravity open in a terminal?",
+            "Its VS Code panel shows a page from Google's local server, which answers only to localhost, and Cloud Shell's " +
+                "Web Preview reaches it under another name, so the panel stays empty. Its command line, agy, is Google's own " +
+                "Antigravity agent and works fully there.",
+        ),
+        faq(
             "more-extensions",
             "agents",
             "Can I add other extensions?",

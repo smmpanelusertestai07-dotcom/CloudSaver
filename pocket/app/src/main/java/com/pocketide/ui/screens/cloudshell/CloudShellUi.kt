@@ -74,8 +74,8 @@ fun signInSteps(agent: Agent): String = when (agent) {
             "sign-in: turn it on in ChatGPT (Settings > Security), then in Codex's VS Code open the Terminal and run " +
             "codex login --device-auth; open the link it shows and enter the code."
     Agent.ANTIGRAVITY ->
-        "Open Antigravity in its VS Code and sign in with Google. If the page ends at localhost, open the Terminal, " +
-            "run agy, open the link it shows, sign in and paste the code back."
+        "Antigravity opens as its own command line (agy), full screen. Pick Google OAuth, open the link it shows, sign " +
+            "in with Google, then copy the code the page shows and paste it back."
 }
 
 @Composable

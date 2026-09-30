@@ -82,8 +82,8 @@ internal object Guide {
             "Codex: its own Sign in with ChatGPT expects the computer to be the phone. In Cloud Shell use a device code: turn " +
                 "it on in ChatGPT (Settings > Security), then in Codex's VS Code open the Terminal, run codex login --device-auth, " +
                 "open the link and enter the code.",
-            "Antigravity: in its panel, sign in with Google. If the page ends at localhost, open the Terminal, run agy, open " +
-                "the link it shows, sign in and paste the code back.",
+            "Antigravity: it opens as its own command line, agy. Pick Google OAuth, open the link it shows, sign in, and " +
+                "paste the code back.",
         ),
         p(
             "More extensions: in any agent's VS Code, Extensions (the four squares) finds any extension on Open VSX. Each VS " +
@@ -107,6 +107,8 @@ internal object Guide {
             row("Back", "The page before, then PocketIDE"),
         ),
         bullets(
+            "Each agent opens full screen: Claude Code and Codex in VS Code's side bar, maximized (its restore button at the " +
+                "top shows the files and the editor), Antigravity as its command line in a terminal.",
             "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects.",
             "VS Code's own keys (Esc, Tab, Ctrl) are not on most phone keyboards: a keyboard app with those keys helps in the " +
                 "terminal. Turning the phone sideways gives VS Code more room.",
