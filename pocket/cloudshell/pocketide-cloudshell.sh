@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # PocketIDE for Google Cloud Shell. Sets up, only in your Cloud Shell home folder (the one part
-# Cloud Shell keeps, 5 GB), each official agent on its own port, with its own projects folder:
-#   Claude Code  port 8080  ~/projects/claude-code  in its own VS Code (code-server)
-#   Codex        port 8081  ~/projects/codex        in its own VS Code (code-server)
-#   Antigravity  port 8082  ~/projects/antigravity  Google's own Antigravity screen (agy)
+# Cloud Shell keeps, 5 GB), a VS Code (code-server) for each official agent, each with its own
+# port, settings, extensions and projects folder:
+#   Claude Code  port 8080  ~/projects/claude-code
+#   Codex        port 8081  ~/projects/codex
+#   Antigravity  port 8082  ~/projects/antigravity
+# Each VS Code listens only inside Cloud Shell (127.0.0.1). PocketIDE's app reaches them through
+# Google's own gcloud (`gcloud cloud-shell ssh`), from the phone's own address only; in Chrome,
+# Cloud Shell's Web Preview reaches them, for your Google account only.
 # From then on Cloud Shell starts them by itself when it starts, tidies old caches, logs and
 # 30-day-old Codex chats (never your projects), and once a day installs newer releases of the
 # agents and of code-server (a code-server release only once it is a week old), each checked.
-# A small bridge (reached only through Web Preview) shows Antigravity's screen, which Google's agy
-# serves only to localhost, and lets an agent that signs in with a browser finish on a phone:
-# PocketIDE hands it the sign-in page's return to localhost (port 8090).
+# A small sign-in bridge (port 8090, Web Preview only) finishes a sign-in in Chrome on a phone.
 # Run it again at any time: it only adds what is missing.
 #
 # It does nothing to keep Cloud Shell awake. Cloud Shell is for interactive use: it stops about
@@ -57,16 +59,16 @@ else
 fi
 
 # 2. PocketIDE's layout extension, which each agent's VS Code gets: on a phone's narrow screen it
-# opens that VS Code's agent full screen, in the secondary side bar, maximized, and puts Tools
-# (files, terminal, extensions...) and the keys a phone keyboard lacks in the status bar.
-# Each VS Code installs it once for each version: raise the version when either file changes.
+# opens that VS Code's agent full screen, in the secondary side bar, maximized. PocketIDE's own
+# buttons (Tools, the keys) reach it through its keyboard shortcuts.
+# Each VS Code installs it once for each version: raise the version when a file changes.
 mkdir -p "$BASE/layout"
 cat >"$BASE/layout/package.json" <<'JSON'
 {
   "name": "layout",
   "displayName": "PocketIDE layout",
-  "description": "Opens this VS Code's agent full screen, with the keys and tools a phone lacks.",
-  "version": "6.1.1",
+  "description": "Opens this VS Code's agent full screen for PocketIDE on a phone.",
+  "version": "7.0.0",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": { "vscode": "^1.94.0" },
@@ -78,10 +80,19 @@ cat >"$BASE/layout/package.json" <<'JSON'
   "contributes": {
     "commands": [
       { "command": "pocketide.tools", "title": "PocketIDE: Tools" },
-      { "command": "pocketide.keys", "title": "PocketIDE: Show or hide the keys" },
       { "command": "pocketide.agent", "title": "PocketIDE: The agent, full screen" },
       { "command": "pocketide.vsix", "title": "PocketIDE: Install an extension from a link (.vsix)" }
     ],
+    "keybindings": [
+      { "command": "pocketide.tools", "key": "ctrl+alt+p" },
+      { "command": "pocketide.agent", "key": "ctrl+alt+a" }
+    ],
+    "viewsContainers": {
+      "secondarySidebar": [{ "id": "pocketide-agent", "title": "Agent", "icon": "agent.svg" }]
+    },
+    "views": {
+      "pocketide-agent": [{ "id": "pocketide.placeholder", "name": "Agent", "when": "pocketide.never" }]
+    },
     "configuration": {
       "title": "PocketIDE",
       "properties": {
@@ -91,6 +102,9 @@ cat >"$BASE/layout/package.json" <<'JSON'
   }
 }
 JSON
+cat >"$BASE/layout/agent.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a5 5 0 0 1 5 5v1h1a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V7a5 5 0 0 1 5-5zm-3 11a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
+SVG
 cat >"$BASE/layout/extension.js" <<'JS'
 // PocketIDE layout: opens this VS Code's agent full screen, as a phone's narrow screen needs it.
 const vscode = require('vscode');
@@ -100,11 +114,14 @@ const https = require('https');
 const os = require('os');
 const path = require('path');
 
-// The command that opens each agent's own panel.
+// How each agent's own panel opens. Antigravity's lives in the activity bar, which a phone has no
+// room for: it moves into PocketIDE's own container in the secondary side bar, where the others are.
 const AGENTS = {
   'claude-code': { open: ['claude-vscode.sidebar.open'] },
   codex: { open: ['chatgpt.openSidebar'] },
+  antigravity: { move: ['antigravity.panel'], open: ['antigravity.panel.focus'] },
 };
+const CONTAINER = 'workbench.view.extension.pocketide-agent';
 const WAIT_MS = 90000;
 const STEP_MS = 1000;
 const VSIX_MAX_BYTES = 300 * 1024 * 1024;
@@ -177,13 +194,6 @@ async function installFromLink() {
   }
 }
 
-// Keys a phone keyboard lacks, for the terminal: a keyboard button in the status bar shows them,
-// and hides them again.
-const KEYS = [
-  ['Esc', '\u001b'], ['Tab', '\t'], ['↑', '\u001b[A'], ['↓', '\u001b[B'],
-  ['←', '\u001b[D'], ['→', '\u001b[C'], ['⏎', '\r'], ['^C', '\u0003'],
-];
-
 // Everything the hidden activity bar held, and the agent again.
 const TOOLS = [
   { label: '$(hubot) Agent', detail: 'Back to the agent, full screen', command: 'pocketide.agent' },
@@ -199,39 +209,14 @@ const TOOLS = [
 
 async function openAgent(agent) {
   if (!(await ready(agent.open))) return;
+  if (agent.move) await run('vscode.moveViews', { viewIds: agent.move, destinationId: CONTAINER });
   for (const command of agent.open) await run(command);
   await run('workbench.action.maximizeAuxiliaryBar');
 }
 
-function statusBar(context, agent) {
-  const add = (text, tooltip, command, priority) => {
-    const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, priority);
-    item.text = text;
-    item.tooltip = tooltip;
-    item.command = command;
-    context.subscriptions.push(item);
-    return item;
-  };
-  add('$(menu) Tools', 'PocketIDE tools: the agent, terminal, files, extensions', 'pocketide.tools', 2000).show();
-  add('$(keyboard)', 'Keys: Esc, Tab, arrows, Enter, Ctrl+C', 'pocketide.keys', 1999).show();
-  // Full screen hides Chrome's own bar and menu too; Back leaves it.
-  add('$(screen-full)', 'Full screen (Back leaves it)', 'workbench.action.toggleFullScreen', 1990).show();
-  const keys = KEYS.map(([label, sequence], index) =>
-    add(label, `Send ${label} to the terminal`, { title: label, command: 'pocketide.key', arguments: [sequence] }, 1998 - index));
-  let shown = false;
+// PocketIDE's Tools button opens this (Ctrl+Alt+P); its agent button, the agent (Ctrl+Alt+A).
+function commands(context, agent) {
   context.subscriptions.push(
-    vscode.commands.registerCommand('pocketide.keys', () => {
-      shown = !shown;
-      keys.forEach((item) => (shown ? item.show() : item.hide()));
-    }),
-    vscode.commands.registerCommand('pocketide.key', (sequence) => {
-      const terminal = vscode.window.activeTerminal;
-      if (terminal) {
-        terminal.sendText(sequence, false);
-      } else {
-        vscode.window.showInformationMessage('The keys go to a terminal: open one from Tools > Terminal.');
-      }
-    }),
     vscode.commands.registerCommand('pocketide.agent', () => (agent ? openAgent(agent) : undefined)),
     vscode.commands.registerCommand('pocketide.vsix', installFromLink),
     vscode.commands.registerCommand('pocketide.tools', async () => {
@@ -245,110 +230,37 @@ function statusBar(context, agent) {
 
 async function activate(context) {
   const agent = AGENTS[vscode.workspace.getConfiguration('pocketide').get('agent', '')];
-  statusBar(context, agent);
+  commands(context, agent);
   if (agent) await openAgent(agent);
 }
 
 module.exports = { activate, deactivate() {} };
 JS
 
-# PocketIDE's bridge: Antigravity's own screen, and the sign-in return (see its own words).
+# The sign-in bridge PocketIDE opens in Chrome when a sign-in page returns to localhost (see its own words).
 cat >"$BASE/bridge.py" <<'BRIDGE'
 #!/usr/bin/env python3
-"""PocketIDE's bridge in Cloud Shell, reached only through Cloud Shell's Web Preview, which only
-the owner's Google account can open. It has two jobs.
+"""PocketIDE's sign-in return in Cloud Shell, reached only through Cloud Shell's Web Preview, which
+only the owner's Google account can open. PocketIDE's app reaches Cloud Shell through Google's own
+gcloud; this is for when an agent is opened in Chrome instead.
 
-Antigravity's screen (port 8082). Google's Antigravity program, agy, serves its own screen, but
-only to http://localhost. The bridge passes each request on to it as localhost, and at /pocketide/
-shows that screen with a bar that offers Google's sign-in page when agy asks to open it (agy would
-open it in a browser on this computer, which has no screen).
-
-Sign-in return (port 8090). An agent that signs in with a browser (Codex's Sign in with ChatGPT,
-Antigravity's Continue with Google) waits for the sign-in page to return to http://localhost:PORT
-here in Cloud Shell. On a phone that return lands on the phone, where nothing waits, so Chrome says
-"localhost refused". PocketIDE opens this bridge with that same address instead, and the bridge
-hands it to the agent waiting here, as localhost. Only GET, only this computer's ports 1024-65535.
-
-Nothing it passes on is written to a log.
+An agent that signs in with a browser (Codex's Sign in with ChatGPT, Antigravity's Continue with
+Google) waits for the sign-in page to return to http://localhost:PORT here in Cloud Shell. On a
+phone that return lands on the phone, where nothing waits, so Chrome says "localhost refused".
+PocketIDE opens this bridge with that same address instead, and the bridge hands it to the agent
+waiting here, as localhost. Only GET, only this computer's ports 1024-65535. Nothing it passes on
+is written to a log.
 """
-import asyncio
 import base64
 import http.client
 import http.server
-import json
-import os
-import re
 import sys
-import threading
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-RETURN_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8090
-SCREEN_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8082
-AGY_PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 18082
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8090
 PREFIX = "/pocketide/callback/"
 PASSED = ("content-type", "content-length", "cache-control")
-SIGNIN_FILE = os.path.join(HERE, "signin-url")
-SIGNIN_FRESH_SECONDS = 600
 RETRY_SECONDS = 10
-AGY_HOST = b"localhost:%d" % AGY_PORT
-DROPPED = (b"x-forwarded-for", b"x-forwarded-host", b"x-forwarded-proto", b"forwarded")
-TO_LOCALHOST = re.compile(rb"^(location:[ \t]*)https?://(?:localhost|127\.0\.0\.1):%d" % AGY_PORT, re.I | re.M)
-
-# Antigravity's screen in a frame, with the bar that opens Google's sign-in page on the phone:
-# through PocketIDE, which finishes the sign-in by itself, or, without PocketIDE, in the browser.
-PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark"><title>Antigravity</title>
-<style>
-html,body{margin:0;height:100%;background:#fff}
-@media (prefers-color-scheme:dark){html,body{background:#131314}}
-iframe{display:block;width:100%;height:100%;border:0}
-#bar{display:none;position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));
-padding:14px 16px;border-radius:16px;background:#0b57d0;color:#fff;text-align:center;
-text-decoration:none;font:600 16px/1.35 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35)}
-#bar small{display:block;font-weight:400;font-size:13px;opacity:.9}
-</style></head><body>
-<iframe src="/" title="Antigravity" allow="clipboard-read; clipboard-write"></iframe>
-<a id="bar" href="#">Continue signing in with Google<small>Opens Google's sign-in page</small></a>
-<script>
-const bar = document.getElementById('bar');
-const seen = () => { try { return sessionStorage.getItem('pocketide.signin') || ''; } catch (e) { return ''; } };
-async function check() {
-  try {
-    const { url, id } = await (await fetch('/pocketide/signin', { cache: 'no-store' })).json();
-    if (!url || id === seen()) { bar.style.display = 'none'; return; }
-    const back = encodeURIComponent(url);
-    bar.href = 'intent://signin?u=' + back + '#Intent;scheme=pocketide;package=com.pocketide;S.browser_fallback_url=' + back + ';end';
-    bar.onclick = () => { try { sessionStorage.setItem('pocketide.signin', id); } catch (e) {} bar.style.display = 'none'; };
-    bar.style.display = 'block';
-  } catch (e) {}
-}
-check();
-setInterval(check, 1500);
-// A tap on Antigravity's screen makes it full screen: Chrome's own bar and menu hide; Back leaves it.
-const frame = document.querySelector('iframe');
-const full = () => {
-  if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  }
-};
-frame.addEventListener('load', () => {
-  try { frame.contentDocument.addEventListener('pointerdown', full); } catch (e) {}
-});
-</script></body></html>
-"""
-
-STARTING = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="3">
-<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark">
-<title>Antigravity</title></head>
-<body style="font:16px/1.5 system-ui,sans-serif;padding:24px">
-<p><b>Antigravity is starting in Cloud Shell.</b></p>
-<p>This page tries again by itself every few seconds. If it stays here, run <code>pocketide update</code>
-in Cloud Shell's terminal.</p></body></html>
-"""
 
 
 def decode(token):
@@ -360,7 +272,7 @@ def encode(text):
 
 
 class Return(http.server.BaseHTTPRequestHandler):
-    """The sign-in return: GET /pocketide/callback/<port>/<the address after localhost, base64url>."""
+    """GET /pocketide/callback/<port>/<the address after localhost, base64url>."""
 
     server_version = "PocketIDE"
     sys_version = ""
@@ -376,7 +288,7 @@ class Return(http.server.BaseHTTPRequestHandler):
             target = decode(token.split("?", 1)[0])
         except (ValueError, UnicodeDecodeError):
             return self.reply(400, "This sign-in link is not complete.")
-        if not 1024 <= port <= 65535 or port == RETURN_PORT or not target.startswith("/") or target.startswith("//"):
+        if not 1024 <= port <= 65535 or port == PORT or not target.startswith("/") or target.startswith("//"):
             return self.reply(400, "This sign-in link is not complete.")
         try:
             upstream = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
@@ -421,154 +333,29 @@ class Return(http.server.BaseHTTPRequestHandler):
         pass  # sign-in codes never go to a log
 
 
-def returns():
+if __name__ == "__main__":
     while True:
         try:
-            http.server.ThreadingHTTPServer(("127.0.0.1", RETURN_PORT), Return).serve_forever()
+            http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Return).serve_forever()
         except OSError:
             time.sleep(RETRY_SECONDS)
-
-
-def signin():
-    """Google's sign-in page agy last asked to open, while it is fresh."""
-    try:
-        stat = os.stat(SIGNIN_FILE)
-        if time.time() - stat.st_mtime > SIGNIN_FRESH_SECONDS:
-            return {}
-        with open(SIGNIN_FILE, encoding="utf-8") as handle:
-            url = handle.read().strip()
-    except OSError:
-        return {}
-    return {"url": url, "id": str(stat.st_mtime_ns)} if url.startswith("https://") else {}
-
-
-def to_agy(head):
-    """The request as agy takes it: from localhost, one request for each connection."""
-    lines = head.split(b"\r\n")
-    out, upgrade = [lines[0]], False
-    for line in lines[1:]:
-        if not line:
-            continue
-        name, _, value = line.partition(b":")
-        key = name.strip().lower()
-        if key == b"host":
-            line = b"Host: " + AGY_HOST
-        elif key == b"origin":
-            line = b"Origin: http://" + AGY_HOST
-        elif key == b"referer":
-            line = b"Referer: " + re.sub(rb"^https?://[^/]+", b"http://" + AGY_HOST, value.strip())
-        elif key == b"connection":
-            if b"upgrade" not in value.lower():
-                continue
-            upgrade = True
-        elif key in DROPPED:
-            continue
-        out.append(line)
-    if not upgrade:
-        out.append(b"Connection: close")
-    return b"\r\n".join(out) + b"\r\n\r\n"
-
-
-async def send(writer, status, kind, body):
-    reason = {200: b"OK", 503: b"Service Unavailable"}.get(status, b"")
-    writer.write(b"HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-store\r\n"
-                 b"Connection: close\r\n\r\n" % (status, reason, kind.encode(), len(body)) + body)
-    try:
-        await writer.drain()
-    finally:
-        writer.close()
-
-
-async def pipe(reader, writer, half):
-    try:
-        while True:
-            data = await reader.read(65536)
-            if not data:
-                break
-            writer.write(data)
-            await writer.drain()
-        if half and writer.can_write_eof():
-            writer.write_eof()
-            return
-    except (ConnectionError, OSError):
-        pass
-    writer.close()
-
-
-async def screen(reader, writer):
-    try:
-        head = await reader.readuntil(b"\r\n\r\n")
-        path = head.split(b" ", 2)[1].split(b"?", 1)[0]
-    except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, ConnectionError, OSError, IndexError):
-        writer.close()
-        return
-    if path in (b"/pocketide", b"/pocketide/"):
-        return await send(writer, 200, "text/html; charset=utf-8", PAGE.encode("utf-8"))
-    if path == b"/pocketide/signin":
-        return await send(writer, 200, "application/json", json.dumps(signin()).encode("utf-8"))
-    try:
-        agy_reader, agy_writer = await asyncio.open_connection("127.0.0.1", AGY_PORT)
-    except OSError:
-        return await send(writer, 503, "text/html; charset=utf-8", STARTING.encode("utf-8"))
-    agy_writer.write(to_agy(head))
-    upload = asyncio.ensure_future(pipe(reader, agy_writer, half=True))
-    try:
-        answer = await agy_reader.readuntil(b"\r\n\r\n")
-        writer.write(TO_LOCALHOST.sub(rb"\1", answer))
-        await pipe(agy_reader, writer, half=False)
-    except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, ConnectionError, OSError):
-        writer.close()
-    finally:
-        upload.cancel()
-        agy_writer.close()
-
-
-async def screens():
-    while True:
-        try:
-            server = await asyncio.start_server(screen, "127.0.0.1", SCREEN_PORT, limit=1 << 16)
-        except OSError:
-            await asyncio.sleep(RETRY_SECONDS)
-            continue
-        async with server:
-            await server.serve_forever()
-
-
-if __name__ == "__main__":
-    threading.Thread(target=returns, daemon=True).start()
-    asyncio.run(screens())
 BRIDGE
 
-# Antigravity opens its sign-in page with the computer's browser; Cloud Shell has none, so for
-# Antigravity these keep the page for its screen's bar, which opens it on the phone.
-mkdir -p "$BASE/bin"
-cat >"$BASE/bin/xdg-open" <<'OPEN'
-#!/bin/sh
-case "${1:-}" in
-https://*)
-    umask 077
-    printf '%s\n' "$1" >"$HOME/.pocketide/signin-url.new" && mv -f "$HOME/.pocketide/signin-url.new" "$HOME/.pocketide/signin-url"
-    ;;
-esac
-exit 0
-OPEN
-chmod +x "$BASE/bin/xdg-open"
-for name in x-www-browser www-browser sensible-browser; do ln -sfn xdg-open "$BASE/bin/$name"; done
-
-# 3. `pocketide`: starts each agent that is not running, installs or updates the agents
+# 3. `pocketide`: starts each agent's VS Code that is not running, installs or updates the agents
 # (`pocketide update`), and, when Cloud Shell starts (`pocketide boot`), tidies and updates too.
 cat >"$BIN/pocketide" <<'LAUNCHER'
 #!/usr/bin/env bash
 # PocketIDE's launcher in Google Cloud Shell; see ~/pocketide-cloudshell.sh.
 set -uo pipefail
-AGENTS="claude-code:8080:anthropic/claude-code codex:8081:openai/chatgpt"
+AGENTS="claude-code:8080:anthropic/claude-code codex:8081:openai/chatgpt antigravity:8082:google/google-antigravity"
 BASE="$HOME/.pocketide"
 CODE="$BASE/code-server/current/bin/code-server"
-AGY="$HOME/.gemini/bin/agy"
-AGY_PORT=18082
+BRIDGE_PORT=8090
+# Antigravity's extension starts Google's agy on this port (its own setting), for its panel.
+AGY_PORT=18083
 
 settings() { # $1: the agent; the settings its VS Code starts with: phone screen, no telemetry, its agent full screen
-    python3 - "$1" <<'PY'
+    python3 - "$1" "$AGY_PORT" <<'PY'
 import json, sys
 agent = sys.argv[1]
 print(json.dumps({
@@ -579,6 +366,7 @@ print(json.dumps({
     "window.commandCenter": False,
     "workbench.layoutControl.enabled": False,
     "workbench.editor.showTabs": "single",
+    "workbench.statusBar.visible": False,
     "workbench.secondarySideBar.defaultVisibility": "maximized",
     "window.autoDetectColorScheme": True,
     "breadcrumbs.enabled": False,
@@ -598,6 +386,7 @@ print(json.dumps({
     "claudeCode.useCtrlEnterToSend": True,
     "chatgpt.openOnStartup": agent == "codex",
     "chatgpt.composerEnterBehavior": "cmdAlways",
+    "antigravity.serverPort": int(sys.argv[2]),
 }, indent=2))
 PY
 }
@@ -611,7 +400,7 @@ import os, sys, zipfile
 source, out, version = sys.argv[1:4]
 types = ('<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
          '<Default Extension=".json" ContentType="application/json"/><Default Extension=".js" ContentType="application/javascript"/>'
-         '<Default Extension=".vsixmanifest" ContentType="text/xml"/></Types>')
+         '<Default Extension=".vsixmanifest" ContentType="text/xml"/><Default Extension=".svg" ContentType="image/svg+xml"/></Types>')
 manifest = f"""<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
@@ -632,7 +421,7 @@ manifest = f"""<?xml version="1.0" encoding="utf-8"?>
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as package:
     package.writestr("[Content_Types].xml", types)
     package.writestr("extension.vsixmanifest", manifest)
-    for name in ("package.json", "extension.js"):
+    for name in ("package.json", "extension.js", "agent.svg"):
         package.write(os.path.join(source, name), "extension/" + name)
 PY
     if "$CODE" --user-data-dir "$1" --extensions-dir "$1/extensions" --install-extension "$vsix" --force >/dev/null; then
@@ -742,74 +531,12 @@ except Exception as error:  # the network, GitHub or the disk; tried again tomor
 PY
 }
 
-# Google's Antigravity program, agy, as its own extension gets it: the release Google's update
-# service names, from Google's storage, checked against the SHA-512 it gives, into ~/.gemini/bin.
-# A newer one runs from the next start of Cloud Shell.
-agy_update() {
-    python3 - "$AGY" <<'PY'
-import hashlib, json, os, shutil, subprocess, sys, tarfile, tempfile, urllib.request
-
-MANIFEST = "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json"
-STORAGE = "https://storage.googleapis.com/antigravity-public/"
-
-
-def key(text):
-    return tuple(int(part) for part in text.split("."))
-
-
-def main(target):
-    manifest = json.load(urllib.request.urlopen(MANIFEST, timeout=60))
-    version, url, sha512 = str(manifest.get("version", "")), str(manifest.get("url", "")), str(manifest.get("sha512", ""))
-    if not version.replace(".", "").isdigit() or not url.startswith(STORAGE) or len(sha512) != 128:
-        sys.exit("Google's update service gave no usable Antigravity release; agy stays as it is.")
-    try:
-        installed = subprocess.run([target, "--version"], capture_output=True, text=True, timeout=60).stdout.strip()
-        if key(installed) >= key(version):
-            print(f"Antigravity (agy) {installed} is installed.")
-            return
-    except (OSError, ValueError, subprocess.SubprocessError):
-        pass
-    folder = os.path.dirname(target)
-    os.makedirs(folder, exist_ok=True)
-    if shutil.disk_usage(folder).free < 1_000_000_000:
-        sys.exit("Less than 1 GB is free in your home folder: Antigravity (agy) was not installed.")
-    print(f"Installing Antigravity (agy) {version}...")
-    with tempfile.TemporaryDirectory(dir=folder) as work:
-        archive = os.path.join(work, "agy.tar.gz")
-        digest = hashlib.sha512()
-        with urllib.request.urlopen(url, timeout=900) as response, open(archive, "wb") as out:
-            for chunk in iter(lambda: response.read(1 << 20), b""):
-                digest.update(chunk)
-                out.write(chunk)
-        if digest.hexdigest() != sha512:
-            sys.exit("Antigravity's download did not match the SHA-512 Google gives; agy stays as it is.")
-        staged = os.path.join(work, "agy")
-        with tarfile.open(archive) as bundle:
-            member = bundle.getmember("antigravity")
-            if not member.isfile():
-                sys.exit("Antigravity's download is not what it should be; agy stays as it is.")
-            with bundle.extractfile(member) as source, open(staged, "wb") as out:
-                shutil.copyfileobj(source, out)
-        os.chmod(staged, 0o755)
-        os.replace(staged, target)
-    print(f"Antigravity (agy) {version} is installed.")
-
-
-try:
-    main(sys.argv[1])
-except Exception as error:  # the network, Google or the disk; tried again tomorrow
-    sys.exit(f"Antigravity (agy) was not updated: {error}")
-PY
-}
-
-# The newest release (never a pre-release) of Claude Code and Codex from their verified publishers
-# on Open VSX, for this computer or every platform, checked against the SHA-256 Open VSX
-# publishes, each into its own VS Code; and Antigravity.
+# The newest release (never a pre-release) of each agent from its verified publisher on Open VSX,
+# for this computer or every platform, checked against the SHA-256 Open VSX publishes, each into
+# its own VS Code.
 update() {
     code_server_update || echo "code-server is tried again tomorrow." >&2
     missing=""
-    mkdir -p "$HOME/projects/antigravity"
-    agy_update || missing="$missing agy"
     for entry in $AGENTS; do
         key=${entry%%:*} rest=${entry#*:}
         agent=${rest#*:} ns=${agent%/*} name=${agent#*/}
@@ -851,33 +578,49 @@ links() { # the agents' own command lines, where a terminal finds them
     # Codex's comes with its extension: `codex login --device-auth` signs in here.
     codex=$(find "$BASE/vscode/codex/extensions" -path '*openai.chatgpt*' -type f -name codex -perm -u+x 2>/dev/null | head -n 1)
     [ -n "$codex" ] && ln -sfn "$codex" "$HOME/.local/bin/codex"
-    [ -x "$AGY" ] && ln -sfn "$AGY" "$HOME/.local/bin/agy"
+    # Antigravity's (agy) comes with its extension, the first time its VS Code opens.
+    agy=$(find "$HOME/.gemini" -maxdepth 3 -type f -name agy -perm -u+x 2>/dev/null | head -n 1)
+    [ -n "$agy" ] && ln -sfn "$agy" "$HOME/.local/bin/agy"
     return 0
 }
 
-start() { # the bridge, Antigravity and each agent's VS Code that is not running, each on its own port
+start() { # each agent's VS Code that is not running, on its own port, and the sign-in bridge
     if [ -f "$BASE/bridge.py" ] && ! pgrep -u "$(id -u)" -f "$BASE/bridge.py" >/dev/null; then
-        nohup python3 "$BASE/bridge.py" >"$BASE/bridge.log" 2>&1 &
+        nohup python3 "$BASE/bridge.py" "$BRIDGE_PORT" >"$BASE/bridge.log" 2>&1 &
     fi
-    # Antigravity's own screen: Google's agy, started the way its VS Code extension starts it; its
-    # sign-in page goes to the bridge's bar (PocketIDE's xdg-open) instead of a browser here.
-    if [ -x "$AGY" ] && ! pgrep -u "$(id -u)" -f "hub-port=$AGY_PORT" >/dev/null; then
-        mkdir -p "$HOME/projects/antigravity"
-        (cd "$HOME/projects/antigravity" &&
-            AGY_ENABLE_HUB=1 BROWSER="$BASE/bin/xdg-open" PATH="$BASE/bin:$PATH" nohup "$AGY" --hub \
-                --hub-port="$AGY_PORT" --app_data_dir=antigravity --csrf_token="$(cat /proc/sys/kernel/random/uuid)" \
-                --add-dir="$HOME/projects/antigravity" >"$BASE/antigravity.log" 2>&1 &)
-    fi
+    # Where PocketIDE's app shows this computer's ports (`pocketide proxy-uri`): code-server's own
+    # links to a port (Antigravity's panel, a dev server) go there.
+    proxy=$(cat "$BASE/proxy-uri" 2>/dev/null || true)
     for entry in $AGENTS; do
         key=${entry%%:*} rest=${entry#*:} port=${rest%%:*}
         data="$BASE/vscode/$key"
         [ -d "$data" ] || continue
         pgrep -u "$(id -u)" -f "code-server.*127.0.0.1:$port" >/dev/null && continue
-        nohup "$CODE" --bind-addr "127.0.0.1:$port" --auth none --disable-telemetry --disable-update-check \
-            --disable-workspace-trust --disable-getting-started-override \
-            --user-data-dir "$data" --extensions-dir "$data/extensions" "$HOME/projects/$key" \
-            >"$data/code-server.log" 2>&1 &
+        (
+            [ -n "$proxy" ] && export VSCODE_PROXY_URI="$proxy"
+            exec nohup "$CODE" --bind-addr "127.0.0.1:$port" --auth none --disable-telemetry --disable-update-check \
+                --disable-workspace-trust --disable-getting-started-override \
+                --user-data-dir "$data" --extensions-dir "$data/extensions" "$HOME/projects/$key" \
+                >"$data/code-server.log" 2>&1
+        ) &
     done
+}
+
+proxy_uri() { # $1: http://{{port}}-<key>.localhost:<port>/, where the phone's PocketIDE shows ports
+    printf '%s' "$1" | grep -Eq '^http://\{\{port\}\}-[0-9a-f]{32}\.localhost:[0-9]{2,5}/$' ||
+        { echo "That is not an address PocketIDE gives." >&2; return 1; }
+    [ "$(cat "$BASE/proxy-uri" 2>/dev/null)" = "$1" ] && return 0
+    (umask 077 && printf '%s\n' "$1" >"$BASE/proxy-uri")
+    # code-server reads it when it starts: each VS Code starts again with it.
+    pkill -u "$(id -u)" -f "$BASE/code-server/" || true
+    for _ in $(seq 1 20); do
+        pgrep -u "$(id -u)" -f "$BASE/code-server/" >/dev/null || break
+        sleep 0.5
+    done
+    # One still stopping would be taken for running, and its agent left without a VS Code.
+    pkill -KILL -u "$(id -u)" -f "$BASE/code-server/" || true
+    sleep 1
+    start
 }
 
 tidy() { # old caches, logs and 30-day-old Codex chats; never projects, never what is in use
@@ -886,13 +629,13 @@ tidy() { # old caches, logs and 30-day-old Codex chats; never projects, never wh
     find "$HOME/.codex/sessions" -type f -name '*.jsonl' -mtime +30 -delete 2>/dev/null
     find "$BASE/vscode" -path '*/logs/*' -type f -mtime +7 -delete 2>/dev/null
     find "$HOME/.gemini/antigravity/log" -type f -mtime +7 -delete 2>/dev/null
-    find "$BASE" -maxdepth 1 -name 'signin-url' -mmin +60 -delete 2>/dev/null
     find "$HOME/.local/share/Trash" -mindepth 1 -mtime +30 -delete 2>/dev/null
     return 0
 }
 
 case "${1:-}" in
 update) update && start ;;
+proxy-uri) proxy_uri "${2:-}" ;;
 boot)
     tidy
     start
@@ -911,18 +654,11 @@ esac
 LAUNCHER
 chmod +x "$BIN/pocketide"
 
-# PocketIDE 6.0 ran Antigravity in its own VS Code on port 8082; Google's own Antigravity screen
-# takes that port now. Its chats and sign-in (~/.gemini) and its projects stay. A bridge started
-# by an older script restarts with the new one.
-if [ -d "$BASE/vscode/antigravity" ]; then
-    if [ -n "${VSCODE_IPC_HOOK_CLI:-}" ]; then
-        echo "Antigravity's old VS Code stays for now: run this in Cloud Shell's own terminal to replace it."
-    else
-        pkill -u "$(id -u)" -f "code-server.*127.0.0.1:8082" || true
-        rm -rf "${BASE:?}/vscode/antigravity"
-        echo "Antigravity's VS Code was replaced by Antigravity's own screen."
-    fi
-fi
+# PocketIDE 6.1 showed Antigravity's own screen instead of its VS Code: PocketIDE started agy on
+# port 18082 and a bridge showed it on 8082. Antigravity's VS Code is back on 8082, and its
+# extension starts agy itself; the rest of 6.1's screen goes. The bridge restarts with this script.
+pkill -u "$(id -u)" -f "agy --hub --hub-port=18082 " || true
+rm -rf "${BASE:?}/bin" "$BASE/signin-url" "$BASE/signin-url.new" "$BASE/antigravity.log"
 pkill -u "$(id -u)" -f "$BASE/bridge.py" || true
 
 # The first PocketIDE script kept one VS Code for all three agents, on port 8080, in
@@ -940,7 +676,7 @@ if grep -q 'chatgpt.openOnStartup' "$OLD_DATA/Machine/settings.json" 2>/dev/null
     fi
 fi
 
-# 4. The agents: Claude Code and Codex each in its own VS Code, Antigravity on its own screen.
+# 4. The agents, each in its own VS Code.
 say "Installing the three agents..."
 installed=yes
 "$BIN/pocketide" update || installed=no
@@ -967,16 +703,12 @@ RC
 if [ "$installed" = no ]; then
     fail "Not every agent installed (see above). Free some space if asked, then run: ~/.local/bin/pocketide update"
 fi
-say "Done. Go back to PocketIDE and tap Set-up is done."
+say "Done."
 cat <<'NEXT'
-In PocketIDE, tap an agent: it opens full screen. Sign in once, in the agent itself:
-  Claude Code  - its panel's Sign in.
-  Codex        - Sign in with ChatGPT.
-  Antigravity  - Continue with Google, then the blue bar: Continue signing in with Google.
-If a sign-in page ends at "localhost refused to connect", tap PocketIDE's tools button at the
-top of that page: PocketIDE hands the sign-in back to Cloud Shell and the agent is signed in.
-In a VS Code, the status bar's Tools opens files, the terminal and extensions (also from a
-.vsix link), and the keyboard button shows the keys a phone keyboard lacks.
+PocketIDE opens each agent's own VS Code, the agent full screen. (Set up from Chrome? Go back to
+PocketIDE and tap Set-up is done.) Sign in once, in the agent itself (Claude Code's Sign in,
+Codex's Sign in with ChatGPT, Antigravity's Continue with Google): the page opens in Chrome and
+comes back to the agent by itself.
 Your files:    projects in ~/projects/claude-code, ~/projects/codex and ~/projects/antigravity;
                chats and sign-ins in ~/.claude, ~/.codex and ~/.gemini.
 NEXT
