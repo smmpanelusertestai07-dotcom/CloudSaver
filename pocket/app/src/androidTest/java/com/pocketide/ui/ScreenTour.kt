@@ -26,6 +26,7 @@ import com.pocketide.core.ThemeMode
 import com.pocketide.docs.DocsContent
 import com.pocketide.ui.lock.HiddenContentCover
 import com.pocketide.ui.screens.agents.AddAgentsScreen
+import com.pocketide.ui.screens.cloudshell.CloudShellScreen
 import com.pocketide.ui.screens.computer.ComputerScreen
 import com.pocketide.ui.screens.data.YourDataScreen
 import com.pocketide.ui.screens.help.HelpPageScreen
@@ -101,6 +102,9 @@ class ScreenTour {
     // What Recents shows while App lock is on.
     @Test fun recentsCover() = shoot("14-recents-cover") { HiddenContentCover() }
 
+    // Google Cloud Shell: its set-up, data, limits and safety.
+    @Test fun cloudShell() = shoot("15-cloud-shell") { CloudShellScreen(onBack = {}, onHelpPage = {}) }
+
     @Composable
     private fun Home() = HomeScreen(
         onOpenAgent = {},
@@ -108,6 +112,7 @@ class ScreenTour {
         onTerminal = {},
         onAddAgents = {},
         onComputer = {},
+        onCloudShell = {},
         onHelp = {},
         onHelpPage = {},
     )

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Terminal
@@ -60,6 +61,7 @@ import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.ExtensionLogo
 import com.pocketide.ui.components.KeepTypedInput
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OutlinedCard
@@ -81,6 +83,7 @@ fun HomeScreen(
     onTerminal: () -> Unit,
     onAddAgents: () -> Unit,
     onComputer: () -> Unit,
+    onCloudShell: () -> Unit,
     onHelp: () -> Unit,
     onHelpPage: (String) -> Unit,
 ) {
@@ -93,6 +96,8 @@ fun HomeScreen(
     LaunchedEffect(ready) { if (ready) runCatching { graph.agents.refresh() } }
     ShellPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            BrandMark(36.dp)
+            Spacer(Modifier.width(12.dp))
             Text(
                 "PocketIDE",
                 style = MaterialTheme.typography.headlineMedium,
@@ -129,6 +134,13 @@ fun HomeScreen(
                 subtitle = "Ubuntu's command line, in the project's folder",
                 enabled = ready,
                 onClick = onTerminal,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ListRow(
+                leading = { Icon(Icons.Outlined.Cloud, contentDescription = null, modifier = Modifier.size(28.dp)) },
+                title = "Google Cloud Shell",
+                subtitle = "Google's free Linux computer: VS Code and the agents, 50 hours a week",
+                onClick = onCloudShell,
             )
         }
     }

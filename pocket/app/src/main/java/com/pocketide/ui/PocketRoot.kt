@@ -42,6 +42,7 @@ import com.pocketide.graph
 import com.pocketide.ui.lock.HiddenContentCover
 import com.pocketide.ui.lock.LockScreen
 import com.pocketide.ui.nav.AddAgentsRoute
+import com.pocketide.ui.nav.CloudShellRoute
 import com.pocketide.ui.nav.ComputerRoute
 import com.pocketide.ui.nav.DataRoute
 import com.pocketide.ui.nav.HelpPageRoute
@@ -51,6 +52,7 @@ import com.pocketide.ui.nav.KeysRoute
 import com.pocketide.ui.nav.SettingsRoute
 import com.pocketide.ui.nav.WorkspaceRoute
 import com.pocketide.ui.screens.agents.AddAgentsScreen
+import com.pocketide.ui.screens.cloudshell.CloudShellScreen
 import com.pocketide.ui.screens.computer.ComputerScreen
 import com.pocketide.ui.screens.data.YourDataScreen
 import com.pocketide.ui.screens.help.HelpPageScreen
@@ -117,6 +119,7 @@ private fun MainScreens() {
             AppPlace.DATA -> nav.navigate(DataRoute)
             AppPlace.COMPUTER -> nav.openTab(Tab.COMPUTER)
             AppPlace.AGENTS -> nav.navigate(AddAgentsRoute)
+            AppPlace.CLOUD_SHELL -> nav.navigate(CloudShellRoute)
             null -> Unit
         }
     }
@@ -140,6 +143,7 @@ private fun MainScreens() {
                             onTerminal = { nav.navigate(WorkspaceRoute(terminal = true, title = "Terminal")) },
                             onAddAgents = { nav.navigate(AddAgentsRoute) },
                             onComputer = { nav.openTab(Tab.COMPUTER) },
+                            onCloudShell = { nav.navigate(CloudShellRoute) },
                             onHelp = { nav.navigate(HelpRoute) },
                             onHelpPage = { nav.navigate(HelpPageRoute(it)) },
                         )
@@ -166,6 +170,7 @@ private fun MainScreens() {
                     composable<AddAgentsRoute> { AddAgentsScreen(onBack = { nav.popBackStack() }) }
                     composable<KeysRoute> { KeysScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
                     composable<DataRoute> { YourDataScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
+                    composable<CloudShellRoute> { CloudShellScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
                     composable<HelpRoute> { HelpScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(HelpPageRoute(it)) }) }
                     composable<HelpPageRoute> { backStack ->
                         HelpPageScreen(id = backStack.toRoute<HelpPageRoute>().id, onBack = {

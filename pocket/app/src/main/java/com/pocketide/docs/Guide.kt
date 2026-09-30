@@ -185,6 +185,37 @@ internal object Guide {
         link("Open Your data", "app:data"),
     )
 
+    private val cloudShell = section(
+        DocsContent.CLOUD_SHELL_ID,
+        "Google Cloud Shell",
+        "Google's own Linux computer, free: set-up, limits, where the data is, and how to delete it.",
+        p(
+            "Cloud Shell is a Linux computer from Google, free with a Google account. The Google Cloud Shell screen (on " +
+                "Home) gives one command that installs VS Code and the three agents there, each checked before use. It " +
+                "opens in a Chrome tab, because Google allows its sign-in only in a browser, and asks which account to use.",
+        ),
+        table(
+            listOf("Free limit", "Value"),
+            row("Hours", "50 a week, at most 12 in one session"),
+            row("When you leave", "It stops after about 40 minutes"),
+            row("Home folder", "5 GB, the only part kept; deleted after 120 days without use"),
+        ),
+        table(
+            listOf("Where", "What"),
+            row("~/projects", "Your projects"),
+            row("~/.claude, ~/.codex, ~/.gemini", "Each agent's chats and sign-in"),
+            row("Its company", "What you ask an agent, and the code it reads"),
+            row("Not there", "Drive, Photos, your Google Cloud projects, the chat lists on claude.ai or chatgpt.com"),
+        ),
+        bullets(
+            "See it: Cloud Shell's editor (shell.cloud.google.com), the Google Cloud console, or the Google Cloud app (terminal only).",
+            "Delete everything: in Cloud Shell run sudo rm -rf \$HOME, then More > Restart.",
+            "Keep your account safe: use it yourself, while you work; no miners, scanners or keep-awake tricks; never share a Web Preview link.",
+        ),
+        link("Open Google Cloud Shell", "app:cloud-shell"),
+        link("Google's limits", "https://docs.cloud.google.com/shell/docs/limitations"),
+    )
+
     private fun signInThen(agent: Agent): String = if (agent.sharedSignInFile != null) {
         "Press Enter and sign in in Chrome. Come back: the screen reloads, signed in."
     } else {
@@ -212,5 +243,5 @@ internal object Guide {
     )
 
     /** The guide, in reading order. */
-    val all: List<DocSection> = listOf(start, computer, agents, keys, projects, background, trouble, yourData, permissions)
+    val all: List<DocSection> = listOf(start, computer, agents, keys, projects, background, trouble, yourData, cloudShell, permissions)
 }

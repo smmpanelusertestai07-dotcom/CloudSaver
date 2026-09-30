@@ -32,5 +32,9 @@ data object DataRoute
 @Serializable
 data object HelpRoute
 
+/** Google Cloud Shell, Google's own Linux computer: set-up, data, limits and safety. */
+@Serializable
+data object CloudShellRoute
+
 @Serializable
 data class HelpPageRoute(val id: String)

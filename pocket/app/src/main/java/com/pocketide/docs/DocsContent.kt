@@ -10,6 +10,7 @@ enum class AppPlace(val id: String, val title: String, val about: String) {
     DATA("data", "Settings > Your data", "Where your data is, storage, sizes, delete everything"),
     COMPUTER("computer", "Computer", "Ubuntu, code-server, updates, restart, repair, reset, storage, processor"),
     AGENTS("agents", "Home > Add agents", "Find and install more agents and extensions from Open VSX"),
+    CLOUD_SHELL("cloud-shell", "Home > Google Cloud Shell", "Google's own Linux computer, free: set up VS Code and the agents there"),
     ;
 
     companion object {
@@ -36,6 +37,7 @@ object DocsContent {
     const val KEYS_ID = "keys"
     const val BACKGROUND_ID = "background"
     const val TROUBLE_ID = "trouble"
+    const val CLOUD_SHELL_ID = "cloud-shell"
 
     /** The day the facts, prices and links were checked. */
     const val CHECKED_ON: String = DocLinks.CHECKED_ON
