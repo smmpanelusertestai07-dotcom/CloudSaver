@@ -1,9 +1,5 @@
 package com.pocketide.ui.screens.onboarding
 
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,8 +11,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.agents.Agent
 import com.pocketide.docs.DocsContent
@@ -47,31 +42,19 @@ import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.ShellPage
 
 /**
- * First run: what PocketIDE is, with the terms, then leave to Home, where the computer is set up
- * with one tap. No account is needed for PocketIDE itself: each agent signs in to its own maker.
+ * First run: what PocketIDE is, with the terms, then the computer's set-up. No account is needed
+ * for PocketIDE itself: Cloud Shell uses the owner's Google account, and each agent signs in to its
+ * own maker. PocketIDE asks for no permission.
  */
 @Composable
 fun Onboarding(graph: AppGraph) {
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
     var reading by remember { mutableStateOf<String?>(null) }
-    // Android 13 and newer ask before an app shows notifications: the "computer is on" notice with
-    // its Stop button, and a sign-in page a program opened while PocketIDE was in the background.
-    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        graph.settings.update { it.copy(onboardingDone = true) }
-    }
     val page = reading
     when {
         page != null -> HelpPageScreen(id = page, onBack = { reading = null }, onOpen = { reading = it })
         else -> WelcomeScreen(
             onRead = { reading = it },
-            onContinue = {
-                graph.settings.update { it.copy(termsAccepted = DocsContent.TERMS_VERSION) }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && settings.termsAccepted < DocsContent.TERMS_VERSION) {
-                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    graph.settings.update { it.copy(onboardingDone = true) }
-                }
-            },
+            onContinue = { graph.settings.update { it.copy(termsAccepted = DocsContent.TERMS_VERSION, onboardingDone = true) } },
         )
     }
 }
@@ -87,24 +70,27 @@ internal fun WelcomeScreen(onRead: (String) -> Unit, onContinue: () -> Unit) {
         Gap(28.dp)
         Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Feature(
-                icon = { IconTile(Icons.Outlined.Terminal, size = 40.dp) },
-                title = "A Linux computer inside the app",
-                text = "Ubuntu 26.04 LTS and VS Code (code-server), running on this phone. No cloud, no rented server.",
+                icon = { IconTile(Icons.Outlined.Cloud, size = 40.dp) },
+                title = "Your computer: Google Cloud Shell",
+                text = "Google's own Linux computer, free with a Google account: 50 hours a week. The work runs there, so your phone stays cool.",
             )
             Feature(
                 icon = { AgentLogo(Agent.CLAUDE, size = 36.dp) },
                 title = "The official AI agents",
-                text = "Claude Code by Anthropic, Codex by OpenAI and Antigravity by Google, each with its own screen, full screen. Add more from Open VSX.",
+                text = "Claude Code by Anthropic, Codex by OpenAI and Antigravity by Google, each in its own VS Code with its own settings, " +
+                    "extensions and projects.",
             )
             Feature(
                 icon = { IconTile(Icons.Outlined.Lock, size = 40.dp) },
                 title = "Private by design",
-                text = "Your projects, chats and sign-ins stay inside PocketIDE's own storage. No other app can read them, and PocketIDE has no server.",
+                text = "PocketIDE has no server and no account. Your projects, chats and sign-ins stay in your own Cloud Shell, which only " +
+                    "your Google account opens.",
             )
             Feature(
                 icon = { IconTile(Icons.Outlined.Autorenew, size = 40.dp) },
-                title = "Keeps itself up to date",
-                text = "Ubuntu's security fixes and new agent versions install by themselves, checked before they are used.",
+                title = "Starts and updates by itself",
+                text = "One command sets it up. Then Cloud Shell starts the agents' VS Code by itself, tidies old caches, and installs " +
+                    "new agent versions, checked before they are used.",
             )
         }
         Gap(28.dp)

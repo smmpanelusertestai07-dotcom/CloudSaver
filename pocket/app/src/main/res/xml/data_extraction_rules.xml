@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Nothing leaves through Android's own backup or device transfer. The phone holds only the
-     GitHub sign-in and settings; the owner's code and chats are in their GitHub account. -->
+<!-- Nothing leaves through Android's own backup or device transfer. The phone holds only
+     PocketIDE's settings; the owner's code and chats are in their own Google Cloud Shell. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

@@ -18,16 +18,4 @@
     <issue id="ModifierParameter">
         <ignore path="src/main/java/com/pocketide/ui/shell/ShellComponents.kt" />
     </issue>
-
-    <!-- The agents' screen is code-server, VS Code for the web: it needs JavaScript. The WebView
-         loads only this phone's own code-server (ui/web/WebPolicy.kt); everything else opens in Chrome. -->
-    <issue id="SetJavaScriptEnabled">
-        <ignore path="src/main/java/com/pocketide/ui/web/AgentPage.kt" />
-    </issue>
-
-    <!-- The computer runs with an arm64 PRoot: an x86 Chromebook or phone could not run it, so the
-         APK carries arm64 only (the x86-64 build exists for the emulator in CI). -->
-    <issue id="ChromeOsAbiSupport">
-        <ignore path="build.gradle.kts" />
-    </issue>
 </lint>

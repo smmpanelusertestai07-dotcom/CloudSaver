@@ -3,8 +3,8 @@
 
 A download piped into a shell runs whatever the server sends at that moment, unverified; every
 download here is checked by SHA-256 before it is used (plan §15). Checked: everything under
-app/src/main/assets (Linux scripts, room tools, templates) and pocket/tools, except the tools'
-tests, which hold broken samples on purpose. Comment lines are skipped, so a script may still
+app/src/main/assets, pocket/cloudshell (the script the owner runs in Google Cloud Shell) and
+pocket/tools, except the tools' tests, which hold broken samples on purpose. Comment lines are skipped, so a script may still
 explain why it does not do this.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ def scan(name: str, text: str) -> list[str]:
 
 def check(root: Path = common.POCKET) -> common.Report:
     report = common.Report()
-    for base in (common.assets(root), root / "tools"):
+    for base in (common.assets(root), root / "cloudshell", root / "tools"):
         for path in common.files_under(base, TEXT_SUFFIXES):
             if "__pycache__" in path.parts or path.is_relative_to(root / "tools" / "tests"):
                 continue

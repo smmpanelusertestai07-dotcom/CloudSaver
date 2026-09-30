@@ -5,10 +5,6 @@
     <!-- Every permission here is listed, with its reason, in Help > Permissions, and the
          permissions gate fails the build if the merged manifest asks for anything else. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Merged in by androidx.biometric for Android 9 and older; this app starts at Android 10. -->
     <uses-permission
@@ -16,17 +12,12 @@
         tools:node="remove" />
 
     <queries>
-        <!-- Chrome (or another browser) for Custom Tabs: sign-in pages and links open there, and a
-             web app an agent runs on this phone (http://localhost). -->
+        <!-- Chrome (or another browser) for Custom Tabs: Cloud Shell, the agents' VS Code, and
+             every link open there. -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="http" />
         </intent>
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
@@ -53,6 +44,8 @@
         android:theme="@style/Theme.PocketIDE"
         tools:targetApi="36">
 
+        <!-- singleTask: the Chrome tab an agent's VS Code opens in sits above it in the same task,
+             and bringing PocketIDE to the front closes that tab. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale"
@@ -63,15 +56,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- After a sign-in in Chrome, an agent's "Return to the editor" link (code-server's
-                 own scheme, code-oss:) brings PocketIDE back to the front. Nothing is read from it. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="code-oss" />
-            </intent-filter>
         </activity>
+
+        <!-- PocketIDE's tools over the Chrome tab: the tab's tools button and menu open it. Not
+             exported: only the tab's own buttons, which PocketIDE made, can open it. -->
+        <activity
+            android:name=".ui.tools.IdeToolsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.PocketIDE.Tools" />
 
         <!-- Says that an error stopped the app, with details to copy (StopNote). Its own process,
              so it opens whatever went wrong in the app's. -->
@@ -79,29 +73,5 @@
             android:name=".StoppedActivity"
             android:exported="false"
             android:process=":stopped" />
-
-        <!-- Keeps the app, and with it the computer's programs, running while it is in the background. -->
-        <service
-            android:name=".ide.ComputerService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="@string/computer_fgs_subtype" />
-        </service>
-
-        <!-- Android 10 and 11 get the system photo picker from Google Play services. -->
-        <service
-            android:name="com.google.android.gms.metadata.ModuleDependencies"
-            android:enabled="false"
-            android:exported="false"
-            tools:ignore="MissingClass">
-            <intent-filter>
-                <action android:name="com.google.android.gms.metadata.MODULE_DEPENDENCIES" />
-            </intent-filter>
-            <meta-data
-                android:name="photopicker_activity:0:required"
-                android:value="" />
-        </service>
     </application>
 </manifest>

@@ -5,12 +5,13 @@ import java.util.Locale
 
 /** Screens a Help link or a search result opens, by the id after `app:` in a link. */
 enum class AppPlace(val id: String, val title: String, val about: String) {
-    KEYS("keys", "Settings > Keys", "Keys and tokens for the agents and your apps: API keys, secrets, environment variables, GitHub token"),
-    SETTINGS("settings", "Settings", "Theme, dark, light, app lock, keyboard keys, updates on mobile data"),
-    DATA("data", "Settings > Your data", "Where your data is, storage, sizes, delete everything"),
-    COMPUTER("computer", "Computer", "Ubuntu, code-server, updates, restart, repair, reset, storage, processor"),
-    AGENTS("agents", "Home > Add agents", "Find and install more agents and extensions from Open VSX"),
-    CLOUD_SHELL("cloud-shell", "Home > Google Cloud Shell", "Google's own Linux computer, free: set up VS Code and the agents there"),
+    SETTINGS("settings", "Settings", "Theme, dark, light, wallpaper colours, app lock"),
+    DATA("data", "Settings > Your data", "Where your data is, the old phone computer, save a zip, delete"),
+    COMPUTER(
+        "computer",
+        "Computer",
+        "Google Cloud Shell: account, start, set up again, free limits, hours, files, download, reset, delete",
+    ),
     ;
 
     companion object {
@@ -26,7 +27,7 @@ object DocsContent {
     const val TAGLINE = "Agentic development on your phone"
 
     /** Raised when the terms or the privacy policy change in a way the owner should see again. */
-    const val TERMS_VERSION = 5
+    const val TERMS_VERSION = 6
 
     // Page ids other screens open directly.
     const val TERMS_ID = "terms"
@@ -34,10 +35,8 @@ object DocsContent {
     const val NOTICES_ID = "notices"
     const val YOUR_DATA_ID = "your-data"
     const val COMPUTER_ID = "computer"
-    const val KEYS_ID = "keys"
-    const val BACKGROUND_ID = "background"
+    const val IDE_ID = "vs-code"
     const val TROUBLE_ID = "trouble"
-    const val CLOUD_SHELL_ID = "cloud-shell"
 
     /** The day the facts, prices and links were checked. */
     const val CHECKED_ON: String = DocLinks.CHECKED_ON
@@ -65,7 +64,7 @@ object DocsContent {
     /** The questions that belong to this page. */
     fun faqFor(sectionId: String): List<FaqEntry> = faq.filter { it.sectionId == sectionId }
 
-    /** A link to a place in the app, such as `app:keys`, opens that screen. */
+    /** A link to a place in the app, such as `app:data`, opens that screen. */
     const val APP_SCHEME = "app:"
 
     /** A link to another Help page, such as `help:your-data`. */

@@ -1,7 +1,7 @@
 package com.pocketide.docs
 
 import com.pocketide.agents.Agent
-import com.pocketide.linux.LinuxPins
+import com.pocketide.cloudshell.CloudShell
 
 /** The guide: short pages in reading order. Facts that change carry the day they were checked. */
 internal object Guide {
@@ -10,114 +10,109 @@ internal object Guide {
         "Start here",
         "What PocketIDE is, and the three steps to your first agent.",
         p(
-            "PocketIDE puts a Linux computer inside the app: Ubuntu ${LinuxPins.UBUNTU_VERSION} LTS with VS Code, running on this " +
-                "phone. The official agents from Anthropic, OpenAI and Google work on it, each full screen in its own screen, " +
-                "and keep working while you use other apps.",
+            "PocketIDE gives your phone a computer in Google's cloud: Google Cloud Shell, free with a Google account. The " +
+                "official agents from Anthropic, OpenAI and Google each work there in their own VS Code, and the phone only " +
+                "shows the page, so it stays cool.",
         ),
         steps(
-            "On Home, tap Set up. It installs Ubuntu, VS Code and the three agents (about 1 GB to download; Wi-Fi is best).",
-            "Tap Claude Code, Codex or Antigravity. Its own screen opens, full screen.",
-            "Sign in to that agent once, with the button on its screen: the sign-in page opens in Chrome and comes back " +
-                "by itself.",
+            "Pick your Google account in Android's own chooser. A separate Google account for development keeps your main " +
+                "one apart; your main one works too.",
+            "Copy the set-up command, open Cloud Shell, paste it and press Enter. About 5 minutes, once.",
+            "On Home, tap Claude Code, Codex or Antigravity: its own VS Code opens in Chrome. Sign in to the agent once.",
         ),
         table(
             listOf("What", "Where"),
-            row("Your projects", "~/projects on the computer, inside PocketIDE"),
-            row("Chats and agent sign-ins", "On the computer, kept by each agent"),
-            row("Keys (API keys, tokens)", "Sealed on this phone; the agents see them"),
+            row("Your projects", "In Cloud Shell: ~/projects, a folder for each agent"),
+            row("Chats and agent sign-ins", "In Cloud Shell, kept by each agent"),
+            row("PocketIDE's settings", "On this phone"),
             row("PocketIDE's own server", "None: there is no PocketIDE account"),
         ),
-        link("Open the Computer screen", "app:computer"),
+        link("Open the Computer tab", "app:computer"),
     )
 
     private val computer = section(
         DocsContent.COMPUTER_ID,
-        "Your computer",
-        "Ubuntu on the phone: what is on it, how it stays up to date, and how to put it right.",
+        "Your computer: Google Cloud Shell",
+        "Google's free Linux computer: set-up, limits, starting, updates, and putting it right.",
         p(
-            "The computer is Ubuntu ${LinuxPins.UBUNTU_VERSION} LTS (\"${LinuxPins.UBUNTU_CODENAME}\"), run by PRoot inside PocketIDE: no " +
-                "root, no virtual machine, nothing changed on the phone itself. It lives in PocketIDE's private storage, which no " +
-                "other app can read.",
-        ),
-        bullets(
-            "Installed: git, curl, Python 3 (with venv), Node.js and npm, ripgrep, jq, SQLite, SSH, GitHub's gh, and VS Code " +
-                "for the web (code-server ${LinuxPins.CODE_SERVER_VERSION}). Agents install more with apt when a project needs it.",
-            "Every download is checked before it is used: Ubuntu's image and code-server against checksums pinned in the app, " +
-                "Ubuntu's packages by apt against Ubuntu's signatures, agents against Open VSX's checksum and signature, npm " +
-                "against the checksum its registry publishes.",
-            "Updates run by themselves once a day while the computer is on: Ubuntu's updates (security fixes included), newer " +
-                "agent releases, and the code-server this app version brings. On Wi-Fi only, unless you allow mobile data.",
-            "Space: about 3 GB with the three agents. The Computer screen shows what it takes.",
+            "Cloud Shell is a Linux computer (x86-64) that Google runs for each Google account, free. PocketIDE opens it in " +
+                "Chrome with the account you picked, because Google allows its sign-in only in a real browser.",
         ),
         table(
-            listOf("If something is wrong", "What it does"),
-            row("Restart", "Stops every program on the computer. Files, sign-ins and chats stay."),
-            row("Repair", "Checks each part and puts back what is missing."),
-            row("Reset Ubuntu", "Rebuilds Ubuntu from scratch. Keeps projects, sign-ins, chats and agents."),
-            row("Delete the computer", "Deletes all of it, projects included."),
+            listOf("Free limit (Google, checked ${DocLinks.CHECKED_ON})", "Value"),
+            row("Hours", "50 a week (about 7 a day), at most 12 in one session"),
+            row("When you leave", "It stops after 40 minutes without use"),
+            row("Home folder", "5 GB, the only part kept; the set-up uses about 1.6 GB"),
+            row("Not used", "Google deletes the home folder after ${CloudShell.DELETED_AFTER_DAYS} days, and emails you first"),
         ),
-        tip(
-            "On an agent's screen, the key bar above the keyboard has Esc, Tab, Ctrl+C, the arrows and Enter, and in a " +
-                "terminal, Paste. The menu (⋮) opens a terminal in your project's folder.",
+        bullets(
+            "The set-up is one command. It downloads a script pinned in this app version, checks its SHA-256, and runs it: " +
+                "code-server (VS Code for the web), checked against its pinned SHA-256, and each agent from Open VSX, checked " +
+                "against the SHA-256 Open VSX publishes.",
+            "Each agent gets its own VS Code, with its own port (Claude Code ${CloudShell.port(Agent.CLAUDE)}, Codex " +
+                "${CloudShell.port(Agent.CODEX)}, Antigravity ${CloudShell.port(Agent.ANTIGRAVITY)}), settings, extensions and " +
+                "projects folder, reached through Cloud Shell's Web Preview, which only your account can open.",
+            "Whenever Cloud Shell starts, it starts the agents' VS Code by itself, tidies old caches and logs, and once a day " +
+                "installs newer agent releases. Running work and your projects are never touched.",
+            "PocketIDE asks for the set-up again after ${CloudShell.ASK_AGAIN_AFTER_DAYS} days without opening Cloud Shell, " +
+                "before Google may delete it. Computer > Run the set-up again does it at any time: it only adds what is missing.",
         ),
-        link("Open the Computer screen", "app:computer"),
+        warn(
+            "Use Cloud Shell yourself, while you work, as Google intends: no coin mining, network scanning or tricks to keep " +
+                "it awake, and never share a Web Preview link. Google can turn Cloud Shell off for an account that breaks its rules.",
+        ),
+        link("Open the Computer tab", "app:computer"),
+        link("Google's limits", CloudShell.LIMITS),
     )
 
     private val agents = section(
         "agents",
         "The agents",
-        "Claude Code, Codex and Antigravity: signing in, chats, and adding more.",
+        "Claude Code, Codex and Antigravity: signing in, chats, and more extensions.",
         table(
-            listOf("Agent", "Sign in with", "Chats kept in"),
+            listOf("Agent", "Sign in with", "Chats and sign-in in"),
             *Agent.entries.map { row("${it.displayName} (${it.maker})", it.signIn, it.chatsFolder) }.toTypedArray(),
         ),
         p(
-            "Each agent is its maker's own VS Code extension, from its verified publisher on Open VSX. PocketIDE shows each " +
-                "one's own screen, full screen, with VS Code's other parts hidden. PocketIDE never talks to the AI companies " +
-                "itself.",
+            "Each agent is its maker's own VS Code extension, from its verified publisher on Open VSX, in its own VS Code in " +
+                "your Cloud Shell. PocketIDE never talks to the AI companies itself.",
+        ),
+        steps(
+            "Claude Code: in its panel, Sign in. Chrome opens: sign in, copy the code the page shows, come back and paste it.",
+            "Codex: its own Sign in with ChatGPT expects the computer to be the phone. In Cloud Shell use a device code: turn " +
+                "it on in ChatGPT (Settings > Security), then in Codex's VS Code open the Terminal, run codex login --device-auth, " +
+                "open the link and enter the code.",
+            "Antigravity: in its panel, sign in with Google. If the page ends at localhost, open the Terminal, run agy, open " +
+                "the link it shows, sign in and paste the code back.",
         ),
         p(
-            "Sign in with the agent's own button on its screen: Claude.ai Subscription (Claude Code), Sign in with " +
-                "ChatGPT (Codex), Continue with Google (Antigravity). The page opens in Chrome, as Google allows its " +
-                "sign-in only in a real browser, and returns to the agent on this phone by itself.",
+            "More extensions: in any agent's VS Code, Extensions (the four squares) finds any extension on Open VSX. Each VS " +
+                "Code keeps its own, and they update by themselves. Microsoft's own extensions are not on Open VSX (Microsoft " +
+                "allows them only in its products).",
         ),
-        p(
-            "Or sign in with the terminal: Sign in (the arrow at the top; for Antigravity's agy, Home > its menu) opens one with " +
-                "the agent's command already typed.",
-        ),
-        table(
-            listOf("Agent", "Typed for you", "Then"),
-            *Agent.entries.map { row(it.displayName, it.signInCommand, signInThen(it)) }.toTypedArray(),
-        ),
-        info(
-            "Antigravity signs in on its own screen: Continue with Google. Google keeps that screen and its terminal tool " +
-                "(agy) signed in separately, so sign in agy in the terminal only to use agy there (Home > Antigravity's menu).",
-        ),
-        p(
-            "More agents: Home > Add agents searches Open VSX. Only publishers Open VSX has verified can be installed, and " +
-                "Microsoft's extensions cannot be (Microsoft allows them only in its own products).",
-        ),
-        link("Add agents", "app:agents"),
+        link("Claude Code's guide", Agent.CLAUDE.docsUrl),
+        link("Codex's guide", Agent.CODEX.docsUrl),
+        link("Antigravity's guide", Agent.ANTIGRAVITY.docsUrl),
     )
 
-    private val keys = section(
-        DocsContent.KEYS_ID,
-        "Keys",
-        "API keys and tokens: where they go, and which ones you need.",
-        p(
-            "Settings > Keys holds environment variables for the agents, their command-line tools and the terminal. They are " +
-                "sealed on this phone with a key in its secure hardware and never leave it. After adding one, restart code-server " +
-                "(agent screen > ⋮ > Restart code-server).",
-        ),
+    private val ide = section(
+        DocsContent.IDE_ID,
+        "Working in VS Code",
+        "The Chrome tab, switching agents, and typing on a phone.",
         table(
-            listOf("Key", "When you need it"),
-            row("ANTHROPIC_API_KEY", "Claude Code billed to an Anthropic Console account instead of a Claude plan"),
-            row("OPENAI_API_KEY", "Codex billed to the OpenAI API: run printenv OPENAI_API_KEY | codex login --with-api-key once"),
-            row("GEMINI_API_KEY", "Antigravity on a Gemini API key instead of a Google account"),
-            row("GH_TOKEN", "gh and git push to GitHub without signing in there (a fine-grained token)"),
+            listOf("In the Chrome tab", "What it does"),
+            row("The arrow (top left)", "Back to PocketIDE"),
+            row("The tools button", "Every agent with its logo, the terminal, the files, and how each agent signs in"),
+            row("Chrome's menu (⋮)", "The other agents, the terminal and the files"),
+            row("Back", "The page before, then PocketIDE"),
         ),
-        p("With a plan sign-in (Claude, ChatGPT, Google), no key is needed."),
-        link("Open Keys", "app:keys"),
+        bullets(
+            "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects.",
+            "VS Code's own keys (Esc, Tab, Ctrl) are not on most phone keyboards: a keyboard app with those keys helps in the " +
+                "terminal. Turning the phone sideways gives VS Code more room.",
+            "If VS Code does not open, Cloud Shell is probably stopped: tap Start Cloud Shell, wait for the terminal's prompt, " +
+                "then open the agent again.",
+        ),
     )
 
     private val projects = section(
@@ -125,31 +120,14 @@ internal object Guide {
         "Projects and GitHub",
         "Where your work is, and how to put it on GitHub.",
         bullets(
-            "Each project is a folder in ~/projects. Pick one, or make a new one, with the Project chip on Home: the agents open in it.",
-            "To work on a project from GitHub, make a new project, open the terminal and run git clone with its address.",
-            "Nothing is saved outside PocketIDE. To keep a copy elsewhere, push it to GitHub: in the terminal, run gh auth " +
-                "login once (it opens GitHub's page in Chrome), then git push.",
-            "An agent can build and test web apps, backends and scripts here. Android apps need Google's build tools, which " +
-                "exist only for x86-64 computers: build them on GitHub Actions (an agent can write the workflow).",
+            "Each agent opens its own folder: ${Agent.entries.joinToString(", ") { CloudShell.projects(it) }}.",
+            "To work on a project from GitHub, open the Terminal in the agent's VS Code and run git clone with its address.",
+            "Keep a copy elsewhere: run gh auth login once (GitHub's page opens in Chrome), then git push. Cloud Shell's home " +
+                "folder is deleted after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
+            "Cloud Shell's ⋮ menu has Upload and Download for single files.",
+            "Android apps: an emulator cannot run in Cloud Shell, and the Android tools take much of the 5 GB home folder. " +
+                "Build them on GitHub Actions (an agent can write the workflow).",
         ),
-    )
-
-    private val background = section(
-        DocsContent.BACKGROUND_ID,
-        "Agents in the background",
-        "Keeping the agents working while you use other apps.",
-        p(
-            "While the computer is on, PocketIDE shows a notification with a Stop button, so Android keeps it running. Two " +
-                "phone settings can still stop it:",
-        ),
-        steps(
-            "Battery: Android settings > Apps > PocketIDE > Battery > Unrestricted. Some phones (Realme, OPPO, Xiaomi) also " +
-                "need Allow background activity.",
-            "Android 12 and newer stop an app's extra programs beyond 32 in all. On Android 14 and newer: Settings > System > " +
-                "Developer options > Disable child process restrictions. On Android 12 and 13 it takes one adb command from " +
-                "a computer: adb shell settings put global settings_enable_monitor_phantom_procs false",
-        ),
-        info("Developer options appear after tapping Build number seven times in Settings > About phone."),
     )
 
     private val trouble = section(
@@ -158,70 +136,34 @@ internal object Guide {
         "The usual fixes, lightest first.",
         table(
             listOf("What you see", "Try"),
-            row("code-server does not start", "Try again; then Computer > Restart; then Repair; then Reset Ubuntu."),
-            row("An agent's screen stays empty", "Tap Reload (↻). A new agent needs a minute on its first start."),
-            row("The sign-in page does not open", "Allow PocketIDE's notifications: when it is not on screen, the page waits there."),
-            row("Set-up stopped", "Tap Set up again: it continues where it stopped."),
-            row("Agents stop in the background", "See Agents in the background."),
-            row("The phone is out of space", "Free space, or delete old projects in the terminal."),
+            row("VS Code does not open", "Start Cloud Shell, wait for the prompt, open the agent again."),
+            row("Could not connect to port 8080 (or 8081, 8082)", "In the Terminal, run pocketide. Still nothing: Computer > Run the set-up again."),
+            row("An agent is missing", "In the Terminal, run pocketide update."),
+            row("Codex's sign-in ends at localhost", "Sign in with a device code (The agents)."),
+            row("Chrome offers to turn on sync", "Tap No thanks: it is not needed."),
+            row("Cloud Shell says the weekly quota is used", "It comes back the next week; Session information > Usage quota shows it."),
+            row("The home folder is full", "Delete old projects or files; the first set-up needs about 2 GB free."),
         ),
-        link("Agents in the background", "help:${DocsContent.BACKGROUND_ID}"),
+        link("The agents", "help:agents"),
     )
 
     private val yourData = section(
         DocsContent.YOUR_DATA_ID,
         "Your data",
-        "What stays on the phone, what leaves it, and how to delete it.",
+        "What is where, who can see it, and how to delete it.",
         bullets(
-            "On the phone, inside PocketIDE: the computer, your projects, each agent's sign-in, settings and chats, your keys " +
-                "(sealed) and PocketIDE's settings. Android's backup does not copy them.",
-            "What leaves the phone: what you ask an agent, and the code it reads, goes to its company under your account " +
-                "there. Downloads come from Ubuntu, code-server's GitHub releases, Open VSX, Google (Antigravity's agy) " +
-                "and npm (from nodejs.org and npm's registry).",
-            "Programs on the computer can reach the internet, like on any computer, and run with PocketIDE's access on the " +
-                "phone: install only what you trust.",
-            "Delete: Settings > Your data > Delete everything, or uninstall PocketIDE.",
+            "In your Cloud Shell, which only your Google account opens: your projects, each agent's chats and sign-in, and each " +
+                "agent's VS Code. Google's privacy notice for Google Cloud applies. It is not in Drive or Photos.",
+            "On this phone: only PocketIDE's settings (the theme, App lock, the Google account Cloud Shell opens with, and " +
+                "when it was set up and last opened). Android's backup does not copy them.",
+            "At the AI companies: what you ask an agent, and the code it reads, under your account there.",
+            "Downloads the set-up makes in Cloud Shell: the script and code-server from GitHub, the agents from Open VSX, and " +
+                "Antigravity's own tool from Google.",
+            "Delete: in Cloud Shell, run sudo rm -rf \$HOME, then ⋮ > Restart. On the phone: Settings > Your data.",
         ),
         link("Open Your data", "app:data"),
+        link("Google Cloud privacy notice", CloudShell.PRIVACY),
     )
-
-    private val cloudShell = section(
-        DocsContent.CLOUD_SHELL_ID,
-        "Google Cloud Shell",
-        "Google's own Linux computer, free: set-up, limits, where the data is, and how to delete it.",
-        p(
-            "Cloud Shell is a Linux computer from Google, free with a Google account. The Google Cloud Shell screen (on " +
-                "Home) gives one command that installs VS Code and the three agents there, each checked before use. It " +
-                "opens in a Chrome tab, because Google allows its sign-in only in a browser, and asks which account to use.",
-        ),
-        table(
-            listOf("Free limit", "Value"),
-            row("Hours", "50 a week, at most 12 in one session"),
-            row("When you leave", "It stops after about 40 minutes"),
-            row("Home folder", "5 GB, the only part kept; deleted after 120 days without use"),
-        ),
-        table(
-            listOf("Where", "What"),
-            row("~/projects", "Your projects"),
-            row("~/.claude, ~/.codex, ~/.gemini", "Each agent's chats and sign-in"),
-            row("Its company", "What you ask an agent, and the code it reads"),
-            row("Not there", "Drive, Photos, your Google Cloud projects, the chat lists on claude.ai or chatgpt.com"),
-        ),
-        bullets(
-            "See it: Cloud Shell's editor (shell.cloud.google.com), the Google Cloud console, or the Google Cloud app (terminal only).",
-            "Delete everything: in Cloud Shell run sudo rm -rf \$HOME, then More > Restart.",
-            "Keep your account safe: use it yourself, while you work; no miners, scanners or keep-awake tricks; never share a Web Preview link.",
-        ),
-        link("Open Google Cloud Shell", "app:cloud-shell"),
-        link("Google's limits", "https://docs.cloud.google.com/shell/docs/limitations"),
-    )
-
-    private fun signInThen(agent: Agent): String = if (agent.sharedSignInFile != null) {
-        "Press Enter and sign in in Chrome. Come back: the screen reloads, signed in."
-    } else {
-        "Press Enter twice (Google OAuth) and sign in in Chrome. Copy the code the page shows, come back, tap the " +
-            "terminal, then Paste above the keyboard and Enter. Antigravity then runs in the terminal."
-    }
 
     private val permissions = section(
         "permissions",
@@ -229,19 +171,16 @@ internal object Guide {
         "What PocketIDE may do on your phone, and why.",
         table(
             listOf("Android permission", "Why"),
-            row("INTERNET", "To set up and update the computer, and for the agents to reach their companies"),
-            row("ACCESS_NETWORK_STATE", "To update on Wi-Fi only (unless you allow mobile data), and to give Linux the phone's DNS"),
-            row("POST_NOTIFICATIONS", "The \"Computer is on\" notice with its Stop button, and sign-in pages that wait for you; you can refuse it"),
-            row("FOREGROUND_SERVICE", "To keep the computer running while you use other apps"),
-            row("FOREGROUND_SERVICE_SPECIAL_USE", "The kind of background work that is, as Android requires it named"),
+            row("INTERNET", "To show each agent's icon, from Open VSX"),
             row("USE_BIOMETRIC", "App lock, with your phone's own screen lock"),
         ),
         p(
-            "No storage, camera, microphone, location, contacts or accounts access. Files you attach for an agent are " +
-                "picked with Android's own picker, one choice at a time.",
+            "No storage, camera, microphone, location, contacts, notifications or accounts permission. The Google account " +
+                "comes from Android's own account chooser, which gives PocketIDE only the one you pick. Cloud Shell opens in " +
+                "Chrome, with Chrome's own sign-in.",
         ),
     )
 
     /** The guide, in reading order. */
-    val all: List<DocSection> = listOf(start, computer, agents, keys, projects, background, trouble, yourData, cloudShell, permissions)
+    val all: List<DocSection> = listOf(start, computer, agents, ide, projects, trouble, yourData, permissions)
 }

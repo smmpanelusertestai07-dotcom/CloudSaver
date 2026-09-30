@@ -1,13 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PocketIDE</string>
-    <string name="computer_channel_name">Computer</string>
-    <string name="computer_channel_description">Shown while PocketIDE\'s computer is on, so the agents keep working when you use other apps. Has a Stop button.</string>
-    <string name="computer_fgs_subtype">Runs the user\'s own Linux computer (code-server and the AI agents they started) on the phone while the user works in other apps or the screen is off, shows that it is running, and lets the user stop it.</string>
-    <string name="computer_on_title">PocketIDE\'s computer is on</string>
-    <string name="computer_on_text">Agents keep working while you use other apps.</string>
-    <string name="computer_stop">Stop</string>
-    <string name="links_channel_name">Sign-in pages</string>
-    <string name="links_channel_description">A sign-in page a program on the computer asked to open while PocketIDE was not on the screen.</string>
-    <string name="link_title">Tap to open the sign-in page</string>
 </resources>

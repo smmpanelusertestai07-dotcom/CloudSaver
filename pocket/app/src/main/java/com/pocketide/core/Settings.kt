@@ -20,14 +20,14 @@ data class Settings(
     val onboardingDone: Boolean = false,
     /** Ask for the phone's screen lock when the app opens, and cover the app in Recents. */
     val appLock: Boolean = false,
-    /** Show Esc, Tab, Ctrl, arrows and Enter above the keyboard on the agent screen. */
-    val keyBar: Boolean = true,
-    /** The project the agents work in: a folder in ~/projects; empty = the projects folder itself. */
-    val project: String = "",
-    /** Automatic updates may use mobile data, not only Wi-Fi. */
-    val updatesOnMobileData: Boolean = false,
-    /** When the automatic updates last finished (UTC epoch ms); 0 = never. */
-    val lastUpdate: Long = 0,
+    /** The Google account Cloud Shell opens with, picked in Android's own account chooser; empty = not yet. */
+    val cloudAccount: String = "",
+    /** When the owner said Cloud Shell's set-up had finished (UTC epoch ms); 0 = not yet. */
+    val cloudSetUpAt: Long = 0,
+    /** When PocketIDE last opened Cloud Shell (UTC epoch ms): Google deletes its home after 120 days unused. */
+    val cloudOpenedAt: Long = 0,
+    /** The commit of the set-up script the owner last ran; a newer app version may bring a newer one. */
+    val cloudScript: String = "",
 )
 
 /** The settings after "Delete everything": every choice back to its default. */

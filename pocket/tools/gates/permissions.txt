@@ -3,17 +3,8 @@
 # when an android.permission line is not explained in Help > Permissions.
 # ${applicationId} stands for the package name, which differs between release and debug.
 
-# Setting up and updating the computer, and the agents reaching their companies; Wi-Fi is told
-# apart from mobile data for the daily updates, and the phone's DNS servers are read for Linux.
+# Each agent's icon, read from Open VSX. Cloud Shell itself opens in Chrome.
 android.permission.INTERNET
-android.permission.ACCESS_NETWORK_STATE
-
-# The computer keeps running in the background while it is on, with its Stop button.
-android.permission.FOREGROUND_SERVICE
-android.permission.FOREGROUND_SERVICE_SPECIAL_USE
-
-# The "Computer is on" notice and sign-in pages that wait for the owner, asked once.
-android.permission.POST_NOTIFICATIONS
 
 # App lock, with the phone's own screen lock.
 android.permission.USE_BIOMETRIC

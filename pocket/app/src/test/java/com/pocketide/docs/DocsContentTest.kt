@@ -1,7 +1,7 @@
 package com.pocketide.docs
 
 import com.pocketide.agents.Agent
-import com.pocketide.linux.LinuxPins
+import com.pocketide.cloudshell.CloudShell
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,7 +31,7 @@ class DocsContentTest {
         assertEquals(ids.distinct(), ids)
         listOf(
             DocsContent.TERMS_ID, DocsContent.PRIVACY_ID, DocsContent.NOTICES_ID, DocsContent.YOUR_DATA_ID,
-            DocsContent.COMPUTER_ID, DocsContent.KEYS_ID, DocsContent.BACKGROUND_ID, DocsContent.TROUBLE_ID,
+            DocsContent.COMPUTER_ID, DocsContent.IDE_ID, DocsContent.TROUBLE_ID,
         ).forEach { assertTrue(it, DocsContent.section(it) != null) }
     }
 
@@ -49,19 +49,26 @@ class DocsContentTest {
     }
 
     @Test
-    fun `nothing of the cloud computer or Drive design is left`() {
+    fun `nothing of an earlier design is left`() {
         // The one answer for owners of an earlier version names what that version made.
         val current = everything.replace(DocsContent.faq.single { it.id == "old-version" }.answer.joinToString(" ", transform = ::blockText), "")
-        val gone = listOf("Codespace", "cloud computer", "GitHub App", "free hours", "core-hour", "Google Drive", "vault", "Recently deleted")
+        val gone = listOf(
+            "Codespace", "GitHub App", "core-hour", "Google Drive", "vault", "Recently deleted",
+            "PRoot", "Ubuntu", "Reset Ubuntu", "key bar", "Settings > Keys", "Developer options", "child process",
+        )
         val found = gone.filter { current.contains(it, ignoreCase = true) }
         assertTrue("old design words in the docs: $found", found.isEmpty())
     }
 
     @Test
-    fun `the versions the docs name are the ones the app installs`() {
+    fun `the limits and ports the docs name are the ones the app uses`() {
         val computer = textOf(DocsContent.section(DocsContent.COMPUTER_ID)!!)
-        assertTrue(computer.contains(LinuxPins.UBUNTU_VERSION))
-        assertTrue(computer.contains(LinuxPins.CODE_SERVER_VERSION))
+        assertTrue(computer.contains("50 a week"))
+        assertTrue(computer.contains("${CloudShell.DELETED_AFTER_DAYS} days"))
+        assertTrue(computer.contains("${CloudShell.ASK_AGAIN_AFTER_DAYS} days"))
+        Agent.entries.forEach { assertTrue(it.name, computer.contains("${it.displayName} ${CloudShell.port(it)}")) }
+        val projects = textOf(DocsContent.section("projects")!!)
+        Agent.entries.forEach { assertTrue(it.name, projects.contains(CloudShell.projects(it))) }
     }
 
     @Test
@@ -81,26 +88,23 @@ class DocsContentTest {
     @Test
     fun `search finds settings and answers too, not only pages`() {
         assertTrue(DocsContent.searchPlaces("app lock").any { it == AppPlace.SETTINGS })
-        assertTrue(DocsContent.searchPlaces("api key").any { it == AppPlace.KEYS })
-        assertTrue(DocsContent.searchPlaces("reset").any { it == AppPlace.COMPUTER })
+        assertTrue(DocsContent.searchPlaces("hours").any { it == AppPlace.COMPUTER })
+        assertTrue(DocsContent.searchPlaces("zip").any { it == AppPlace.DATA })
         assertTrue(DocsContent.searchQuestions("github").any { it.id == "to-github" })
-        assertTrue(DocsContent.search("child process").any { it.id == DocsContent.BACKGROUND_ID })
+        assertTrue(DocsContent.search("device code").any { it.id == "agents" })
     }
 
     @Test
     fun `every agent is named with its maker, sign-in and chats folder`() {
         val page = textOf(DocsContent.section("agents")!!)
         Agent.entries.forEach { agent ->
-            assertTrue(
-                agent.name,
-                page.contains(agent.displayName) && page.contains(agent.maker) && page.contains(agent.chatsFolder) && page.contains(agent.signInCommand),
-            )
+            assertTrue(agent.name, page.contains(agent.displayName) && page.contains(agent.maker) && page.contains(agent.chatsFolder))
         }
     }
 
     @Test
     fun `search finds pages by every word`() {
-        assertTrue(DocsContent.search("reset ubuntu").any { it.id == DocsContent.COMPUTER_ID })
+        assertTrue(DocsContent.search("weekly quota").any { it.id == DocsContent.TROUBLE_ID })
         assertTrue(DocsContent.search("zzzz").isEmpty())
         assertTrue(DocsContent.search("  ").isEmpty())
     }

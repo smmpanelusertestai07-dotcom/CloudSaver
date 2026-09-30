@@ -13,7 +13,7 @@ class OldVersionFilesTest {
     val tmp = TemporaryFolder()
 
     @Test
-    fun `an update from 3_0 deletes the old computer and keeps this version's computer, keys and settings`() {
+    fun `an update from 3_0 deletes the old computer and keeps version 5's computer and the settings`() {
         val folders = folders()
         // What 3.0.0 kept: the Linux, a project copy, an agent's sign-in, its sealed tokens, the Google account's name.
         val old = listOf(
@@ -26,19 +26,16 @@ class OldVersionFilesTest {
             put(folders.cache, "downloads/media-staging/shot.png"),
             put(folders.data, "databases/old.db"),
             put(folders.data, "shared_prefs/pocketide.google.xml"),
+            put(folders.data, "shared_prefs/WebViewChromiumPrefs.xml"),
+            put(folders.data, "app_webview/Default/Cookies"),
         )
-        // This version's own, and the web page's.
         val kept = listOf(
             put(folders.files, "computer/home/projects/app/main.kt"),
-            put(folders.noBackup, "secure/keys.bin"),
             put(folders.data, "shared_prefs/pocketide.settings.xml"),
             put(folders.data, "shared_prefs/pocketide.settings.xml.bak"),
-            put(folders.data, "shared_prefs/WebViewChromiumPrefs.xml"),
-            put(folders.cache, "WebView/Default/HTTP Cache/index"),
-            put(folders.cache, "org.chromium.android_webview/state"),
         )
 
-        OldVersionFiles.removeOnce(folders)
+        assertTrue(OldVersionFiles.removeOnce(folders))
 
         old.forEach { assertFalse("$it should be gone", it.exists()) }
         kept.forEach { assertTrue("$it should stay", it.exists()) }
@@ -46,30 +43,29 @@ class OldVersionFilesTest {
     }
 
     @Test
-    fun `an update from 4_x deletes the GitHub sign-in and keeps the keys`() {
+    fun `an update from 5_x deletes the sealed keys and the agent page's storage, and keeps the phone computer`() {
         val folders = folders()
         put(folders.noBackup, "old-versions-removed")
-        val gitHub = put(folders.noBackup, "secure/github.token")
-        val keys = put(folders.noBackup, "secure/keys.bin")
+        put(folders.noBackup, "v5-removed")
+        val gone = listOf(
+            put(folders.noBackup, "secure/keys.bin"),
+            put(folders.noBackup, "secure/github.token"),
+            put(folders.data, "app_webview/Default/Local Storage/leveldb/000003.log"),
+            put(folders.cache, "WebView/Default/HTTP Cache/index"),
+            put(folders.cache, "org.chromium.android_webview/state"),
+            put(folders.data, "shared_prefs/WebViewChromiumPrefs.xml"),
+        )
+        val kept = listOf(
+            put(folders.files, "computer/home/projects/app/main.kt"),
+            put(folders.cache, "agent-icons/claude.png"),
+            put(folders.data, "shared_prefs/pocketide.settings.xml"),
+        )
 
         assertTrue(OldVersionFiles.removeOnce(folders))
 
-        assertFalse(gitHub.exists())
-        assertTrue(keys.exists())
+        gone.forEach { assertFalse("$it should be gone", it.exists()) }
+        kept.forEach { assertTrue("$it should stay", it.exists()) }
         assertFalse("runs once", OldVersionFiles.removeOnce(folders))
-    }
-
-    @Test
-    fun `the keys it keeps are the files the secure store writes`() {
-        val folders = folders()
-        val store = SecureStore(folders.secure, PlainBox)
-        store.putString(KeyStore.STORE, "[]")
-        put(folders.noBackup, "secure/github.token")
-        // A retry at a later start (the first could not delete everything) finds keys saved since.
-        OldVersionFiles.removeOnce(folders)
-
-        assertEquals(setOf("keys.bin"), folders.secure.list()?.toSet())
-        assertEquals("[]", store.getString(KeyStore.STORE))
     }
 
     @Test
@@ -85,14 +81,20 @@ class OldVersionFilesTest {
     }
 
     @Test
-    fun `leaving deletes the same files every time`() {
+    fun `deleting the phone's data takes the phone computer too, and keeps only the settings`() {
         val folders = folders()
         OldVersionFiles.removeOnce(folders)
-        val later = put(folders.files, "rootfs/etc/os-release")
+        val gone = listOf(
+            put(folders.files, "computer/home/projects/app/main.kt"),
+            put(folders.cache, "agent-icons/claude.png"),
+            put(folders.noBackup, "last-stop.txt"),
+        )
+        val settings = put(folders.data, "shared_prefs/pocketide.settings.xml")
 
         assertTrue(OldVersionFiles.remove(folders))
 
-        assertFalse(later.exists())
+        gone.forEach { assertFalse("$it should be gone", it.exists()) }
+        assertTrue(settings.exists())
     }
 
     private fun folders(): AppFolders {
@@ -103,13 +105,6 @@ class OldVersionFilesTest {
             cache = File(data, "cache").apply { mkdirs() },
             data = data,
         )
-    }
-
-    /** Seals nothing: these tests are about which files stay. */
-    private object PlainBox : SecretBox {
-        override fun seal(plain: ByteArray) = plain
-
-        override fun open(sealed: ByteArray) = sealed
     }
 
     private fun put(dir: File, path: String): File = File(dir, path).apply {

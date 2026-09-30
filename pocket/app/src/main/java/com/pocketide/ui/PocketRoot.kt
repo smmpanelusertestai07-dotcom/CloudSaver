@@ -2,13 +2,12 @@ package com.pocketide.ui
 
 import android.os.Build
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -18,10 +17,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -37,34 +38,30 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.pocketide.MainActivity
 import com.pocketide.PocketApp
+import com.pocketide.cloudshell.CloudShell
 import com.pocketide.docs.AppPlace
+import com.pocketide.docs.DocsContent
 import com.pocketide.graph
 import com.pocketide.ui.lock.HiddenContentCover
 import com.pocketide.ui.lock.LockScreen
-import com.pocketide.ui.nav.AddAgentsRoute
-import com.pocketide.ui.nav.CloudShellRoute
 import com.pocketide.ui.nav.ComputerRoute
 import com.pocketide.ui.nav.DataRoute
 import com.pocketide.ui.nav.HelpPageRoute
 import com.pocketide.ui.nav.HelpRoute
 import com.pocketide.ui.nav.HomeRoute
-import com.pocketide.ui.nav.KeysRoute
 import com.pocketide.ui.nav.SettingsRoute
-import com.pocketide.ui.nav.WorkspaceRoute
-import com.pocketide.ui.screens.agents.AddAgentsScreen
 import com.pocketide.ui.screens.cloudshell.CloudShellScreen
-import com.pocketide.ui.screens.computer.ComputerScreen
+import com.pocketide.ui.screens.cloudshell.SetUpScreen
 import com.pocketide.ui.screens.data.YourDataScreen
 import com.pocketide.ui.screens.help.HelpPageScreen
 import com.pocketide.ui.screens.help.HelpScreen
 import com.pocketide.ui.screens.help.LocalOpenPlace
 import com.pocketide.ui.screens.home.HomeScreen
-import com.pocketide.ui.screens.keys.KeysScreen
 import com.pocketide.ui.screens.onboarding.Onboarding
 import com.pocketide.ui.screens.settings.SettingsScreen
-import com.pocketide.ui.screens.workspace.WorkspaceScreen
 import com.pocketide.ui.shell.LocalBottomBarPadding
 import com.pocketide.ui.theme.PocketTheme
+import com.pocketide.ui.web.IdeTab
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -73,9 +70,11 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
 /**
- * Theme, app lock, first-run set-up, then the app with its bottom bar. Everything sits on one
- * [Surface], so text takes the theme's colour on every screen. With App lock on, the app is
- * covered whenever it is not in front, so Recents keeps a picture of the cover, not the screen.
+ * Theme, app lock, the welcome, the computer's set-up, then the app with its bottom bar. The app
+ * does not open past the set-up until Cloud Shell is set up, and comes back to it when Google may
+ * have deleted Cloud Shell's home folder. Everything sits on one [Surface], so text takes the
+ * theme's colour on every screen. With App lock on, the app is covered whenever it is not in
+ * front, so Recents keeps a picture of the cover, not the screen.
  */
 @Composable
 fun PocketRoot(activity: MainActivity) {
@@ -89,7 +88,9 @@ fun PocketRoot(activity: MainActivity) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 when {
                     settings.appLock && locked -> LockScreen(activity, onUnlocked = appLock::unlock)
-                    !settings.onboardingDone -> Onboarding(graph)
+                    // The welcome again when the terms change, so the owner sees what changed and agrees.
+                    !settings.onboardingDone || settings.termsAccepted < DocsContent.TERMS_VERSION -> Onboarding(graph)
+                    CloudShell.needsSetUp(settings, graph.clock.now()) -> SetUpScreen()
                     else -> MainScreens()
                 }
             }
@@ -100,26 +101,26 @@ fun PocketRoot(activity: MainActivity) {
 
 private enum class Tab(val label: String, val icon: ImageVector, val route: Any) {
     HOME("Home", Icons.Outlined.Home, HomeRoute),
-    COMPUTER("Computer", Icons.Outlined.Terminal, ComputerRoute),
+    COMPUTER("Computer", Icons.Outlined.Cloud, ComputerRoute),
     SETTINGS("Settings", Icons.Outlined.Settings, SettingsRoute),
 }
 
 @Composable
 private fun MainScreens() {
+    val context = LocalContext.current
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val destination = entry?.destination
-    val fullScreen = destination?.hasRoute(WorkspaceRoute::class) == true
     val showBar = Tab.entries.any { destination?.hasRoute(it.route::class) == true }
     val haze = rememberHazeState()
+    // A place picked in the Chrome tab's tools: that tab closed to bring PocketIDE here; open the new one.
+    val next by IdeTab.next.collectAsStateWithLifecycle()
+    LaunchedEffect(next) { IdeTab.takeNext()?.let { IdeTab.open(context, it) } }
     val openPlace: (String) -> Unit = { id ->
         when (AppPlace.of(id)) {
-            AppPlace.KEYS -> nav.navigate(KeysRoute)
             AppPlace.SETTINGS -> nav.openTab(Tab.SETTINGS)
             AppPlace.DATA -> nav.navigate(DataRoute)
             AppPlace.COMPUTER -> nav.openTab(Tab.COMPUTER)
-            AppPlace.AGENTS -> nav.navigate(AddAgentsRoute)
-            AppPlace.CLOUD_SHELL -> nav.navigate(CloudShellRoute)
             null -> Unit
         }
     }
@@ -134,43 +135,26 @@ private fun MainScreens() {
                     modifier = Modifier
                         .fillMaxSize()
                         .hazeSource(haze)
-                        .padding(if (fullScreen) PaddingValues() else PaddingValues(top = padding.calculateTopPadding())),
+                        .padding(top = padding.calculateTopPadding()),
                 ) {
                     composable<HomeRoute> {
                         HomeScreen(
-                            onOpenAgent = { id -> nav.navigate(WorkspaceRoute(agentId = id)) },
-                            onSignIn = { id, command, title -> nav.navigate(WorkspaceRoute(agentId = id, terminal = true, command = command, title = title)) },
-                            onTerminal = { nav.navigate(WorkspaceRoute(terminal = true, title = "Terminal")) },
-                            onAddAgents = { nav.navigate(AddAgentsRoute) },
                             onComputer = { nav.openTab(Tab.COMPUTER) },
-                            onCloudShell = { nav.navigate(CloudShellRoute) },
+                            onYourData = { nav.navigate(DataRoute) },
                             onHelp = { nav.navigate(HelpRoute) },
-                            onHelpPage = { nav.navigate(HelpPageRoute(it)) },
                         )
                     }
                     composable<ComputerRoute> {
-                        ComputerScreen(onHelp = { nav.navigate(HelpRoute) }, onHelpPage = { nav.navigate(HelpPageRoute(it)) })
+                        CloudShellScreen(onHelp = { nav.navigate(HelpRoute) }, onHelpPage = { nav.navigate(HelpPageRoute(it)) })
                     }
                     composable<SettingsRoute> {
                         SettingsScreen(
-                            onKeys = { nav.navigate(KeysRoute) },
                             onYourData = { nav.navigate(DataRoute) },
                             onHelp = { nav.navigate(HelpRoute) },
                             onHelpPage = { nav.navigate(HelpPageRoute(it)) },
                         )
                     }
-                    composable<WorkspaceRoute> { backStack ->
-                        val route = backStack.toRoute<WorkspaceRoute>()
-                        WorkspaceScreen(
-                            route = route,
-                            onBack = { nav.popBackStack() },
-                            onHelpPage = { nav.navigate(HelpPageRoute(it)) },
-                        )
-                    }
-                    composable<AddAgentsRoute> { AddAgentsScreen(onBack = { nav.popBackStack() }) }
-                    composable<KeysRoute> { KeysScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
                     composable<DataRoute> { YourDataScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
-                    composable<CloudShellRoute> { CloudShellScreen(onBack = { nav.popBackStack() }, onHelpPage = { nav.navigate(HelpPageRoute(it)) }) }
                     composable<HelpRoute> { HelpScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate(HelpPageRoute(it)) }) }
                     composable<HelpPageRoute> { backStack ->
                         HelpPageScreen(id = backStack.toRoute<HelpPageRoute>().id, onBack = {

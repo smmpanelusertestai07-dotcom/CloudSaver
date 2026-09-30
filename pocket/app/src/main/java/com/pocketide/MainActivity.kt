@@ -14,23 +14,17 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.pocketide.core.ThemeMode
 import com.pocketide.ui.PocketRoot
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * The single activity. Screenshots are always allowed. With App lock on, Recents shows a cover
- * instead of the screen (see [PocketRoot]); the lock itself is part of [PocketRoot] too.
+ * The app's screens. Screenshots are always allowed. With App lock on, Recents shows a cover
+ * instead of the screen (see [PocketRoot]); the lock itself is part of [PocketRoot] too. The
+ * Chrome tab an agent's VS Code opens in sits above it in the same task, so bringing this activity
+ * back to the front (its launch mode, or the tools' CLEAR_TOP) closes that tab.
  */
 class MainActivity : FragmentActivity() {
-    private val computerAsked = MutableStateFlow(false)
-
-    /** True when the ongoing notification asked for the computer screen; the UI takes it once. */
-    val openComputer: StateFlow<Boolean> = computerAsked.asStateFlow()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // An error stopped the app last time, and Android did not let its note open then.
@@ -40,7 +34,6 @@ class MainActivity : FragmentActivity() {
             return
         }
         systemBars(graph.settings.settings.value.theme)
-        if (savedInstanceState == null) take(intent)
         lifecycleScope.launch {
             graph.settings.settings.map { it.appLock to it.theme }.distinctUntilChanged().collect { (lock, theme) ->
                 hideInRecents(lock)
@@ -54,16 +47,6 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        take(intent)
-    }
-
-    fun computerOpened() {
-        computerAsked.value = false
-    }
-
-    private fun take(intent: Intent?) {
-        val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
-        if (intent?.action == ACTION_OPEN_COMPUTER && !fromHistory) computerAsked.value = true
     }
 
     /**
@@ -93,8 +76,8 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
-     * Android 12 and newer take the app's own light or dark choice, so the system's screens and the
-     * cloud computer's page (which follows the app's night mode) match the app.
+     * Android 12 and newer take the app's own light or dark choice, so the system's screens (the
+     * account chooser among them) match the app.
      */
     private fun followTheme(theme: ThemeMode) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
@@ -106,9 +89,7 @@ class MainActivity : FragmentActivity() {
         getSystemService(UiModeManager::class.java)?.setApplicationNightMode(mode)
     }
 
-    companion object {
-        const val ACTION_OPEN_COMPUTER = "com.pocketide.OPEN_COMPUTER"
-
+    private companion object {
         // The scrims enableEdgeToEdge uses by default behind three-button navigation.
         private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
         private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)

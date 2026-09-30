@@ -22,6 +22,27 @@ internal object FileTrees {
         return entries.filterNot { keep(it.name) }.map(::delete).all { it }
     }
 
+    /** The bytes in [target] and under it; a link counts as itself, never what it points to. */
+    fun size(target: File): Long {
+        var total = 0L
+        try {
+            Files.walkFileTree(
+                target.toPath(),
+                object : SimpleFileVisitor<Path>() {
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        if (attrs.isRegularFile) total += attrs.size()
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+                },
+            )
+        } catch (_: IOException) {
+            // What could not be read is not counted.
+        }
+        return total
+    }
+
     /** Deletes [target] and, if it is a real folder, everything in it; true when it is gone. */
     fun delete(target: File): Boolean {
         val root = target.toPath()

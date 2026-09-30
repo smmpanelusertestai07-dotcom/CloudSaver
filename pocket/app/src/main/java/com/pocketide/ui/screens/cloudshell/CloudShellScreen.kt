@@ -1,165 +1,175 @@
 package com.pocketide.ui.screens.cloudshell
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.agents.Agent
+import com.pocketide.cloudshell.CloudShell
+import com.pocketide.cloudshell.IdePlace
 import com.pocketide.docs.DocsContent
-import com.pocketide.ide.CloudShell
+import com.pocketide.graph
 import com.pocketide.ui.components.ActionRow
+import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.PrimaryAction
+import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.web.Browser
+import com.pocketide.ui.web.IdeTab
 
 /**
- * Google Cloud Shell, Google's own Linux computer: how to set it up with VS Code and the three
- * agents, where its data is and how to delete it, its free limits, and what keeps the Google
- * account safe. Cloud Shell opens in a Chrome tab: Google allows its sign-in only in a browser.
+ * The computer: Google Cloud Shell. Its account and state, its free limits, where its data is (and
+ * where it is not), how to see, download and delete it, and what keeps the Google account safe.
  */
 @Composable
-fun CloudShellScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
+fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
     val context = LocalContext.current
-    val open = { url: String -> Browser.open(context, CloudShell.chooseAccountThen(url)) }
-    Column(
-        Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    val graph = context.graph
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val account = settings.cloudAccount
+    val unused = CloudShell.daysUnused(settings, graph.clock.now())
+    val pick = rememberAccountPicker { name -> graph.settings.update { it.copy(cloudAccount = name) } }
+    var again by remember { mutableStateOf(false) }
+    ShellPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
-            Icon(Icons.Outlined.Cloud, contentDescription = null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
-            Text("  Google Cloud Shell", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        }
-        Text(
-            "Google's own Linux computer, free with a Google account. PocketIDE sets it up with VS Code and the three agents. " +
-                "It runs on Google's servers, so the phone stays cool, and its downloads use Google's internet, not your data.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-
-        SectionCard("1. Pick the Google account") {
+            Icon(Icons.Outlined.Cloud, contentDescription = null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
             Text(
-                "Google asks which account to use; nothing opens with an account by itself. A separate Google account just for " +
-                    "development keeps your main account, mail and photos apart. Your main account works too. Either way, turn " +
-                    "on 2-Step Verification.",
-                style = MaterialTheme.typography.bodyMedium,
+                "Cloud Shell",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f).semantics { heading() },
             )
-            TextButton(onClick = { Browser.open(context, CloudShell.NEW_ACCOUNT) }) { Text("Create a Google account") }
+            IconButton(onClick = onHelp) { Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = "Help") }
         }
-
-        SectionCard("2. Set up (once, about 5 minutes)") {
-            Text(
-                "Copy the command, open Cloud Shell, long-press in the terminal, Paste, then Enter. It installs VS Code and " +
-                    "Claude Code, Codex and Antigravity from Open VSX in your Cloud Shell home, each checked first.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
-                SelectionContainer {
-                    Text(
-                        CloudShell.setupCommand,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(12.dp),
-                    )
+        Text("Google's Linux computer, where your agents work", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Gap(16.dp)
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionCard("Your computer") {
+                Text(
+                    "Account: $account\nLast opened from PocketIDE: " +
+                        (if (unused == 0L) "today" else "$unused days ago") +
+                        ". Google deletes the home folder after ${CloudShell.DELETED_AFTER_DAYS} days without use; PocketIDE " +
+                        "asks for the set-up again before that.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                ActionRow {
+                    PrimaryAction("Start Cloud Shell", onClick = { IdeTab.open(context, IdePlace.TERMINAL) })
+                    OutlinedButton(onClick = pick) { Text("Change account") }
+                    OutlinedButton(onClick = { again = true }) { Text("Run the set-up again") }
                 }
             }
-            ActionRow {
-                PrimaryAction("Copy command", onClick = { copy(context, CloudShell.setupCommand) })
-                OutlinedButton(onClick = { open(CloudShell.TERMINAL) }) { Text("Open Cloud Shell") }
+
+            SectionCard("Each agent, its own VS Code") {
+                Text(
+                    Agent.entries.joinToString("\n") { "${it.displayName}: port ${CloudShell.port(it)}, projects in ${CloudShell.projects(it)}" } +
+                        "\nEach has its own settings and extensions. Add any extension from its Extensions view (Open VSX); " +
+                        "they update by themselves, and the agents are checked for updates once a day.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
-        }
 
-        SectionCard("3. Every time") {
-            Text(
-                "Open Cloud Shell; VS Code starts by itself. Tap Web Preview (top right) > Preview on port ${CloudShell.PORT}: " +
-                    "VS Code opens with the three agents. Sign in to each agent once. For Codex, turn on device code sign-in " +
-                    "in ChatGPT (Settings > Security), then run codex login --device-auth in Cloud Shell.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            OutlinedButton(onClick = { open(CloudShell.TERMINAL) }) { Text("Open Cloud Shell") }
-        }
-
-        SectionCard("Free limits") {
-            Text(
-                "50 hours a week (about 7 hours a day), 12 hours in one session, and it stops about 40 minutes after you stop " +
-                    "using it: agents do not work on while you are away. 5 GB home folder; the setup uses about 1.6 GB. Google " +
-                    "deletes the home folder after 120 days without use. Your hours: in Cloud Shell, Session information > " +
-                    "Usage quota.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            TextButton(onClick = { Browser.open(context, CloudShell.LIMITS) }) { Text("Google's limits") }
-        }
-
-        SectionCard("Where your data is") {
-            Text(
-                "Only in your Cloud Shell home folder, which only your Google account opens: projects in ~/projects; chats and " +
-                    "sign-ins in ~/.claude, ~/.codex and ~/.gemini; VS Code in ~/.local/share/code-server. What you ask an agent, " +
-                    "and the code it reads, also goes to its company under your account there. It is not in Drive, Photos or " +
-                    "your Google Cloud projects, and agent chats do not show on claude.ai or chatgpt.com.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text("See it:", style = MaterialTheme.typography.titleSmall)
-            ActionRow {
-                OutlinedButton(onClick = { open(CloudShell.EDITOR) }) { Text("Cloud Shell editor") }
-                OutlinedButton(onClick = { open(CloudShell.CONSOLE) }) { Text("Cloud console") }
-                OutlinedButton(onClick = { Browser.open(context, CloudShell.MOBILE_APP) }) { Text("Google Cloud app") }
+            SectionCard("Free limits") {
+                Text(
+                    "50 hours a week (about 7 hours a day), at most 12 hours in one session. Cloud Shell stops about 40 minutes " +
+                        "after you stop using it, so agents do not work on while you are away. 5 GB home folder; the set-up uses " +
+                        "about 1.6 GB. Your hours: in Cloud Shell, Session information > Usage quota.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(onClick = { Browser.open(context, CloudShell.LIMITS) }) { Text("Google's limits") }
             }
-            TextButton(onClick = { Browser.open(context, CloudShell.FILES) }) { Text("Download or upload files") }
-        }
 
-        SectionCard("Delete") {
-            Text(
-                "A file or project: delete it in VS Code. Everything: in Cloud Shell run sudo rm -rf \$HOME, then More > " +
-                    "Restart; Cloud Shell starts again empty. Agent sign-ins: sign out in each agent, then remove the access in " +
-                    "your Claude, ChatGPT and Google account settings.",
-                style = MaterialTheme.typography.bodyMedium,
+            SectionCard("Where your data is") {
+                Text(
+                    "Only in your Cloud Shell home folder, which only your Google account opens: each agent's projects, its " +
+                        "chats and sign-in (~/.claude, ~/.codex, ~/.gemini) and its VS Code (~/.pocketide). What you ask an agent, " +
+                        "and the code it reads, also goes to its company. It is not in Drive, Photos or your Google Cloud " +
+                        "projects, and agent chats do not show on claude.ai or chatgpt.com.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Tidied by itself when Cloud Shell starts: caches unused for 14 days, logs after 7 days, Codex chats after " +
+                        "30 days (Claude Code deletes its own after 30 days). Projects are never deleted.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                ActionRow {
+                    OutlinedButton(onClick = { IdeTab.open(context, IdePlace.FILES) }) { Text("See the files") }
+                    OutlinedButton(onClick = { openCloudShell(context, CloudShell.console(account)) }) { Text("Cloud console") }
+                    OutlinedButton(onClick = { Browser.open(context, CloudShell.MOBILE_APP) }) { Text("Google Cloud app") }
+                }
+                TextButton(onClick = { Browser.open(context, CloudShell.FILES) }) { Text("Download or upload files") }
+            }
+
+            SectionCard("Delete") {
+                Text(
+                    "A file or project: delete it in VS Code. Everything: in Cloud Shell run sudo rm -rf \$HOME, then More > " +
+                        "Restart; Cloud Shell starts again empty and PocketIDE asks for the set-up again. Agent sign-ins: sign " +
+                        "out in each agent, then remove the access in your Claude, ChatGPT and Google account settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(onClick = { Browser.open(context, CloudShell.RESET) }) { Text("Google's reset steps") }
+            }
+
+            NoticeCard(
+                "Use Cloud Shell yourself, while you work, as Google intends. No miners, scanners or tricks to keep it awake, " +
+                    "and never share a Web Preview link: breaking Google's rules can turn Cloud Shell off for your account.",
+                tone = Tone.WARN,
+                title = "Keep your Google account safe",
             )
-            TextButton(onClick = { Browser.open(context, CloudShell.RESET) }) { Text("Google's reset steps") }
-        }
-
-        NoticeCard(
-            "Use Cloud Shell yourself, while you work, as Google intends. No miners, scanners or tricks to keep it awake, and " +
-                "never share a Web Preview link: breaking Google's rules can turn Cloud Shell off for your account.",
-            tone = Tone.WARN,
-            title = "Keep your Google account safe",
-        )
-        ActionRow {
-            TextButton(onClick = { Browser.open(context, CloudShell.TERMS) }) { Text("Google Cloud terms") }
-            TextButton(onClick = { Browser.open(context, CloudShell.PRIVACY) }) { Text("Google Cloud privacy") }
-            TextButton(onClick = { onHelpPage(DocsContent.CLOUD_SHELL_ID) }) { Text("More in Help") }
+            ActionRow {
+                TextButton(onClick = { Browser.open(context, CloudShell.TERMS) }) { Text("Google Cloud terms") }
+                TextButton(onClick = { Browser.open(context, CloudShell.PRIVACY) }) { Text("Google Cloud privacy") }
+                TextButton(onClick = { onHelpPage(DocsContent.COMPUTER_ID) }) { Text("More in Help") }
+            }
         }
     }
-}
-
-private fun copy(context: Context, text: String) {
-    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Cloud Shell setup", text))
-    Toast.makeText(context, "Copied. Paste it in Cloud Shell's terminal.", Toast.LENGTH_SHORT).show()
+    if (again) {
+        AlertDialog(
+            onDismissRequest = { again = false },
+            title = { Text("Run the set-up again?") },
+            text = {
+                DialogBody {
+                    Text(
+                        "For when Cloud Shell was reset or deleted, or an agent is missing. PocketIDE shows the set-up; paste its " +
+                            "command in Cloud Shell again. It only adds what is missing: your projects and chats stay.",
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    again = false
+                    graph.settings.update { it.copy(cloudSetUpAt = 0) }
+                }) { Text("Set up again") }
+            },
+            dismissButton = { TextButton(onClick = { again = false }) { Text("Cancel") } },
+        )
+    }
 }

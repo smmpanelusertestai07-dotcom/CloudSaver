@@ -3,18 +3,18 @@ package com.pocketide.docs
 /** The few words PocketIDE uses, in plain language. */
 internal object Glossary {
     val all: List<GlossaryEntry> = listOf(
-        term("Computer", "Ubuntu Linux inside PocketIDE, on this phone, where the agents work."),
-        term("Ubuntu", "The Linux system the computer runs; 26.04 is a long-term support (LTS) release."),
-        term("LTS", "Long-term support: Ubuntu publishes security fixes for five years."),
-        term("PRoot", "The program that runs Ubuntu inside an app without root or a virtual machine."),
-        term("code-server", "VS Code for the web, running on the computer; the agents' screens live in it."),
-        term("Agent", "An AI that writes and runs code for you: Claude Code, Codex, Antigravity, or one you add."),
+        term("Computer", "Google Cloud Shell, where the agents work."),
+        term("Cloud Shell", "A Linux computer Google runs for each Google account, free within weekly limits."),
+        term("Home folder", "Your 5 GB in Cloud Shell, the only part it keeps between sessions."),
+        term("Web Preview", "Cloud Shell's way to open a program running there, only for your own account."),
+        term("code-server", "VS Code for the web; each agent has its own in Cloud Shell."),
+        term("Agent", "An AI that writes and runs code for you: Claude Code, Codex or Antigravity."),
         term("Extension", "An add-on for VS Code. Each agent is its maker's own extension."),
-        term("Open VSX", "The open registry of VS Code extensions, where PocketIDE gets the agents."),
+        term("Open VSX", "The open registry of VS Code extensions, where the agents come from."),
         term("Verified publisher", "A publisher whose ownership Open VSX has checked."),
         term("Terminal", "The computer's command line."),
-        term("Key", "A setting a program reads from its environment, like an API key or a token."),
-        term("Project", "A folder in ~/projects on the computer."),
-        term("Repository", "A project's code and full history, on GitHub or on the computer."),
+        term("Chrome tab", "A Custom Tab: Chrome's page over PocketIDE, with PocketIDE's own buttons."),
+        term("Project", "A folder in ~/projects in Cloud Shell."),
+        term("Repository", "A project's code and full history, on GitHub or in Cloud Shell."),
     )
 }

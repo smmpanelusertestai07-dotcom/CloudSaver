@@ -1,9 +1,0 @@
-#!/bin/bash
-# PocketIDE: Antigravity's command-line tool (agy), which Antigravity's VS Code extension
-# downloads from Google and keeps up to date. The terminal and the Antigravity screen share it,
-# and its sign-in.
-if [ -x /root/.gemini/bin/agy ]; then
-  exec /root/.gemini/bin/agy "$@"
-fi
-echo "Antigravity is still getting ready. Open Antigravity in PocketIDE once, wait a minute, then try again." >&2
-exit 127

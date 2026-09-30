@@ -25,17 +25,16 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.pocketide.core.ThemeMode
 import com.pocketide.docs.DocsContent
 import com.pocketide.ui.lock.HiddenContentCover
-import com.pocketide.ui.screens.agents.AddAgentsScreen
 import com.pocketide.ui.screens.cloudshell.CloudShellScreen
-import com.pocketide.ui.screens.computer.ComputerScreen
+import com.pocketide.ui.screens.cloudshell.SetUpScreen
 import com.pocketide.ui.screens.data.YourDataScreen
 import com.pocketide.ui.screens.help.HelpPageScreen
 import com.pocketide.ui.screens.help.HelpScreen
 import com.pocketide.ui.screens.home.HomeScreen
-import com.pocketide.ui.screens.keys.KeysScreen
 import com.pocketide.ui.screens.onboarding.WelcomeScreen
 import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.theme.PocketTheme
+import com.pocketide.ui.tools.ToolsSheet
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -47,8 +46,8 @@ import java.io.File
  * Pictures of the app's screens as a new owner meets them, for the release notes and the owner.
  *
  * Runs only when asked (`am instrument -e tour true`), so the normal on-device run stays quick.
- * Each screen is drawn on this phone's real app state (no computer set up yet) and saved as a PNG
- * in the app's own files, under tour/, where CI reads it with run-as.
+ * Each screen is drawn on this phone's real app state (no Google account picked yet) and saved as a
+ * PNG in the app's own files, under tour/, where CI reads it with run-as.
  */
 @RunWith(AndroidJUnit4::class)
 class ScreenTour {
@@ -64,17 +63,22 @@ class ScreenTour {
 
     @Test fun welcomeDark() = shoot("01-welcome-dark", ThemeMode.DARK) { WelcomeScreen(onRead = {}, onContinue = {}) }
 
-    @Test fun home() = shoot("02-home") { Home() }
+    @Test fun setUp() = shoot("02-set-up") { SetUpScreen() }
 
-    @Test fun homeDark() = shoot("02-home-dark", ThemeMode.DARK) { Home() }
+    @Test fun setUpDark() = shoot("02-set-up-dark", ThemeMode.DARK) { SetUpScreen() }
 
-    @Test fun computer() = shoot("03-computer") { ComputerScreen(onHelp = {}, onHelpPage = {}) }
+    @Test fun home() = shoot("03-home") { Home() }
 
-    @Test fun computerDark() = shoot("03-computer-dark", ThemeMode.DARK) { ComputerScreen(onHelp = {}, onHelpPage = {}) }
+    @Test fun homeDark() = shoot("03-home-dark", ThemeMode.DARK) { Home() }
 
-    @Test fun addAgents() = shoot("04-add-agents") { AddAgentsScreen(onBack = {}) }
+    @Test fun computer() = shoot("04-computer") { CloudShellScreen(onHelp = {}, onHelpPage = {}) }
 
-    @Test fun keys() = shoot("05-keys") { KeysScreen(onBack = {}, onHelpPage = {}) }
+    @Test fun computerDark() = shoot("04-computer-dark", ThemeMode.DARK) { CloudShellScreen(onHelp = {}, onHelpPage = {}) }
+
+    // PocketIDE's tools, over an agent's Chrome tab.
+    @Test fun tools() = shoot("05-tools") { ToolsSheet(onPlace = {}, onHome = {}, onClose = {}) }
+
+    @Test fun toolsDark() = shoot("05-tools-dark", ThemeMode.DARK) { ToolsSheet(onPlace = {}, onHome = {}, onClose = {}) }
 
     @Test fun settings() = shoot("06-settings") { Settings() }
 
@@ -99,26 +103,16 @@ class ScreenTour {
         WelcomeScreen(onRead = {}, onContinue = {})
     }
 
+    @Test fun setUpSmall() = shoot("14-set-up-small-large-text", width = SMALL_PHONE, fontScale = LARGE_TEXT) { SetUpScreen() }
+
     // What Recents shows while App lock is on.
-    @Test fun recentsCover() = shoot("14-recents-cover") { HiddenContentCover() }
-
-    // Google Cloud Shell: its set-up, data, limits and safety.
-    @Test fun cloudShell() = shoot("15-cloud-shell") { CloudShellScreen(onBack = {}, onHelpPage = {}) }
+    @Test fun recentsCover() = shoot("15-recents-cover") { HiddenContentCover() }
 
     @Composable
-    private fun Home() = HomeScreen(
-        onOpenAgent = {},
-        onSignIn = { _, _, _ -> },
-        onTerminal = {},
-        onAddAgents = {},
-        onComputer = {},
-        onCloudShell = {},
-        onHelp = {},
-        onHelpPage = {},
-    )
+    private fun Home() = HomeScreen(onComputer = {}, onYourData = {}, onHelp = {})
 
     @Composable
-    private fun Settings() = SettingsScreen(onKeys = {}, onYourData = {}, onHelp = {}, onHelpPage = {})
+    private fun Settings() = SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {})
 
     private fun shoot(
         name: String,
@@ -139,7 +133,7 @@ class ScreenTour {
             }
         }
         compose.waitForIdle()
-        // Agent icons and Open VSX's answers arrive over the network; give them a moment.
+        // Agent icons arrive over the network; give them a moment.
         SystemClock.sleep(SETTLE_MS)
         compose.waitForIdle()
         val image = compose.onRoot().captureToImage().asAndroidBitmap()

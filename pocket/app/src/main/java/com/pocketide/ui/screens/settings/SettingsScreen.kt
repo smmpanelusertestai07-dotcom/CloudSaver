@@ -20,9 +20,6 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.NetworkCell
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Storage
@@ -57,7 +54,7 @@ import com.pocketide.ui.web.Browser
 
 /** The few choices PocketIDE has, each with what it does. Defaults are the private, safe ones. */
 @Composable
-fun SettingsScreen(onKeys: () -> Unit, onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
+fun SettingsScreen(onYourData: () -> Unit, onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
     val context = LocalContext.current
     val graph = context.graph
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
@@ -89,19 +86,6 @@ fun SettingsScreen(onKeys: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
             }
         }
 
-        SectionCard("Agents") {
-            Link(Icons.Outlined.Key, "Keys", "API keys and tokens the agents and your apps use", onKeys)
-            Toggle(Icons.Outlined.Keyboard, "Keyboard keys", "Esc, Tab, Ctrl+C, arrows, Enter and Paste above the keyboard", settings.keyBar) { on ->
-                update { it.copy(keyBar = on) }
-            }
-            Toggle(
-                Icons.Outlined.NetworkCell,
-                "Update on mobile data",
-                "Ubuntu's and the agents' daily updates also run without Wi-Fi",
-                settings.updatesOnMobileData,
-            ) { on -> update { it.copy(updatesOnMobileData = on) } }
-        }
-
         SectionCard("Privacy and security") {
             Toggle(
                 Icons.Outlined.Fingerprint,
@@ -114,7 +98,7 @@ fun SettingsScreen(onKeys: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
                 if (on) (context.applicationContext as PocketApp).appLock.unlock()
                 update { it.copy(appLock = on) }
             }
-            Link(Icons.Outlined.Storage, "Your data", "Where everything is, how big it is, and deleting it", onYourData)
+            Link(Icons.Outlined.Storage, "Your data", "Where everything is, and deleting it", onYourData)
         }
 
         SectionCard("About") {

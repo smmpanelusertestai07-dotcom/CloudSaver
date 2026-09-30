@@ -3,8 +3,8 @@
 
   - Android's own backup and device transfer take nothing: allowBackup is false, and both
     dataExtractionRules (Android 12+) and fullBackupContent (Android 10 and 11) exist and
-    exclude every domain. The phone keeps only the GitHub sign-in and the settings; code and
-    chats live in the owner's GitHub account.
+    exclude every domain. The phone keeps only the settings; code and chats live in the owner's
+    own Google Cloud Shell.
   - No storage or media permission (the photo picker needs none), and none of the "never"
     permissions: camera, microphone, location, contacts, SMS, calls, the app list, a battery
     exemption, drawing over other apps.
