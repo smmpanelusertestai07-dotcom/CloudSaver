@@ -5,9 +5,9 @@ name: pocketide
 #
 #   build       gates, lint, unit tests, the release APK (zipaligned for 16 KB pages, signed
 #               v2+v3), the merged-manifest permission check, size and alignment gates, SHA256SUMS
-#   cloudshell  the Cloud Shell set-up script, run as the owner runs it on an x86-64 Linux runner
-#               (Cloud Shell is one too): VS Code and the three agents install, each checked, and
-#               each agent's VS Code answers on its own port
+#   cloudshell  the Cloud Shell set-up script, run as PocketIDE runs it on an x86-64 Linux runner
+#               (Cloud Shell is one too): VS Code and the three agents install, each checked, each
+#               agent's VS Code answers on its own port, and starts again with PocketIDE's door
 #   device      on an Android 15 emulator: the instrumented tests and the screen tour
 #   opens       the signed release APK (shrunk by R8) opens on Android 11, 12 and 15 emulators,
 #               as a new install and over the last 5.x release
@@ -287,34 +287,60 @@ jobs:
           home="$RUNNER_TEMP/cloudshell-home"
           mkdir -p "$home"
           HOME="$home" bash pocket/cloudshell/pocketide-cloudshell.sh
-          # Claude Code's and Codex's VS Code on 8080 and 8081; Antigravity's own screen on 8082,
-          # asked for under another name, as Cloud Shell's Web Preview asks (agy answers only to
-          # localhost, so this proves the bridge passes it on).
-          for port in 8080 8081 8082; do
-            code=000
+          # Each agent's own VS Code: Claude Code on 8080, Codex on 8081, Antigravity on 8082,
+          # asked for under another name, as Cloud Shell's Web Preview asks.
+          answers() {
+            local port=$1 code=000
             for _ in $(seq 1 90); do
               code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $port-cs-test.cloudshell.dev" "http://127.0.0.1:$port/" || true)
-              case "$code" in 200 | 302) break ;; esac
+              case "$code" in 200 | 302) echo "Port $port answers ($code)."; return 0 ;; esac
               sleep 2
             done
-            case "$code" in
-              200 | 302) echo "Port $port answers ($code)." ;;
-              *)
-                echo "::error::Nothing answered on port $port ($code); the logs follow."
-                cat "$home"/.pocketide/vscode/*/code-server.log "$home/.pocketide/antigravity.log" "$home/.pocketide/bridge.log" || true
-                exit 1
-                ;;
-            esac
-          done
-          curl -sf "http://127.0.0.1:8082/pocketide/" | grep -q 'Continue signing in with Google'
-          for agent in claude-code codex; do
+            echo "::error::Nothing answered on port $port ($code); the logs follow."
+            cat "$home"/.pocketide/vscode/*/code-server.log "$home/.pocketide/bridge.log" || true
+            return 1
+          }
+          for port in 8080 8081 8082; do answers "$port"; done
+          for agent in claude-code codex antigravity; do
             echo "$agent: $(ls "$home/.pocketide/vscode/$agent/extensions" | grep -v '^extensions.json$' | tr '\n' ' ')"
+            ls "$home/.pocketide/vscode/$agent/extensions" | grep -q '^pocketide.layout-'
           done
-          echo "antigravity: agy $("$home/.gemini/bin/agy" --version)"
+          ls "$home/.pocketide/vscode/antigravity/extensions" | grep -qi '^google.google-antigravity-'
           du -sh "$home"
           # Cloud Shell's own start: tidies, finds everything running, installs nothing again.
           HOME="$home" "$home/.local/bin/pocketide" boot
           grep -q 'pocketide boot' "$home/.customize_environment"
+
+      - name: PocketIDE's app gives its door, and each VS Code starts again with it
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/cloudshell-home"
+          launcher="$home/.local/bin/pocketide"
+          door='http://{{port}}-0123456789abcdef0123456789abcdef.localhost:40123/'
+          # Anything that is not an address the app gives is refused.
+          if HOME="$home" "$launcher" proxy-uri 'http://example.com/{{port}}/'; then
+            echo "::error::proxy-uri took an address PocketIDE never gives"; exit 1
+          fi
+          HOME="$home" "$launcher" proxy-uri "$door"
+          HOME="$home" "$launcher" --quiet
+          test "$(cat "$home/.pocketide/proxy-uri")" = "$door"
+          test "$(stat -c %a "$home/.pocketide/proxy-uri")" = 600
+          for port in 8080 8081 8082; do
+            code=000
+            for _ in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/healthz" || true)
+              [ "$code" = 200 ] && break
+              sleep 2
+            done
+            test "$code" = 200 || { echo "::error::VS Code on $port did not start again ($code)"; exit 1; }
+            pid=$(pgrep -f "code-server.*127.0.0.1:$port" | head -n 1)
+            tr '\0' '\n' < "/proc/$pid/environ" | grep -qx "VSCODE_PROXY_URI=$door"
+            echo "VS Code on $port starts with PocketIDE's door."
+          done
+          # The same address again changes nothing: no VS Code starts again.
+          before=$(pgrep -f 'code-server.*127.0.0.1:8080' | head -n 1)
+          HOME="$home" "$launcher" proxy-uri "$door"
+          test "$(pgrep -f 'code-server.*127.0.0.1:8080' | head -n 1)" = "$before"
 
       - name: The sign-in return reaches an agent waiting on localhost
         run: |
@@ -687,23 +713,33 @@ jobs:
             exit 1
           fi
 
+          # PRoot is GPL-2.0 and talloc LGPL-3.0: their exact source goes out with the APK.
+          python3 pocket/tools/proot/gpl_notice.py "$apk" --app-version "$VERSION" \
+            --out dist/GPL-SOURCE.txt --sources dist/gpl-source
+
           notes="$RUNNER_TEMP/notes.txt"
           message="$HEAD_MESSAGE"
           [ -n "$message" ] || message=$(git log -1 --format=%B)
           {
-            echo "PocketIDE $VERSION for Android phones (Android 10 or newer)."
+            echo "PocketIDE $VERSION for arm64 Android phones (Android 10 or newer)."
             echo
             echo "Install: download $(basename "$apk") below and open it on the phone. It installs over"
             echo "PocketIDE 2.6.0 and later builds signed with the same key."
             echo
             echo "APK SHA-256: $(sha256sum "$apk" | cut -d' ' -f1)"
             echo
+            echo "The GPL and LGPL source for PRoot and talloc inside the APK: see GPL-SOURCE.txt below."
+            echo
             echo "What changed:"
             echo
             printf '%s\n' "$message" | grep -v -E '^(Co-Authored-By|Claude-Session):' || true
           } > "$notes"
 
-          gh release create "$tag" "$apk" dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" \
+          files=("$apk" dist/SHA256SUMS dist/GPL-SOURCE.txt)
+          while IFS= read -r -d '' source_archive; do
+            files+=("$source_archive")
+          done < <(find dist/gpl-source -type f -print0 2> /dev/null)
+          gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "PocketIDE $VERSION" --notes-file "$notes" --draft
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
           echo "Published $tag."

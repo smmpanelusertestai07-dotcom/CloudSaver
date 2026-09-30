@@ -14,6 +14,9 @@ internal object Glossary {
         term("Verified publisher", "A publisher whose ownership Open VSX has checked."),
         term("Terminal", "The computer's command line."),
         term("Chrome tab", "A Custom Tab: Chrome's page over PocketIDE, with PocketIDE's own buttons."),
+        term("gcloud", "Google's own command-line tool for Google Cloud; PocketIDE runs it on the phone to reach Cloud Shell."),
+        term("Connection", "gcloud's encrypted SSH connection from the phone to your Cloud Shell, through Google's servers."),
+        term("Private door", "PocketIDE's own address on the phone for Cloud Shell's ports, answering only its own screens."),
         term("Project", "A folder in ~/projects in Cloud Shell."),
         term("Repository", "A project's code and full history, on GitHub or in Cloud Shell."),
     )

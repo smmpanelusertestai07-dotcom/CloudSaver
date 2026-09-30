@@ -1,0 +1,492 @@
+package com.pocketide.ui.workspace
+
+import android.content.ClipboardManager
+import android.net.Uri
+import android.os.SystemClock
+import android.view.KeyEvent
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Handyman
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.agents.Agent
+import com.pocketide.cloudshell.CloudShell
+import com.pocketide.cloudshell.IdePlace
+import com.pocketide.cloudshell.SignInCatcher
+import com.pocketide.graph
+import com.pocketide.link.LinkState
+import com.pocketide.link.Problem
+import com.pocketide.link.SignInResult
+import com.pocketide.ui.components.AgentLogo
+import com.pocketide.ui.components.Tone
+import com.pocketide.ui.screens.cloudshell.openCloudShell
+import com.pocketide.ui.shell.Gap
+import com.pocketide.ui.shell.NoticeCard
+import com.pocketide.ui.shell.PrimaryAction
+import com.pocketide.ui.web.Browser
+import com.pocketide.ui.web.IdeTab
+import com.pocketide.ui.web.WebPolicy
+import kotlinx.coroutines.launch
+
+/**
+ * The agent's VS Code with PocketIDE's own bar above it: Back (a menu or file first, then the
+ * agent, never straight home), the three agents, Reload, Tools (everything VS Code's hidden side
+ * bar holds) and a few more in a small menu. The keys a phone keyboard lacks sit above the keyboard.
+ */
+@Composable
+// One screen: each state of the connection, and each problem, has its own few lines.
+@Suppress("CyclomaticComplexMethod", "LongMethod")
+internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent: (Agent) -> Unit, onHome: () -> Unit) {
+    val graph = activity.graph
+    val link by graph.link.state.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var pageStates by remember { mutableStateOf(mapOf<Agent, PageState>()) }
+    var started by remember { mutableStateOf(setOf<Agent>()) }
+    var notStarted by remember { mutableStateOf<Agent?>(null) }
+    var viewer by remember { mutableStateOf<String?>(null) }
+    var askOpen by remember { mutableStateOf<String?>(null) }
+    var pendingFiles by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    var generation by remember { mutableIntStateOf(0) }
+    var backAt by remember { mutableLongStateOf(0L) }
+    var signingIn by remember { mutableStateOf(false) }
+    val account = settings.gcloudAccount.ifBlank { settings.cloudAccount }
+    val page = { graph.pages.page(agent) }
+    val toast = { text: String -> Toast.makeText(activity, text, Toast.LENGTH_LONG).show() }
+
+    val open: (String, Boolean) -> Unit = { url, fromTap ->
+        when (val opening = Opening.of(url, graph.link::cloudShellPort)) {
+            is Opening.CloudShellPage -> graph.link.pageUrl(opening.port, opening.path)?.let { viewer = it }
+            is Opening.SignIn -> {
+                // The page returns to the agent waiting on that port in Cloud Shell: the phone passes it on.
+                SignInCatcher.catchOn(opening.port, account, relay = graph.link::open)
+                Browser.open(activity, opening.url)
+            }
+            is Opening.Web -> if (fromTap) Browser.open(activity, opening.url) else askOpen = opening.url
+            Opening.Nowhere -> Unit
+        }
+    }
+    val answerFiles = { uris: List<Uri> ->
+        pendingFiles?.onReceiveValue(uris.toTypedArray())
+        pendingFiles = null
+    }
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents(), answerFiles)
+    // Pictures come from Android's photo picker, which needs no storage permission and shows only what the owner picks.
+    val pickPictures = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(), answerFiles)
+
+    val host = remember {
+        object : PageHost {
+            override fun openWindow(url: String, fromTap: Boolean) = open(url, fromTap)
+
+            override fun leftPage(url: String) = open(url, true)
+
+            override fun pickFiles(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams) {
+                pendingFiles?.onReceiveValue(null)
+                pendingFiles = callback
+                val accepts = params.acceptTypes.orEmpty().filter { it.isNotBlank() }
+                runCatching {
+                    if (accepts.isNotEmpty() && accepts.all { it.startsWith("image/") }) {
+                        pickPictures.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    } else {
+                        pickFiles.launch("*/*")
+                    }
+                }.onFailure {
+                    callback.onReceiveValue(null)
+                    pendingFiles = null
+                }
+            }
+
+            override fun downloadRefused() {
+                toast("Downloads stay in Cloud Shell: use its Files page (in Chrome, from the menu) to download a file.")
+            }
+
+            override fun onPageState(agent: Agent, state: PageState) {
+                pageStates = pageStates + (agent to state)
+            }
+        }
+    }
+    DisposableEffect(agent) {
+        onDispose { graph.pages.detach(agent, host) }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            pendingFiles?.onReceiveValue(null)
+            pendingFiles = null
+        }
+    }
+
+    // Back: a menu or dialog, then a file over the agent, then the agent itself; home only on a second Back.
+    val leave = {
+        val now = SystemClock.uptimeMillis()
+        if (now - backAt < BACK_AGAIN_MS) {
+            onHome()
+        } else {
+            backAt = now
+            Toast.makeText(activity, "Press Back again for PocketIDE's home", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val back = {
+        val current = page()
+        if (link == LinkState.On && current?.web != null) {
+            current.back(onEditor = { current.sendKey(KeyEvent.KEYCODE_A, CTRL_ALT) }, otherwise = leave)
+        } else {
+            onHome()
+        }
+    }
+    BackHandler(enabled = viewer == null) { back() }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
+        TopBar(
+            agent = agent,
+            onBack = back,
+            onAgent = { picked ->
+                viewer = null
+                if (picked != agent) onAgent(picked)
+            },
+            onReload = {
+                if (link == LinkState.On) {
+                    page()?.reload() ?: run { generation++ }
+                } else {
+                    graph.link.connect()
+                }
+            },
+            onTools = { page()?.sendKey(KeyEvent.KEYCODE_P, CTRL_ALT) },
+            menu = listOf(
+                "Open in Chrome instead" to { IdeTab.open(activity, IdePlace.of(agent)) },
+                "Cloud Shell's terminal (Chrome)" to { IdeTab.open(activity, IdePlace.TERMINAL) },
+                "Cloud Shell's files (Chrome)" to { IdeTab.open(activity, IdePlace.FILES) },
+                "PocketIDE home" to onHome,
+                "Disconnect" to {
+                    graph.link.disconnect()
+                    onHome()
+                },
+            ),
+        )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (val state = link) {
+                LinkState.On -> {
+                    val url = graph.link.agentUrl(agent)
+                    val ready = url != null && (agent in started || graph.pages.has(agent, url))
+                    when {
+                        url == null -> Waiting("Connecting…", null)
+                        notStarted == agent -> Problem(
+                            "${agent.displayName}'s VS Code did not start in Cloud Shell.",
+                            "Try again. If it keeps failing, disconnect, connect again, or open it in Chrome instead.",
+                        ) {
+                            PrimaryAction("Try again", onClick = { notStarted = null })
+                            TextButton(onClick = { IdeTab.open(activity, IdePlace.of(agent)) }) { Text("Open in Chrome instead") }
+                        }
+                        !ready -> {
+                            Waiting("Starting ${agent.displayName}'s VS Code…", "The first start after a break takes a minute.")
+                            LaunchedEffect(agent, url) {
+                                if (graph.link.awaitServer(CloudShell.port(agent))) started = started + agent else notStarted = agent
+                            }
+                        }
+                        else -> {
+                            key(agent, url, generation) {
+                                AndroidView(factory = { graph.pages.attach(agent, url, activity, host) }, modifier = Modifier.fillMaxSize())
+                            }
+                            PageOverlay(pageStates[agent], onReload = {
+                                pageStates = pageStates - agent
+                                if (pageStates[agent] == PageState.Stopped || page()?.web == null) {
+                                    graph.pages.release(agent)
+                                    generation++
+                                } else {
+                                    page()?.reload()
+                                }
+                            })
+                        }
+                    }
+                }
+                is LinkState.Working -> Waiting(state.step, state.detail)
+                LinkState.Off -> Problem("Not connected to Cloud Shell.", "Connect to open ${agent.displayName}.") {
+                    PrimaryAction("Connect", onClick = { graph.link.connect() })
+                }
+                is LinkState.Failed -> Problem(state.why, fixOf(state.problem)) {
+                    when (state.problem) {
+                        Problem.SIGN_IN -> PrimaryAction("Sign in to gcloud", busy = signingIn, onClick = {
+                            signingIn = true
+                            scope.launch {
+                                when (val result = graph.link.signIn(account)) {
+                                    is SignInResult.SignedIn -> graph.link.connect()
+                                    is SignInResult.Failed -> toast(result.why)
+                                    SignInResult.Cancelled -> Unit
+                                }
+                                signingIn = false
+                            }
+                        })
+                        Problem.CLOUD_SHELL -> {
+                            PrimaryAction("Open Cloud Shell in Chrome", onClick = { openCloudShell(activity, CloudShell.terminal(account)) })
+                            TextButton(onClick = { graph.link.connect() }) { Text("Try again") }
+                        }
+                        Problem.CONNECTOR -> PrimaryAction("Set up the connection", onClick = onHome)
+                        Problem.APP_UPDATE -> PrimaryAction("Open in Chrome instead", onClick = { IdeTab.open(activity, IdePlace.of(agent)) })
+                        Problem.NETWORK, Problem.OTHER -> PrimaryAction("Try again", onClick = { graph.link.connect() })
+                    }
+                    if (state.problem != Problem.APP_UPDATE) {
+                        TextButton(onClick = { IdeTab.open(activity, IdePlace.of(agent)) }) { Text("Open in Chrome instead") }
+                    }
+                }
+            }
+            viewer?.let { url ->
+                PageViewer(
+                    url = url,
+                    shownAs = { shown -> shownAs(shown, graph.link::cloudShellPort) },
+                    isDoor = { graph.link.cloudShellPort(it) != null },
+                    toDoor = { next ->
+                        (Opening.of(next) { null } as? Opening.CloudShellPage)?.let { graph.link.pageUrl(it.port, it.path) }
+                    },
+                    onOpen = open,
+                    onClose = { viewer = null },
+                )
+            }
+        }
+        if (imeVisible() && viewer == null && link == LinkState.On) {
+            KeyBar(
+                onKey = { code, meta -> page()?.sendKey(code, meta) },
+                onPaste = {
+                    val text = activity.getSystemService(ClipboardManager::class.java)?.primaryClip
+                        ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(activity)?.toString().orEmpty()
+                    if (text.isEmpty()) {
+                        toast("Nothing is copied yet.")
+                    } else {
+                        page()?.type(text) { typed -> if (!typed) toast("Long-press where you type, then tap Paste.") }
+                    }
+                },
+            )
+        }
+    }
+
+    askOpen?.let { url ->
+        AlertDialog(
+            onDismissRequest = { askOpen = null },
+            title = { Text("Open in Chrome?") },
+            text = { Text("The page wants to open ${WebPolicy.hostOf(url) ?: "a web page"}.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Browser.open(activity, url)
+                    askOpen = null
+                }) { Text("Open") }
+            },
+            dismissButton = { TextButton(onClick = { askOpen = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** How an address of the door shows in the page viewer: as the Cloud Shell address it is (localhost:PORT/…). */
+private fun shownAs(url: String, doorPort: (String) -> Int?): String {
+    val port = doorPort(url) ?: return url
+    return "localhost:$port" + Opening.pathOf(url).takeIf { it != "/" }.orEmpty()
+}
+
+private fun fixOf(problem: Problem): String = when (problem) {
+    Problem.SIGN_IN -> "Google's page opens in Chrome: pick your account and tap Allow. PocketIDE comes back by itself."
+    Problem.CLOUD_SHELL -> "Cloud Shell's own page, in Chrome, shows what Google needs."
+    Problem.CONNECTOR -> "PocketIDE's home shows the set-up: about 130 MB, once."
+    Problem.APP_UPDATE -> "The agents still open in Chrome, as before."
+    Problem.NETWORK -> "When the phone is online again, tap Try again."
+    Problem.OTHER -> "Tap Try again. If it keeps failing, open the agent in Chrome instead."
+}
+
+@Composable
+@Suppress("LongParameterList") // One callback per button in the bar.
+private fun TopBar(
+    agent: Agent,
+    onBack: () -> Unit,
+    onAgent: (Agent) -> Unit,
+    onReload: () -> Unit,
+    onTools: () -> Unit,
+    menu: List<Pair<String, () -> Unit>>,
+) {
+    var open by remember { mutableStateOf(false) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                Agent.entries.forEach { each -> AgentChip(each, selected = each == agent, onClick = { onAgent(each) }) }
+            }
+            IconButton(onClick = onReload) { Icon(Icons.Outlined.Refresh, contentDescription = "Reload this VS Code") }
+            IconButton(onClick = onTools) { Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, git, extensions, settings") }
+            Box {
+                IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More") }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    menu.forEach { (label, action) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                            open = false
+                            action()
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** An agent's logo; the one on screen is framed. */
+@Composable
+private fun AgentChip(agent: Agent, selected: Boolean, onClick: () -> Unit) {
+    val frame = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .border(2.dp, frame, RoundedCornerShape(12.dp))
+            .clickable(role = Role.Tab, onClickLabel = "Open ${agent.displayName}", onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AgentLogo(agent, size = 30.dp)
+    }
+}
+
+/**
+ * Esc, Tab, Ctrl+C, the arrows and Enter: keys a phone's keyboard lacks, for VS Code's terminal and
+ * editor. Paste types what was copied where the cursor is (a sign-in code, a command).
+ */
+@Composable
+private fun KeyBar(onKey: (Int, Int) -> Unit, onPaste: () -> Unit) {
+    val keys = listOf(
+        "Esc" to (KeyEvent.KEYCODE_ESCAPE to 0),
+        "Tab" to (KeyEvent.KEYCODE_TAB to 0),
+        "Ctrl+C" to (KeyEvent.KEYCODE_C to (KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON)),
+        "↑" to (KeyEvent.KEYCODE_DPAD_UP to 0),
+        "↓" to (KeyEvent.KEYCODE_DPAD_DOWN to 0),
+        "←" to (KeyEvent.KEYCODE_DPAD_LEFT to 0),
+        "→" to (KeyEvent.KEYCODE_DPAD_RIGHT to 0),
+        "Enter" to (KeyEvent.KEYCODE_ENTER to 0),
+    )
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            TextButton(onClick = onPaste, modifier = Modifier.heightIn(min = 44.dp)) { Text("Paste") }
+            keys.forEach { (label, key) ->
+                TextButton(onClick = { onKey(key.first, key.second) }, modifier = Modifier.heightIn(min = 44.dp)) { Text(label) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun imeVisible(): Boolean = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+@Composable
+private fun Waiting(step: String, detail: String?) {
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(Modifier.size(40.dp))
+        Gap(16.dp)
+        Text(step, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        if (!detail.isNullOrBlank()) {
+            Gap(8.dp)
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Problem(why: String, fix: String, actions: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.Center) {
+        NoticeCard(fix, tone = Tone.WARN, title = why)
+        Gap(16.dp)
+        actions()
+    }
+}
+
+@Composable
+private fun PageOverlay(page: PageState?, onReload: () -> Unit) {
+    when (page) {
+        is PageState.Loading -> if (page.progress in 1 until FULL) {
+            LinearProgressIndicator(progress = { page.progress / FULL.toFloat() }, modifier = Modifier.fillMaxWidth())
+        }
+        is PageState.Failed, PageState.Stopped -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+                val message = if (page is PageState.Failed) page.message else "Android stopped the page to free memory. The agent kept working in Cloud Shell."
+                NoticeCard(message, tone = Tone.WARN)
+                Gap(16.dp)
+                PrimaryAction("Reload", onClick = onReload)
+            }
+        }
+        PageState.Ready, null -> Unit
+    }
+}
+
+private const val FULL = 100
+private const val BACK_AGAIN_MS = 2_000L
+private const val CTRL_ALT = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON

@@ -27,7 +27,7 @@ object DocsContent {
     const val TAGLINE = "Agentic development on your phone"
 
     /** Raised when the terms or the privacy policy change in a way the owner should see again. */
-    const val TERMS_VERSION = 6
+    const val TERMS_VERSION = 7
 
     // Page ids other screens open directly.
     const val TERMS_ID = "terms"
@@ -37,6 +37,7 @@ object DocsContent {
     const val COMPUTER_ID = "computer"
     const val IDE_ID = "vs-code"
     const val TROUBLE_ID = "trouble"
+    const val CONNECTION_ID = "connection"
 
     /** The day the facts, prices and links were checked. */
     const val CHECKED_ON: String = DocLinks.CHECKED_ON

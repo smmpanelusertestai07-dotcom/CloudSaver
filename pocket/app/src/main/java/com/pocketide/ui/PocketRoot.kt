@@ -42,6 +42,7 @@ import com.pocketide.cloudshell.CloudShell
 import com.pocketide.docs.AppPlace
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.linux.ComputerState
 import com.pocketide.ui.lock.HiddenContentCover
 import com.pocketide.ui.lock.LockScreen
 import com.pocketide.ui.nav.ComputerRoute
@@ -71,8 +72,9 @@ import dev.chrisbanes.haze.rememberHazeState
 
 /**
  * Theme, app lock, the welcome, the computer's set-up, then the app with its bottom bar. The app
- * does not open past the set-up until Cloud Shell is set up, and comes back to it when Google may
- * have deleted Cloud Shell's home folder. Everything sits on one [Surface], so text takes the
+ * does not open past the set-up until Cloud Shell is set up and PocketIDE's connection to it is
+ * ready (unless the owner chose the Chrome way), and comes back to it when Google may have deleted
+ * Cloud Shell's home folder. Everything sits on one [Surface], so text takes the
  * theme's colour on every screen. With App lock on, the app is covered whenever it is not in
  * front, so Recents keeps a picture of the cover, not the screen.
  */
@@ -81,7 +83,10 @@ fun PocketRoot(activity: MainActivity) {
     val graph = activity.graph
     val appLock = (activity.application as PocketApp).appLock
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
     val state by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    // PocketIDE's own connection (the agents inside the app): set up on this phone, gcloud signed in.
+    val connectionReady = (computer is ComputerState.Ready || computer is ComputerState.Updating) && settings.gcloudAccount.isNotBlank()
     PocketTheme(settings.theme, settings.dynamicColor) {
         val locked by appLock.locked.collectAsStateWithLifecycle()
         Box(Modifier.fillMaxSize()) {
@@ -90,7 +95,7 @@ fun PocketRoot(activity: MainActivity) {
                     settings.appLock && locked -> LockScreen(activity, onUnlocked = appLock::unlock)
                     // The welcome again when the terms change, so the owner sees what changed and agrees.
                     !settings.onboardingDone || settings.termsAccepted < DocsContent.TERMS_VERSION -> Onboarding(graph)
-                    CloudShell.needsSetUp(settings, graph.clock.now()) -> SetUpScreen()
+                    CloudShell.needsSetUp(settings, graph.clock.now()) || (!settings.chromeOnly && !connectionReady) -> SetUpScreen()
                     else -> MainScreens()
                 }
             }

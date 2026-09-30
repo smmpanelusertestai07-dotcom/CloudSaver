@@ -7,18 +7,18 @@ import java.net.URLEncoder
 
 /**
  * Google Cloud Shell, PocketIDE's computer: Google's own Linux computer, free with a Google account.
- * Google allows its sign-in only in a real browser, so PocketIDE opens it in a Chrome tab, with the
- * account the owner picked in Android's own chooser. The set-up is one command, from a script
- * pinned by its SHA-256, that gives Claude Code and Codex each its own VS Code and Antigravity its
- * own screen, which Cloud Shell then starts by itself whenever it starts.
+ * The set-up is one command, from a script pinned by its SHA-256, that gives each agent its own
+ * VS Code, which Cloud Shell then starts by itself whenever it starts. PocketIDE runs it through
+ * its own connection (Google's gcloud on the phone), or the owner pastes it in Cloud Shell's page
+ * in Chrome, where Google allows its sign-in.
  */
 object CloudShell {
     /** The commit that holds the setup script this app version gives out. */
-    const val SCRIPT_COMMIT = "9f35ac9371d62c0a7a1a522535e51f2772ad0099"
+    const val SCRIPT_COMMIT = "3c04523b01e99b1ea92f0c7c8d0958c8d0f8e112"
     const val SCRIPT_PATH = "pocket/cloudshell/pocketide-cloudshell.sh"
 
     /** The script's SHA-256: the command runs it only when the download matches. */
-    const val SCRIPT_SHA256 = "5f3e08546a925920a19ceb63eff00d9a95eff9ba5fc90db07521279e8c3f6388"
+    const val SCRIPT_SHA256 = "f00f1e71e4d6d86ffd9baf134100654ed544fbcef603b143ba6cd547dafab5fa"
     val SCRIPT_URL = "https://raw.githubusercontent.com/${BuildConfig.RELEASES_REPO}/$SCRIPT_COMMIT/$SCRIPT_PATH"
 
     /** Google deletes Cloud Shell's home folder after this many days without use. */
@@ -62,12 +62,8 @@ object CloudShell {
 
     fun console(account: String): String = "https://console.cloud.google.com/" + authUser(account, first = true)
 
-    /**
-     * [agent] full screen, through Cloud Shell's Web Preview, which only [account] can open: Claude
-     * Code's and Codex's own VS Code, and Antigravity's own screen, which the script's bridge shows.
-     */
-    fun screen(agent: Agent, account: String): String =
-        webPreview(port(agent), if (agent == Agent.ANTIGRAVITY) "/pocketide/" else "/", account)
+    /** [agent]'s own VS Code, full screen, through Cloud Shell's Web Preview, which only [account] can open. */
+    fun screen(agent: Agent, account: String): String = webPreview(port(agent), "/", account)
 
     /** [path] on Cloud Shell's [port], through Web Preview, which only [account] can open. */
     internal fun webPreview(port: Int, path: String, account: String): String =

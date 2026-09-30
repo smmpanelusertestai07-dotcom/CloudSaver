@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import com.pocketide.core.AppFolders
 import com.pocketide.core.OldComputer
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.link.LinkState
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.screens.cloudshell.SignInHelpDialog
@@ -58,19 +60,24 @@ import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.web.IdeTab
+import com.pocketide.ui.workspace.WorkspaceActivity
 
 /**
- * Home: the computer, Google Cloud Shell, with its Start button; the three agents, each opening its
- * own VS Code there; and Cloud Shell's terminal and files. Everything opens in a Chrome tab dressed
- * as PocketIDE's, with the tools button and the other agents in its menu.
+ * Home: the computer, Google Cloud Shell, and PocketIDE's connection to it; the three agents, each
+ * opening its own VS Code inside PocketIDE (or in Chrome, the Chrome way); and Cloud Shell's own
+ * terminal and files, in Chrome, where Google allows its sign-in.
  */
 @Composable
 fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Unit) {
     val context = LocalContext.current
-    val settings by context.graph.settings.settings.collectAsStateWithLifecycle()
+    val graph = context.graph
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val link by graph.link.state.collectAsStateWithLifecycle()
     var signIn by remember { mutableStateOf<Agent?>(null) }
     var extensions by remember { mutableStateOf(false) }
     val oldComputer = remember { OldComputer(AppFolders.of(context).oldComputer).exists() }
+    val inApp = !settings.chromeOnly
+    val openAgent = { agent: Agent -> if (inApp) WorkspaceActivity.open(context, agent) else IdeTab.open(context, IdePlace.of(agent)) }
     ShellPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
             BrandMark(36.dp)
@@ -85,14 +92,23 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
         }
         Text(DocsContent.TAGLINE, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Gap(16.dp)
-        if (CloudShell.newerSetUp(settings)) {
+        if (!inApp) {
             NoticeCard(
-                "This version of PocketIDE brings a newer Cloud Shell set-up. Run it once more: one paste, and it only " +
-                    "adds what changed. Your projects and chats stay.",
-                title = "Update your Cloud Shell set-up",
+                "Set up PocketIDE's connection once (about 130 MB), and each agent's VS Code opens right here, with PocketIDE's " +
+                    "keys and Back, instead of in Chrome. No Google Cloud project needed.",
+                title = "Open the agents inside PocketIDE",
             )
-            TextButton(onClick = { context.graph.settings.update { it.copy(cloudSetUpAt = 0) } }) { Text("Update the set-up") }
+            TextButton(onClick = { graph.settings.update { it.copy(chromeOnly = false) } }) { Text("Set up the connection") }
             Gap(8.dp)
+            if (CloudShell.newerSetUp(settings)) {
+                NoticeCard(
+                    "This version of PocketIDE brings a newer Cloud Shell set-up. Run it once more: one paste, and it only " +
+                        "adds what changed. Your projects and chats stay.",
+                    title = "Update your Cloud Shell set-up",
+                )
+                TextButton(onClick = { graph.settings.update { it.copy(cloudSetUpAt = 0) } }) { Text("Update the set-up") }
+                Gap(8.dp)
+            }
         }
         if (oldComputer) {
             NoticeCard(
@@ -112,20 +128,30 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Column(Modifier.padding(16.dp)) {
-                Text(
-                    "It stops about 40 minutes after you leave it. After a break, start it first: the agents' VS Code starts " +
-                        "with it, in about a minute.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Gap(12.dp)
-                PrimaryAction("Start Cloud Shell", onClick = { IdeTab.open(context, IdePlace.TERMINAL) })
+                if (inApp) {
+                    Text(connectionText(link), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Gap(12.dp)
+                    when (link) {
+                        LinkState.On -> OutlinedButton(onClick = { graph.link.disconnect() }) { Text("Disconnect") }
+                        is LinkState.Working -> OutlinedButton(onClick = { graph.link.disconnect() }) { Text("Stop") }
+                        else -> PrimaryAction("Connect", onClick = { graph.link.connect() })
+                    }
+                } else {
+                    Text(
+                        "It stops about 40 minutes after you leave it. After a break, start it first: the agents' VS Code starts " +
+                            "with it, in about a minute.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Gap(12.dp)
+                    PrimaryAction("Start Cloud Shell", onClick = { IdeTab.open(context, IdePlace.TERMINAL) })
+                }
             }
         }
         SectionLabel("Agents")
         OutlinedCard {
             Agent.entries.forEach { agent ->
-                AgentRow(agent, onOpen = { IdeTab.open(context, IdePlace.of(agent)) }, onSignIn = { signIn = agent })
+                AgentRow(agent, onOpen = { openAgent(agent) }, onSignIn = { signIn = agent })
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             ListRow(
@@ -135,30 +161,43 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
                 onClick = { extensions = true },
             )
         }
-        SectionLabel("Tools")
+        SectionLabel("Cloud Shell's own pages (in Chrome)")
         OutlinedCard {
             ListRow(
                 leading = { Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(28.dp)) },
                 title = "Terminal",
-                subtitle = "Cloud Shell's command line",
+                subtitle = "Cloud Shell's command line (each VS Code has its own terminal too: Tools > Terminal)",
                 onClick = { IdeTab.open(context, IdePlace.TERMINAL) },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ListRow(
                 leading = { Icon(Icons.Outlined.Folder, contentDescription = null, modifier = Modifier.size(28.dp)) },
                 title = "Files",
-                subtitle = "Your Cloud Shell home folder, in Cloud Shell's editor",
+                subtitle = "Your Cloud Shell home folder in Cloud Shell's editor: upload and download files",
                 onClick = { IdeTab.open(context, IdePlace.FILES) },
             )
         }
         Gap(12.dp)
         FinePrint(
-            "Each opens in Chrome with your Google account. There, the arrow returns here, the tools button shows every " +
-                "agent, the terminal and the files, and Chrome's menu (⋮) switches between them.",
+            if (inApp) {
+                "An agent opens inside PocketIDE: Back closes a menu or file first and never jumps home, Tools shows the terminal, " +
+                    "files, git, extensions and settings, and the keys a phone keyboard lacks sit above the keyboard. PocketIDE " +
+                    "disconnects 15 minutes after you leave the agents; Cloud Shell then stops by itself."
+            } else {
+                "Each opens in Chrome with your Google account. There, the arrow returns here, the tools button shows every " +
+                    "agent, the terminal and the files, and Chrome's menu (⋮) switches between them."
+            },
         )
     }
     signIn?.let { agent -> SignInHelpDialog(agent) { signIn = null } }
     if (extensions) ExtensionsDialog { extensions = false }
+}
+
+private fun connectionText(state: LinkState): String = when (state) {
+    LinkState.On -> "Connected. Tap an agent: its VS Code opens here."
+    is LinkState.Working -> state.step
+    is LinkState.Failed -> state.why
+    LinkState.Off -> "Tap an agent to connect, or connect now. Cloud Shell starts in about a minute after a break."
 }
 
 /** An agent: its logo and maker; a tap opens its VS Code, the key how it signs in. */

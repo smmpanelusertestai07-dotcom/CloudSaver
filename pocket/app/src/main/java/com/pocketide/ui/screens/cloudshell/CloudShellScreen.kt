@@ -19,7 +19,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +36,13 @@ import com.pocketide.cloudshell.CloudShell
 import com.pocketide.cloudshell.IdePlace
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.link.LinkState
+import com.pocketide.linux.ComputerInfo
+import com.pocketide.linux.ComputerState
+import com.pocketide.linux.UpdateOutcome
 import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.DialogBody
+import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.shell.Gap
@@ -44,6 +51,7 @@ import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.web.Browser
 import com.pocketide.ui.web.IdeTab
+import kotlinx.coroutines.launch
 
 /**
  * The computer: Google Cloud Shell. Its account and state, its free limits, where its data is (and
@@ -87,6 +95,8 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                     OutlinedButton(onClick = { again = true }) { Text("Run the set-up again") }
                 }
             }
+
+            ConnectionCard(onChromeOnly = { graph.settings.update { it.copy(chromeOnly = true) } })
 
             SectionCard("Each agent, its own VS Code") {
                 Text(
@@ -170,6 +180,97 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                 }) { Text("Set up again") }
             },
             dismissButton = { TextButton(onClick = { again = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/**
+ * PocketIDE's connection on this phone: Google's gcloud (signed in as whom), its size, its updates,
+ * and the ways to end it: disconnect, sign gcloud out (Google ends that sign-in too), or remove it.
+ */
+@Composable
+@Suppress("CyclomaticComplexMethod") // One card: the connection's state and each of its buttons.
+private fun ConnectionCard(onChromeOnly: () -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
+    val scope = rememberCoroutineScope()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val link by graph.link.state.collectAsStateWithLifecycle()
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
+    val info by produceState<ComputerInfo?>(null, computer) { value = runCatching { graph.computer.info() }.getOrNull() }
+    var busy by remember { mutableStateOf<String?>(null) }
+    var removing by remember { mutableStateOf(false) }
+    SectionCard("PocketIDE's connection (on this phone)") {
+        Text(
+            buildString {
+                append(if (settings.gcloudAccount.isBlank()) "gcloud is not signed in." else "gcloud is signed in as ${settings.gcloudAccount}.")
+                info?.let { facts ->
+                    facts.gcloud?.let { append(" Google Cloud SDK $it") }
+                    facts.ubuntu?.let { append(" on $it") }
+                    append(", ${Formats.size(facts.systemBytes + facts.homeBytes)} in PocketIDE's private storage.")
+                    append(" Updated ${Formats.ago(facts.updatedAt, graph.clock.now())}; it updates itself once a day.")
+                }
+                append(" No Google Cloud project, billing or OAuth client is made: only Cloud Shell's free hours are used.")
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        ActionRow {
+            when (link) {
+                LinkState.On, is LinkState.Working -> OutlinedButton(onClick = { graph.link.disconnect() }) { Text("Disconnect") }
+                else -> OutlinedButton(onClick = { graph.link.connect() }, enabled = settings.gcloudAccount.isNotBlank()) { Text("Connect") }
+            }
+            OutlinedButton(enabled = busy == null && computer == ComputerState.Ready, onClick = {
+                busy = "Updating Ubuntu and gcloud…"
+                scope.launch {
+                    val outcome = graph.computer.updateBase()
+                    if (outcome is UpdateOutcome.Updated) graph.link.gcloudUpdated()
+                    busy = when (outcome) {
+                        UpdateOutcome.UpToDate -> "Everything is up to date."
+                        is UpdateOutcome.Updated -> outcome.detail
+                        is UpdateOutcome.Waiting -> outcome.why
+                        is UpdateOutcome.Failed -> outcome.why
+                    }
+                }
+            }) { Text("Update now") }
+            if (settings.gcloudAccount.isNotBlank()) {
+                OutlinedButton(enabled = busy == null, onClick = {
+                    busy = "Signing gcloud out…"
+                    scope.launch {
+                        graph.link.signOut()
+                        busy = "gcloud is signed out on this phone, and Google ended its sign-in."
+                    }
+                }) { Text("Sign gcloud out") }
+            }
+            TextButton(onClick = { removing = true }) { Text("Remove the connection") }
+        }
+    }
+    if (removing) {
+        AlertDialog(
+            onDismissRequest = { removing = false },
+            title = { Text("Remove PocketIDE's connection?") },
+            text = {
+                DialogBody {
+                    Text(
+                        "Deletes Ubuntu, Google's gcloud and its sign-in from this phone (about 500 MB). Your Cloud Shell, with " +
+                            "your projects and chats, stays. The agents then open in Chrome; set the connection up again from " +
+                            "Home whenever you like.",
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    removing = false
+                    busy = "Removing the connection…"
+                    scope.launch {
+                        graph.link.signOut()
+                        graph.computer.remove()
+                        onChromeOnly()
+                        busy = null
+                    }
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { removing = false }) { Text("Cancel") } },
         )
     }
 }

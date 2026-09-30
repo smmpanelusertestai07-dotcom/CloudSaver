@@ -81,7 +81,7 @@ fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
         }
         Text(
             "PocketIDE has no server and no database of its own. Your work is in your own Google Cloud Shell; this phone " +
-                "keeps only PocketIDE's settings.",
+                "keeps PocketIDE's settings and its connection to Cloud Shell.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Place(
@@ -95,7 +95,9 @@ fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
         Place(
             "On this phone",
             "PocketIDE's settings: the theme, App lock, the Google account Cloud Shell opens with, and when it was set up and " +
-                "last opened. Android's own backup does not copy them.",
+                "last opened. PocketIDE's connection, in its private storage: Ubuntu with Google's gcloud and gcloud's " +
+                "sign-in (a Google token only this app can read), and the pages of the agents' VS Code the app keeps " +
+                "while it runs. No project, file or chat of yours. Android's own backup copies none of it.",
         )
         Place(
             "At the AI companies",
@@ -111,8 +113,10 @@ fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
         if (oldThere) OldComputerCard(old, busy = busy, onBusy = { busy = it }, onDelete = { asking = Ask.DELETE_OLD })
         SectionCard("Delete PocketIDE's data on this phone") {
             Text(
-                "Deletes PocketIDE's settings and files on this phone; the app starts again from the welcome. Your Cloud Shell " +
-                    "stays as it is: delete it there (Computer > Delete). Uninstalling PocketIDE does the same.",
+                "Signs gcloud out (Google ends that sign-in too), then deletes PocketIDE's connection, settings and files on " +
+                    "this phone; the app starts again from the welcome. Your Cloud Shell stays as it is: delete it there " +
+                    "(Computer > Delete). Uninstalling PocketIDE deletes the same, but cannot sign gcloud out: remove " +
+                    "\"Google Cloud SDK\" in your Google Account (Security) then.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             PrimaryAction("Delete from this phone", onClick = { asking = Ask.DELETE_PHONE }, enabled = !busy)

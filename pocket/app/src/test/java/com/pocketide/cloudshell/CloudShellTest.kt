@@ -32,23 +32,31 @@ class CloudShellTest {
         val text = script.readText()
         val agents = Regex("AGENTS=\"([^\"]+)\"").find(text)?.groupValues?.get(1)
         val entries = checkNotNull(agents) { "the script names the agents it gives a VS Code" }.split(" ").map { it.split(":") }
-        val inVsCode = listOf(Agent.CLAUDE, Agent.CODEX)
-        assertEquals(inVsCode.size, entries.size)
-        inVsCode.forEach { agent ->
+        assertEquals(Agent.entries.size, entries.size)
+        Agent.entries.forEach { agent ->
             val (key, port, extension) = entries.single { it[2].replace("/", ".") == agent.extensionId }
             assertEquals(agent.name, CloudShell.port(agent), port.toInt())
             assertEquals(agent.name, "~/projects/$key", CloudShell.projects(agent))
             assertTrue(extension.isNotBlank())
         }
-        // Antigravity's own screen: the bridge shows it on its port, agy works in its projects folder.
-        val screen = Regex("SCREEN_PORT = int\\(sys.argv\\[2]\\) if len\\(sys.argv\\) > 2 else (\\d+)").find(text)
-        assertEquals(CloudShell.port(Agent.ANTIGRAVITY), checkNotNull(screen) { "the bridge's screen port" }.groupValues[1].toInt())
-        assertTrue(text.contains("--add-dir=\"\$HOME/projects/antigravity\""))
-        assertEquals("~/projects/antigravity", CloudShell.projects(Agent.ANTIGRAVITY))
-        val returns = Regex("RETURN_PORT = int\\(sys.argv\\[1]\\) if len\\(sys.argv\\) > 1 else (\\d+)").find(text)
+        val returns = Regex("PORT = int\\(sys.argv\\[1]\\) if len\\(sys.argv\\) > 1 else (\\d+)").find(text)
         assertEquals(SignInReturn.PORT, checkNotNull(returns) { "the bridge's sign-in return port" }.groupValues[1].toInt())
+        assertTrue(text.contains("BRIDGE_PORT=${SignInReturn.PORT}"))
         val ports = Agent.entries.map(CloudShell::port) + SignInReturn.PORT
         assertEquals("ports are each agent's own", ports.size, ports.distinct().size)
+    }
+
+    @Test
+    fun `the launcher takes PocketIDE's door, and only an address the app gives`() {
+        val text = script.readText()
+        assertTrue(text.contains("proxy-uri) proxy_uri \"\${2:-}\" ;;"))
+        val check = "grep -Eq '^http://\\{\\{port\\}\\}-[0-9a-f]{32}\\.localhost:[0-9]{2,5}/\$'"
+        assertTrue("the launcher checks the address's shape: $check", text.contains(check))
+        // The address Link gives has that shape.
+        val template = "http://{{port}}-0123456789abcdef0123456789abcdef.localhost:40123/"
+        assertTrue(Regex("^http://\\{\\{port\\}\\}-[0-9a-f]{32}\\.localhost:[0-9]{2,5}/$").matches(template))
+        assertTrue("the door's address is private to the owner", text.contains("umask 077"))
+        assertTrue("code-server starts with it", text.contains("export VSCODE_PROXY_URI=\"\$proxy\""))
     }
 
     @Test
@@ -109,10 +117,10 @@ class CloudShellTest {
     }
 
     @Test
-    fun `Claude Code and Codex open their VS Code, Antigravity its own screen`() {
-        assertTrue(CloudShell.screen(Agent.CLAUDE, "a@b.c").contains("&devshellProxyPath=%2F&"))
-        assertTrue(CloudShell.screen(Agent.CODEX, "a@b.c").contains("&devshellProxyPath=%2F&"))
-        assertTrue(CloudShell.screen(Agent.ANTIGRAVITY, "a@b.c").contains("&port=8082&cloudshell_retry=true&devshellProxyPath=%2Fpocketide%2F&"))
+    fun `each agent opens its own VS Code in Chrome too`() {
+        Agent.entries.forEach { agent ->
+            assertTrue(agent.name, CloudShell.screen(agent, "a@b.c").contains("&port=${CloudShell.port(agent)}&cloudshell_retry=true&devshellProxyPath=%2F&"))
+        }
     }
 
     @Test

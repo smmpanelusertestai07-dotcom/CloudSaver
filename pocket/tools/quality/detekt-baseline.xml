@@ -14,12 +14,12 @@
     <ID>LoopWithTooManyJumpStatements:OpenVsxSignature.kt$OpenVsxSignature$while</ID>
     <ID>LoopWithTooManyJumpStatements:TarGzExtractor.kt$TarGzExtractor.TarStream$for</ID>
     <ID>LoopWithTooManyJumpStatements:TarGzExtractor.kt$TarGzExtractor.TarStream$while</ID>
-    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.CHECK$4</ID>
-    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.DOWNLOAD_CODE_SERVER$20</ID>
-    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.DOWNLOAD_UBUNTU$5</ID>
-    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.TOOLS$48</ID>
-    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.UNPACK_CODE_SERVER$16</ID>
-    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.UNPACK_UBUNTU$7</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.CHECK$8</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.DOWNLOAD_GCLOUD$16</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.DOWNLOAD_UBUNTU$8</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.TOOLS$40</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.UNPACK_GCLOUD$20</ID>
+    <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.Stage.UNPACK_UBUNTU$8</ID>
     <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$10</ID>
     <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$100f</ID>
     <ID>MagicNumber:ComputerSetup.kt$ComputerSetup.ToolsProgress$20</ID>

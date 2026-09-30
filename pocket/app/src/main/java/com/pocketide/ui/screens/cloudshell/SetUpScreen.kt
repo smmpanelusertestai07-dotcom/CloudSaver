@@ -1,7 +1,14 @@
 package com.pocketide.ui.screens.cloudshell
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -10,17 +17,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.link.Holds
+import com.pocketide.link.LinkState
+import com.pocketide.link.Problem
+import com.pocketide.link.SignInResult
+import com.pocketide.linux.ComputerState
 import com.pocketide.ui.components.ActionRow
+import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.help.HelpPageScreen
@@ -31,22 +46,44 @@ import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.web.Browser
+import kotlinx.coroutines.launch
 
 /**
- * The set-up PocketIDE opens with until its computer, Google Cloud Shell, is ready: pick the Google
- * account, paste one command into Cloud Shell, say when it is done. It comes back by itself when
- * PocketIDE has not opened Cloud Shell for so long that Google may have deleted its home folder.
+ * The set-up PocketIDE opens with until its computer, Google Cloud Shell, is ready. Four steps,
+ * three of them one tap: pick the Google account; set up PocketIDE's connection on this phone
+ * (Ubuntu with Google's own gcloud, about 130 MB, once); sign in to gcloud with Google's page; and
+ * set Cloud Shell up, which PocketIDE does through that connection by itself. No Google Cloud
+ * project, billing or OAuth client is made. The Chrome way (paste one command in Cloud Shell's
+ * page) stays below, for a phone that cannot use the connection.
  */
 @Composable
+// Four steps on one page, each showing where it is.
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 fun SetUpScreen() {
     val context = LocalContext.current
     val graph = context.graph
+    val scope = rememberCoroutineScope()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    var opened by rememberSaveable { mutableStateOf(false) }
+    val computer by graph.computer.state.collectAsStateWithLifecycle()
+    val link by graph.link.state.collectAsStateWithLifecycle()
     var reading by remember { mutableStateOf<String?>(null) }
+    var signingIn by remember { mutableStateOf(false) }
+    var signInProblem by remember { mutableStateOf<String?>(null) }
+    var chromeWay by rememberSaveable { mutableStateOf(false) }
     val pick = rememberAccountPicker { name -> graph.settings.update { it.copy(cloudAccount = name) } }
+    // The connection's notice (with its Disconnect button) needs Android 13's notification permission; without it, it still works.
+    val notices = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val askForNotices = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching { notices.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        }
+    }
     val account = settings.cloudAccount
     val unused = CloudShell.daysUnused(settings, graph.clock.now())
+    val installed = computer is ComputerState.Ready || computer is ComputerState.Updating
+    val signedIn = settings.gcloudAccount.isNotBlank()
 
     reading?.let { page ->
         HelpPageScreen(id = page, onBack = { reading = null }, onOpen = { reading = it })
@@ -58,22 +95,15 @@ fun SetUpScreen() {
         Text("Set up your computer", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(
             "PocketIDE's computer is Google Cloud Shell: Google's own Linux computer, free with a Google account. Each " +
-                "agent gets its own VS Code there, and your phone stays cool.",
+                "agent gets its own VS Code there, and it opens right here in PocketIDE. Your phone stays cool.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Gap(16.dp)
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (settings.cloudScript.isNotBlank() && CloudShell.newerSetUp(settings)) {
-                NoticeCard(
-                    "This version of PocketIDE brings a newer set-up. Paste the command in Cloud Shell once more: it only adds " +
-                        "what changed, and your projects and chats stay.",
-                    title = "A newer set-up",
-                )
-            }
             if (settings.cloudSetUpAt != 0L && unused >= CloudShell.ASK_AGAIN_AFTER_DAYS) {
                 NoticeCard(
                     "PocketIDE has not opened Cloud Shell for $unused days, and Google deletes its home folder after " +
-                        "${CloudShell.DELETED_AFTER_DAYS} days without use. Run the set-up again: it only adds what is missing.",
+                        "${CloudShell.DELETED_AFTER_DAYS} days without use. Connect once: PocketIDE sets up again only what is missing.",
                     tone = Tone.WARN,
                 )
             }
@@ -92,41 +122,172 @@ fun SetUpScreen() {
                     TextButton(onClick = { Browser.open(context, CloudShell.NEW_ACCOUNT) }) { Text("Create a Google account") }
                 }
             }
-            SectionCard("2. Set up (once, about 5 minutes)") {
+            SectionCard("2. PocketIDE's connection (once, about 130 MB)") {
                 Text(
-                    "Copy the command, open Cloud Shell, long-press in its terminal and tap Paste (or paste from your keyboard's " +
-                        "clipboard), then Enter. It installs VS Code and Claude Code, Codex and Antigravity, each checked before " +
-                        "use, in your Cloud Shell home folder; from then on Cloud Shell starts them by itself. The first time, " +
-                        "Google asks you to accept its terms for Google Cloud. If Chrome offers to turn on sync, tap No thanks: " +
-                        "it is not needed.",
+                    "Google's own gcloud, in PocketIDE's private storage on this phone (with a small Ubuntu, about 500 MB): it " +
+                        "signs in with Google and connects to your Cloud Shell. Nothing is made in Google Cloud: no project, no " +
+                        "billing, no keys of PocketIDE's own. Use Wi-Fi if you can.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                CommandBox(CloudShell.setupCommand)
-                ActionRow {
-                    OutlinedButton(onClick = { copyText(context, CloudShell.setupCommand, "Cloud Shell set-up") }, enabled = account.isNotBlank()) {
-                        Text("Copy command")
-                    }
-                    OutlinedButton(onClick = {
-                        opened = true
-                        openCloudShell(context, CloudShell.terminal(account))
-                    }, enabled = account.isNotBlank()) { Text("Open Cloud Shell") }
+                ConnectorState(computer)
+                when (computer) {
+                    ComputerState.NotInstalled, is ComputerState.Broken -> PrimaryAction(
+                        if (computer is ComputerState.Broken) "Set up again" else "Set up the connection",
+                        enabled = account.isNotBlank(),
+                        onClick = {
+                            askForNotices()
+                            graph.holds.hold(Holds.SET_UP)
+                            graph.scope.launch {
+                                try {
+                                    graph.computer.install()
+                                } finally {
+                                    graph.holds.release(Holds.SET_UP)
+                                }
+                            }
+                        },
+                    )
+                    else -> Unit
                 }
             }
-            SectionCard("3. When Cloud Shell says Done") {
-                Text("Come back here and tap Set-up is done.", style = MaterialTheme.typography.bodyMedium)
-                PrimaryAction("Set-up is done", onClick = {
-                    val now = graph.clock.now()
-                    graph.settings.update { it.copy(cloudSetUpAt = now, cloudOpenedAt = now, cloudScript = CloudShell.SCRIPT_COMMIT) }
-                }, enabled = account.isNotBlank() && (opened || settings.cloudSetUpAt != 0L))
+            SectionCard("3. Sign in to gcloud") {
+                Text(
+                    if (signedIn) {
+                        "gcloud is signed in as ${settings.gcloudAccount}."
+                    } else {
+                        "Google's page opens in Chrome: pick ${account.ifBlank { "your account" }} and tap Allow on \"Google Cloud " +
+                            "SDK wants to access your Google Account\". PocketIDE comes back by itself. Once; you can remove it " +
+                            "any time in your Google Account (Security > Your connections to third-party apps)."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                signInProblem?.let { NoticeCard(it, tone = Tone.WARN) }
+                if (!signedIn) {
+                    ActionRow {
+                        PrimaryAction("Sign in with Google", busy = signingIn, enabled = installed && account.isNotBlank() && !signingIn, onClick = {
+                            signingIn = true
+                            signInProblem = null
+                            scope.launch {
+                                when (val result = graph.link.signIn(account)) {
+                                    is SignInResult.Failed -> signInProblem = result.why
+                                    is SignInResult.SignedIn, SignInResult.Cancelled -> Unit
+                                }
+                                signingIn = false
+                            }
+                        })
+                        if (signingIn) TextButton(onClick = graph.link::cancelSignIn) { Text("Cancel") }
+                    }
+                }
+            }
+            SectionCard("4. Set up Cloud Shell (about 5 minutes, once)") {
+                Text(
+                    "PocketIDE starts your Cloud Shell and installs VS Code with Claude Code, Codex and Antigravity there, each " +
+                        "checked before use, in your Cloud Shell home folder. The first time, Google may ask you to accept its " +
+                        "terms for Google Cloud: PocketIDE opens that page for you.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                LinkProgress(link)
+                val failed = link as? LinkState.Failed
+                ActionRow {
+                    PrimaryAction(
+                        if (failed != null) "Try again" else "Set up Cloud Shell",
+                        busy = link is LinkState.Working,
+                        enabled = installed && signedIn && link !is LinkState.Working,
+                        onClick = { graph.link.connect() },
+                    )
+                    if (failed?.problem == Problem.CLOUD_SHELL) {
+                        OutlinedButton(onClick = { openCloudShell(context, CloudShell.terminal(account)) }) { Text("Open Cloud Shell in Chrome") }
+                    }
+                    if (failed?.problem == Problem.SIGN_IN) {
+                        OutlinedButton(onClick = { graph.settings.update { it.copy(gcloudAccount = "") } }) { Text("Sign in again") }
+                    }
+                }
             }
             FinePrint(
-                "Free: 50 hours a week, at most 12 in one session; Cloud Shell stops about 40 minutes after you stop using it. " +
-                    "Use it yourself, as Google intends: no miners, scanners or keep-awake tricks. Google's terms apply.",
+                "Free: 50 hours a week, at most 12 in one session; Cloud Shell stops about 40 minutes after you stop using it, " +
+                    "and PocketIDE disconnects 15 minutes after you leave the agents. Use it yourself, as Google intends: no " +
+                    "miners, scanners or keep-awake tricks. Google's terms apply.",
             )
             ActionRow {
                 TextButton(onClick = { Browser.open(context, CloudShell.TERMS) }) { Text("Google Cloud terms") }
                 TextButton(onClick = { reading = DocsContent.COMPUTER_ID }) { Text("How it works") }
+                TextButton(onClick = { chromeWay = !chromeWay }) { Text(if (chromeWay) "Hide the Chrome way" else "Set up in Chrome instead") }
+            }
+            if (chromeWay) ChromeWay(account)
+        }
+    }
+}
+
+@Composable
+private fun ConnectorState(state: ComputerState) {
+    when (state) {
+        ComputerState.NotInstalled -> Unit
+        is ComputerState.Installing -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(state.step, style = MaterialTheme.typography.bodyMedium)
+            val fraction = state.fraction
+            if (fraction != null) {
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (state.bytesTotal > 0) {
+                Text(
+                    "${Formats.size(state.bytesDone)} of ${Formats.size(state.bytesTotal)} downloaded. It goes on if you switch apps.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+        ComputerState.Ready -> NoticeCard("Ready: Ubuntu and Google's gcloud, in PocketIDE's private storage.", tone = Tone.OK)
+        is ComputerState.Updating -> NoticeCard("Ready (updating ${state.what}).", tone = Tone.OK)
+        is ComputerState.Broken -> NoticeCard(state.fix, tone = Tone.WARN, title = state.why)
+    }
+}
+
+@Composable
+private fun LinkProgress(state: LinkState) {
+    when (state) {
+        is LinkState.Working -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(state.step, style = MaterialTheme.typography.bodyMedium)
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            state.detail?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            }
+        }
+        is LinkState.Failed -> NoticeCard(state.why, tone = Tone.WARN)
+        LinkState.On -> NoticeCard("Cloud Shell is set up and connected.", tone = Tone.OK)
+        LinkState.Off -> Unit
+    }
+}
+
+/** The Chrome way: paste one command in Cloud Shell's own page, then say it is done. */
+@Composable
+private fun ChromeWay(account: String) {
+    val context = LocalContext.current
+    val graph = context.graph
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    var opened by rememberSaveable { mutableStateOf(false) }
+    SectionCard("The Chrome way") {
+        Text(
+            "The agents then open in Chrome, not in PocketIDE. Copy the command, open Cloud Shell, long-press in its terminal " +
+                "and tap Paste, then Enter. It installs the same as above. If Chrome offers to turn on sync, tap No thanks.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        CommandBox(CloudShell.setupCommand)
+        ActionRow {
+            OutlinedButton(onClick = { copyText(context, CloudShell.setupCommand, "Cloud Shell set-up") }, enabled = account.isNotBlank()) {
+                Text("Copy command")
+            }
+            OutlinedButton(onClick = {
+                opened = true
+                openCloudShell(context, CloudShell.terminal(account))
+            }, enabled = account.isNotBlank()) { Text("Open Cloud Shell") }
+        }
+        Text("When Cloud Shell says Done, come back and tap Set-up is done.", style = MaterialTheme.typography.bodyMedium)
+        PrimaryAction("Set-up is done", onClick = {
+            val now = graph.clock.now()
+            graph.settings.update {
+                it.copy(cloudSetUpAt = now, cloudOpenedAt = now, cloudScript = CloudShell.SCRIPT_COMMIT, chromeOnly = true)
+            }
+        }, enabled = account.isNotBlank() && (opened || settings.cloudSetUpAt != 0L))
     }
 }

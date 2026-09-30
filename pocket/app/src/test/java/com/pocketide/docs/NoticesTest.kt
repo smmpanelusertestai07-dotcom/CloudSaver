@@ -43,7 +43,7 @@ class NoticesTest {
 
     @Test
     fun `nothing of an earlier version is still listed`() {
-        val gone = listOf("JGit", "Bouncy Castle", "xterm", "Codespaces", "Octicons", "Codicons", "desktop-lite", "PRoot", "talloc", "Ubuntu", "WebKit")
+        val gone = listOf("JGit", "Bouncy Castle", "xterm", "Codespaces", "Octicons", "Codicons", "desktop-lite", "npm")
         assertTrue(gone.filter { ownText.contains(it) }.toString(), gone.none { ownText.contains(it) })
     }
 
@@ -63,11 +63,19 @@ class NoticesTest {
             "OkHttp" to "Apache License 2.0",
             "Haze" to "Apache License 2.0",
             "code-server" to "MIT License",
+            "PRoot" to "GNU General Public License, version 2",
+            "talloc" to "GNU Lesser General Public License, version 3 or later",
+            "libandroid-shmem" to "BSD 3-Clause",
+            "Google Cloud CLI" to "Apache License 2.0",
         )
 
         val FULL_TEXTS = listOf(
             "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
             "END OF TERMS AND CONDITIONS",
+            // PRoot's GPL-2.0, and talloc's LGPL-3.0 with the GPL-3.0 it builds on.
+            "GNU GENERAL PUBLIC LICENSE Version 2, June 1991",
+            "GNU LESSER GENERAL PUBLIC LICENSE Version 3, 29 June 2007",
+            "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007",
         )
     }
 }

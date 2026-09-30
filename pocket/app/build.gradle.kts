@@ -23,10 +23,13 @@ fun config(name: String): String {
 
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+/** An extra jniLibs folder with PRoot for x86-64, for the end-to-end test on the Android emulator. */
+val emulatorLibs: String = (project.findProperty("pocketide.emulatorLibs") as String?).orEmpty()
+
 // The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
 // from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
-// before it, and 6.0.0 (60000) installs over 5.1.0 (50100). tools/gates/version.py checks both.
-val appVersion = "6.1.1"
+// before it, and 7.0.0 (70000) installs over 6.1.1 (60101). tools/gates/version.py checks both.
+val appVersion = "7.0.0"
 
 fun versionCodeOf(version: String): Int {
     val parts = version.split(".").map { it.toIntOrNull() ?: -1 }
@@ -47,6 +50,14 @@ android {
         versionName = appVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // PRoot, the one native program (PocketIDE's connection runs Google's gcloud with it), is
+        // built for phones (arm64). The end-to-end test adds an x86-64 build for the Android
+        // emulator with -Ppocketide.emulatorLibs=<folder of jniLibs>.
+        ndk {
+            abiFilters += "arm64-v8a"
+            if (emulatorLibs.isNotEmpty()) abiFilters += "x86_64"
+        }
 
         // Where the app's releases are published. CI passes the repository its release job
         // publishes to (tools/gates/workflow.py checks it); the fallback serves local builds only.
@@ -77,7 +88,16 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        getByName("main") {
+            if (emulatorLibs.isNotEmpty()) jniLibs.srcDir(emulatorLibs)
+        }
+    }
+
     packaging {
+        // PRoot and its loader are run from the app's native library folder, the one place Android
+        // lets an app run programs of its own (W^X), so the libraries are extracted at install.
+        jniLibs { useLegacyPackaging = true }
         resources {
             excludes += setOf(
                 "/META-INF/{AL2.0,LGPL2.1}",
@@ -168,6 +188,8 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.webkit)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment)
@@ -179,6 +201,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)

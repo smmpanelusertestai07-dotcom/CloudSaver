@@ -18,4 +18,10 @@
     <issue id="ModifierParameter">
         <ignore path="src/main/java/com/pocketide/ui/shell/ShellComponents.kt" />
     </issue>
+
+    <!-- PocketIDE's connection runs with an arm64 PRoot: an x86 Chromebook or phone could not run
+         it, so the APK carries arm64 only (an x86-64 build exists for the emulator in CI). -->
+    <issue id="ChromeOsAbiSupport">
+        <ignore path="build.gradle.kts" />
+    </issue>
 </lint>

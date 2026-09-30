@@ -54,7 +54,7 @@ class DocsContentTest {
         val current = everything.replace(DocsContent.faq.single { it.id == "old-version" }.answer.joinToString(" ", transform = ::blockText), "")
         val gone = listOf(
             "Codespace", "GitHub App", "core-hour", "Google Drive", "vault", "Recently deleted",
-            "PRoot", "Ubuntu", "Reset Ubuntu", "key bar", "Settings > Keys", "Developer options", "child process",
+            "Reset Ubuntu", "key bar", "Settings > Keys", "Developer options", "child process", "Antigravity's own screen",
         )
         val found = gone.filter { current.contains(it, ignoreCase = true) }
         assertTrue("old design words in the docs: $found", found.isEmpty())
