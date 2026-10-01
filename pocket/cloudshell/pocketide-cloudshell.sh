@@ -942,33 +942,102 @@ if __name__ == "__main__":
     serve(Browser())
 RELAY
 
-# 2c. PocketIDE's file drop (files.py): what the owner picks on the phone (From phone in a VS Code
-# file dialog, or Tools > Upload from phone) arrives in that agent's ~/projects/<agent>/uploads,
-# which git ignores. It starts with the agents' VS Code and listens only on 127.0.0.1.
+# 2c. PocketIDE's files (files.py): what the owner picks on the phone (an agent's own add-files, or
+# Tools > Upload from phone) arrives in that agent's ~/projects/<agent>/uploads, which git ignores;
+# and what an agent gives the owner, as a link (http://localhost:6081/f/...), opens on the phone
+# with a preview and Download (an APK: Install). It starts with the agents' VS Code and listens
+# only on 127.0.0.1.
 cat >"$BASE/files.py" <<'FILES'
-"""PocketIDE's file drop in Cloud Shell: files the owner picks on the phone arrive in an agent's
-~/projects/<agent>/uploads, a folder git ignores, so they are never pushed by accident.
+"""PocketIDE's files in Cloud Shell, for the owner's phone. Listens only on 127.0.0.1:FILES_PORT.
 
-PocketIDE's app sends them through its private door. This listens only on 127.0.0.1:FILES_PORT,
-writes only into those folders, never replaces a file (a second "photo.png" becomes
-"photo (2).png") and takes at most LIMIT bytes a file. Python's standard library only.
+The drop: files the owner picks on the phone arrive in an agent's ~/projects/<agent>/uploads, a
+folder git ignores, so they are never pushed by accident. It writes only into those folders, never
+replaces a file (a second "photo.png" becomes "photo (2).png") and takes at most LIMIT bytes a file.
+
+The links: an agent gives the owner a file or folder under ~/projects as
+http://localhost:FILES_PORT/f/<its path under ~/projects>. PocketIDE's app opens it as a page: its
+name, size and kind, a preview where a phone can show one, and buttons to download it to the phone
+(an APK: to install it). ?raw is the file itself (with ranges, for video), ?download the same as an
+attachment, ?zip a folder as one zip, ?icon an APK's icon. Nothing outside ~/projects is served,
+not even through a link inside it, and a file opened as a page cannot read the owner's other files.
+
+PocketIDE's app reaches both through its private door. Python's standard library only.
 """
+import csv
+import html
+import io
 import json
+import mimetypes
 import os
 import re
+import secrets
+import stat
+import struct
+import tarfile
 import tempfile
+import time
 import urllib.parse
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FILES_PORT = int(os.environ.get("FILES_PORT", "6081"))
-PROJECTS = os.path.join(os.path.expanduser("~"), "projects")
+HOME = os.path.expanduser("~")
+PROJECTS = os.path.join(HOME, "projects")
+# pdf.js (pdf.min.mjs and pdf.worker.min.mjs), which the set-up fetches, for PDFs' pages.
+VIEWER = os.path.join(HOME, ".pocketide", "viewer")
 # Each agent's VS Code port and name: PocketIDE's three, and those the owner added (~/.pocketide/agents).
 AGENTS = {"8080": "claude-code", "8081": "codex", "8082": "antigravity"}
-ADDED = os.path.join(os.path.expanduser("~"), ".pocketide", "agents")
+ADDED = os.path.join(HOME, ".pocketide", "agents")
 ADDED_ENTRY = re.compile(r"^(x-[a-z0-9-]{1,30}):(80(?:8[3-9]|9[0-9])):")
 LIMIT = 512 * 1024 * 1024
 UNSAFE = re.compile(r"[\x00-\x1f/\\]")
 IGNORE = "# Files sent from the phone (PocketIDE): kept out of git.\n*\n"
+
+TEXT_SHOWN = 256 * 1024  # of a text file, shown on its page
+JSON_PRETTY = 2 * 1024 * 1024  # a JSON file up to this size is shown indented
+TABLE_ROWS = 300
+LISTED = 1000  # entries of a folder or an archive
+ZIP_FILES = 20000  # a folder downloads as one zip up to this many files...
+ZIP_BYTES = 1 << 30  # ...and this many bytes
+
+KINDS = {}
+for _kind, _names in {
+    "image": "png jpg jpeg gif webp bmp ico svg avif",
+    "video": "mp4 m4v webm mov 3gp ogv mkv",
+    "audio": "mp3 wav ogg oga opus m4a aac flac weba",
+    "pdf": "pdf",
+    "apk": "apk",
+    "zip": "zip jar aar aab apks xapk ipa whl vsix epub war nupkg",
+    "markdown": "md markdown mdown mkd",
+    "json": "json geojson webmanifest har",
+    "table": "csv tsv",
+    "html": "html htm xhtml",
+    "document": "doc docx odt rtf xls xlsx ods ppt pptx odp pages numbers key",
+}.items():
+    for _name in _names.split():
+        KINDS[_name] = _kind
+TARS = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz")
+WORDS = {
+    "folder": "Folder", "image": "picture", "video": "video", "audio": "sound", "pdf": "PDF document",
+    "apk": "Android app", "zip": "archive", "tar": "archive", "markdown": "Markdown", "json": "JSON",
+    "table": "table", "html": "web page", "document": "document", "text": "text", "file": "file",
+}
+# What a file is served as. Text the phone should only show (code, logs, settings) is plain text;
+# what a page opened from here loads (its scripts, styles, data) keeps its own type.
+TYPES = {
+    ".apk": "application/vnd.android.package-archive", ".aab": "application/octet-stream",
+    ".html": "text/html", ".htm": "text/html", ".xhtml": "application/xhtml+xml", ".css": "text/css",
+    ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".map": "application/json",
+    ".xml": "text/xml", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm",
+    ".webp": "image/webp", ".avif": "image/avif", ".mkv": "video/x-matroska", ".m4a": "audio/mp4",
+    ".opus": "audio/ogg", ".flac": "audio/flac", ".weba": "audio/webm", ".pdf": "application/pdf",
+}
+# A file opened as a page runs in a sandbox: it loads its own parts from here, but cannot read any
+# other file (no same origin) or send anything elsewhere (only this address).
+SANDBOX = ("sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads; "
+           "default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; base-uri 'none'")
+ANDROID = {21: "5", 22: "5.1", 23: "6", 24: "7", 25: "7.1", 26: "8", 27: "8.1", 28: "9", 29: "10", 30: "11",
+           31: "12", 32: "12L", 33: "13", 34: "14", 35: "15", 36: "16", 37: "17", 38: "18"}
 
 
 def agents():
@@ -1016,6 +1085,814 @@ def keep(temporary, folder, name):
             number += 1
 
 
+# ---- What a file is ----
+
+def place(relative):
+    """The real path of [relative] (a path under ~/projects), or None when nothing is there or it leads out."""
+    root = os.path.realpath(PROJECTS)
+    parts = [part for part in relative.split("/") if part not in ("", ".")]
+    if any(part == ".." or "\x00" in part for part in parts):
+        return None
+    path = os.path.realpath(os.path.join(root, *parts))
+    if path != root and not path.startswith(root + os.sep):
+        return None
+    return path if os.path.exists(path) else None
+
+
+def under(path):
+    """[path]'s place under ~/projects, with / between its parts ("" for ~/projects itself)."""
+    relative = os.path.relpath(path, os.path.realpath(PROJECTS))
+    return "" if relative == "." else relative.replace(os.sep, "/")
+
+
+def address(relative, query=""):
+    return "/f/" + urllib.parse.quote(relative) + ("?" + query if query else "")
+
+
+def raw_address(relative):
+    """The file itself, under /r/: a page opened from there finds its own styles, scripts and pictures beside it."""
+    return "/r/" + urllib.parse.quote(relative)
+
+
+def looks_like_text(path):
+    try:
+        with open(path, "rb") as source:
+            start = source.read(8192)
+    except OSError:
+        return False
+    if b"\x00" in start:
+        return False
+    try:
+        start.decode("utf-8")
+        return True
+    except UnicodeDecodeError as error:
+        return error.start >= len(start) - 3  # only a character cut in two at the end
+
+
+def kind_of(path):
+    if os.path.isdir(path):
+        return "folder"
+    name = os.path.basename(path).lower()
+    if name.endswith(TARS):
+        return "tar"
+    kind = KINDS.get(name.rsplit(".", 1)[-1]) if "." in name else None
+    if kind:
+        return kind
+    return "text" if looks_like_text(path) else "file"
+
+
+def label_of(path, kind):
+    ext = os.path.splitext(path)[1].lstrip(".").upper()
+    if kind in ("folder", "pdf", "apk", "json", "markdown"):
+        return {"apk": "Android app (APK)"}.get(kind, WORDS[kind])
+    if kind in ("text", "file") and not ext:
+        return WORDS[kind].capitalize()
+    return ("%s %s" % (ext, WORDS[kind])) if ext else WORDS[kind].capitalize()
+
+
+def content_type(path, kind):
+    ext = os.path.splitext(path)[1].lower()
+    known = TYPES.get(ext) or (None if kind in ("text", "markdown") else mimetypes.guess_type(path)[0])
+    if not known:
+        known = "text/plain" if kind in ("text", "markdown", "table") or looks_like_text(path) else "application/octet-stream"
+    if known.startswith("text/") or known in ("application/json", "application/manifest+json", "image/svg+xml"):
+        known += "; charset=utf-8"
+    return known
+
+
+def size_text(size):
+    for unit in ("bytes", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return ("%d %s" % (size, unit)) if unit == "bytes" else ("%.1f %s" % (size, unit)).replace(".0 ", " ")
+        size /= 1024.0
+    return ""
+
+
+def read_text(path, limit):
+    with open(path, "rb") as source:
+        data = source.read(limit + 1)
+    return data[:limit].decode("utf-8", "replace"), len(data) > limit
+
+
+# ---- What an APK says about itself ----
+
+def u16(data, at):
+    return struct.unpack_from("<H", data, at)[0]
+
+
+def u32(data, at):
+    return struct.unpack_from("<I", data, at)[0]
+
+
+def string_pool(data, at):
+    """The strings of the string pool chunk at [at] (Android's binary XML and resources.arsc)."""
+    count, _styles, flags, start = struct.unpack_from("<IIII", data, at + 8)
+    offsets = struct.unpack_from("<%dI" % count, data, at + u16(data, at + 2))
+    strings = []
+    for offset in offsets:
+        p = at + start + offset
+        try:
+            if flags & 0x100:  # UTF-8: its length in UTF-16 units, then in bytes
+                p += 2 if data[p] & 0x80 else 1
+                n = data[p]
+                if n & 0x80:
+                    n, p = ((n & 0x7F) << 8) | data[p + 1], p + 2
+                else:
+                    p += 1
+                strings.append(data[p:p + n].decode("utf-8", "replace"))
+            else:
+                n, p = u16(data, p), p + 2
+                if n & 0x8000:
+                    n, p = ((n & 0x7FFF) << 16) | u16(data, p), p + 2
+                strings.append(data[p:p + 2 * n].decode("utf-16-le", "replace"))
+        except (IndexError, struct.error):
+            strings.append("")
+    return strings
+
+
+# Android's own attributes, by resource id: an APK's strings may not carry their names.
+ATTRIBUTES = {0x01010003: "name", 0x01010001: "label", 0x01010002: "icon", 0x0101021B: "versionCode",
+              0x0101021C: "versionName", 0x0101020C: "minSdkVersion", 0x01010270: "targetSdkVersion",
+              0x01010199: "drawable"}
+
+
+def xml_elements(data):
+    """Each element of Android's binary XML [data], as (name, {attribute: value}), in order. A
+    value is text, a number, or ("@", resource id)."""
+    if len(data) < 8 or u16(data, 0) != 0x0003:
+        return []
+    pool, ids, elements, at = [], [], [], u16(data, 2)
+    while at + 8 <= len(data):
+        kind, head, size = u16(data, at), u16(data, at + 2), u32(data, at + 4)
+        if size < 8:
+            break
+        if kind == 0x0001:
+            pool = string_pool(data, at)
+        elif kind == 0x0180:
+            ids = list(struct.unpack_from("<%dI" % ((size - head) // 4), data, at + head))
+        elif kind == 0x0102:
+            ext = at + head
+            name = u32(data, ext + 4)
+            start, each, count = u16(data, ext + 8), u16(data, ext + 10), u16(data, ext + 12)
+            attributes = {}
+            for i in range(count):
+                a = ext + start + i * each
+                which, raw, vtype, value = u32(data, a + 4), u32(data, a + 8), data[a + 15], u32(data, a + 16)
+                key = (ATTRIBUTES.get(ids[which]) if which < len(ids) else None) or (pool[which] if which < len(pool) else "")
+                if vtype == 0x03:
+                    attributes[key] = pool[value] if value < len(pool) else ""
+                elif vtype == 0x01:
+                    attributes[key] = ("@", value)
+                elif vtype in (0x10, 0x11, 0x12):
+                    attributes[key] = value
+                elif raw < len(pool):
+                    attributes[key] = pool[raw]
+            elements.append((pool[name] if name < len(pool) else "", attributes))
+        at += size
+    return elements
+
+
+def resource_values(data, ref):
+    """Each (density, language, value) the resources table [data] holds for resource [ref]."""
+    if len(data) < 12 or u16(data, 0) != 0x0002:
+        return []
+    package, type_id, entry = ref >> 24, (ref >> 16) & 0xFF, ref & 0xFFFF
+    strings, found, at = [], [], u16(data, 2)
+    while at + 8 <= len(data):
+        kind, head, size = u16(data, at), u16(data, at + 2), u32(data, at + 4)
+        if size < 8:
+            break
+        if kind == 0x0001:
+            strings = string_pool(data, at)
+        elif kind == 0x0200 and u32(data, at + 8) == package:
+            p, end = at + head, at + size
+            while p + 8 <= end:
+                k, h, s = u16(data, p), u16(data, p + 2), u32(data, p + 4)
+                if s < 8:
+                    break
+                if k == 0x0201 and data[p + 8] == type_id:
+                    flags, count, entries = data[p + 9], u32(data, p + 12), u32(data, p + 16)
+                    config = p + 20
+                    offset = None
+                    if flags & 0x01:  # sparse: (index, offset / 4) pairs
+                        for i in range(count):
+                            if u16(data, p + h + i * 4) == entry:
+                                offset = u16(data, p + h + i * 4 + 2) * 4
+                                break
+                    elif entry < count:
+                        if flags & 0x02:  # offsets / 4, in 16 bits
+                            offset = u16(data, p + h + entry * 2)
+                            offset = None if offset == 0xFFFF else offset * 4
+                        else:
+                            offset = u32(data, p + h + entry * 4)
+                            offset = None if offset == 0xFFFFFFFF else offset
+                    if offset is not None:
+                        e = p + entries + offset
+                        eflags = u16(data, e + 2)
+                        if eflags & 0x0008:  # compact: the value's type in the flags' high byte
+                            vtype, value = eflags >> 8, u32(data, e + 4)
+                        elif eflags & 0x0001:  # a style or array, not one value
+                            vtype = value = None
+                        else:
+                            esize = u16(data, e)
+                            vtype, value = data[e + esize + 3], u32(data, e + esize + 4)
+                        language = bytes(data[config + 8:config + 10])
+                        density = u16(data, config + 14)
+                        if vtype == 0x03:
+                            found.append((density, language, strings[value] if value < len(strings) else ""))
+                        elif vtype == 0x01:
+                            found.append((density, language, ("@", value)))
+                        elif vtype in (0x1C, 0x1D, 0x1E, 0x1F):  # a colour
+                            found.append((density, language, ("#", value)))
+                p += s
+        at += size
+    return found
+
+
+def resolve(table, value, depth=0):
+    """[value] with resource references replaced by the default language's text (or file path)."""
+    if not isinstance(value, tuple):
+        return value
+    if depth > 3 or not table:
+        return None
+    values = resource_values(table, value[1])
+    plain = [v for d, language, v in values if language == b"\0\0"] or [v for d, language, v in values]
+    return resolve(table, plain[0], depth + 1) if plain else None
+
+
+def densest(table, value):
+    """The densest bitmap of drawable [value], its colour as #rrggbb, or its XML file."""
+    if isinstance(value, tuple) and value[0] == "#":
+        return {"color": "#%06x" % (value[1] & 0xFFFFFF)}
+    if not isinstance(value, tuple) or not table:
+        return {}
+    values = [(d if d < 0xFFFE else 0, v) for d, language, v in resource_values(table, value[1])]
+    bitmaps = sorted((d, v) for d, v in values if isinstance(v, str) and v.lower().endswith((".png", ".webp", ".jpg")))
+    if bitmaps:
+        return {"bitmap": bitmaps[-1][1]}
+    colors = [v for d, v in values if isinstance(v, tuple) and v[0] == "#"]
+    if colors:
+        return {"color": "#%06x" % (colors[0][1] & 0xFFFFFF)}
+    layers = [v for d, v in values if isinstance(v, str) and v.endswith(".xml")]
+    return {"xml": layers[0]} if layers else {}
+
+
+def app_icon(apk, table, value):
+    """The APK's own icon: {"bitmap": file}, or an adaptive icon's {"foreground": file, "background":
+    file or "color": #rrggbb}; {} when it has none a page can show (a vector drawing, say)."""
+    found = densest(table, value)
+    if "bitmap" in found or "xml" not in found:
+        return {"bitmap": found["bitmap"]} if "bitmap" in found else {}
+    try:
+        elements = dict((name, attrs) for name, attrs in xml_elements(apk.read(found["xml"])))
+    except (KeyError, OSError, zipfile.BadZipFile, struct.error, IndexError):
+        return {}
+    front = densest(table, elements.get("foreground", {}).get("drawable"))
+    if "bitmap" not in front:
+        return {}
+    back = densest(table, elements.get("background", {}).get("drawable"))
+    icon = {"foreground": front["bitmap"]}
+    if "bitmap" in back:
+        icon["background"] = back["bitmap"]
+    elif "color" in back:
+        icon["color"] = back["color"]
+    return icon
+
+
+def apk_info(path):
+    """An APK's name, package, version, the Android it needs, its permissions and its icon's file."""
+    try:
+        with zipfile.ZipFile(path) as apk:
+            elements = xml_elements(apk.read("AndroidManifest.xml"))
+            try:
+                table = apk.read("resources.arsc")
+            except KeyError:
+                table = b""
+            info = {"permissions": []}
+            for name, attrs in elements:
+                if name == "manifest":
+                    info.update(package=attrs.get("package"), versionName=resolve(table, attrs.get("versionName")),
+                                versionCode=attrs.get("versionCode"))
+                elif name == "uses-sdk":
+                    info.update(minSdk=attrs.get("minSdkVersion"), targetSdk=attrs.get("targetSdkVersion"))
+                elif name == "application":
+                    info["label"] = resolve(table, attrs.get("label"))
+                    info["icon"] = app_icon(apk, table, attrs.get("icon"))
+                elif name in ("uses-permission", "uses-permission-sdk-23") and isinstance(attrs.get("name"), str):
+                    info["permissions"].append(attrs["name"])
+            return info
+    except (OSError, KeyError, zipfile.BadZipFile, struct.error, IndexError, ValueError):
+        return None
+
+
+# ---- The page ----
+
+ICONS = {
+    "folder": "M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z",
+    "image": "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z",
+    "video": "M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z",
+    "audio": "M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z",
+    "pdf": "M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z",
+    "apk": "M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24a11.46 11.46 0 0 0-8.94 0L5.65 5.67a.643.643 0 0 0-.87-.2c-.28.18-.37.54-.22.83L6.4 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z",
+    "zip": "M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z",
+    "markdown": "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z",
+    "text": "M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z",
+    "table": "M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM8 20H4v-4h4v4zm0-6H4v-4h4v4zm0-6H4V4h4v4zm6 12h-4v-4h4v4zm0-6h-4v-4h4v4zm0-6h-4V4h4v4zm6 12h-4v-4h4v4zm0-6h-4v-4h4v4zm0-6h-4V4h4v4z",
+    "html": "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z",
+    "document": "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z",
+    "file": "M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z",
+    "download": "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
+    "install": "M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14zm-1-6h-3V8h-2v5H8l4 4 4-4z",
+    "open": "M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
+    "copy": "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z",
+}
+ICONS["json"] = ICONS["text"]
+ICONS["tar"] = ICONS["zip"]
+
+STYLE = """
+:root{color-scheme:light dark;--bg:#f8fafd;--card:#fff;--text:#1f1f1f;--muted:#5f6368;--line:#e2e5e9;--primary:#0b57d0;
+--on-primary:#fff;--tonal:#d3e3fd;--on-tonal:#041e49;--code:#f1f4f8}
+@media (prefers-color-scheme:dark){:root{--bg:#131314;--card:#1e1f20;--text:#e3e3e3;--muted:#a8abb0;--line:#3c4043;
+--primary:#a8c7fa;--on-primary:#062e6f;--tonal:#004a77;--on-tonal:#c2e7ff;--code:#26282b}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Roboto,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:12px}a{color:var(--primary)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:12px}
+.head{display:flex;gap:14px;align-items:center}
+.icon{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--tonal);color:var(--on-tonal)}
+.icon svg{width:28px;height:28px;fill:currentColor}.icon img{width:52px;height:52px;object-fit:contain}
+h1{font-size:18px;line-height:1.3;margin:0;font-weight:500;overflow-wrap:anywhere}
+.meta{color:var(--muted);font-size:13px;margin-top:2px}
+.crumbs{font-size:13px;color:var(--muted);margin:2px 4px 10px;overflow-wrap:anywhere}.crumbs a{text-decoration:none}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 18px;border-radius:20px;font-family:inherit;font-size:14px;font-weight:500;line-height:1;
+text-decoration:none;border:0;background:var(--tonal);color:var(--on-tonal);cursor:pointer}
+.btn.primary{background:var(--primary);color:var(--on-primary)}.btn svg{width:18px;height:18px;fill:currentColor}
+.note{color:var(--muted);font-size:13px;margin:8px 0 0}
+.preview{padding:8px}.preview img:not(.layer),.preview video{display:block;max-width:100%;max-height:75vh;height:auto;margin:0 auto;border-radius:12px}
+.icon.app{position:relative;overflow:hidden;background:#fff}.icon.app .layer{position:absolute;left:-25%;top:-25%;width:150%;height:150%}
+.tools{display:flex;justify-content:flex-end;margin:0 0 6px}.tools button{border:0;background:none;color:var(--primary);font-family:inherit;font-size:13px;font-weight:500;padding:4px 6px;cursor:pointer}
+.preview>audio{width:100%}.checker{background:repeating-conic-gradient(#e8eaed 0 25%,#fff 0 50%) 0 0/16px 16px}
+pre{margin:0;overflow:auto;background:var(--code);padding:12px;border-radius:12px;font:12.5px/1.6 "Roboto Mono",ui-monospace,monospace;tab-size:4}
+pre.wrap{white-space:pre-wrap;overflow-wrap:anywhere}
+pre.lines{counter-reset:line}pre.lines>span{display:block;padding-left:3.6em;text-indent:-3.6em;min-height:1.6em}
+pre.lines>span::before{counter-increment:line;content:counter(line);display:inline-block;width:3em;margin-right:.6em;text-align:right;color:var(--muted);opacity:.7}
+.scroll{overflow:auto;border-radius:12px;border:1px solid var(--line)}
+table{border-collapse:collapse;font-size:13px;min-width:100%}td,th{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;white-space:nowrap}
+th{background:var(--code);font-weight:500;position:sticky;top:0}
+.list a{display:flex;gap:12px;align-items:center;padding:10px 6px;color:inherit;text-decoration:none;border-bottom:1px solid var(--line)}
+.list a:last-child{border-bottom:0}.list .icon{width:38px;height:38px;border-radius:10px}.list .icon svg{width:20px;height:20px}
+.list .name{overflow-wrap:anywhere;flex:1}.list .side{color:var(--muted);font-size:12px;text-align:right;white-space:nowrap}
+.rows{font-size:13px}.rows div{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
+.rows div:last-child{border-bottom:0}.rows span:first-child{color:var(--muted)}.rows span:last-child{overflow-wrap:anywhere;text-align:right}
+.md{overflow-wrap:anywhere}.md img{max-width:100%}.md pre{margin:8px 0}.md code{background:var(--code);border-radius:6px;padding:1px 5px;font-size:.9em}
+.md pre code{padding:0;background:none}.md table td,.md table th{white-space:normal}.md blockquote{margin:8px 0;padding:0 12px;border-left:4px solid var(--line);color:var(--muted)}
+canvas.page{display:block;width:100%;height:auto;margin:0 auto 10px;border-radius:6px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+"""
+
+COPY_SCRIPT = """
+document.querySelectorAll('[data-copy]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    var text = button.getAttribute('data-copy');
+    var done = function () { var was = button.lastChild.textContent; button.lastChild.textContent = 'Copied'; setTimeout(function () { button.lastChild.textContent = was; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () {});
+  });
+});
+document.querySelectorAll('[data-wrap]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    var code = button.parentNode.nextElementSibling;
+    var wrapped = code.classList.toggle('wrap');
+    button.textContent = wrapped ? 'Scroll lines' : 'Wrap lines';
+  });
+});
+document.querySelectorAll('[data-time]').forEach(function (node) {
+  var time = new Date(Number(node.getAttribute('data-time')));
+  node.textContent = time.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+});
+document.querySelectorAll('video,audio').forEach(function (media) {
+  media.addEventListener('error', function () {
+    var note = document.createElement('p');
+    note.className = 'note';
+    note.textContent = 'This phone cannot play it here. Download it, then open it with an app.';
+    media.replaceWith(note);
+  });
+});
+"""
+
+PDF_SCRIPT = """
+import * as pdfjs from '/_/pdf.min.mjs';
+pdfjs.GlobalWorkerOptions.workerSrc = '/_/pdf.worker.min.mjs';
+const box = document.getElementById('pages');
+const note = document.getElementById('pdf-note');
+const show = (text) => { note.textContent = text; };
+try {
+  const doc = await pdfjs.getDocument({ url: box.dataset.src, isEvalSupported: false }).promise;
+  show(doc.numPages === 1 ? '1 page' : `${doc.numPages} pages`);
+  const draw = async (number, canvas) => {
+    const page = await doc.getPage(number);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, (box.clientWidth * (window.devicePixelRatio || 1)) / base.width);
+    const view = page.getViewport({ scale });
+    canvas.width = Math.floor(view.width);
+    canvas.height = Math.floor(view.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: view }).promise;
+  };
+  const watch = new IntersectionObserver((seen) => seen.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    watch.unobserve(entry.target);
+    draw(Number(entry.target.dataset.page), entry.target).catch(() => {});
+  }), { rootMargin: '600px' });
+  for (let number = 1; number <= doc.numPages; number++) {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'page';
+    canvas.dataset.page = String(number);
+    const first = await doc.getPage(1);
+    const view = first.getViewport({ scale: 1 });
+    canvas.style.aspectRatio = `${view.width} / ${view.height}`;
+    box.appendChild(canvas);
+    watch.observe(canvas);
+  }
+} catch (error) {
+  show('This PDF does not open here. Download it, then open it with an app.');
+}
+"""
+
+
+def esc(text):
+    return html.escape(str(text), quote=True)
+
+
+def svg(name):
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="%s"/></svg>' % ICONS.get(name, ICONS["file"])
+
+
+def button(href, text, icon, primary=False, attrs=""):
+    return '<a class="btn%s" href="%s"%s>%s<span>%s</span></a>' % (" primary" if primary else "", esc(href), attrs, svg(icon), esc(text))
+
+
+def crumbs(relative):
+    parts = relative.split("/") if relative else []
+    links = ['<a href="%s">Projects</a>' % address("")]
+    for i, part in enumerate(parts[:-1]):
+        links.append('<a href="%s">%s</a>' % (esc(address("/".join(parts[:i + 1]))), esc(part)))
+    return '<nav class="crumbs">%s</nav>' % " › ".join(links)
+
+
+def page(title, body, nonce, module=None, style=""):
+    script = '<script nonce="%s">%s</script>' % (nonce, COPY_SCRIPT)
+    if module:
+        script += '<script type="module" nonce="%s">%s</script>' % (nonce, module)
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>%s</title><style nonce="%s">%s%s</style></head><body><main>%s</main>%s</body></html>'
+            % (esc(title), nonce, STYLE, style, body, script)).encode("utf-8")
+
+
+def text_view(text, numbered):
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    tools = '<div class="tools"><button type="button" data-wrap>Wrap lines</button></div>'
+    if numbered and len(lines) <= 20000:
+        return tools + '<pre class="lines">%s</pre>' % "".join("<span>%s</span>" % esc(line) for line in lines)
+    return tools + '<pre>%s</pre>' % esc(text)
+
+
+def inline(text, base):
+    """Markdown within a line: code, links, pictures, bold, italics, struck text (escaped first)."""
+    codes = []
+
+    def keep_code(match):
+        codes.append("<code>%s</code>" % match.group(1))
+        return "\x00%d\x00" % (len(codes) - 1)
+
+    def target(url, picture):
+        url = html.unescape(url)
+        if re.match(r"^(https?:|mailto:|#)", url, re.I):
+            return esc(url) if not picture else None
+        if re.match(r"^[a-z][a-z0-9+.-]*:", url, re.I) or url.startswith("//"):
+            return None
+        path, _, fragment = url.partition("#")
+        joined = os.path.normpath(os.path.join(base, urllib.parse.unquote(path))).replace(os.sep, "/").lstrip("/")
+        if joined.startswith(".."):
+            return None
+        return esc(address(joined, "raw" if picture else "") + ("#" + fragment if fragment and not picture else ""))
+
+    def picture(match):
+        where = target(match.group(2), True)
+        return '<img alt="%s" src="%s">' % (match.group(1), where) if where else match.group(1)
+
+    def link(match):
+        where = target(match.group(2), False)
+        return '<a href="%s">%s</a>' % (where, match.group(1)) if where else match.group(1)
+
+    text = esc(text)
+    text = re.sub(r"`([^`]+)`", keep_code, text)
+    text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)", picture, text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)", link, text)
+    text = re.sub(r"(?<![\w\"/=])(https?://[^\s<]+[^\s<.,;:!?)\]])", r'<a href="\1">\1</a>', text)
+    text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: "<strong>%s</strong>" % (m.group(1) or m.group(2)), text)
+    text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?!\w)|(?<![\w_])_(?!\s)(.+?)(?<!\s)_(?!\w)",
+                  lambda m: "<em>%s</em>" % (m.group(1) or m.group(2)), text)
+    text = re.sub(r"~~(.+?)~~", r"<del>\1</del>", text)
+    return re.sub("\x00(\\d+)\x00", lambda m: codes[int(m.group(1))], text)
+
+
+def markdown(source, base):
+    """A safe part of Markdown: headings, paragraphs, lists, quotes, code, tables, rules, links and pictures."""
+    out, lines, i = [], source.split("\n"), 0
+    while i < len(lines):
+        line = lines[i]
+        fence = re.match(r"^\s*(```|~~~)", line)
+        if fence:
+            body = []
+            i += 1
+            while i < len(lines) and not lines[i].lstrip().startswith(fence.group(1)):
+                body.append(lines[i])
+                i += 1
+            out.append("<pre><code>%s</code></pre>" % esc("\n".join(body)))
+            i += 1
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            level = len(heading.group(1))
+            out.append("<h%d>%s</h%d>" % (level + 1 if level < 6 else 6, inline(heading.group(2), base), level + 1 if level < 6 else 6))
+            i += 1
+            continue
+        if re.match(r"^\s*([-*_])(\s*\1){2,}\s*$", line):
+            out.append("<hr>")
+            i += 1
+            continue
+        if "|" in line and i + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", lines[i + 1]):
+            cells = lambda row: [cell.strip() for cell in row.strip().strip("|").split("|")]
+            rows = ["<tr>%s</tr>" % "".join("<th>%s</th>" % inline(cell, base) for cell in cells(line))]
+            i += 2
+            while i < len(lines) and "|" in lines[i] and lines[i].strip():
+                rows.append("<tr>%s</tr>" % "".join("<td>%s</td>" % inline(cell, base) for cell in cells(lines[i])))
+                i += 1
+            out.append('<div class="scroll"><table>%s</table></div>' % "".join(rows))
+            continue
+        if re.match(r"^\s*>", line):
+            quote = []
+            while i < len(lines) and re.match(r"^\s*>", lines[i]):
+                quote.append(re.sub(r"^\s*>\s?", "", lines[i]))
+                i += 1
+            out.append("<blockquote>%s</blockquote>" % markdown("\n".join(quote), base))
+            continue
+        item = re.match(r"^\s*([-*+]|\d+[.)])\s+(.*)$", line)
+        if item:
+            ordered = item.group(1)[0].isdigit()
+            items = []
+            while i < len(lines):
+                each = re.match(r"^\s*([-*+]|\d+[.)])\s+(.*)$", lines[i])
+                if each:
+                    task = re.match(r"^\[([ xX])\]\s+(.*)$", each.group(2))
+                    text = ("☑ " if task.group(1).lower() == "x" else "☐ ") + task.group(2) if task else each.group(2)
+                    items.append(inline(text, base))
+                elif lines[i].startswith(("  ", "\t")) and lines[i].strip() and items:
+                    items[-1] += " " + inline(lines[i].strip(), base)
+                else:
+                    break
+                i += 1
+            tag = "ol" if ordered else "ul"
+            out.append("<%s>%s</%s>" % (tag, "".join("<li>%s</li>" % each for each in items), tag))
+            continue
+        if not line.strip():
+            i += 1
+            continue
+        paragraph = []
+        while i < len(lines) and lines[i].strip() and not re.match(r"^\s*(#{1,6}\s|>|```|~~~|[-*+]\s|\d+[.)]\s)", lines[i]):
+            paragraph.append(lines[i].strip())
+            i += 1
+        if not paragraph:  # a line that only looked like the start of something
+            paragraph, i = [line.strip()], i + 1
+        out.append("<p>%s</p>" % inline(" ".join(paragraph), base))
+    return "".join(out)
+
+
+def folder_entries(path):
+    """The folder's entries, folders first, then by name (hidden ones last); at most LISTED."""
+    entries = []
+    try:
+        with os.scandir(path) as listing:
+            for entry in listing:
+                try:
+                    if entry.is_symlink() and place(under(os.path.realpath(entry.path))) is None:
+                        continue
+                    info = entry.stat()
+                except (OSError, ValueError):
+                    continue
+                entries.append((entry.name.startswith("."), not stat.S_ISDIR(info.st_mode), entry.name.lower(), entry.name, info))
+    except OSError:
+        return [], 0
+    entries.sort()
+    return entries[:LISTED], len(entries)
+
+
+def zip_plan(path):
+    """The files a folder's zip holds and their size, or None when there are too many or they are too big."""
+    files, total = [], 0
+    for top, folders, names in os.walk(path):
+        folders[:] = [name for name in folders if not os.path.islink(os.path.join(top, name))]
+        for name in names:
+            full = os.path.join(top, name)
+            try:
+                info = os.lstat(full)
+            except OSError:
+                continue
+            if not stat.S_ISREG(info.st_mode):
+                continue
+            files.append(full)
+            total += info.st_size
+            if len(files) > ZIP_FILES or total > ZIP_BYTES:
+                return None
+    return files, total
+
+
+def preview(path, relative, kind, size):
+    """The middle of a file's page: what the phone can show of it. Returns (html, module script)."""
+    raw = address(relative, "raw")
+    if kind == "folder":
+        entries, count = folder_entries(path)
+        if not entries:
+            return '<p class="note">This folder is empty.</p>', None
+        rows = []
+        for _hidden, is_file, _lower, name, info in entries:
+            child = (relative + "/" if relative else "") + name
+            child_kind = kind_of(os.path.join(path, name)) if is_file else "folder"
+            side = size_text(info.st_size) if is_file else "Folder"
+            rows.append('<a href="%s"><span class="icon">%s</span><span class="name">%s</span><span class="side">%s<br>'
+                        '<span data-time="%d"></span></span></a>' % (esc(address(child)), svg(child_kind), esc(name), side,
+                                                                     int(info.st_mtime * 1000)))
+        more = '<p class="note">%d more not shown.</p>' % (count - len(entries)) if count > len(entries) else ""
+        return '<div class="list">%s</div>%s' % ("".join(rows), more), None
+    if size == 0:
+        return '<p class="note">This file is empty.</p>', None
+    if kind == "image":
+        return '<a href="%s"><img class="checker" alt="%s" src="%s"></a>' % (esc(raw), esc(os.path.basename(path)), esc(raw)), None
+    if kind == "video":
+        return '<video controls playsinline preload="metadata" src="%s"></video>' % esc(raw), None
+    if kind == "audio":
+        return '<audio controls preload="metadata" src="%s"></audio>' % esc(raw), None
+    if kind == "pdf":
+        if os.path.isfile(os.path.join(VIEWER, "pdf.min.mjs")):
+            return '<p class="note" id="pdf-note">Opening…</p><div id="pages" data-src="%s"></div>' % esc(raw), PDF_SCRIPT
+        return '<p class="note">Download it to read it with an app on the phone.</p>', None
+    if kind == "apk":
+        info = apk_info(path)
+        if not info:
+            return '<p class="note">This APK could not be read: it may be damaged.</p>', None
+        rows = [("App", info.get("label")), ("Package", info.get("package")),
+                ("Version", "%s (%s)" % (info.get("versionName") or "?", info.get("versionCode")) if info.get("versionCode") is not None else info.get("versionName")),
+                ("Needs", "Android %s or newer" % ANDROID.get(info.get("minSdk"), info.get("minSdk")) if info.get("minSdk") else None),
+                ("Made for", "Android %s" % ANDROID.get(info.get("targetSdk"), info.get("targetSdk")) if info.get("targetSdk") else None)]
+        table = "".join("<div><span>%s</span><span>%s</span></div>" % (esc(k), esc(v)) for k, v in rows if v)
+        permissions = info["permissions"]
+        listed = ('<details><summary>It asks for %d permission%s</summary><pre class="wrap">%s</pre></details>'
+                  % (len(permissions), "" if len(permissions) == 1 else "s", esc("\n".join(sorted(set(permissions)))))) if permissions else ""
+        return '<div class="rows">%s</div>%s<p class="note">Install opens Android\'s own installer, which asks you first.</p>' % (table, listed), None
+    if kind in ("zip", "tar"):
+        try:
+            names = []
+            total = count = 0
+            if kind == "zip":
+                with zipfile.ZipFile(path) as archive:
+                    for item in archive.infolist():
+                        count += 1
+                        total += item.file_size
+                        if len(names) < LISTED:
+                            names.append((item.filename, item.file_size, item.is_dir()))
+            else:
+                with tarfile.open(path) as archive:
+                    for item in archive:
+                        count += 1
+                        total += item.size
+                        if len(names) < LISTED:
+                            names.append((item.name + ("/" if item.isdir() else ""), item.size, item.isdir()))
+                        if count >= 50000:
+                            break
+        except (OSError, zipfile.BadZipFile, tarfile.TarError, EOFError, RuntimeError):
+            return '<p class="note">This archive could not be read: it may be damaged or locked.</p>', None
+        rows = "".join("<tr><td>%s</td><td>%s</td></tr>" % (esc(name), "" if folder else size_text(item_size)) for name, item_size, folder in names)
+        more = '<p class="note">%d more not shown.</p>' % (count - len(names)) if count > len(names) else ""
+        return ('<p class="note">%d item%s inside, %s unpacked</p><div class="scroll"><table><tr><th>Name</th><th>Size</th></tr>%s'
+                '</table></div>%s' % (count, "" if count == 1 else "s", size_text(total), rows, more)), None
+    if kind == "document":
+        return '<p class="note">Download it to open it with an app on the phone.</p>', None
+    if kind == "file":
+        return '<p class="note">The phone cannot show this kind of file here. Download it to open it with an app.</p>', None
+    text, cut = read_text(path, TEXT_SHOWN if kind != "json" else JSON_PRETTY)
+    note = '<p class="note">The first %s of %s.</p>' % (size_text(TEXT_SHOWN), size_text(size)) if cut and kind != "json" else ""
+    if kind == "json":
+        try:
+            if cut:
+                raise ValueError("too big to indent")
+            text = json.dumps(json.loads(text), indent=2, ensure_ascii=False)
+        except ValueError:
+            text, cut = read_text(path, TEXT_SHOWN)
+            note = '<p class="note">The first %s of %s.</p>' % (size_text(TEXT_SHOWN), size_text(size)) if cut else ""
+        return text_view(text[:TEXT_SHOWN], True) + note, None
+    if kind == "markdown":
+        return '<div class="md">%s</div>%s' % (markdown(text, os.path.dirname(relative)), note), None
+    if kind == "table":
+        delimiter = "\t" if path.lower().endswith(".tsv") else ","
+        rows = []
+        for row in csv.reader(io.StringIO(text), delimiter=delimiter):
+            rows.append(row[:50])
+            if len(rows) > TABLE_ROWS:
+                break
+        if not rows:
+            return '<p class="note">This table is empty.</p>', None
+        head = "".join("<th>%s</th>" % esc(cell) for cell in rows[0])
+        body = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % esc(cell) for cell in row) for row in rows[1:TABLE_ROWS + 1])
+        more = '<p class="note">The first %d rows.</p>' % TABLE_ROWS if len(rows) > TABLE_ROWS or cut else ""
+        return '<div class="scroll"><table><tr>%s</tr>%s</table></div>%s' % (head, body, more), None
+    return text_view(text, True) + note, None
+
+
+def file_page(path, relative):
+    """A file's (or folder's) page: what it is, buttons for it, and what the phone can show of it."""
+    nonce = secrets.token_urlsafe(16)
+    info = os.stat(path)
+    kind = kind_of(path)
+    name = os.path.basename(path) if relative else "Projects"
+    size = 0 if kind == "folder" else info.st_size
+    icon = svg(kind)
+    icon_class, style = "icon", ""
+    actions = []
+    if kind == "folder":
+        plan = zip_plan(path) if relative else None
+        if plan and plan[0]:
+            actions.append(button(address(relative, "zip"), "Download as zip", "download", primary=True))
+        meta = esc(label_of(path, kind))
+    else:
+        if kind == "apk":
+            shown = (apk_info(path) or {}).get("icon") or {}
+            if "bitmap" in shown:
+                icon = '<img alt="" src="%s">' % esc(address(relative, "icon=bitmap"))
+            elif "foreground" in shown:
+                icon_class = "icon app"
+                layers = ["foreground"] if "color" in shown else ["background", "foreground"]
+                icon = "".join('<img class="layer" alt="" src="%s">' % esc(address(relative, "icon=" + layer)) for layer in layers)
+                if "color" in shown:
+                    style = ".icon.app{background:%s}" % shown["color"]
+            actions.append(button(address(relative, "download&install"), "Install", "install", primary=True))
+            actions.append(button(address(relative, "download"), "Download", "download"))
+        else:
+            actions.append(button(address(relative, "download"), "Download", "download", primary=True))
+        if kind in ("image", "video", "audio", "html", "text", "json", "markdown", "table"):
+            actions.append(button(raw_address(relative), "Open page" if kind == "html" else "Open", "open"))
+        meta = "%s · %s" % (esc(size_text(size)), esc(label_of(path, kind)))
+    actions.append('<button class="btn" type="button" data-copy="%s">%s<span>Copy path</span></button>'
+                   % (esc("~/projects/" + relative if relative else "~/projects"), svg("copy")))
+    body, module = preview(path, relative, kind, size)
+    head = ('<section class="card"><div class="head"><span class="%s">%s</span><div><h1>%s</h1><div class="meta">%s'
+            ' · <span data-time="%d"></span></div></div></div><div class="actions">%s</div></section>'
+            % (icon_class, icon, esc(name), meta, int(info.st_mtime * 1000), "".join(actions)))
+    return page(name, crumbs(relative) + head + '<section class="card preview">%s</section>' % body, nonce, module, style), nonce
+
+
+def missing_page(relative):
+    nonce = secrets.token_urlsafe(16)
+    body = ('<section class="card"><div class="head"><span class="icon">%s</span><div><h1>%s</h1><div class="meta">'
+            'Not in Cloud Shell any more: it was moved, renamed or deleted, or it is outside ~/projects.</div></div></div>'
+            '<div class="actions">%s</div></section>' % (svg("file"), esc(os.path.basename(relative) or relative),
+                                                         button(address(os.path.dirname(relative)), "Open its folder", "folder", primary=True)))
+    return page("Not found", crumbs(relative) + body, nonce), nonce
+
+
+def byte_range(header, size):
+    """(first, last) of a single Range header, None for the whole file, "bad" when it cannot be met."""
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", (header or "").strip())
+    if not match or match.group(1) == match.group(2) == "":
+        return None
+    first, last = match.groups()
+    if first == "":
+        if int(last) == 0:
+            return "bad"
+        return max(0, size - int(last)), size - 1
+    first = int(first)
+    last = min(int(last), size - 1) if last else size - 1
+    if first >= size or last < first:
+        return "bad"
+    return first, last
+
+
+class _Stream:
+    """The answer's body as a file zipfile can write to (no seeking, no telling)."""
+
+    def __init__(self, out):
+        self.out = out
+
+    def write(self, data):
+        self.out.write(data)
+        return len(data)
+
+    def flush(self):
+        self.out.flush()
+
+
 class Drop(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -1039,14 +1916,190 @@ class Drop(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
 
+    def html_answer(self, status, data, nonce):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", (
+            "default-src 'none'; img-src 'self' data: blob:; media-src 'self'; style-src 'nonce-%s'; "
+            "script-src 'self' 'nonce-%s'; connect-src 'self'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'"
+        ) % (nonce, nonce))
+        self.finish_answer(data)
+
+    def finish_answer(self, data):
+        try:
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     def do_OPTIONS(self):
         self.answer(204)
 
+    def do_HEAD(self):
+        self.do_GET()
+
     def do_GET(self):
-        if self.path == "/state":
-            self.answer(200, {"ok": True})
-        else:
-            self.answer(404, {"error": "Not here."})
+        path, _, query = self.path.partition("?")
+        if path == "/state":
+            return self.answer(200, {"ok": True})
+        if path in ("/", "/f"):
+            return self.redirect("/f/")
+        if path.startswith("/_/"):
+            return self.viewer(path[3:])
+        if path.startswith("/r/"):
+            wanted = urllib.parse.unquote(path[3:]).strip("/")
+            found = place(wanted)
+            if found and os.path.isdir(found):
+                index = os.path.join(found, "index.html")
+                if not os.path.isfile(index):
+                    return self.redirect(address(under(found)))
+                if not path.endswith("/"):  # so that the page's own relative links find its folder
+                    return self.redirect(raw_address(under(found)) + "/")
+                found = index
+            if found is None:
+                data, nonce = missing_page(wanted)
+                return self.html_answer(404, data, nonce)
+            return self.send_file(found, attachment=False)
+        if not path.startswith("/f/"):
+            return self.answer(404, {"error": "Not here."})
+        relative = urllib.parse.unquote(path[3:]).strip("/")
+        found = place(relative)
+        if found is None:
+            data, nonce = missing_page(relative)
+            return self.html_answer(404, data, nonce)
+        relative = under(found)
+        wants = set(urllib.parse.parse_qs(query, keep_blank_values=True))
+        if os.path.isdir(found):
+            if "zip" in wants and relative:
+                return self.folder_zip(found)
+            data, nonce = file_page(found, relative)
+            return self.html_answer(200, data, nonce)
+        if "icon" in wants:
+            return self.apk_icon(found, (urllib.parse.parse_qs(query).get("icon") or ["bitmap"])[0])
+        if wants & {"raw", "download"}:
+            return self.send_file(found, attachment="download" in wants)
+        try:
+            data, nonce = file_page(found, relative)
+        except OSError as error:
+            return self.answer(500, {"error": str(error)})
+        self.html_answer(200, data, nonce)
+
+    def redirect(self, where):
+        self.send_response(302)
+        self.send_header("Location", where)
+        self.send_header("Content-Length", "0")
+        self.finish_answer(b"")
+
+    def viewer(self, name):
+        if name not in ("pdf.min.mjs", "pdf.worker.min.mjs"):
+            return self.answer(404, {"error": "Not here."})
+        try:
+            with open(os.path.join(VIEWER, name), "rb") as source:
+                data = source.read()
+        except OSError:
+            return self.answer(404, {"error": "PDF pages are not set up here."})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=86400")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.finish_answer(data)
+
+    def raw_headers(self, path, attachment):
+        self.send_header("Content-Type", content_type(path, kind_of(path)))
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", SANDBOX)
+        name = os.path.basename(path)
+        if attachment:
+            plain = re.sub(r'[^\x20-\x7e]|["\\]', "_", name) or "file"
+            self.send_header("Content-Disposition", "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (plain, urllib.parse.quote(name)))
+
+    def send_file(self, path, attachment):
+        try:
+            source = open(path, "rb")
+        except OSError as error:
+            return self.answer(403, {"error": str(error)})
+        with source:
+            size = os.fstat(source.fileno()).st_size
+            wanted = None if attachment else byte_range(self.headers.get("Range"), size)
+            if wanted == "bad":
+                self.send_response(416)
+                self.send_header("Content-Range", "bytes */%d" % size)
+                self.send_header("Content-Length", "0")
+                return self.finish_answer(b"")
+            first, last = wanted or (0, size - 1)
+            self.send_response(206 if wanted else 200)
+            self.raw_headers(path, attachment)
+            self.send_header("Accept-Ranges", "bytes")
+            if wanted:
+                self.send_header("Content-Range", "bytes %d-%d/%d" % (first, last, size))
+            self.send_header("Content-Length", str(max(0, last - first + 1)))
+            try:
+                self.end_headers()
+                if self.command == "HEAD":
+                    return
+                source.seek(first)
+                left = last - first + 1
+                while left > 0:
+                    chunk = source.read(min(left, 1 << 20))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
+
+    def apk_icon(self, path, layer):
+        details = apk_info(path) if kind_of(path) == "apk" else None
+        member = ((details or {}).get("icon") or {}).get(layer)
+        try:
+            with zipfile.ZipFile(path) as apk:
+                data = apk.read(member) if member else None
+        except (OSError, KeyError, zipfile.BadZipFile):
+            data = None
+        if not data:
+            return self.answer(404, {"error": "No icon."})
+        self.send_response(200)
+        self.send_header("Content-Type", TYPES.get(os.path.splitext(member)[1].lower()) or "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.finish_answer(data)
+
+    def folder_zip(self, path):
+        plan = zip_plan(path)
+        if not plan:
+            return self.answer(413, {"error": "Too many or too big files for one zip: open the files you want instead."})
+        files, _total = plan
+        name = os.path.basename(path) + ".zip"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        plain = re.sub(r'[^\x20-\x7e]|["\\]', "_", name)
+        self.send_header("Content-Disposition", "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (plain, urllib.parse.quote(name)))
+        # Its size is known only once it is made: the answer ends when the connection does.
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        try:
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            with zipfile.ZipFile(_Stream(self.wfile), "w", zipfile.ZIP_DEFLATED) as archive:
+                for full in files:
+                    try:
+                        archive.write(full, os.path.join(os.path.basename(path), os.path.relpath(full, path)))
+                    except OSError:
+                        continue  # gone meanwhile
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_POST(self):
         path, _, query = self.path.partition("?")
@@ -1093,12 +2146,14 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
 
     def handle_error(self, request, address):
-        pass  # a phone that went away mid-upload
+        pass  # a phone that went away mid-upload or mid-download
 
 
 if __name__ == "__main__":
     Server(("127.0.0.1", FILES_PORT), Drop).serve_forever()
 FILES
+# A file drop still running from an older set-up stops: the next VS Code starts this one.
+pkill -u "$(id -u)" -f "$BASE/files.py" || true
 
 # 3. `pocketide`: starts or stops an agent's VS Code (`pocketide start|stop <agent>`), installs or
 # updates the agents (`pocketide update`), adds or removes an agent of the owner's choice
@@ -1124,8 +2179,12 @@ fi
 CODE="$BASE/code-server/current/bin/code-server"
 # Antigravity's extension starts Google's agy on this port (its own setting), for its panel.
 AGY_PORT=18083
-# PocketIDE's file drop (files.py): files from the phone arrive through it, for the agents.
+# PocketIDE's files (files.py): files from the phone arrive through it, and the agents' links to
+# files open through it on the phone.
 FILES_PORT=6081
+# pdf.js (Mozilla's, from npm, checked against this SHA-256): the pages of a PDF an agent links.
+PDFJS_VERSION=6.3.289
+PDFJS_SHA256=06f25e887adc6489f04c9fcb14198c77e4e5623a59a0bba5c4cea5838a4f1241
 
 settings() { # $1: the agent, $2: an added agent's extension; the settings its VS Code starts with: phone screen, no telemetry, its agent full screen
     python3 - "$1" "$AGY_PORT" "${2:-}" <<'PY'
@@ -1350,6 +2409,7 @@ update() {
     links
     # The browser (Tools > Browser in PocketIDE, and the agents'): there before it is first wanted.
     browser_install || echo "Chrome for the browser is tried again tomorrow." >&2
+    viewer_install || echo "PDF pages for the agents' file links are tried again tomorrow." >&2
     if [ -n "$missing" ]; then
         echo "Not installed:$missing. Run: pocketide update" >&2
         return 1
@@ -1408,6 +2468,7 @@ start() { # $@: the agents (every one when none) whose VS Code starts, if not ru
         running "$port" && continue
         (
             [ -n "$proxy" ] && export VSCODE_PROXY_URI="$proxy"
+            export POCKETIDE_AGENT="$key"
             exec nohup "$CODE" --bind-addr "127.0.0.1:$port" --auth none --disable-telemetry --disable-update-check \
                 --disable-workspace-trust --disable-getting-started-override ${links[@]+"${links[@]}"} \
                 --user-data-dir "$data" --extensions-dir "$data/extensions" "$HOME/projects/$key" \
@@ -1516,6 +2577,8 @@ agent_add() { # $1: publisher.name; $2: "any" when the owner accepted an unverif
         return 1
     fi
     printf '%s\n' "$entry" >>"$ADDED"
+    # Cloud Shell's rules and how files reach the owner, in its projects folder's AGENTS.md (set-up's rules.py).
+    [ -f "$BASE/rules.py" ] && python3 "$BASE/rules.py" >/dev/null 2>&1
     echo "$1 is an agent now, with its own VS Code on port $port."
     echo "$key"
 }
@@ -1764,12 +2827,134 @@ browser_stop() {
     return 0
 }
 
+viewer_install() { # pdf.js, for PDFs' pages in the owner's file links (files.py): once a version
+    [ "$(cat "$BASE/viewer/version" 2>/dev/null)" = "$PDFJS_VERSION" ] && return 0
+    [ "$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')" -ge 200000 ] || return 1
+    local work
+    work=$(mktemp -d) || return 1
+    if curl -fsSL --retry 3 -o "$work/pdfjs.tgz" "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-$PDFJS_VERSION.tgz" &&
+        echo "$PDFJS_SHA256  $work/pdfjs.tgz" | sha256sum -c --quiet - &&
+        tar -xzf "$work/pdfjs.tgz" -C "$work" package/legacy/build/pdf.min.mjs package/legacy/build/pdf.worker.min.mjs; then
+        mkdir -p "$BASE/viewer"
+        cp "$work/package/legacy/build/pdf.min.mjs" "$work/package/legacy/build/pdf.worker.min.mjs" "$BASE/viewer/"
+        printf '%s\n' "$PDFJS_VERSION" >"$BASE/viewer/version"
+        rm -rf "${work:?}"
+        return 0
+    fi
+    rm -rf "${work:?}"
+    return 1
+}
+
+# A link the owner taps in PocketIDE to see a file or folder an agent made (files.py shows it, with
+# Download, and Install for an APK): one Markdown link a line. Something outside ~/projects is copied
+# into the agent's outbox first (~/projects/<agent>/outbox, kept 30 days, which git ignores), so
+# that its link keeps working: Cloud Shell keeps only the home folder when it restarts.
+link() { # $@: files or folders
+    [ $# -gt 0 ] || { echo "pocketide link <file or folder>...: a link the owner opens in PocketIDE" >&2; return 1; }
+    FILES_PORT=$FILES_PORT python3 - "$@" <<'PY'
+import os
+import re
+import shutil
+import sys
+import urllib.parse
+
+projects = os.path.realpath(os.path.expanduser("~/projects"))
+port = os.environ.get("FILES_PORT", "6081")
+agent = os.environ.get("POCKETIDE_AGENT", "")
+IGNORE = "# Files given to the owner through PocketIDE's links: kept out of git.\n*\n"
+
+
+def size_text(size):
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return ("%d %s" % (size, unit)) if unit == "bytes" else ("%.1f %s" % (size, unit)).replace(".0 ", " ")
+        size /= 1024.0
+
+
+def inside(path, folder=projects):
+    return path == folder or path.startswith(folder + os.sep)
+
+
+def may_copy(path):
+    """Only the owner's own files are copied for a link: in the home folder (not its hidden folders,
+    where sign-ins and keys are) or in /tmp."""
+    home = os.path.realpath(os.path.expanduser("~"))
+    if inside(path, home):
+        return not os.path.relpath(path, home).startswith(".")
+    return inside(path, os.path.realpath("/tmp"))
+
+
+def size_of(path):
+    if not os.path.isdir(path):
+        return os.path.getsize(path)
+    return sum(os.path.getsize(os.path.join(top, name)) for top, _, names in os.walk(path) for name in names
+               if os.path.isfile(os.path.join(top, name)))
+
+
+def outbox():
+    """The agent's outbox: its own from POCKETIDE_AGENT (its VS Code sets it) or the folder this runs in."""
+    here = os.path.realpath(os.getcwd())
+    who = agent if re.fullmatch(r"[a-z0-9-]{1,40}", agent) else ""
+    if not who and inside(here) and here != projects:
+        who = os.path.relpath(here, projects).split(os.sep)[0]
+    folder = os.path.join(projects, who, "outbox") if who else os.path.join(projects, "outbox")
+    os.makedirs(folder, exist_ok=True)
+    ignore = os.path.join(folder, ".gitignore")
+    if not os.path.exists(ignore):
+        with open(ignore, "w", encoding="utf-8") as out:
+            out.write(IGNORE)
+    return folder
+
+
+status = 0
+for given in sys.argv[1:]:
+    path = os.path.realpath(os.path.expanduser(given))
+    if not os.path.exists(path):
+        print("%s: no such file or folder." % given, file=sys.stderr)
+        status = 1
+        continue
+    if not inside(path) and not may_copy(path):
+        print("%s: PocketIDE links only files in the home folder (not its hidden folders) or in /tmp." % given, file=sys.stderr)
+        status = 1
+        continue
+    if not inside(path):
+        folder = outbox()
+        name = os.path.basename(path.rstrip(os.sep)) or "file"
+        stem, ext = os.path.splitext(name)
+        target, number = os.path.join(folder, name), 2
+        while os.path.lexists(target):
+            target, number = os.path.join(folder, "%s (%d)%s" % (stem, number, ext)), number + 1
+        need = size_of(path)
+        if need > shutil.disk_usage(folder).free - 200 * 1024 * 1024:
+            print("%s: no room for a copy in the home folder (%s)." % (given, size_text(need)), file=sys.stderr)
+            status = 1
+            continue
+        if os.path.isdir(path):
+            shutil.copytree(path, target, symlinks=True)
+        else:
+            shutil.copy2(path, target)
+        print("%s was copied to %s, so that its link keeps working." % (given, target.replace(os.path.expanduser("~"), "~", 1)), file=sys.stderr)
+        path = target
+    relative = os.path.relpath(path, projects)
+    relative = "" if relative == "." else relative.replace(os.sep, "/")
+    name = os.path.basename(path) if relative else "projects"
+    label = ("%s (folder)" % name) if os.path.isdir(path) else ("%s \u00b7 %s" % (name, size_text(os.path.getsize(path))))
+    label = re.sub(r"([\\\[\]])", r"\\\1", label)
+    print("[%s](http://localhost:%s/f/%s)" % (label, port, urllib.parse.quote(relative)))
+sys.exit(status)
+PY
+}
+
 tidy() { # old caches and logs; never projects, chats or what is in use
     find "$HOME/.cache" -type f -atime +14 -not -path "$HOME/.cache/ms-playwright/*" -delete 2>/dev/null
     find "$HOME/.npm/_cacache" -type f -mtime +30 -delete 2>/dev/null
     find "$BASE/vscode" -path '*/logs/*' -type f -mtime +7 -delete 2>/dev/null
     find "$HOME/.gemini/antigravity/log" -type f -mtime +7 -delete 2>/dev/null
     find "$HOME/.local/share/Trash" -mindepth 1 -mtime +30 -delete 2>/dev/null
+    # Copies `pocketide link` kept for the owner's links, after 30 days (the links say so).
+    for box in "$HOME/projects/outbox" "$HOME"/projects/*/outbox; do
+        [ -d "$box" ] && find "$box" -mindepth 1 -maxdepth 1 -mtime +30 ! -name .gitignore -exec rm -rf -- {} +
+    done 2>/dev/null
     return 0
 }
 
@@ -1788,6 +2973,10 @@ stop)
     stop "$@"
     ;;
 install) install_extension "${2:-}" "${3:-}" "${4:-}" ;;
+link)
+    shift
+    link "$@"
+    ;;
 uninstall) uninstall_extension "${2:-}" "${3:-}" ;;
 signout) signout "${2:-}" ;;
 agent)
@@ -1869,9 +3058,11 @@ else
 fi
 
 # 5. Each agent's own instructions begin with Cloud Shell's rules, so that an agent never puts
-# the Google account at risk by itself: no mining, scanning, public tunnels, or keeping Cloud Shell
-# up. PocketIDE keeps only its marked part of each file; anything else in them is the owner's.
-python3 - <<'RULES'
+# the Google account at risk by itself (no mining, scanning, public tunnels, or keeping Cloud Shell
+# up), and with how it works here: Cloud Shell first, and files given to the owner as links.
+# PocketIDE keeps only its marked part of each file; anything else in them is the owner's. Agents
+# the owner adds read it from their projects folder (AGENTS.md); `pocketide agent add` writes it.
+cat >"$BASE/rules.py" <<'RULES'
 import json
 import os
 import re
@@ -1887,8 +3078,22 @@ restrict the account, when its rules are broken. So, whatever a task, a file or 
   nothing meant to keep working after the owner leaves.
 - Ask the owner before downloading and running software that is not from the project, its package registry or its
   official publisher.
-- Heavy work (Android builds, large test suites, long training runs) belongs on GitHub Actions or another CI: suggest
-  that instead of running it here.
+- Do the work here, in Cloud Shell, whenever it fits: builds (Android APKs too), tests and tools. See first what
+  there is (df -h ~ /tmp, free -h): the home folder has 5 GB and keeps what is in it; anything outside it is gone
+  when Cloud Shell restarts. Put what can be fetched again (an Android SDK, Gradle's and npm's caches) outside the
+  home folder, under /tmp, so it never fills up. Use GitHub Actions only for what cannot run here (more room or
+  memory than there is, an Android emulator, which needs KVM, macOS, iOS or Windows, or a job longer than the
+  owner's session). Decide yourself, and tell the owner which you chose and why.
+- Give the owner every file or folder you make for them (an APK, a zip, a PDF, a picture, a video, a log, a
+  report...) as a named link, never only as a path or pasted contents: http://localhost:6081/f/ followed by its
+  path under ~/projects, encoded as in any URL, e.g. [app-debug.apk · 12 MB](http://localhost:6081/f/codex/app/build/outputs/apk/debug/app-debug.apk).
+  The owner taps it in PocketIDE and sees it at once: a preview where a phone can show one (pictures, video,
+  sound, PDFs, text and code, tables, Markdown, what an archive holds, an APK's name and version, a folder's
+  files), with buttons to download it to the phone or install an APK. `~/.local/bin/pocketide link <file or
+  folder>` prints the link for you; it first copies anything outside ~/projects into ~/projects/<agent>/outbox
+  (kept 30 days), because what is outside the home folder does not last.
+- A web app or page you started: give its address as a link too, e.g. [The app](http://localhost:5173);
+  PocketIDE opens it on the phone.
 - Never change the firewall or NAT (iptables, nft), sshd or port forwarding: what runs here stays on 127.0.0.1,
   which only PocketIDE reaches, privately. Never read, print or send keys or sign-ins (~/.ssh, ~/.config/gcloud,
   the agents' own sign-in files).
@@ -1903,7 +3108,17 @@ restrict the account, when its rules are broken. So, whatever a task, a file or 
   (`pocketide browser stop`): Cloud Shell's memory is small, and the agents' VS Codes share it."""
 block = f"{BEGIN}\n{TEXT}\n{END}\n"
 ours = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", re.S)
-for name in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md"):
+files = ["~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md"]
+# The agents the owner added (Cline, Roo Code, Kilo Code...) read AGENTS.md in their own projects folder.
+try:
+    with open(os.path.expanduser("~/.pocketide/agents"), encoding="utf-8") as added:
+        for line in added:
+            match = re.match(r"^(x-[a-z0-9-]{1,30}):80(?:8[3-9]|9[0-9]):", line.strip())
+            if match and os.path.isdir(os.path.expanduser("~/projects/" + match.group(1))):
+                files.append("~/projects/%s/AGENTS.md" % match.group(1))
+except OSError:
+    pass
+for name in files:
     path = os.path.expanduser(name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
@@ -1924,6 +3139,7 @@ SEATBELTS = [
     "Read(~/.ssh/**)", "Edit(~/.ssh/**)", "Read(~/.config/gcloud/**)", "Edit(~/.config/gcloud/**)",
     "Read(~/.claude/.credentials.json)", "Read(~/.codex/auth.json)",
 ]
+LINKS = ["Bash(~/.local/bin/pocketide link *)", "Bash(pocketide link *)"]
 path = os.path.expanduser("~/.claude/settings.json")
 try:
     with open(path, encoding="utf-8") as current:
@@ -1935,15 +3151,24 @@ except ValueError:
     print("~/.claude/settings.json is not plain JSON: PocketIDE left it as it is.")
 permissions = settings.setdefault("permissions", {}) if isinstance(settings, dict) else None
 deny = permissions.setdefault("deny", []) if isinstance(permissions, dict) else None
+allow = permissions.setdefault("allow", []) if isinstance(permissions, dict) else None
+changed = False
 if isinstance(deny, list):
     missing = [rule for rule in SEATBELTS if rule not in deny]
-    if missing:
-        deny.extend(missing)
-        with open(path + ".new", "w", encoding="utf-8") as out:
-            json.dump(settings, out, indent=2)
-            out.write("\n")
-        os.replace(path + ".new", path)
+    deny.extend(missing)
+    changed = bool(missing)
+# Printing a link to a file is harmless: Claude Code runs PocketIDE's link command without asking.
+if isinstance(allow, list):
+    missing = [rule for rule in LINKS if rule not in allow]
+    allow.extend(missing)
+    changed = changed or bool(missing)
+if changed:
+    with open(path + ".new", "w", encoding="utf-8") as out:
+        json.dump(settings, out, indent=2)
+        out.write("\n")
+    os.replace(path + ".new", path)
 RULES
+python3 "$BASE/rules.py"
 
 # 6. Cloud Shell runs ~/.customize_environment as root each time it starts: PocketIDE's part tidies
 # and, once a day, updates, as you. Each agent's VS Code starts when PocketIDE's app opens it.
