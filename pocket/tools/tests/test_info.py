@@ -221,6 +221,25 @@ class Info(unittest.TestCase):
         self.assertFalse(self.run_info("delete", "antigravity", AGY_ID)["ok"])
         self.assertTrue((self.home / ".gemini" / "antigravity" / "conversations" / f"{AGY_ID}.pb").exists())
 
+    def test_extensions_in_each_agents_vs_code(self):
+        listing = self.home / ".pocketide" / "vscode" / "codex" / "extensions" / "extensions.json"
+        listing.parent.mkdir(parents=True)
+        listing.write_text(json.dumps([
+            {"identifier": {"id": "openai.chatgpt"}, "version": "26.9.1"},
+            {"identifier": {"id": "PocketIDE.layout"}, "version": "8.0.0"},
+            {"identifier": {"id": "esbenp.prettier-vscode"}, "version": "12.4.0"},
+            {"no identifier": True},
+        ]))
+        (self.home / ".pocketide" / "vscode" / "antigravity" / "extensions").mkdir(parents=True)
+        (self.home / ".pocketide" / "vscode" / "antigravity" / "extensions" / "extensions.json").write_text("not json")
+        found = self.run_info("extensions")
+        self.assertTrue(found["ok"])
+        self.assertEqual([], found["agents"]["claude-code"], "no VS Code there yet")
+        self.assertEqual([], found["agents"]["antigravity"], "an unreadable list is no extensions, not an error")
+        codex = found["agents"]["codex"]
+        self.assertEqual(["esbenp.prettier-vscode", "openai.chatgpt", "PocketIDE.layout"], [item["id"] for item in codex])
+        self.assertEqual([False, True, True], [item["own"] for item in codex], "the agent and PocketIDE's layout stay")
+
     def test_nothing_outside_the_agents_folders(self):
         for argv in (("chat", "claude-code", "../../etc/passwd"), ("delete", "codex", "../x"), ("chat", "vim", CLAUDE_ID),
                      ("delete", "claude-code", "*"), ("rm", "-rf"), ()):

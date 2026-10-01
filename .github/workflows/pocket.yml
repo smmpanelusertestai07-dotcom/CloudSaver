@@ -387,15 +387,19 @@ jobs:
           # back: here, against the VS Codes and agents the set-up just started.
           home="$RUNNER_TEMP/cloudshell-home"
           info=pocket/app/src/main/assets/cloudshell/info.py
-          for command in status chats usage; do
+          for command in status chats usage extensions; do
             HOME="$home" python3 "$info" "$command" > "$RUNNER_TEMP/$command.json"
           done
           python3 - "$RUNNER_TEMP" <<'PY'
           import json, os, sys
           read = lambda name: json.load(open(os.path.join(sys.argv[1], name + ".json")))
-          status, chats, usage = read("status"), read("chats"), read("usage")
-          for answer in (status, chats, usage):
+          status, chats, usage, extensions = read("status"), read("chats"), read("usage"), read("extensions")
+          for answer in (status, chats, usage, extensions):
               assert answer["ok"], answer
+          # Each agent's VS Code: its own extension and PocketIDE's layout, both kept (own).
+          for key, own in (("claude-code", "anthropic.claude-code"), ("codex", "openai.chatgpt"), ("antigravity", "google.google-antigravity")):
+              listed = {item["id"].lower(): item for item in extensions["agents"][key]}
+              assert listed[own]["own"] and listed["pocketide.layout"]["own"], (key, listed)
           agents = status["agents"]
           assert [agent["agent"] for agent in agents] == ["claude-code", "codex", "antigravity"], agents
           assert all(agent["running"] and agent["version"] for agent in agents), agents
@@ -418,6 +422,35 @@ jobs:
           npm install --prefix "$tools" --no-save --no-audit --no-fund playwright@1.56.1
           "$tools/node_modules/.bin/playwright" install --with-deps chromium
           NODE_PATH="$tools/node_modules" node pocket/tools/phone-layout-check.js "$RUNNER_TEMP/phone-screens"
+
+      - name: Files from the phone reach the agent, through its own file dialog
+        run: |
+          set -euo pipefail
+          # Codex's "add files" (VS Code's file dialog) with PocketIDE's page script: the tap opens the
+          # phone's picker by itself, and the file lands in ~/projects/codex/uploads through Cloud
+          # Shell's file drop (127.0.0.1:6081), which listens only inside Cloud Shell.
+          home="$RUNNER_TEMP/cloudshell-home"
+          curl -fs -m 5 http://127.0.0.1:6081/state
+          CLOUD_SHELL_HOME="$home" NODE_PATH="$RUNNER_TEMP/phone-check/node_modules" \
+            node pocket/tools/phone-files-check.js "$RUNNER_TEMP/phone-screens"
+          grep -qx '\*' "$home/projects/codex/uploads/.gitignore"
+
+      - name: Extensions from Open VSX, as PocketIDE's Extensions screen installs and removes them
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/cloudshell-home"
+          launcher="$home/.local/bin/pocketide"
+          listed() { HOME="$home" python3 pocket/app/src/main/assets/cloudshell/info.py extensions |
+            python3 -c 'import json, sys; print(" ".join(e["id"].lower() for e in json.load(sys.stdin)["agents"]["codex"]))'; }
+          HOME="$home" "$launcher" install codex EditorConfig.EditorConfig
+          listed | grep -qw editorconfig.editorconfig
+          # Never the agent itself or PocketIDE's layout; never a name that is not publisher.name.
+          if HOME="$home" "$launcher" uninstall codex openai.chatgpt; then echo "::error::the agent's own extension was removed"; exit 1; fi
+          if HOME="$home" "$launcher" uninstall codex pocketide.layout; then echo "::error::PocketIDE's layout was removed"; exit 1; fi
+          if HOME="$home" "$launcher" install codex 'bad;name'; then echo "::error::install took a name that is no extension's"; exit 1; fi
+          HOME="$home" "$launcher" uninstall codex EditorConfig.EditorConfig
+          if listed | grep -qw editorconfig.editorconfig; then echo "::error::the extension is still there"; exit 1; fi
+          echo "Installed from Open VSX after its checksum, listed, and removed."
 
       - name: The browser, for an agent and for the owner's view
         run: |

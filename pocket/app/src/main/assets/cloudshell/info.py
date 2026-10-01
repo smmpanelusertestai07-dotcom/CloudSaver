@@ -13,6 +13,7 @@ history.
   chat AGENT ID     one chat's messages (text; long ones cut, only the newest kept)
   usage             what the agents used in the last day and week, from their own files, and
                     Codex's limits when Codex wrote them down
+  extensions        the extensions in each agent's VS Code
   delete AGENT ID   removes one chat of Claude Code or Codex
 """
 import glob
@@ -792,6 +793,30 @@ def usage():
     return result
 
 
+def extensions():
+    """The extensions in each agent's VS Code, from VS Code's own list of them (newest version each)."""
+    found = {}
+    for key, _port, own in AGENTS:
+        listed = {}
+        path = os.path.join(HOME, ".pocketide", "vscode", key, "extensions", "extensions.json")
+        try:
+            with open(path, encoding="utf-8") as source:
+                entries = json.load(source)
+        except (OSError, ValueError):
+            entries = []
+        for entry in entries if isinstance(entries, list) else []:
+            ident = str(((entry or {}).get("identifier") or {}).get("id") or "")
+            if not ident:
+                continue
+            listed[ident.lower()] = {
+                "id": ident,
+                "version": str(entry.get("version") or ""),
+                "own": ident.lower() in (own, "pocketide.layout"),
+            }
+        found[key] = sorted(listed.values(), key=lambda item: item["id"].lower())
+    return {"ok": True, "agents": found}
+
+
 def main(argv):
     command = argv[0] if argv else ""
     try:
@@ -805,6 +830,8 @@ def main(argv):
             result = usage()
         elif command == "delete" and len(argv) == 3:
             result = delete(argv[1], argv[2])
+        elif command == "extensions" and len(argv) == 1:
+            result = extensions()
         else:
             result = {"ok": False, "error": "PocketIDE asked for something this script does not do."}
     except Exception as error:

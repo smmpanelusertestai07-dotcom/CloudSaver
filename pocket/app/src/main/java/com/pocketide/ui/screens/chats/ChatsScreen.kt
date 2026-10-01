@@ -122,7 +122,7 @@ fun ChatsScreen(onOpen: (ChatSummary) -> Unit) {
         FinePrint(
             "Read from Cloud Shell over PocketIDE's private connection each time you open this page; nothing of " +
                 "them is kept on this phone. Each agent keeps its own (Claude Code ~/.claude, Codex ~/.codex, " +
-                "Antigravity ~/.gemini).",
+                "Antigravity ~/.gemini/antigravity).",
         )
     }
 }

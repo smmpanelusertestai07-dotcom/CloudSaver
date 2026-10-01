@@ -21,6 +21,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -117,6 +120,13 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
     private var host: PageHost? = null
     private var zoom = 1f
     private var fittedWidth = 0
+
+    /**
+     * The whole IDE is on screen around the agent (PocketIDE's IDE button), drawn smaller
+     * ([PageFit.IDE_ZOOM]) so its files, editor and agent fit side by side, as on a computer.
+     */
+    var wide by mutableStateOf(false)
+        private set
     private var tallest = 0
     private val origin = url.trimEnd('/')
 
@@ -148,6 +158,7 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
     }
 
     fun reload() {
+        wide = false
         web?.reload()
     }
 
@@ -172,19 +183,29 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
     }
 
     /**
-     * PocketIDE's own command in this VS Code (assets/workspace/pagescript.js): back, agent,
-     * terminal, settings, files, commands, vsix or tools; or escape, which closes a menu or dialog.
+     * PocketIDE's own command in this VS Code (assets/workspace/pagescript.js): back, agent, ide,
+     * terminal, files, commands, vsix or tools; or escape, which closes a menu or dialog. The IDE
+     * draws the page smaller ([wide]); back, the agent and the terminal leave it.
      */
     fun run(command: String) {
         val view = web ?: return
+        val nowWide = when (command) {
+            IDE -> true
+            AGENT, TERMINAL, BACK -> false
+            else -> wide
+        }
+        if (nowWide != wide) {
+            wide = nowWide
+            applyZoom(view)
+        }
         val call = if (command == ESCAPE) "escape()" else "run(${JSONObject.quote(command)})"
         view.evaluateJavascript("window.__pocketide && window.__pocketide.$call", null)
     }
 
     /**
      * Back: closes the page's open menu, dialog, palette or notice first; then what covers the agent
-     * (a file, a diff, settings, a terminal) steps aside and the agent is back; [otherwise] runs when
-     * the agent alone is on screen.
+     * (a file, a diff, a terminal, the whole IDE) steps aside and the agent is back; [otherwise] runs
+     * when the agent alone is on screen.
      */
     fun back(otherwise: () -> Unit) {
         val view = web ?: return otherwise()
@@ -214,7 +235,8 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
 
     private fun applyZoom(view: WebView) {
         val widthDp = view.width / view.resources.displayMetrics.density
-        view.evaluateJavascript("window.__pocketide && window.__pocketide.fit($zoom, $widthDp)", null)
+        val drawn = if (wide) minOf(zoom, PageFit.IDE_ZOOM) else zoom
+        view.evaluateJavascript("window.__pocketide && window.__pocketide.fit($drawn, $widthDp)", null)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -281,7 +303,7 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && isOwn(url)) {
                 view.evaluateJavascript(PageScript.source(app), null)
             }
-            if (zoom < 1f) applyZoom(view)
+            if (zoom < 1f || wide) applyZoom(view)
             host?.onPageState(agent, PageState.Ready)
         }
 
@@ -332,6 +354,9 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
         private const val FULL = 100
         const val BACK = "back"
         const val ESCAPE = "escape"
+        const val IDE = "ide"
+        const val AGENT = "agent"
+        const val TERMINAL = "terminal"
     }
 }
 
@@ -373,6 +398,9 @@ internal class ProbeClient(private val fromTap: Boolean, private val open: (Stri
 internal object PageFit {
     const val HEIGHT_DP = 740f
     const val MIN_ZOOM = 0.8f
+
+    /** The whole IDE: 600 CSS pixels on a 360 dp phone, room for the files, an editor and the agent. */
+    const val IDE_ZOOM = 0.6f
 
     /** The zoom for a WebView [heightDp] tall with the keyboard closed, in steps of 0.01. */
     fun zoom(heightDp: Float): Float {

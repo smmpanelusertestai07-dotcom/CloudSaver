@@ -41,6 +41,8 @@ data class Settings(
      * ms) of each time, one after the other. Usage adds them up against Google's weekly hours.
      */
     val connectedTimes: List<Long> = emptyList(),
+    /** The keys a phone keyboard lacks stay above the screen's foot, keyboard or not (Tools > Keys bar). */
+    val keysAlways: Boolean = false,
 )
 
 /** The connection's last 8 days of [Settings.connectedTimes], with [start] to [end] added. */

@@ -77,7 +77,7 @@ class CloudShellTest {
             .associate { it.groupValues[2] to it.groupValues[1] }
         val page = listOf("src/main/assets", "app/src/main/assets").map { File(it, "workspace/pagescript.js") }.first { it.isFile }.readText()
         val keys = Regex("""(\w+): \['(F\d+)'(?:, '(ctrl)')?]""").findAll(page.substringAfter("const KEYS = {").substringBefore("};")).toList()
-        val commands = listOf("back", "agent", "terminal", "settings", "commands", "vsix", "tools", "files")
+        val commands = listOf("back", "agent", "terminal", "commands", "vsix", "tools", "files", "ide")
         assertEquals("the page's commands", commands, keys.map { it.groupValues[1] })
         keys.forEach { key ->
             val chord = listOfNotNull(key.groupValues[3].ifBlank { null }, key.groupValues[2].lowercase()).joinToString("+")
@@ -101,7 +101,10 @@ class CloudShellTest {
         // The browser's libraries come from Cloud Shell's own package lists, and only there; they
         // last one session (Cloud Shell's system goes back to Google's image each time it starts).
         val libraries = text.substringAfter("browser_libraries() {").substringBefore("\n}\n")
-        val rest = text.replace(libraries, "")
+        // Claude Code's deny rules name a few sudo commands only to refuse them: they run nothing.
+        val refused = Regex("\"Bash\\(sudo [a-z0-9]+ \\*\\)\"")
+        assertTrue(refused.containsMatchIn(text.substringAfter("SEATBELTS = [").substringBefore("]\n")))
+        val rest = text.replace(libraries, "").replace(refused, "")
         Regex("\\bsudo\\b[^\\n]*").findAll(libraries).forEach { assertTrue(it.value, it.value.startsWith("sudo -n apt-get ")) }
         // Otherwise only root's start-up hook uses sudo, and only to drop to the owner's own account.
         Regex("\\bsudo\\b[^\\n]*").findAll(rest).map { it.value }.forEach { assertTrue(it, it.startsWith("sudo -u ")) }

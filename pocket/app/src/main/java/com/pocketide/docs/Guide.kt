@@ -55,9 +55,8 @@ internal object Guide {
             "Each agent gets its own VS Code, with its own port (Claude Code ${CloudShell.port(Agent.CLAUDE)}, Codex " +
                 "${CloudShell.port(Agent.CODEX)}, Antigravity ${CloudShell.port(Agent.ANTIGRAVITY)}), settings, extensions and " +
                 "projects folder. It listens only inside Cloud Shell.",
-            "Each agent's VS Code starts when you open that agent, so Cloud Shell's memory goes to the agents you use; Usage " +
-                "stops one you no longer need. Whenever Cloud Shell starts, it tidies old caches and logs, " +
-                "and once a day installs newer agent and code-server releases. Running work and your projects are never touched.",
+            "Each agent's VS Code starts when you open it; Usage stops one you no longer need. When Cloud Shell starts, it " +
+                "tidies old caches and logs, and once a day installs newer agents and code-server; your work is never touched.",
             "A newer set-up (after an app update) runs by itself at the next connection. After " +
                 "${CloudShell.ASK_AGAIN_AFTER_DAYS} days unused, PocketIDE asks you to connect once, before Google may delete " +
                 "the home folder.",
@@ -83,8 +82,8 @@ internal object Guide {
             listOf("Question", "Answer"),
             row(
                 "Does gcloud set up and run by itself?",
-                "Yes: downloaded when the set-up page opens (checked by its SHA-256), then updated daily by gcloud's own " +
-                    "updater. You sign in once and type no command.",
+                "Yes: downloaded when the set-up page opens (checked by its SHA-256), then updated once a week on Wi-Fi by " +
+                    "gcloud's own updater (never on mobile data; Computer > Update now runs it any time). You sign in once and type no command.",
             ),
             row(
                 "What if a gcloud update breaks the connection?",
@@ -106,6 +105,7 @@ internal object Guide {
                 "answers only requests carrying its secret key.",
             "A sign-in's return to localhost on the phone goes to the agent in Cloud Shell, unchanged; PocketIDE listens " +
                 "only during that sign-in.",
+            "Cloud Shell's public address answers only Google's SSH; agents never get your Google Cloud sign-in.",
             "PocketIDE connects while you use the agents and disconnects 15 minutes after you leave them; Cloud Shell then " +
                 "stops by itself. Nothing keeps it awake; while connected, a notice with Disconnect says so.",
             "Size: 130 MB to download, 500 MB set up; Computer > Remove the connection deletes it (your Cloud Shell stays).",
@@ -130,12 +130,11 @@ internal object Guide {
                 "copy the code the page shows and paste it where Claude Code asks).",
             "Codex: Sign in with ChatGPT, and sign in. The page returns to Codex by itself.",
             "Antigravity: Continue with Google, and sign in with Google in Chrome. The page returns to Antigravity by itself.",
-            "A sign-in page that ends at \"localhost refused to connect\" (another app held the port, or Android closed " +
-                "PocketIDE meanwhile): open the agent in PocketIDE and start the sign-in again.",
+            "A sign-in that ends at \"localhost refused to connect\": open the agent in PocketIDE and sign in again.",
         ),
         p(
-            "More extensions: Tools > All commands > Install Extensions (Open VSX), or Tools > Install from a link (a maker's " +
-                ".vsix). Microsoft's own extensions are not on Open VSX.",
+            "More extensions: Home > Extensions searches Open VSX and installs in the agent's VS Code you pick; Tools > " +
+                "Install from a link takes a maker's .vsix. Microsoft's own are not on Open VSX.",
         ),
         link("Claude Code's guide", Agent.CLAUDE.docsUrl),
         link("Codex's guide", Agent.CODEX.docsUrl),
@@ -150,21 +149,21 @@ internal object Guide {
             listOf("In PocketIDE's bar", "What it does"),
             row("Back (←), and the phone's Back", "Closes a menu, dialog or notice; then what covers the agent; home only on a second Back"),
             row("The three logos", "Switch agents; each keeps its page, so nothing loads again"),
-            row("Reload", "Starts this VS Code again if it stopped, and loads it again"),
-            row("Tools (the wrench)", "The agent, open a file, terminal, settings, install from a link, all commands, the browser"),
-            row("⋮", "PocketIDE's home, Disconnect"),
+            row("IDE (the arrows)", "The whole IDE around the agent, drawn smaller; tap again for the agent alone"),
+            row("Tools (the wrench)", "The agent, open a file, terminal, install from a link, all commands, the browser, the keys bar"),
+            row("⋮", "Reload this VS Code, PocketIDE's home, Disconnect, Stop everything"),
         ),
         bullets(
-            "One thing at a time, full screen: the agent, or what covers it (a file, a diff, settings, an extension's own page, " +
-                "a terminal). Back returns to the agent; a terminal keeps running behind it.",
-            "Dialogs, notices, menus and the command palette always fit the screen; a notice with many buttons scrolls sideways.",
-            "Above the keyboard: Paste, Esc, Tab, Ctrl+C, the arrows and Enter, for the terminal and the editor.",
-            "A link to localhost in an agent's chat or the terminal (a dev server, a preview) opens in PocketIDE's page " +
-                "viewer, through the private door: its Back goes to the page before, its ✕ back to the agent.",
+            "One thing at a time, full screen: the agent, or what covers it (a file, a diff, an extension's own page, a " +
+                "terminal). Back returns to the agent; a terminal keeps running behind it.",
+            "Above the keyboard (always, with Tools > Keys bar): Paste, Esc, Tab, Ctrl+C, the arrows and Enter.",
+            "A localhost link (a dev server, a preview) opens in PocketIDE's page viewer: its Back goes to the page " +
+                "before, its ✕ back to the agent.",
             "Other web pages and sign-ins open in Chrome (a page that opens without your tap asks first); Chrome's back arrow " +
                 "returns to the agent.",
             "Claude Code and Codex send with their Send button; Enter makes a new line.",
-            "Uploading: VS Code's Upload uses Android's own picker. A file to keep: put it on GitHub (git push).",
+            "Phone files: an agent's own add-files button opens Android's picker by itself; the file goes to " +
+                "~/projects/<agent>/uploads (git ignores it) and the agent takes it.",
         ),
     )
 
@@ -208,8 +207,7 @@ internal object Guide {
             "To work on a project from GitHub, open the Terminal (Tools > Terminal) and run git clone with its address.",
             "Keep a copy elsewhere: run gh auth login once (GitHub's page opens in Chrome), then git push. Cloud Shell's home " +
                 "folder is deleted after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
-            "Android apps: an emulator cannot run in Cloud Shell, and the Android tools take much of the 5 GB home folder. " +
-                "Build them on GitHub Actions (an agent can write the workflow).",
+            "Android apps: build them on GitHub Actions (an agent can write the workflow); Cloud Shell cannot run an emulator.",
         ),
     )
 
@@ -223,7 +221,7 @@ internal object Guide {
             row("\"Sign in to gcloud again\"", "Tap Sign in to gcloud; Google's page opens in Chrome. Allow, and it connects."),
             row("\"Accept Google Cloud's terms\" or \"verify your account\"", "Tap Open Google's page (once), do what Google asks, then Try again."),
             row("The connection dropped", "It connects again by itself while an agent is open; else tap Try again."),
-            row("VS Code says it cannot reconnect", "Tap Reload in PocketIDE's bar: it starts VS Code again if it stopped."),
+            row("VS Code says it cannot reconnect", "⋮ > Reload this VS Code: it starts VS Code again if it stopped."),
             row("A VS Code or the browser needs memory", "Usage: stop an agent's VS Code you are not using, then try again."),
             row("An agent is missing", "Tools > Terminal, run pocketide update."),
             row("Nothing helps", "Disconnect, connect again; then Computer > Run the set-up again (your projects and chats stay)."),
@@ -243,7 +241,8 @@ internal object Guide {
                 "applies. It is not in Drive or Photos.",
             "On this phone: PocketIDE's settings, and its connection in PocketIDE's private storage: Ubuntu with Google's " +
                 "gcloud and gcloud's sign-in, which no other app can read. Android's backup copies none of it.",
-            "At the AI companies: what you ask an agent, and the code it reads, under your account there.",
+            "At the AI companies: what you ask an agent, and the code it reads, under your account there. Your data > " +
+                "Sign an agent out ends its sign-in in Cloud Shell.",
             "Delete: in Cloud Shell, run sudo rm -rf \$HOME, then restart it. On the phone: Settings > Your data (it signs " +
                 "gcloud out first).",
         ),
@@ -257,7 +256,7 @@ internal object Guide {
         "What PocketIDE may do on your phone, and why.",
         table(
             listOf("Android permission", "Why"),
-            row("INTERNET", "gcloud's connection to Cloud Shell, its downloads and updates, and each agent's icon"),
+            row("INTERNET", "gcloud's connection to Cloud Shell, its downloads and updates, each agent's icon, and Open VSX's search"),
             row("ACCESS_NETWORK_STATE", "Telling Linux the phone's DNS servers when the network changes (Wi-Fi to mobile data)"),
             row("FOREGROUND_SERVICE", "Keeping the connection open while you finish a sign-in in Chrome or switch apps for a moment"),
             row("FOREGROUND_SERVICE_SPECIAL_USE", "The kind of that service Android 14 asks apps to name: the owner's own connection"),

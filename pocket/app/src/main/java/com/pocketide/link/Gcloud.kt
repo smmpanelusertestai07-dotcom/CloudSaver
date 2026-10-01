@@ -39,7 +39,7 @@ internal object Gcloud {
      * for Chrome; gcloud opens a browser only where it sees a screen, and the page does open on
      * the phone's. Its Python is PocketIDE's, which keeps its tunnel private. No usage reports to
      * Google, no questions (nobody types into it), and no "update available" notices: PocketIDE
-     * runs gcloud's own updater once a day.
+     * runs gcloud's own updater once a week, on Wi-Fi.
      */
     val env: Map<String, String> = mapOf(
         "USER" to GuestConfig.USER,
@@ -129,10 +129,21 @@ internal object Gcloud {
         return login("~/.local/bin/pocketide " + words.joinToString(" ") { quote(it) })
     }
 
+    /**
+     * The launcher installing ([install] true) or removing extension [id] (publisher.name) in
+     * [agent]'s VS Code; [anyPublisher] when the owner accepted one Open VSX has not verified.
+     */
+    fun extension(install: Boolean, agent: String, id: String, anyPublisher: Boolean = false): String {
+        require(LAUNCHER_WORD.matches(agent) && EXTENSION.matches(id)) { "Not an agent and extension the launcher takes: $agent $id" }
+        val words = listOf(if (install) "install" else "uninstall", agent, id) + if (install && anyPublisher) listOf("any") else emptyList()
+        return login("~/.local/bin/pocketide " + words.joinToString(" ") { quote(it) })
+    }
+
     /** Exit 0 when Cloud Shell has PocketIDE's launcher (its home may have been reset or deleted since). */
     const val HAS_LAUNCHER = "test -x ~/.local/bin/pocketide"
 
     fun quote(text: String) = "'" + text.replace("'", "'\\''") + "'"
 
     private val LAUNCHER_WORD = Regex("^[a-z][a-z-]{0,31}$")
+    private val EXTENSION = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 }

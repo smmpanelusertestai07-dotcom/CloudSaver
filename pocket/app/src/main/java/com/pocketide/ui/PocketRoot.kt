@@ -50,6 +50,7 @@ import com.pocketide.ui.nav.ChatRoute
 import com.pocketide.ui.nav.ChatsRoute
 import com.pocketide.ui.nav.ComputerRoute
 import com.pocketide.ui.nav.DataRoute
+import com.pocketide.ui.nav.ExtensionsRoute
 import com.pocketide.ui.nav.HelpPageRoute
 import com.pocketide.ui.nav.HelpRoute
 import com.pocketide.ui.nav.HomeRoute
@@ -60,6 +61,7 @@ import com.pocketide.ui.screens.chats.ChatsScreen
 import com.pocketide.ui.screens.cloudshell.CloudShellScreen
 import com.pocketide.ui.screens.cloudshell.SetUpScreen
 import com.pocketide.ui.screens.data.YourDataScreen
+import com.pocketide.ui.screens.extensions.ExtensionsScreen
 import com.pocketide.ui.screens.help.HelpPageScreen
 import com.pocketide.ui.screens.help.HelpScreen
 import com.pocketide.ui.screens.help.LocalOpenPlace
@@ -150,8 +152,10 @@ private fun MainScreens() {
                             onComputer = { nav.openTab(Tab.COMPUTER) },
                             onYourData = { nav.navigate(DataRoute) },
                             onHelp = { nav.navigate(HelpRoute) },
+                            onExtensions = { nav.navigate(ExtensionsRoute) },
                         )
                     }
+                    composable<ExtensionsRoute> { ExtensionsScreen(onBack = { nav.popBackStack() }) }
                     composable<ChatsRoute> {
                         ChatsScreen(onOpen = { chat -> nav.navigate(ChatRoute(chat.agent, chat.id)) })
                     }

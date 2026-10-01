@@ -45,7 +45,7 @@ enum class Agent(
         displayName = "Antigravity",
         maker = "Google",
         extensionId = "google.google-antigravity",
-        chatsFolder = "~/.gemini",
+        chatsFolder = "~/.gemini/antigravity",
         signIn = "A Google account. Google allows its sign-in only in a real browser, so it opens in Chrome.",
         dataGoesTo = "Your prompts, and the code and files Antigravity reads, go to Google.",
         docsUrl = "https://antigravity.google/docs",

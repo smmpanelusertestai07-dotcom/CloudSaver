@@ -6,13 +6,20 @@
 //   hovers) stays inside the screen; editors that need more width (VS Code's settings) are drawn
 //   smaller; the secondary side bar's own maximize/restore button goes, because PocketIDE's layout
 //   extension keeps one thing full screen at a time.
-// - run(name): PocketIDE's commands in VS Code (back, agent, terminal, settings, files, commands,
-//   vsix, tools), pressed as keys no phone keyboard has (F13 to F19), which only PocketIDE's layout
+// - run(name): PocketIDE's commands in VS Code (back, agent, terminal, files, commands, vsix, tools,
+//   ide), pressed as keys no phone keyboard has (F13 to F19), which only PocketIDE's layout
 //   extension listens to. Android's own key events reach the page without the key's code, which VS
 //   Code needs for a shortcut, so they are pressed here, in the page, with it.
 // - escape(), backTarget(): what Back closes first (a menu, a dialog, a notice), then what covers
 //   the agent, else nothing ('none': PocketIDE's Back leaves the screen).
 // - fit(zoom, widthDp): the page drawn smaller on a short screen; type(text): the Paste key.
+// - Phone files: when an agent's own "add files" opens VS Code's file dialog, Android's picker opens
+//   by itself, on the same tap; the file goes to Cloud Shell's file drop (files.py) into the agent's
+//   ~/projects/<agent>/uploads, and the dialog takes it as if it had been picked there. Nothing is
+//   added to the dialog; a folder or save dialog stays as it is, with Cloud Shell's folders, and so
+//   does a dialog after the picker was closed. Files go to this page's own address
+//   (/__pocketide/drop/), which PocketIDE's door passes to the drop: VS Code's own security policy
+//   lets a page connect only to its own address.
 (() => {
   if (window.__pocketide || window.top !== window) return;
   const style = `
@@ -58,10 +65,10 @@
     any('.notifications-toasts .notification-toast') || any('.notifications-center.visible');
   // The layout extension's keys (pocket/cloudshell/pocketide-cloudshell.sh, its package.json).
   const KEYS = {
-    back: ['F13'], agent: ['F14'], terminal: ['F15'], settings: ['F16'], commands: ['F17'], vsix: ['F18'], tools: ['F19'],
-    files: ['F13', 'ctrl'],
+    back: ['F13'], agent: ['F14'], terminal: ['F15'], commands: ['F17'], vsix: ['F18'], tools: ['F19'],
+    files: ['F13', 'ctrl'], ide: ['F14', 'ctrl'],
   };
-  const CODES = { F13: 124, F14: 125, F15: 126, F16: 127, F17: 128, F18: 129, F19: 130, Escape: 27 };
+  const CODES = { F13: 124, F14: 125, F15: 126, F16: 127, F17: 128, F18: 129, F19: 130, Escape: 27, Enter: 13 };
   const press = (key, modifier, target) => {
     const at = target || document.querySelector('.monaco-workbench') || document.body;
     const init = {
@@ -80,6 +87,70 @@
     }
     return el ? { el, doc } : null;
   };
+  // Each agent's VS Code port (pocket/cloudshell/pocketide-cloudshell.sh): this page's agent, from
+  // its address through PocketIDE's door (<port>-<key>.localhost), else Cloud Shell's own (tests).
+  const AGENTS = { 8080: 'claude-code', 8081: 'codex', 8082: 'antigravity' };
+  const pageAgent = () => {
+    const door = location.host.match(/^(\d+)-[0-9a-f]{32}\.localhost(?::\d+)?$/);
+    return AGENTS[door ? door[1] : location.port];
+  };
+  // VS Code's own file dialog: a quick input with a title and a path from the root, and its buttons;
+  // [files] unless its title says it picks a folder or saves.
+  const fileDialog = () => {
+    const widget = document.querySelector('.quick-input-widget');
+    if (!widget || !shown(widget)) return null;
+    const title = widget.querySelector('.quick-input-title');
+    const input = widget.querySelector('.quick-input-box input');
+    const actions = widget.querySelectorAll('.quick-input-header .quick-input-action');
+    if (!title || !title.textContent.trim() || !input || !input.value.startsWith('/') || !actions.length) return null;
+    const files = !/folder|directory|save/i.test(title.textContent);
+    return { widget, input, actions, files };
+  };
+  // The phone's picker for [dialog]; the file picked goes to Cloud Shell and the dialog takes it.
+  const fromPhone = (dialog) => {
+    const chooser = document.createElement('input');
+    chooser.type = 'file';
+    chooser.style.display = 'none';
+    chooser.addEventListener('change', async () => {
+      const file = chooser.files && chooser.files[0];
+      chooser.remove();
+      const agent = pageAgent();
+      if (!file || !agent) return;
+      try {
+        const answer = await fetch(`/__pocketide/drop/upload?agent=${agent}&name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file });
+        const sent = await answer.json();
+        if (!answer.ok || !sent.path) return;
+        dialog.input.focus();
+        dialog.input.value = sent.path;
+        dialog.input.dispatchEvent(new Event('input', { bubbles: true }));
+        setTimeout(() => press('Enter', undefined, dialog.input), 400);
+      } catch (e) {
+        // Not sent (the connection dropped): the dialog stays, with Cloud Shell's files.
+      }
+    }, { once: true });
+    document.body.appendChild(chooser);
+    chooser.click();
+  };
+  // Each file dialog once, as it opens: the tap that opened it (the agent's own "add files") still
+  // counts, so the phone's picker opens without a second tap. A dialog not opened by a tap is left.
+  let seen = null;
+  let checking = false;
+  new MutationObserver(() => {
+    if (checking) return;
+    checking = true;
+    requestAnimationFrame(() => {
+      checking = false;
+      const dialog = fileDialog();
+      if (!dialog) {
+        seen = null;
+        return;
+      }
+      if (seen === dialog.input) return;
+      seen = dialog.input;
+      if (dialog.files && pageAgent() && navigator.userActivation && navigator.userActivation.isActive) fromPhone(dialog);
+    });
+  // `document` itself: the script may run before the page has any element (a document-start script).
+  }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
   window.__pocketide = {
     overlayOpen,
     run(name) {

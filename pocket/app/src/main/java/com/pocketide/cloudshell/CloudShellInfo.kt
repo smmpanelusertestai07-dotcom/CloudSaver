@@ -19,6 +19,10 @@ sealed interface Answer<out T> {
     data class Failed(val why: String) : Answer<Nothing>
 }
 
+/** An extension in an agent's VS Code; [own] for the agent's own and PocketIDE's layout, which stay. */
+@Serializable
+data class InstalledExtension(val id: String, val version: String = "", val own: Boolean = false)
+
 /** Every answer of info.py says whether it worked, and why not. */
 interface Reply {
     val ok: Boolean
@@ -107,6 +111,14 @@ data class ChatRead(
 @Serializable
 data class Done(override val ok: Boolean = false, override val error: String? = null) : Reply
 
+/** The extensions in each agent's VS Code, by info.py's name for the agent. */
+@Serializable
+data class ExtensionList(
+    override val ok: Boolean = false,
+    override val error: String? = null,
+    val agents: Map<String, List<InstalledExtension>> = emptyMap(),
+) : Reply
+
 @Serializable
 data class Tokens(val input: Long = 0, val output: Long = 0, val cacheRead: Long = 0, val cacheWrite: Long = 0) {
     val total: Long get() = input + output + cacheRead + cacheWrite
@@ -155,6 +167,8 @@ class CloudShellInfo(private val context: Context, private val link: Link) {
     suspend fun chat(agent: Agent, id: String): Answer<ChatRead> = ask(listOf("chat", key(agent), id), ChatRead.serializer())
 
     suspend fun usage(): Answer<UsageReport> = ask(listOf("usage"), UsageReport.serializer())
+
+    suspend fun extensions(): Answer<ExtensionList> = ask(listOf("extensions"), ExtensionList.serializer())
 
     /** Removes one chat from Cloud Shell, with its lines in the agent's prompt history. */
     suspend fun delete(agent: Agent, id: String): Answer<Done> = ask(listOf("delete", key(agent), id), Done.serializer())

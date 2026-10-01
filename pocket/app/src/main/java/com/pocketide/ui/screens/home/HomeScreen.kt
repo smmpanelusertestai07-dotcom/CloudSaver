@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,7 +46,6 @@ import com.pocketide.graph
 import com.pocketide.link.LinkState
 import com.pocketide.ui.components.ActionRow
 import com.pocketide.ui.components.AgentLogo
-import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.screens.cloudshell.SignInHelpDialog
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.FinePrint
@@ -64,13 +62,12 @@ import com.pocketide.ui.workspace.WorkspaceActivity
  * opening its own VS Code inside PocketIDE.
  */
 @Composable
-fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Unit) {
+fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Unit, onExtensions: () -> Unit) {
     val context = LocalContext.current
     val graph = context.graph
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val link by graph.link.state.collectAsStateWithLifecycle()
     var signIn by remember { mutableStateOf<Agent?>(null) }
-    var extensions by remember { mutableStateOf(false) }
     val oldComputer = remember { OldComputer(AppFolders.of(context).oldComputer).exists() }
     ShellPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -114,6 +111,8 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
                         is LinkState.Working -> OutlinedButton(onClick = { graph.link.disconnect() }) { Text("Stop") }
                         else -> Unit
                     }
+                    // Each agent's VS Code and the browser stop in Cloud Shell, then PocketIDE disconnects.
+                    if (link == LinkState.On) TextButton(onClick = { graph.link.stopEverything() }) { Text("Stop everything") }
                 }
             }
         }
@@ -126,19 +125,19 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
             ListRow(
                 leading = { Icon(Icons.Outlined.Extension, contentDescription = null, modifier = Modifier.size(28.dp)) },
                 title = "Extensions",
-                subtitle = "Add any in an agent's VS Code; they update by themselves",
-                onClick = { extensions = true },
+                subtitle = "Search Open VSX and install in an agent's VS Code; they update by themselves",
+                onClick = onExtensions,
             )
         }
         Gap(12.dp)
         FinePrint(
-            "An agent opens inside PocketIDE, one thing at a time, full screen: Back closes a menu, a file or settings and " +
-                "returns to the agent, Tools has the terminal, files and settings, and the keys a phone keyboard lacks sit " +
-                "above the keyboard. PocketIDE disconnects 15 minutes after you leave the agents; Cloud Shell then stops by itself.",
+            "An agent opens inside PocketIDE, alone and full screen: Back closes a menu or a file and returns to the agent, " +
+                "the IDE button at the top shows the whole IDE around it, Tools has the terminal, files and the browser, and the " +
+                "keys a phone keyboard lacks sit above the keyboard. PocketIDE disconnects 15 minutes after you leave the agents; " +
+                "Cloud Shell then stops by itself.",
         )
     }
     signIn?.let { agent -> SignInHelpDialog(agent) { signIn = null } }
-    if (extensions) ExtensionsDialog { extensions = false }
 }
 
 private fun connectionText(state: LinkState): String = when (state) {
@@ -175,27 +174,6 @@ private fun AgentRow(agent: Agent, onOpen: () -> Unit, onSignIn: () -> Unit) {
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
     }
-}
-
-@Composable
-private fun ExtensionsDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Extensions") },
-        text = {
-            DialogBody {
-                Text(
-                    "Each agent's VS Code keeps its own extensions. To add one, open the agent, tap Tools > All commands, " +
-                        "type Install Extensions, search and tap Install; or Tools > Install from a link for a .vsix file.",
-                )
-                Text(
-                    "They come from Open VSX and update by themselves; PocketIDE checks the agents for updates every day. " +
-                        "Install only what you trust: an extension can use everything in your Cloud Shell.",
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
-    )
 }
 
 @Composable

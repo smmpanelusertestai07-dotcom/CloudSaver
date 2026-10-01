@@ -1,6 +1,7 @@
 package com.pocketide
 
 import android.content.Context
+import android.net.ConnectivityManager
 import androidx.core.app.NotificationManagerCompat
 import com.pocketide.core.AppFolders
 import com.pocketide.core.OldVersionFiles
@@ -15,8 +16,9 @@ import java.security.KeyStore
 /**
  * What runs once per process start: once after an update, the deletion of what an older version
  * left that nothing uses now; the agents' icons, ready before Home shows them; the opener of pages
- * gcloud asks for; and, once a day, the updates of PocketIDE's connection (Ubuntu's security fixes
- * and Google's gcloud, by its own updater).
+ * gcloud asks for; and, once a week on Wi-Fi (a network that is not metered), the updates of
+ * PocketIDE's connection (Ubuntu's security fixes and Google's gcloud, by its own updater). Mobile
+ * data is never used for them: Update now (Computer) runs them on any network.
  */
 object AppStartup {
     fun onCreate(graph: AppGraph) {
@@ -33,19 +35,23 @@ object AppStartup {
         }
     }
 
-    /** Ubuntu's updates and gcloud's own updater, at most once a day, when the connection is set up. */
+    /** Ubuntu's updates and gcloud's own updater, at most once a week on Wi-Fi, when the connection is set up. */
     private suspend fun updateConnection(graph: AppGraph) {
         val computer = graph.computer
-        if (computer.state.value != ComputerState.Ready) return
         val last = runCatching { computer.info().updatedAt }.getOrNull() ?: 0L
-        if (graph.clock.now() - last < DAY_MS) return
+        val due = computer.state.value == ComputerState.Ready && graph.clock.now() - last >= WEEK_MS
+        if (!due || metered(graph.context)) return
         // Right after a start the owner may be opening an agent: the connection goes first.
         delay(UPDATE_DELAY_MS)
-        val outcome = runCatching { computer.updateBase() }.getOrNull()
+        val outcome = if (metered(graph.context)) null else runCatching { computer.updateBase() }.getOrNull()
         if (outcome is UpdateOutcome.Updated) graph.link.gcloudUpdated()
     }
 
-    private const val DAY_MS = 24 * 60 * 60 * 1000L
+    /** True on mobile data (or a hotspot), and when Android cannot tell. */
+    private fun metered(context: Context): Boolean =
+        runCatching { context.getSystemService(ConnectivityManager::class.java).isActiveNetworkMetered }.getOrDefault(true)
+
+    private const val WEEK_MS = 7 * 24 * 60 * 60 * 1000L
     private const val UPDATE_DELAY_MS = 2 * 60 * 1000L
 
     /**

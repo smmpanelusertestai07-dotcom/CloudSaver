@@ -24,9 +24,9 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.HorizontalDivider
@@ -55,7 +55,6 @@ private val TOOLS = listOf(
     Tool("Agent", "Back to the agent, full screen", Icons.Outlined.SmartToy, "agent"),
     Tool("Open a file", "Find a file in this project by its name", Icons.Outlined.Description, "files"),
     Tool("Terminal", "A command line in this project, full screen", Icons.Outlined.Terminal, "terminal"),
-    Tool("Settings", "This VS Code's own settings", Icons.Outlined.Settings, "settings"),
     Tool("Install from a link", "An extension (.vsix) Open VSX does not have, from its maker", Icons.Outlined.CloudDownload, "vsix"),
     Tool("All commands", "Everything VS Code can do", Icons.AutoMirrored.Outlined.List, "commands"),
 )
@@ -70,8 +69,10 @@ private val TOOLS = listOf(
 internal fun ToolsSheet(
     enabled: Boolean,
     browserEnabled: Boolean,
+    keysAlways: Boolean,
     onCommand: (String) -> Unit,
     onBrowser: () -> Unit,
+    onKeys: (Boolean) -> Unit,
     onReload: () -> Unit,
     onHome: () -> Unit,
     onClose: () -> Unit,
@@ -118,6 +119,16 @@ internal fun ToolsSheet(
                     Icons.Outlined.Language,
                     enabled = browserEnabled,
                     onClick = onBrowser,
+                )
+                ToolRow(
+                    "Keys bar",
+                    if (keysAlways) {
+                        "Esc, Tab, Ctrl+C and the arrows stay on screen: tap to show them only with the keyboard"
+                    } else {
+                        "Esc, Tab, Ctrl+C and the arrows show with the keyboard: tap to keep them on screen"
+                    },
+                    Icons.Outlined.Keyboard,
+                    onClick = { onKeys(!keysAlways) },
                 )
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 ToolRow("Reload this VS Code", "When it looks stuck; the agent keeps working in Cloud Shell", Icons.Outlined.Refresh, onClick = onReload)

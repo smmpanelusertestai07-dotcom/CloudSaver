@@ -157,6 +157,13 @@ class VersionGate(TreeTest):
         self.assertPasses(report)
         self.assertIn("versionName 8.12.4, versionCode 81204", report.notes)
 
+    def test_a_new_major_version_passes_and_installs_over_the_last(self):
+        self.edit("app/build.gradle.kts", '"8.0.0"', '"9.1.2"')
+        report = version.check(self.root)
+        self.assertPasses(report)
+        self.assertIn("versionName 9.1.2, versionCode 90102", report.notes)
+        self.assertGreater(version.version_code("9.0.0"), version.version_code("8.99.99"))
+
     def test_a_raised_version_with_its_own_unchanged_code_fails(self):
         # What the release job's own notice asks for: raise the version, and nothing else.
         self.edit("app/build.gradle.kts", '"8.0.0"', '"8.0.1"')
@@ -172,11 +179,11 @@ class VersionGate(TreeTest):
         self.assertFailsWith(version.check(self.root), "versionName must be set once as appVersion")
 
     def test_wrong_version_fails(self):
-        for wrong in ("7.0.1", "8.100.0", "8.0", "8.0.0-beta"):
+        for wrong in ("7.0.1", "8.100.0", "100.0.0", "8.0", "8.0.0-beta"):
             with self.subTest(version=wrong):
                 self.setUp()
                 self.edit("app/build.gradle.kts", '"8.0.0"', f'"{wrong}"')
-                self.assertFailsWith(version.check(self.root), "not 8.<minor>.<patch>")
+                self.assertFailsWith(version.check(self.root), "not <major>.<minor>.<patch>")
 
 
 class ManifestGate(TreeTest):

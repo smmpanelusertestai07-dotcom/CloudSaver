@@ -120,7 +120,8 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
             SectionCard("Where your data is") {
                 Text(
                     "Only in your Cloud Shell home folder, which only your Google account opens: each agent's projects, its " +
-                        "chats and sign-in (~/.claude, ~/.codex, ~/.gemini), its VS Code and the browser's profile (~/.pocketide). What you ask an agent, " +
+                        "chats and sign-in (~/.claude, ~/.codex, Antigravity's ~/.gemini/antigravity), its VS Code and the browser's profile " +
+                        "(~/.pocketide). What you ask an agent, " +
                         "and the code it reads, also goes to its company. It is not in Drive, Photos or your Google Cloud " +
                         "projects, and agent chats do not show on claude.ai or chatgpt.com.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -202,7 +203,7 @@ private fun ConnectionCard() {
                     facts.gcloud?.let { append(" Google Cloud SDK $it") }
                     facts.ubuntu?.let { append(" on $it") }
                     append(", ${Formats.size(facts.systemBytes + facts.homeBytes)} in PocketIDE's private storage.")
-                    append(" Updated ${Formats.ago(facts.updatedAt, graph.clock.now())}; it updates itself once a day.")
+                    append(" Updated ${Formats.ago(facts.updatedAt, graph.clock.now())}; it updates itself once a week, on Wi-Fi only.")
                 }
                 append(" No Google Cloud project, billing or OAuth client is made: only Cloud Shell's free hours are used.")
             },
@@ -214,6 +215,7 @@ private fun ConnectionCard() {
                 LinkState.On, is LinkState.Working -> OutlinedButton(onClick = { graph.link.disconnect() }) { Text("Disconnect") }
                 else -> OutlinedButton(onClick = { graph.link.connect() }, enabled = settings.gcloudAccount.isNotBlank()) { Text("Connect") }
             }
+            if (link == LinkState.On) OutlinedButton(onClick = { graph.link.stopEverything() }) { Text("Stop everything") }
             OutlinedButton(enabled = busy == null && computer == ComputerState.Ready, onClick = {
                 busy = "Updating Ubuntu and gcloud…"
                 scope.launch {

@@ -34,9 +34,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CloseFullscreen
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -236,12 +237,19 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                 viewer = null
                 if (picked != agent) onAgent(picked)
             },
-            onReload = reload,
+            // The whole IDE around the agent, drawn smaller; again for the agent alone, full screen.
+            ideShown = page()?.wide == true,
+            onIde = { page()?.let { it.run(if (it.wide) AgentPage.AGENT else AgentPage.IDE) } },
             onTools = { tools = true },
             menu = listOf(
+                "Reload this VS Code" to reload,
                 "PocketIDE home" to onHome,
                 "Disconnect" to {
                     graph.link.disconnect()
+                    onHome()
+                },
+                "Stop everything" to {
+                    graph.link.stopEverything()
                     onHome()
                 },
             ),
@@ -316,7 +324,8 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
             }
         }
         (browserStart as? BrowserStart.Starting)?.let { BrowserStarting(it.said) }
-        if (imeVisible() && viewer == null && link == LinkState.On) {
+        val keysWanted = imeVisible() || settings.keysAlways
+        if (keysWanted && viewer == null && link == LinkState.On) {
             KeyBar(
                 onKey = { code, meta -> page()?.sendKey(code, meta) },
                 onPaste = {
@@ -336,6 +345,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
         ToolsSheet(
             enabled = link == LinkState.On && page()?.web != null,
             browserEnabled = link == LinkState.On,
+            keysAlways = settings.keysAlways,
             onCommand = { command ->
                 tools = false
                 page()?.run(command)
@@ -344,6 +354,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                 tools = false
                 graph.link.startBrowser()
             },
+            onKeys = { always -> graph.settings.update { it.copy(keysAlways = always) } },
             onReload = {
                 tools = false
                 reload()
@@ -413,7 +424,8 @@ private fun TopBar(
     agent: Agent,
     onBack: () -> Unit,
     onAgent: (Agent) -> Unit,
-    onReload: () -> Unit,
+    ideShown: Boolean,
+    onIde: () -> Unit,
     onTools: () -> Unit,
     menu: List<Pair<String, () -> Unit>>,
 ) {
@@ -424,8 +436,16 @@ private fun TopBar(
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
                 Agent.entries.forEach { each -> AgentChip(each, selected = each == agent, onClick = { onAgent(each) }) }
             }
-            IconButton(onClick = onReload) { Icon(Icons.Outlined.Refresh, contentDescription = "Reload this VS Code") }
-            IconButton(onClick = onTools) { Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, settings, the browser, all commands") }
+            IconButton(onClick = onIde) {
+                if (ideShown) {
+                    Icon(Icons.Outlined.CloseFullscreen, contentDescription = "The agent alone, full screen")
+                } else {
+                    Icon(Icons.Outlined.OpenInFull, contentDescription = "The whole IDE around the agent")
+                }
+            }
+            IconButton(onClick = onTools) {
+                Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, the browser, the keys bar, all commands")
+            }
             Box {
                 IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More") }
                 DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

@@ -363,7 +363,13 @@ class Link internal constructor(
     private suspend fun prepareCloudShell() {
         step("Checking Cloud Shell…")
         val current = settings.settings.value.let { it.cloudScript == CloudShell.SCRIPT_COMMIT && it.cloudSetUpAt != 0L }
-        if (!current || through(Gcloud.HAS_LAUNCHER) != 0) setUp()
+        // Only a launcher that is really missing (its home reset or deleted) sets Cloud Shell up again;
+        // a check the network cut short (ssh's 255) is no reason to run the whole set-up.
+        when (if (current) through(Gcloud.HAS_LAUNCHER) else LAUNCHER_MISSING) {
+            0 -> Unit
+            LAUNCHER_MISSING -> setUp()
+            else -> throw LinkFailure(Problem.NETWORK, "Cloud Shell stopped answering. Check the phone's internet, then try again.")
+        }
         val port = openDoor()
         step("Preparing Cloud Shell…")
         val template = "http://{{port}}-$key.localhost:$port/"
@@ -376,7 +382,9 @@ class Link internal constructor(
 
     /** The pinned, checked set-up script, run through the connection. */
     private suspend fun setUp() {
-        step(SETTING_UP)
+        // Set up before: only what changed since is fetched (a new app's set-up, or a home Google reset).
+        val title = if (settings.settings.value.cloudSetUpAt != 0L) UPDATING_SET_UP else SETTING_UP
+        step(title)
         val said = ArrayDeque<String>()
         val code = through(Gcloud.login(CloudShell.setupCommand)) { raw ->
             val line = GcloudSays.clean(raw)
@@ -385,7 +393,7 @@ class Link internal constructor(
                     said.addLast(line)
                     while (said.size > SAID_LINES) said.removeFirst()
                 }
-                mutableState.value = LinkState.Working(SETTING_UP, line)
+                mutableState.value = LinkState.Working(title, line)
             }
         }
         if (code != 0) {
@@ -528,6 +536,38 @@ class Link internal constructor(
             else -> BrowserStart.Refused(last ?: "The browser did not start. Try again.", lowMemory = false)
         }
     }
+
+    /**
+     * Stops everything PocketIDE runs in Cloud Shell (each agent's VS Code, the browser), then
+     * disconnects: Cloud Shell has nothing of PocketIDE's left running, and stops by itself later.
+     */
+    fun stopEverything() {
+        scope.launch {
+            if (connected) {
+                tried(Gcloud.launcher("stop", *Agent.entries.map(CloudShell::key).toTypedArray()))
+                tried(Gcloud.launcher("browser", "stop"))
+            }
+            disconnect()
+        }
+    }
+
+    /**
+     * Installs ([install] true) or removes extension [id] in [agent]'s VS Code in Cloud Shell, with
+     * the launcher's words as it goes ([onLine]); true when it worked. Never connects by itself.
+     */
+    suspend fun extension(install: Boolean, agent: Agent, id: String, anyPublisher: Boolean, onLine: (String) -> Unit): Boolean =
+        connected && tried(Gcloud.extension(install, CloudShell.key(agent), id, anyPublisher)) { line ->
+            GcloudSays.clean(line).takeIf { it.isNotEmpty() }?.let(onLine)
+        } == 0
+
+    /**
+     * [agent]'s own sign-out in Cloud Shell (claude auth logout, codex logout), with what it said
+     * ([onLine]); true when it worked. Antigravity signs out in its own panel: the launcher says how.
+     */
+    suspend fun signOutAgent(agent: Agent, onLine: (String) -> Unit): Boolean =
+        connected && tried(Gcloud.launcher("signout", CloudShell.key(agent))) { line ->
+            GcloudSays.clean(line).takeIf { it.isNotEmpty() }?.let(onLine)
+        } == 0
 
     /** Stops PocketIDE's browser in Cloud Shell (Chrome and its view). */
     suspend fun stopBrowser(): Boolean = connected && tried(Gcloud.launcher("browser", "stop")) == 0
@@ -711,6 +751,10 @@ class Link internal constructor(
         /** How long after the owner leaves the agents the connection ends. */
         const val IDLE_MS = 15 * 60 * 1000L
         private const val SETTING_UP = "Setting up Cloud Shell (about 5 minutes the first time)…"
+        private const val UPDATING_SET_UP = "Updating PocketIDE's set-up in Cloud Shell (what changed only)…"
+
+        /** test's answer when the launcher is not there. */
+        private const val LAUNCHER_MISSING = 1
         private const val CONTROL_NAME = "ctl"
         private const val CONNECT_TIMEOUT_MS = 4 * 60 * 1000L
         private const val CLOSE_TIMEOUT_MS = 5_000L

@@ -39,8 +39,9 @@ internal object Faq {
             "in-app",
             DocsContent.IDE_ID,
             "Do the agents open inside the app, or in Chrome?",
-            "Only inside PocketIDE: each agent's own VS Code, one thing at a time, full screen, with PocketIDE's bar (Back, " +
-                "the agents, Reload, Tools) and the keys a phone keyboard lacks. Sign-in pages open in Chrome, never inside the " +
+            "Only inside PocketIDE: each agent's own VS Code, the agent alone and full screen, with PocketIDE's bar (Back, " +
+                "the agents, IDE, Tools) and the keys a phone keyboard lacks; the IDE button shows the whole IDE " +
+                "around it. Sign-in pages open in Chrome, never inside the " +
                 "app, as Google and the AI companies require, and return to the agent by themselves.",
         ),
         faq(
@@ -81,9 +82,11 @@ internal object Faq {
             "more-extensions",
             "agents",
             "Can I add other extensions?",
-            "Yes: in any agent's VS Code, Tools > All commands > Install Extensions finds everything on Open VSX, and Tools > Install " +
-                "from a link installs one that is not there, from its maker's .vsix link. Each VS Code keeps its own; Open VSX's " +
-                "update by themselves. Microsoft's own extensions (Pylance, C# Dev Kit, Remote, Live Share) are not on Open VSX.",
+            "Yes: Home > Extensions searches Open VSX from the phone, with each one's icon, publisher, downloads and rating; " +
+                "tap one to read it and install it in an agent's VS Code (Cloud Shell checks the download against Open VSX's " +
+                "checksum; a publisher Open VSX has not verified asks first). It also lists and removes what each VS Code has. " +
+                "Tools > Install from a link takes a maker's .vsix. Each VS Code keeps its own, and they update by themselves. " +
+                "Microsoft's own extensions (Pylance, C# Dev Kit, Remote, Live Share) are not on Open VSX.",
         ),
         faq(
             "to-github",
@@ -118,7 +121,7 @@ internal object Faq {
             "Are my chats copied to the phone?",
             "No. Chats and Usage read them in Cloud Shell, over PocketIDE's private connection, each time you open them, " +
                 "show them and keep nothing: once the page closes they are gone from the phone. They stay where each agent " +
-                "keeps them in Cloud Shell (~/.claude, ~/.codex, ~/.gemini).",
+                "keeps them in Cloud Shell (~/.claude, ~/.codex, Antigravity's ~/.gemini/antigravity).",
         ),
         faq(
             "usage-limits",
@@ -133,8 +136,9 @@ internal object Faq {
             "tools-back",
             DocsContent.IDE_ID,
             "How do Tools and Back work in an agent's VS Code?",
-            "Tools (the wrench) opens the agent, a file, the terminal, settings, install from a link, all commands or the " +
-                "browser, each full screen, one at a time. Back closes a menu, dialog or notice first, then what covers the agent, and leaves " +
+            "Tools (the wrench) opens the agent, a file, the terminal, install from a link, all commands or the browser, " +
+                "each full screen, one at a time, and turns the keys bar on for good. Back closes a menu, dialog or notice " +
+                "first, then what covers the agent, and leaves " +
                 "the agent only on a second Back. An extension's own page (Antigravity's settings, for example) opens full " +
                 "screen too, and Back returns to the agent.",
         ),
@@ -185,6 +189,66 @@ internal object Faq {
             "PocketIDE asks for the set-up again. Why?",
             "It has not opened Cloud Shell for ${CloudShell.ASK_AGAIN_AFTER_DAYS} days, and Google deletes an unused home folder " +
                 "after ${CloudShell.DELETED_AFTER_DAYS}. Connect once: PocketIDE sets up again only what is missing.",
+        ),
+        faq(
+            "phone-files",
+            DocsContent.IDE_ID,
+            "How do I give an agent a file from my phone?",
+            "Tap the agent's own add-files button (Claude Code's paper clip, Codex's +, or File > Open File): Android's picker " +
+                "opens by itself. The file is copied to ~/projects/<agent>/uploads in Cloud Shell, which git ignores, and the " +
+                "agent takes it. A folder or a save stays in Cloud Shell's folders, where the agents work.",
+        ),
+        faq(
+            "whole-ide",
+            DocsContent.IDE_ID,
+            "Can I see the whole VS Code, not only the agent?",
+            "Yes: the IDE button (the arrows, at the top) shows the whole IDE around the agent, drawn smaller as on a " +
+                "computer: the project's files, the editors and the agent side by side. Tap it again, or Back, for the agent " +
+                "alone. Each agent has its own VS Code " +
+                "on its own private port in Cloud Shell; PocketIDE opens it straight on that agent.",
+        ),
+        faq(
+            "no-repeat",
+            DocsContent.COMPUTER_ID,
+            "Does anything download again when Cloud Shell stops and starts?",
+            "No: VS Code, the agents, their extensions, settings, sign-ins, chats and your instructions stay in Cloud Shell's " +
+                "home folder, which survives every stop. The set-up runs again only after a PocketIDE update (and then fetches " +
+                "only what changed) or when Google reset the home folder. Updates in Cloud Shell use Google's network, not " +
+                "your phone's data; on the phone, gcloud's and Ubuntu's updates wait for Wi-Fi, once a week.",
+        ),
+        faq(
+            "public-ip",
+            DocsContent.CONNECTION_ID,
+            "Cloud Shell has a public IP address. Is that safe?",
+            "Yes: only Google's SSH answers on it, and only with your Google sign-in. VS Code, the agents and the browser " +
+                "listen only inside Cloud Shell (127.0.0.1), and PocketIDE opens no public port or tunnel. PocketIDE also never " +
+                "passes your Google Cloud sign-in into Cloud Shell, so an agent there cannot use your Cloud projects unless you " +
+                "sign in there yourself.",
+        ),
+        faq(
+            "agent-limits",
+            "agents",
+            "What keeps an agent from doing something harmful?",
+            "Each agent's own approvals stay on: it asks before commands and edits as its maker set it. PocketIDE adds rules " +
+                "to each agent's instructions (no firewall or tunnel changes, no reading keys or sign-ins, no Google Cloud " +
+                "sign-in, Cloud Shell's limits), and Claude Code's settings also refuse those commands and files. They are " +
+                "seatbelts, not walls: read what an agent asks to do before you allow it, and keep secrets out of Cloud Shell.",
+        ),
+        faq(
+            "on-phone",
+            DocsContent.YOUR_DATA_ID,
+            "Should chats and files be kept on the phone too?",
+            "No. The agents work in Cloud Shell and read files there, so a phone copy would not help them, and it would be a " +
+                "second place to protect and lose. To give an agent a phone file, use its add-files button. To keep work, " +
+                "put it on GitHub (git push).",
+        ),
+        faq(
+            "desktop",
+            DocsContent.COMPUTER_ID,
+            "Does Cloud Shell have a desktop I can see?",
+            "No: it is a Linux computer with no screen, used through commands. PocketIDE shows it as pages instead: each " +
+                "agent's VS Code, and the agents' Chrome, live (Tools > Browser). A full desktop would need a remote-desktop " +
+                "server in Cloud Shell's limited memory, so PocketIDE does not add one.",
         ),
         faq(
             "old-version",

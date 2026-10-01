@@ -55,6 +55,19 @@ class PortProxyTest {
     }
 
     @Test
+    fun `PocketIDE's drop path on any address goes to Cloud Shell's file drop`() {
+        val upload = Head.parse("POST /__pocketide/drop/upload?agent=codex&name=a.png HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        val (sent, port) = Rewrite.route(upload, 8081)
+        assertEquals(PortProxy.DROP_PORT, port)
+        assertEquals("POST /upload?agent=codex&name=a.png HTTP/1.1", sent.first)
+        assertTrue(String(Rewrite.request(sent, port), Charsets.ISO_8859_1).contains("Host: localhost:${PortProxy.DROP_PORT}\r\n"))
+        val page = Head.parse("GET /stable/x.js HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        assertEquals("any other path stays with its port", page.first to 8081, Rewrite.route(page, 8081).let { it.first.first to it.second })
+        val near = Head.parse("GET /__pocketide/dropped HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        assertEquals(8081, Rewrite.route(near, 8081).second)
+    }
+
+    @Test
     fun `a WebSocket keeps its upgrade`() {
         val head = Head.parse("GET /ws HTTP/1.1\r\nHost: 8080-$key.localhost:4000\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".toByteArray())!!
         val sent = String(Rewrite.request(head, 8080), Charsets.ISO_8859_1)

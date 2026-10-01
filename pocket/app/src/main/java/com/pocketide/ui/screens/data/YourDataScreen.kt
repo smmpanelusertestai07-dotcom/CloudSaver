@@ -8,14 +8,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.Agent
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.core.AppFolders
@@ -41,7 +46,9 @@ import com.pocketide.core.OldComputer
 import com.pocketide.docs.AppPlace
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
+import com.pocketide.link.LinkState
 import com.pocketide.ui.components.ActionRow
+import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.SectionCard
@@ -54,6 +61,58 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 private enum class Ask { DELETE_OLD, DELETE_PHONE }
+
+/**
+ * Each agent's sign-in, kept in Cloud Shell: its own sign-out from here (Claude Code, Codex), or
+ * where to find it (Antigravity's is in its panel); and where each company ends every sign-in.
+ */
+@Composable
+private fun SignOutCard() {
+    val graph = LocalContext.current.graph
+    val scope = rememberCoroutineScope()
+    val link by graph.link.state.collectAsStateWithLifecycle()
+    var said by remember { mutableStateOf<Pair<Agent, String>?>(null) }
+    var working by remember { mutableStateOf<Agent?>(null) }
+    SectionCard("Sign an agent out") {
+        Text(
+            "Each agent keeps its sign-in in your Cloud Shell. Sign out runs the agent's own sign-out there (Antigravity's " +
+                "is in its panel's account menu). To end the sign-in at the company as well: claude.ai > Settings > Account; " +
+                "chatgpt.com > Settings > Security > Log out of all devices.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Agent.entries.forEach { agent ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AgentLogo(agent, size = 28.dp)
+                Spacer(Modifier.width(10.dp))
+                Text(agent.displayName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                if (working == agent) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    OutlinedButton(enabled = working == null && link == LinkState.On, onClick = {
+                        working = agent
+                        scope.launch {
+                            var last: String? = null
+                            val done = graph.link.signOutAgent(agent) { last = it }
+                            working = null
+                            said = agent to when {
+                                done -> "${agent.displayName} is signed out in Cloud Shell. Sign in again in its panel."
+                                else -> last ?: "It did not sign out. Try again."
+                            }
+                        }
+                    }) { Text("Sign out") }
+                }
+            }
+            said?.takeIf { it.first == agent }?.let { Text(it.second, style = MaterialTheme.typography.bodySmall) }
+        }
+        if (link != LinkState.On) {
+            Text(
+                "Connect first (Home > Open the computer): the sign-ins are in Cloud Shell.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 /**
  * Where each piece of the owner's data lives, who can see it, and how to delete it. The work is in
@@ -86,7 +145,8 @@ fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
         )
         Place(
             "In your Cloud Shell",
-            "Your projects (~/projects), each agent's chats and sign-in (~/.claude, ~/.codex, ~/.gemini) and each agent's VS " +
+            "Your projects (~/projects), each agent's chats and sign-in (~/.claude, ~/.codex, Antigravity's ~/.gemini/antigravity) " +
+                "and each agent's VS " +
                 "Code (~/.pocketide). Only your Google account opens it. Google deletes it after " +
                 "${CloudShell.DELETED_AFTER_DAYS} days without use.",
         ) {
@@ -110,6 +170,7 @@ fun YourDataScreen(onBack: () -> Unit, onHelpPage: (String) -> Unit) {
                 }
             }
         }
+        SignOutCard()
         if (oldThere) OldComputerCard(old, busy = busy, onBusy = { busy = it }, onDelete = { asking = Ask.DELETE_OLD })
         SectionCard("Delete PocketIDE's data on this phone") {
             Text(

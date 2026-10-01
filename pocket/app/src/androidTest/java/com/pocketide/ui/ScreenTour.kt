@@ -128,10 +128,20 @@ class ScreenTour {
     }
 
     @Composable
-    private fun Home() = HomeScreen(onComputer = {}, onYourData = {}, onHelp = {})
+    private fun Home() = HomeScreen(onComputer = {}, onYourData = {}, onHelp = {}, onExtensions = {})
 
     @Composable
-    private fun Tools() = ToolsSheet(enabled = true, browserEnabled = true, onCommand = {}, onBrowser = {}, onReload = {}, onHome = {}, onClose = {})
+    private fun Tools() = ToolsSheet(
+        enabled = true,
+        browserEnabled = true,
+        keysAlways = false,
+        onCommand = {},
+        onBrowser = {},
+        onKeys = {},
+        onReload = {},
+        onHome = {},
+        onClose = {},
+    )
 
     @Composable
     private fun Settings() = SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {})

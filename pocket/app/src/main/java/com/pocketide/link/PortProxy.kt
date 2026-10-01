@@ -35,6 +35,10 @@ interface Duplex : Closeable {
  * code-server and Antigravity's own page expect. An answer's redirects to Cloud Shell's localhost
  * come back as this proxy's addresses, and a page that allows only localhost to frame it also
  * allows the proxy's addresses (Antigravity's panel inside its VS Code).
+ *
+ * One path is PocketIDE's own on every address: [DROP_PATH] goes to Cloud Shell's file drop
+ * ([DROP_PORT], files.py) instead, so an agent's VS Code page sends the phone's files there as to
+ * itself, which its own security policy allows.
  */
 class PortProxy(
     private val key: String,
@@ -89,8 +93,9 @@ class PortProxy(
         client.soTimeout = HEAD_TIMEOUT_MS
         val fromClient = BufferedInputStream(client.getInputStream(), BUFFER)
         val head = readHead(fromClient) ?: return
-        val request = Head.parse(head) ?: return reply(client, BAD_REQUEST)
-        val target = target(request.header("host")) ?: return reply(client, FORBIDDEN)
+        val parsed = Head.parse(head) ?: return reply(client, BAD_REQUEST)
+        val addressed = target(parsed.header("host")) ?: return reply(client, FORBIDDEN)
+        val (request, target) = Rewrite.route(parsed, addressed)
         val upstream = runCatching { open(target) }.getOrNull() ?: return reply(client, NOT_RUNNING)
         client.soTimeout = 0
         upstream.use {
@@ -138,6 +143,10 @@ class PortProxy(
 
     internal companion object {
         const val LOOPBACK = "127.0.0.1"
+
+        /** Cloud Shell's file drop (files.py), and the path that reaches it from any of the door's addresses. */
+        const val DROP_PORT = 6081
+        const val DROP_PATH = "/__pocketide/drop/"
         const val LOWEST_PORT = 1024
         const val HIGHEST_PORT = 65535
         private const val BACKLOG = 64
@@ -218,8 +227,21 @@ internal class Head(val first: String, val headers: List<Pair<String, String>>) 
 
 /** How a request and its answer change on the way through [PortProxy]. */
 internal object Rewrite {
+    /**
+     * Where a request to Cloud Shell's [port] goes: a request for [PortProxy.DROP_PATH] goes to the
+     * file drop, without that prefix; any other stays as it is.
+     */
+    fun route(head: Head, port: Int): Pair<Head, Int> {
+        val parts = head.first.split(' ')
+        val dropped = parts.size == REQUEST_LINE_PARTS && parts[1].startsWith(PortProxy.DROP_PATH)
+        if (!dropped) return head to port
+        val rest = "/" + parts[1].removePrefix(PortProxy.DROP_PATH)
+        return Head("${parts[0]} $rest ${parts[2]}", head.headers) to PortProxy.DROP_PORT
+    }
+
     private val HOP_BY_HOP = setOf("connection", "keep-alive", "proxy-connection", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded")
     private val ORIGIN = Regex("""^https?://[^/]+""", RegexOption.IGNORE_CASE)
+    private const val REQUEST_LINE_PARTS = 3
     private const val FRAME_ANCESTORS = "frame-ancestors"
     private const val PROXY_ANCESTORS = "http://*.localhost:*"
 

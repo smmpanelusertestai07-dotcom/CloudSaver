@@ -2,10 +2,10 @@
 // with the app's own page script (pocket/app/src/main/assets/workspace/pagescript.js). CI runs it
 // after the Cloud Shell set-up script, against the VS Code it installed:
 //   node phone-layout-check.js <folder for the screenshots>
-// It checks what the owner sees: the agent's own panel alone, full screen; the terminal and settings
-// full screen over it; Back (the app's) returning to the agent, with an editor left behind it; the
-// command palette inside the screen and closed by Back's Escape. Any miss is an error, and the
-// screenshots show it.
+// It checks what the owner sees: the agent's own panel alone, full screen; the terminal full screen
+// over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
+// an editor left behind it; the command palette inside the screen and closed by Back's Escape. Any
+// miss is an error, and the screenshots show it.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -39,6 +39,8 @@ const parts = (page) => page.evaluate(() => {
   return { ...widths, title: title ? title.textContent : '' };
 });
 const editorAlone = (p) => p.editor > 300 && p.auxiliarybar < 40 && p.sidebar < 40 && p.panel < 40;
+// The IDE button: the project's files beside the agent, as VS Code shows them.
+const wholeIde = (p) => p.sidebar > 100 && p.auxiliarybar > 100;
 
 async function check(browser, agent, port, name) {
   const agentAlone = (p) => p.auxiliarybar > 300 && p.editor < 40 && p.sidebar < 40 && p.panel < 40 && name.test(p.title);
@@ -82,19 +84,23 @@ async function check(browser, agent, port, name) {
     const first = await target();
     if (first !== 'none' && !(first === 'overlay' && (await toastOnly()))) fail(`${agent}: with the agent alone, Back leaves the screen`);
 
-    // The terminal steps aside on Back and keeps running behind the agent: settings, closed by Back,
-    // must not bring it (or any editor behind) over the agent.
+    // The terminal steps aside on Back and keeps running behind the agent: the whole IDE, left by Back
+    // or by the IDE button again, must not bring it (or any editor behind) over the agent.
     await after('the terminal opens full screen, alone', () => run('terminal'), editorAlone);
     if ((await target()) === 'none') fail(`${agent}: with the terminal open, Back returns to the agent`);
     await shot('2-terminal');
     await after('Back from the terminal returns to the agent', () => run('back'), agentAlone);
 
-    await after('settings open full screen, alone', () => run('settings'), editorAlone);
-    await shot('3-settings');
+    await after('the IDE button shows the whole IDE around the agent', () => run('ide'), wholeIde);
+    if ((await target()) === 'none') fail(`${agent}: with the whole IDE on screen, Back returns to the agent`);
+    await shot('3-ide');
     await run('back');
-    await until('Back from settings returns to the agent, with the terminal still behind it', agentAlone, 10000);
+    await until('Back from the whole IDE returns to the agent', agentAlone, 10000);
+    await after('the IDE button shows the whole IDE again', () => run('ide'), wholeIde);
+    await run('agent');
+    await until('the IDE button again returns to the agent, with the terminal still behind it', agentAlone, 10000);
     await page.waitForTimeout(2000);
-    if (!agentAlone(await parts(page))) fail(`${agent}: the editor behind settings came over the agent after Back`);
+    if (!agentAlone(await parts(page))) fail(`${agent}: the editor behind the whole IDE came over the agent`);
 
     // A webview that is still starting can take the focus once, which closes the palette: a second
     // tap opens it, as it would for the owner.

@@ -76,9 +76,9 @@ internal object Legal {
                 "sends its company what it needs to work (your prompts, and the code and files it reads) under your account " +
                 "there and that company's policy; PocketIDE cannot delete their copy. Downloads: Ubuntu and its updates from " +
                 "Ubuntu's servers and gcloud from Google, on the phone; in Cloud Shell, the set-up script and code-server from " +
-                "GitHub, the agents from Open VSX and, for the browser, Chrome for Testing from Google; the app reads each " +
-                "agent's icon from Open VSX. They see the request, " +
-                "like any website does.",
+                "GitHub, the agents and the extensions you pick from Open VSX and, for the browser, Chrome for Testing from " +
+                "Google; the app reads each agent's icon from Open VSX, and sends it the words you type in Extensions. They " +
+                "see the request, like any website does.",
         ),
         p(
             "If an error stops the app, PocketIDE keeps what it was on this phone and shows it, with a button to copy it for " +

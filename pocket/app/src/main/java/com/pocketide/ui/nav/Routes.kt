@@ -29,6 +29,10 @@ data object SettingsRoute
 @Serializable
 data object DataRoute
 
+/** Open VSX searched from the phone; each agent's extensions in Cloud Shell. */
+@Serializable
+data object ExtensionsRoute
+
 @Serializable
 data object HelpRoute
 
