@@ -273,8 +273,9 @@ jobs:
   cloudshell:
     name: The Cloud Shell set-up, on x86-64 Linux as in Cloud Shell
     # The script runs here exactly as the owner runs it in Cloud Shell, with HOME in a folder of
-    # its own; then each agent's VS Code must answer on its port, and a second start must find
-    # everything in place.
+    # its own; then each agent's VS Code, started as PocketIDE's app starts it, must answer on its
+    # port, a second start must find everything in place, and the browser must work for an agent
+    # and for the owner's view.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -291,6 +292,14 @@ jobs:
           home="$RUNNER_TEMP/cloudshell-home"
           mkdir -p "$home"
           HOME="$home" bash pocket/cloudshell/pocketide-cloudshell.sh
+          # No VS Code runs yet: each starts when PocketIDE's app opens its agent, as here.
+          if pgrep -af "$home/.pocketide/code-server/.* --bind-addr 127.0.0.1:"; then
+            echo "::error::the set-up left a VS Code running (above); each should start only when its agent opens"; exit 1
+          fi
+          # The browser is there before it is first wanted: Google's Chrome for Testing.
+          test -x "$home/.pocketide/browser/chrome/chrome-headless-shell"
+          echo "Chrome $(cat "$home/.pocketide/browser/chrome/VERSION"), $(du -sh "$home/.pocketide/browser/chrome" | cut -f1)"
+          HOME="$home" "$home/.local/bin/pocketide" start claude-code codex antigravity
           # Each agent's own VS Code: Claude Code on 8080, Codex on 8081, Antigravity on 8082.
           answers() {
             local port=$1 code=000
@@ -349,6 +358,28 @@ jobs:
           HOME="$home" "$launcher" proxy-uri "$door"
           test "$(pgrep -f 'code-server.*127.0.0.1:8080' | head -n 1)" = "$before"
 
+      - name: One agent's VS Code stops to free memory, the others keep running, and it starts again
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/cloudshell-home"
+          launcher="$home/.local/bin/pocketide"
+          vscode() { pgrep -f "$home/.pocketide/code-server/.* --bind-addr 127.0.0.1:$1 " >/dev/null; }
+          HOME="$home" "$launcher" stop codex
+          if vscode 8081; then echo "::error::Codex's VS Code still runs after stop"; exit 1; fi
+          vscode 8080 && vscode 8082
+          # Only the agents' own names.
+          if HOME="$home" "$launcher" start nobody; then echo "::error::start took a name that is no agent's"; exit 1; fi
+          if HOME="$home" "$launcher" stop; then echo "::error::stop stopped without a name"; exit 1; fi
+          HOME="$home" "$launcher" start codex
+          code=000
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081/healthz" || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          test "$code" = 200 || { echo "::error::Codex's VS Code did not start again ($code)"; exit 1; }
+          echo "Codex's VS Code stopped alone and started again."
+
       - name: PocketIDE's Chats and Usage read this Cloud Shell
         run: |
           set -euo pipefail
@@ -370,6 +401,7 @@ jobs:
           assert all(agent["running"] and agent["version"] for agent in agents), agents
           assert status["memoryTotal"] > 0 and status["homeTotal"] > status["homeUsed"] > 0, status
           assert chats["problems"] == [], chats["problems"]
+          assert status["browser"]["version"] and not status["browser"]["running"], status["browser"]
           assert all("error" not in usage[name] for name in ("claude", "codex", "antigravity")), usage
           print("Cloud Shell's numbers:", {key: status[key] for key in ("processors", "memoryTotal", "homeUsed", "homeTotal")})
           print("Agents:", [(agent["agent"], agent["version"]) for agent in agents])
@@ -386,6 +418,43 @@ jobs:
           npm install --prefix "$tools" --no-save --no-audit --no-fund playwright@1.56.1
           "$tools/node_modules/.bin/playwright" install --with-deps chromium
           NODE_PATH="$tools/node_modules" node pocket/tools/phone-layout-check.js "$RUNNER_TEMP/phone-screens"
+
+      - name: The browser, for an agent and for the owner's view
+        run: |
+          set -euo pipefail
+          # As an agent or PocketIDE's Tools > Browser starts it: Google's Chrome for Testing, its
+          # DevTools on 127.0.0.1:9222 and the owner's view on 127.0.0.1:6080, nowhere else.
+          home="$RUNNER_TEMP/cloudshell-home"
+          launcher="$home/.local/bin/pocketide"
+          HOME="$home" "$launcher" browser start
+          echo "Chrome's own sandbox: $(cat "$home/.pocketide/browser/sandbox")"
+          # Who listens on 9222 and 6080, from the kernel's own tables: 127.0.0.1 only.
+          python3 - <<'PY'
+          import os
+          listening = []
+          for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+              if not os.path.exists(table):  # no IPv6 on this machine
+                  continue
+              for line in open(table).read().splitlines()[1:]:
+                  local, state = line.split()[1], line.split()[3]
+                  address, port = local.rsplit(":", 1)
+                  if state == "0A" and int(port, 16) in (9222, 6080):
+                      listening.append((table, address, int(port, 16)))
+          print("Listening:", listening)
+          assert sorted(port for _, _, port in listening) == [6080, 9222], listening
+          assert all(table == "/proc/net/tcp" and address == "0100007F" for table, address, _ in listening), listening
+          PY
+          HOME="$home" python3 pocket/app/src/main/assets/cloudshell/info.py status | python3 -c '
+          import json, sys
+          browser = json.load(sys.stdin)["browser"]
+          assert browser["running"] and browser["version"] and browser["sandbox"] is not None, browser
+          print("PocketIDE sees it:", browser)'
+          NODE_PATH="$RUNNER_TEMP/phone-check/node_modules" node pocket/tools/browser-check.js "$RUNNER_TEMP/phone-screens"
+          HOME="$home" "$launcher" browser stop
+          sleep 2
+          if curl -fs -m 2 http://127.0.0.1:9222/json/version >/dev/null; then
+            echo "::error::Chrome still runs after browser stop"; exit 1
+          fi
 
       - name: Keep the phone-size screens
         if: always()

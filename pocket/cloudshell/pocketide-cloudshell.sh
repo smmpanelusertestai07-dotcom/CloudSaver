@@ -7,9 +7,13 @@
 #   Antigravity  port 8082  ~/projects/antigravity
 # Each VS Code listens only inside Cloud Shell (127.0.0.1). PocketIDE's app reaches them through
 # Google's own gcloud (`gcloud cloud-shell ssh`), from the phone's own address only.
-# From then on Cloud Shell starts them by itself when it starts, tidies old caches, logs and
-# 30-day-old Codex chats (never your projects), and once a day installs newer releases of the
-# agents and of code-server (a code-server release only once it is a week old), each checked.
+# Each agent's VS Code starts when PocketIDE's app opens that agent, so Cloud Shell's memory goes to
+# the agents in use. When Cloud Shell starts, it tidies old caches and logs (never
+# your projects or chats), and once a day installs newer releases of the agents and of code-server
+# (a code-server release only once it is a week old), each checked.
+# A browser for the agents, on demand (`pocketide browser start`): Google's Chrome for Testing, which
+# they drive through Chrome's DevTools protocol on 127.0.0.1:9222, and which you watch and use in
+# PocketIDE's app. It stops by itself when no one has used it for 20 minutes.
 # Each agent's own instructions begin with Cloud Shell's rules (no mining, scanning, public tunnels
 # or keeping Cloud Shell up), so an agent never puts the Google account at risk by itself.
 # Run it again at any time: it only adds what is missing.
@@ -26,7 +30,7 @@ CODE_SERVER_URL="https://github.com/coder/code-server/releases/download/v$CODE_S
 BASE="$HOME/.pocketide"
 CS_DIR="$BASE/code-server"
 BIN="$HOME/.local/bin"
-NEEDED_KB=2200000
+NEEDED_KB=2500000
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 fail() {
@@ -45,7 +49,7 @@ if [ -x "$CS_DIR/current/bin/code-server" ] &&
     echo "code-server $installed_cs is installed."
 elif [ ! -x "$CS_DIR/$CODE_SERVER_VERSION/bin/code-server" ]; then
     free_kb=$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')
-    [ "$free_kb" -ge "$NEEDED_KB" ] || fail "It needs about 2 GB free in your home folder (it uses about 1.6 GB); $((free_kb / 1024)) MB is free. Delete old files first."
+    [ "$free_kb" -ge "$NEEDED_KB" ] || fail "It needs about 2.5 GB free in your home folder (it uses about 1.9 GB); $((free_kb / 1024)) MB is free. Delete old files first."
     say "Downloading VS Code (code-server $CODE_SERVER_VERSION)..."
     tmp=$(mktemp -d)
     curl -fL --retry 3 -o "$tmp/code-server.tar.gz" "$CODE_SERVER_URL"
@@ -448,8 +452,456 @@ async function activate(context) {
 module.exports = { activate, deactivate() {} };
 JS
 
-# 3. `pocketide`: starts each agent's VS Code that is not running, installs or updates the agents
-# (`pocketide update`), and, when Cloud Shell starts (`pocketide boot`), tidies and updates too.
+# 2b. PocketIDE's browser view (relay.py): `pocketide browser start` starts Chrome for the agents and
+# this page for the owner, who watches and uses that Chrome in PocketIDE's app (Python's standard
+# library only; it listens only on 127.0.0.1).
+mkdir -p "$BASE/browser"
+cat >"$BASE/browser/relay.py" <<'RELAY'
+"""PocketIDE's view of its browser in Cloud Shell: shows Chrome's page live and passes the owner's
+taps, scrolls and typing to it.
+
+Chrome (its headless shell) runs on 127.0.0.1:CDP_PORT, where the agents drive it through Chrome's
+DevTools protocol. This relay serves a page on 127.0.0.1:VIEW_PORT, which PocketIDE's app opens
+through its private door: the page Chrome shows (the newest tab, or the one picked), as pictures
+Chrome sends while someone watches, and the owner's input back. It listens only on 127.0.0.1, uses
+only Python's standard library, and stops Chrome and itself when no one has watched or used the
+browser for IDLE_MINUTES.
+"""
+import base64
+import json
+import os
+import socket
+import struct
+import threading
+import time
+import urllib.parse
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
+VIEW_PORT = int(os.environ.get("VIEW_PORT", "6080"))
+IDLE_MINUTES = 20
+WATCH_SECONDS = 30
+OWNER_SECONDS = 120
+PHONE = (412, 870)
+DESKTOP = (1280, 800)
+KEYS = {"Enter": 13, "Backspace": 8, "Tab": 9, "Escape": 27, "ArrowLeft": 37, "ArrowUp": 38, "ArrowRight": 39,
+        "ArrowDown": 40, "Delete": 46, "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34}
+
+
+class Socket:
+    """A WebSocket client, just enough for Chrome's DevTools protocol (text frames, no extensions)."""
+
+    def __init__(self, url):
+        address = urllib.parse.urlparse(url)
+        self.sock = socket.create_connection((address.hostname, address.port), timeout=10)
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall(("GET %s HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                           "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n"
+                           % (address.path, address.hostname, address.port, key)).encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise OSError("Chrome closed the connection")
+            head += chunk
+        if b" 101 " not in head.split(b"\r\n", 1)[0]:
+            raise OSError("Chrome refused the connection")
+        self.rest = head.split(b"\r\n\r\n", 1)[1]
+        self.sock.settimeout(None)
+        self.lock = threading.Lock()
+
+    def send(self, text):
+        data = text.encode()
+        mask = os.urandom(4)
+        size = len(data)
+        if size < 126:
+            head = struct.pack(">BB", 0x81, 0x80 | size)
+        elif size < 65536:
+            head = struct.pack(">BBH", 0x81, 0x80 | 126, size)
+        else:
+            head = struct.pack(">BBQ", 0x81, 0x80 | 127, size)
+        masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(data))
+        with self.lock:
+            self.sock.sendall(head + mask + masked)
+
+    def take(self, size):
+        while len(self.rest) < size:
+            chunk = self.sock.recv(1 << 16)
+            if not chunk:
+                raise OSError("Chrome closed the connection")
+            self.rest += chunk
+        out, self.rest = self.rest[:size], self.rest[size:]
+        return out
+
+    def receive(self):
+        message = b""
+        while True:
+            first, second = self.take(2)
+            size = second & 0x7F
+            if size == 126:
+                size = struct.unpack(">H", self.take(2))[0]
+            elif size == 127:
+                size = struct.unpack(">Q", self.take(8))[0]
+            payload = self.take(size)
+            opcode = first & 0x0F
+            if opcode == 8:
+                raise OSError("Chrome closed the connection")
+            if opcode in (0, 1, 2):
+                message += payload
+                if first & 0x80:
+                    return message.decode("utf-8", "replace")
+
+
+class Browser:
+    """One connection to Chrome: the page shown, its pictures, and the owner's input."""
+
+    def __init__(self):
+        # Chrome on this computer: never through a proxy the environment may name.
+        local = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        version = json.load(local.open("http://127.0.0.1:%d/json/version" % CDP_PORT, timeout=5))
+        self.ws = Socket(version["webSocketDebuggerUrl"])
+        self.lock = threading.Lock()
+        self.next_id = 0
+        self.waiting = {}
+        self.session = None
+        self.target = None
+        self.picked = None  # the tab the owner picked, kept in front while they use it
+        self.touched = 0.0  # when the owner last picked or used a page
+        self.active = None  # the page something last happened in: the one the agent works in
+        self.casting = False
+        self.frame = None
+        self.frame_no = 0
+        self.size = DESKTOP
+        self.phone = False
+        self.changed = threading.Condition()
+        self.watched = 0.0
+        self.used = time.time()
+        self.closed = threading.Event()
+        threading.Thread(target=self.read, daemon=True).start()
+        self.call("Target.setDiscoverTargets", {"discover": True})
+        self.follow()
+
+    def call(self, method, params=None, session=None, wait=True):
+        with self.lock:
+            self.next_id += 1
+            number = self.next_id
+        message = {"id": number, "method": method, "params": params or {}}
+        if session:
+            message["sessionId"] = session
+        box = {"done": threading.Event()}
+        if wait:
+            self.waiting[number] = box
+        self.ws.send(json.dumps(message))
+        if not wait:
+            return None
+        box["done"].wait(10)
+        self.waiting.pop(number, None)
+        return box.get("result")
+
+    def read(self):
+        try:
+            while True:
+                message = json.loads(self.ws.receive())
+                if "id" in message:
+                    box = self.waiting.get(message["id"])
+                    if box is not None:
+                        box["result"] = message.get("result") or {}
+                        box["done"].set()
+                    continue
+                method = message.get("method")
+                params = message.get("params") or {}
+                if method == "Page.screencastFrame" and message.get("sessionId") == self.session:
+                    meta = params.get("metadata") or {}
+                    self.size = (int(meta.get("deviceWidth") or self.size[0]), int(meta.get("deviceHeight") or self.size[1]))
+                    with self.changed:
+                        self.frame = base64.b64decode(params.get("data", ""))
+                        self.frame_no += 1
+                        self.changed.notify_all()
+                    self.call("Page.screencastFrameAck", {"sessionId": params.get("sessionId")}, self.session, wait=False)
+                elif method in ("Target.targetCreated", "Target.targetDestroyed", "Target.targetInfoChanged"):
+                    info = params.get("targetInfo") or {}
+                    if method != "Target.targetDestroyed" and info.get("type") == "page":
+                        self.active = info.get("targetId")
+                    self.used = time.time()
+                    threading.Thread(target=self.follow, daemon=True).start()
+        except (OSError, ValueError):
+            self.closed.set()
+
+    def pages(self):
+        found = (self.call("Target.getTargets") or {}).get("targetInfos", [])
+        return [page for page in found if page.get("type") == "page"]
+
+    def follow(self):
+        """The page shown: the one the owner picked, while they use it (OWNER_SECONDS); else the
+        one something last happened in, which is where the agent works; else the last one."""
+        pages = self.pages()
+        if not pages:
+            return
+        open_ids = {page["targetId"] for page in pages}
+        if self.picked in open_ids and time.time() - self.touched < OWNER_SECONDS:
+            wanted = self.picked
+        else:
+            wanted = self.active if self.active in open_ids else None
+        chosen = next((page for page in pages if page["targetId"] == wanted), None) or pages[-1]
+        if chosen["targetId"] == self.target:
+            return
+        attached = self.call("Target.attachToTarget", {"targetId": chosen["targetId"], "flatten": True}) or {}
+        if not attached.get("sessionId"):
+            return
+        old, self.session, self.target = self.session, attached["sessionId"], chosen["targetId"]
+        if old:
+            self.call("Page.stopScreencast", {}, old, wait=False)
+        self.call("Page.enable", {}, self.session)
+        self.casting = False
+        if self.phone:
+            self.emulate(True)
+        if time.time() - self.watched < WATCH_SECONDS:
+            self.cast()
+
+    def cast(self):
+        if self.session and not self.casting:
+            self.casting = True
+            # Pictures no bigger than a phone shows, and light: watching costs little mobile data.
+            self.call("Page.startScreencast", {"format": "jpeg", "quality": 50, "maxWidth": 960, "maxHeight": 1280,
+                                               "everyNthFrame": 1}, self.session)
+
+    def watch(self):
+        """Someone is looking: pictures come while they do."""
+        self.watched = time.time()
+        self.cast()
+
+    def quiet(self):
+        """No one has looked for a while: Chrome sends no pictures."""
+        if self.casting and time.time() - self.watched > WATCH_SECONDS:
+            self.casting = False
+            self.call("Page.stopScreencast", {}, self.session, wait=False)
+
+    def emulate(self, phone):
+        self.phone = phone
+        if phone:
+            width, height = PHONE
+            self.call("Emulation.setDeviceMetricsOverride",
+                      {"width": width, "height": height, "deviceScaleFactor": 2, "mobile": True}, self.session)
+            self.call("Emulation.setTouchEmulationEnabled", {"enabled": True}, self.session)
+        else:
+            self.call("Emulation.clearDeviceMetricsOverride", {}, self.session)
+            self.call("Emulation.setTouchEmulationEnabled", {"enabled": False}, self.session)
+        self.casting = False
+        self.call("Page.stopScreencast", {}, self.session, wait=False)
+        self.cast()
+
+    def state(self):
+        info = next((page for page in self.pages() if page["targetId"] == self.target), {})
+        return {"url": info.get("url", ""), "title": info.get("title", ""), "phone": self.phone,
+                "pages": [{"id": page["targetId"], "title": page.get("title") or page.get("url", ""),
+                           "shown": page["targetId"] == self.target} for page in self.pages()]}
+
+    def act(self, what):
+        """The owner's input, checked: only these kinds, on the page shown."""
+        # A page the owner picked stays in front while they keep using it.
+        self.used = self.touched = time.time()
+        kind = what.get("type")
+        s = self.session
+        point = lambda: (max(0.0, min(1.0, float(what.get("x", 0)))) * self.size[0],
+                         max(0.0, min(1.0, float(what.get("y", 0)))) * self.size[1])
+        if kind == "tap":
+            x, y = point()
+            for event in ("mouseMoved", "mousePressed", "mouseReleased"):
+                self.call("Input.dispatchMouseEvent", {"type": event, "x": x, "y": y, "button": "left", "clickCount": 1}, s)
+        elif kind == "scroll":
+            x, y = point()
+            delta = max(-5000.0, min(5000.0, float(what.get("dy", 0))))
+            self.call("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": x, "y": y, "deltaX": 0, "deltaY": delta}, s)
+        elif kind == "text":
+            self.call("Input.insertText", {"text": str(what.get("text", ""))[:2000]}, s)
+        elif kind == "key" and what.get("key") in KEYS:
+            key = what["key"]
+            for event in ("keyDown", "keyUp"):
+                params = {"type": event, "key": key, "code": key, "windowsVirtualKeyCode": KEYS[key]}
+                if key == "Enter" and event == "keyDown":
+                    params["text"] = "\r"
+                self.call("Input.dispatchKeyEvent", params, s)
+        elif kind == "go":
+            url = str(what.get("url", "")).strip()
+            if url and "://" not in url and not url.startswith("about:"):
+                url = ("http://" if url.startswith(("localhost", "127.0.0.1")) else "https://") + url
+            if urllib.parse.urlparse(url).scheme in ("http", "https") or url == "about:blank":
+                self.call("Page.navigate", {"url": url}, s)
+        elif kind == "back":
+            self.call("Runtime.evaluate", {"expression": "history.back()"}, s)
+        elif kind == "forward":
+            self.call("Runtime.evaluate", {"expression": "history.forward()"}, s)
+        elif kind == "reload":
+            self.call("Page.reload", {}, s)
+        elif kind == "page":
+            self.picked = str(what.get("id", ""))
+            self.target = None
+            self.follow()
+        elif kind == "size":
+            self.emulate(bool(what.get("phone")))
+
+    def close(self):
+        try:
+            self.call("Browser.close", wait=False)
+        except OSError:
+            pass
+
+
+VIEW = """<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>PocketIDE browser</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f2fa;--bar:#ffffff;--ink:#1c1b20;--soft:#5f5b6b;--line:#d9d4e5;--accent:#5b3fd6}
+@media (prefers-color-scheme:dark){:root{--bg:#141218;--bar:#1f1d24;--ink:#e7e1ef;--soft:#a39dae;--line:#3a3642;--accent:#c2b5ff}}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif}
+body{display:flex;flex-direction:column}
+.bar{display:flex;gap:6px;align-items:center;padding:6px 8px;background:var(--bar);border-bottom:1px solid var(--line)}
+.bar.bottom{border-top:1px solid var(--line);border-bottom:0;flex-wrap:wrap}
+button,select,input{font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:10px;min-height:40px}
+button{min-width:40px;padding:0 10px}button.on{border-color:var(--accent);color:var(--accent)}
+input,select{flex:1;min-width:0;padding:0 10px}.bar.bottom input{flex-basis:100%}
+#screen{flex:1;min-height:0;display:flex;align-items:flex-start;justify-content:center;overflow:auto;touch-action:none}
+#picture{max-width:100%;height:auto;display:block;user-select:none;-webkit-user-select:none}
+#note{padding:6px 10px;color:var(--soft);font-size:13px}
+</style></head><body>
+<div class=bar><button id=back aria-label=Back>&#8592;</button><button id=reload aria-label=Reload>&#8635;</button>
+<input id=url inputmode=url autocapitalize=off autocomplete=off placeholder="Address"><button id=go>Go</button></div>
+<div class=bar><select id=pages aria-label="Tabs"></select><button id=size>Phone size</button><button id=watch>Watch only</button></div>
+<div id=screen><img id=picture alt="The browser's page"></div>
+<div class="bar bottom"><input id=text autocapitalize=off placeholder="Type into the page"><button id=send>Type</button>
+<button data-key=Enter aria-label=Enter>&#8629;</button><button data-key=Backspace aria-label=Backspace>&#9003;</button>
+<button data-key=Tab>Tab</button><button data-key=Escape>Esc</button></div>
+<div id=note>The agents use this browser too, and can read what it shows, signed-in pages included: sign in only where you are happy for them to see.</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (what) => fetch('input', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(what)});
+let shown = 0, watchOnly = false, start = null;
+async function frames() {
+  for (;;) {
+    try {
+      const answer = await fetch('frame?after=' + shown, {cache: 'no-store'});
+      if (answer.status === 200) {
+        shown = Number(answer.headers.get('X-Frame')) || shown + 1;
+        const old = $('picture').src;
+        $('picture').src = URL.createObjectURL(await answer.blob());
+        if (old.startsWith('blob:')) URL.revokeObjectURL(old);
+      } else if (answer.status !== 204) await new Promise((done) => setTimeout(done, 1500));
+    } catch (e) { await new Promise((done) => setTimeout(done, 1500)); }
+    await new Promise((done) => setTimeout(done, 150));
+  }
+}
+async function state() {
+  try {
+    const s = await (await fetch('state', {cache: 'no-store'})).json();
+    if (document.activeElement !== $('url')) $('url').value = s.url || '';
+    $('size').classList.toggle('on', s.phone);
+    const pages = $('pages');
+    pages.innerHTML = '';
+    s.pages.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.title || 'New tab'; o.selected = p.shown; pages.appendChild(o); });
+  } catch (e) {}
+}
+const picture = $('picture');
+picture.addEventListener('pointerdown', (e) => { start = {x: e.clientX, y: e.clientY}; e.preventDefault(); });
+picture.addEventListener('pointerup', (e) => {
+  if (!start || watchOnly) { start = null; return; }
+  const r = picture.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+  const dy = start.y - e.clientY;
+  if (Math.abs(dy) > 12) post({type: 'scroll', x, y, dy: dy * (picture.naturalHeight / r.height)});
+  else post({type: 'tap', x, y});
+  start = null;
+});
+$('go').onclick = () => post({type: 'go', url: $('url').value});
+$('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') post({type: 'go', url: $('url').value}); });
+$('back').onclick = () => post({type: 'back'});
+$('reload').onclick = () => post({type: 'reload'});
+$('pages').onchange = () => post({type: 'page', id: $('pages').value});
+$('size').onclick = () => post({type: 'size', phone: !$('size').classList.contains('on')}).then(state);
+$('watch').onclick = () => { watchOnly = !watchOnly; $('watch').classList.toggle('on', watchOnly); };
+const send = () => { const t = $('text'); if (t.value) post({type: 'text', text: t.value}); t.value = ''; };
+$('send').onclick = send;
+$('text').addEventListener('keydown', (e) => { if (e.key === 'Enter') { send(); post({type: 'key', key: 'Enter'}); } });
+document.querySelectorAll('[data-key]').forEach((b) => b.onclick = () => post({type: 'key', key: b.dataset.key}));
+frames(); state(); setInterval(state, 3000);
+</script></body></html>"""
+
+
+def serve(browser):
+    class View(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *args):
+            pass
+
+        def reply(self, status, body=b"", kind="application/json", extra=None):
+            self.send_response(status)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for name, value in (extra or {}).items():
+                self.send_header(name, value)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
+
+        def do_GET(self):
+            path, _, query = self.path.partition("?")
+            if path == "/":
+                self.reply(200, VIEW.encode(), "text/html; charset=utf-8")
+            elif path == "/frame":
+                browser.watch()
+                after = int(urllib.parse.parse_qs(query).get("after", ["0"])[0] or 0)
+                with browser.changed:
+                    browser.changed.wait_for(lambda: browser.frame_no != after and browser.frame is not None, timeout=15)
+                    frame, number = browser.frame, browser.frame_no
+                if frame is None or number == after:
+                    self.reply(204)
+                else:
+                    self.reply(200, frame, "image/jpeg", {"X-Frame": str(number)})
+            elif path == "/state":
+                self.reply(200, json.dumps(browser.state()).encode())
+            else:
+                self.reply(404)
+
+        def do_POST(self):
+            if self.path != "/input":
+                return self.reply(404)
+            size = min(int(self.headers.get("Content-Length") or 0), 65536)
+            try:
+                what = json.loads(self.rfile.read(size) or b"{}")
+                if isinstance(what, dict):
+                    browser.act(what)
+            except (ValueError, TypeError):
+                return self.reply(400)
+            self.reply(204)
+
+    class Server(ThreadingHTTPServer):
+        daemon_threads = True
+
+        def handle_error(self, request, address):
+            pass  # a viewer that went away mid-request (the phone slept, the page closed)
+
+    server = Server(("127.0.0.1", VIEW_PORT), View)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    # Chrome and this view go when no one has watched or used the browser for IDLE_MINUTES.
+    while not browser.closed.wait(10):
+        browser.quiet()
+        if time.time() - max(browser.watched, browser.used) > IDLE_MINUTES * 60:
+            browser.close()
+            break
+    server.shutdown()
+
+
+if __name__ == "__main__":
+    serve(Browser())
+RELAY
+
+# 3. `pocketide`: starts or stops an agent's VS Code (`pocketide start|stop <agent>`), installs or
+# updates the agents (`pocketide update`), starts the browser (`pocketide browser start|stop`), and,
+# when Cloud Shell starts (`pocketide boot`), tidies and updates.
 cat >"$BIN/pocketide" <<'LAUNCHER'
 #!/usr/bin/env bash
 # PocketIDE's launcher in Google Cloud Shell; see ~/pocketide-cloudshell.sh.
@@ -675,6 +1127,8 @@ update() {
         rm -f "$vsix"
     done
     links
+    # The browser (Tools > Browser in PocketIDE, and the agents'): there before it is first wanted.
+    browser_install || echo "Chrome for the browser is tried again tomorrow." >&2
     if [ -n "$missing" ]; then
         echo "Not installed:$missing. Run: pocketide update" >&2
         return 1
@@ -692,7 +1146,20 @@ links() { # the agents' own command lines, where a terminal finds them
     return 0
 }
 
-start() { # each agent's VS Code that is not running, on its own port
+port_of() { # $1: an agent's name -> its port; nothing (and false) for any other name
+    local entry rest
+    for entry in $AGENTS; do
+        rest=${entry#*:}
+        [ "${entry%%:*}" = "$1" ] && { echo "${rest%%:*}"; return 0; }
+    done
+    return 1
+}
+
+running() { # $1: a port -> true when an agent's VS Code runs on it
+    pgrep -u "$(id -u)" -f "$BASE/code-server/.* --bind-addr 127.0.0.1:$1 " >/dev/null
+}
+
+start() { # $@: the agents (every one when none) whose VS Code starts, if not running, on its own port
     # Where PocketIDE's app shows this computer's ports (`pocketide proxy-uri`): code-server's own
     # links to a port (Antigravity's panel, a dev server) go there.
     proxy=$(cat "$BASE/proxy-uri" 2>/dev/null || true)
@@ -703,9 +1170,12 @@ start() { # each agent's VS Code that is not running, on its own port
     "$CODE" --help 2>/dev/null | grep -q -- '--link-protection-trusted-domains' && links=(--link-protection-trusted-domains '*')
     for entry in $AGENTS; do
         key=${entry%%:*} rest=${entry#*:} port=${rest%%:*}
+        if [ $# -gt 0 ]; then
+            case " $* " in *" $key "*) ;; *) continue ;; esac
+        fi
         data="$BASE/vscode/$key"
         [ -d "$data" ] || continue
-        pgrep -u "$(id -u)" -f "code-server.*127.0.0.1:$port" >/dev/null && continue
+        running "$port" && continue
         (
             [ -n "$proxy" ] && export VSCODE_PROXY_URI="$proxy"
             exec nohup "$CODE" --bind-addr "127.0.0.1:$port" --auth none --disable-telemetry --disable-update-check \
@@ -716,16 +1186,40 @@ start() { # each agent's VS Code that is not running, on its own port
     done
 }
 
+stop() { # $@: the agents whose VS Code stops, to free memory (what the agent was doing ends)
+    for key in "$@"; do
+        port=$(port_of "$key") || { echo "No agent is called $key." >&2; return 1; }
+        pkill -u "$(id -u)" -f "$BASE/code-server/.* --bind-addr 127.0.0.1:$port " || true
+        # Its memory is free once it has gone: wait for that (a few seconds at most).
+        for _ in $(seq 1 20); do
+            running "$port" || break
+            sleep 0.5
+        done
+        pkill -KILL -u "$(id -u)" -f "$BASE/code-server/.* --bind-addr 127.0.0.1:$port " || true
+        # Antigravity's extension leaves Google's agy (its backend) running: it goes with its VS Code.
+        if [ "$key" = antigravity ]; then
+            pkill -u "$(id -u)" -f "agy --hub --hub-port=$AGY_PORT " || true
+        fi
+    done
+    return 0
+}
+
 proxy_uri() { # $1: http://{{port}}-<key>.localhost:<port>/, where the phone's PocketIDE shows ports
     printf '%s' "$1" | grep -Eq '^http://\{\{port\}\}-[0-9a-f]{32}\.localhost:[0-9]{2,5}/$' ||
         { echo "That is not an address PocketIDE gives." >&2; return 1; }
     [ "$(cat "$BASE/proxy-uri" 2>/dev/null)" = "$1" ] && return 0
     (umask 077 && printf '%s\n' "$1" >"$BASE/proxy-uri")
-    # code-server reads it when it starts: each VS Code starts again with it.
+    # code-server reads it when it starts: each running VS Code starts again with it.
     restart
 }
 
-restart() { # each VS Code starts again (a new address, new flags, a new layout extension)
+restart() { # each running VS Code starts again (a new address, new flags, a new layout extension)
+    again=()
+    for entry in $AGENTS; do
+        key=${entry%%:*} rest=${entry#*:} port=${rest%%:*}
+        running "$port" && again+=("$key")
+    done
+    [ ${#again[@]} -gt 0 ] || return 0
     pkill -u "$(id -u)" -f "$BASE/code-server/" || true
     for _ in $(seq 1 20); do
         pgrep -u "$(id -u)" -f "$BASE/code-server/" >/dev/null || break
@@ -734,13 +1228,144 @@ restart() { # each VS Code starts again (a new address, new flags, a new layout 
     # One still stopping would be taken for running, and its agent left without a VS Code.
     pkill -KILL -u "$(id -u)" -f "$BASE/code-server/" || true
     sleep 1
-    start
+    start "${again[@]}"
 }
 
-tidy() { # old caches, logs and 30-day-old Codex chats; never projects, never what is in use
+# PocketIDE's browser: Google's Chrome for Testing (its headless shell), which the agents drive
+# through Chrome's DevTools protocol on 127.0.0.1:$CDP_PORT, and which the owner watches and uses
+# in PocketIDE's app through relay.py on 127.0.0.1:$VIEW_PORT. Only while it is wanted: it stops
+# by itself when no one has looked at it or used it for a while.
+BROWSER="$BASE/browser"
+CDP_PORT=9222
+VIEW_PORT=6080
+BROWSER_MEMORY_MB=450
+
+browser_install() { # the newest stable Chrome for Testing headless shell, from Google, checked once a week (update)
+    python3 - "$BROWSER" <<'PY'
+import json, os, shutil, sys, tempfile, time, urllib.request, zipfile
+base = sys.argv[1]
+index = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+current = os.path.join(base, "chrome")
+stamp = os.path.join(current, "VERSION")
+os.makedirs(base, exist_ok=True)
+# A download cut short (the connection ended) leaves its work folder: it goes.
+for name in os.listdir(base):
+    if name.startswith("tmp") and os.path.isdir(os.path.join(base, name)):
+        shutil.rmtree(os.path.join(base, name), ignore_errors=True)
+if os.path.exists(stamp) and time.time() - os.path.getmtime(stamp) < 7 * 86400:
+    sys.exit(0)
+try:
+    stable = json.load(urllib.request.urlopen(index, timeout=60))["channels"]["Stable"]
+except Exception as error:  # offline, or a changed list: the Chrome already here is used as it is
+    sys.exit(0 if os.path.exists(stamp) else "Chrome for Testing's list could not be read: %s" % error)
+version = stable["version"]
+if os.path.exists(stamp) and open(stamp).read().strip() == version:
+    os.utime(stamp)
+    sys.exit(0)
+if shutil.disk_usage(base).free < 1_000_000_000:
+    sys.exit(0 if os.path.exists(stamp) else "Less than 1 GB is free in your home folder: Chrome was not downloaded.")
+url = next(each["url"] for each in stable["downloads"]["chrome-headless-shell"] if each["platform"] == "linux64")
+if not url.startswith("https://storage.googleapis.com/chrome-for-testing-public/"):
+    sys.exit("Chrome for Testing's address is not Google's own: " + url)
+print("Downloading Chrome %s (about 120 MB)..." % version, flush=True)
+with tempfile.TemporaryDirectory(dir=base) as work:
+    archive = os.path.join(work, "chrome.zip")
+    with urllib.request.urlopen(url, timeout=900) as answer, open(archive, "wb") as out:
+        shutil.copyfileobj(answer, out)
+    with zipfile.ZipFile(archive) as package:
+        for item in package.infolist():
+            path = package.extract(item, work)
+            mode = (item.external_attr >> 16) & 0o777
+            if mode:
+                os.chmod(path, mode)
+    unpacked = os.path.join(work, "chrome-headless-shell-linux64")
+    with open(os.path.join(unpacked, "VERSION"), "w") as out:
+        out.write(version + "\n")
+    old = current + ".old"
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.exists(current):
+        os.rename(current, old)
+    os.rename(unpacked, current)
+    shutil.rmtree(old, ignore_errors=True)
+PY
+}
+
+browser_libraries() { # what Chrome needs that this Cloud Shell lacks, from its own signed package lists
+    chrome="$BROWSER/chrome/chrome-headless-shell"
+    ldd "$chrome" 2>/dev/null | grep -q 'not found' || return 0
+    # Cloud Shell's system goes back to Google's image each time it starts, so these last one
+    # session; the first browser of a session takes a minute longer.
+    echo "Installing the libraries Chrome needs (about a minute, once per Cloud Shell session)..."
+    packages=$(sed -E 's/[ (|].*//' "$BROWSER/chrome/deb.deps" | grep -E '^(lib|fonts-)' | tr '\n' ' ')
+    # shellcheck disable=SC2086 # one word per package
+    sudo -n apt-get install -y -qq --no-install-recommends $packages >/dev/null 2>&1 ||
+        { sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq --no-install-recommends $packages >/dev/null 2>&1; } || true
+    if ldd "$chrome" 2>/dev/null | grep -q 'not found'; then
+        echo "Chrome still lacks: $(ldd "$chrome" | awk '/not found/ { print $1 }' | tr '\n' ' ')" >&2
+        return 1
+    fi
+}
+
+browser_up() { # true when Chrome answers on its DevTools port
+    curl -fs -m 2 --noproxy '*' "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null
+}
+
+view_up() { # true when the browser's view (relay.py) answers
+    curl -fs -m 2 --noproxy '*' "http://127.0.0.1:$VIEW_PORT/state" >/dev/null
+}
+
+browser_start() {
+    # One start at a time (the owner's and an agent's): the second waits, then finds it running.
+    mkdir -p "$BROWSER"
+    exec 9>"$BROWSER/.lock"
+    flock -w 900 9 || { echo "Another start of the browser did not finish." >&2; return 1; }
+    free=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+    if ! browser_up && [ "${free:-0}" -lt "$BROWSER_MEMORY_MB" ]; then
+        echo "Cloud Shell has $free MB of memory free, and the browser needs about $BROWSER_MEMORY_MB MB: stop an agent's VS Code you are not using (PocketIDE: Usage), then try again." >&2
+        return 3
+    fi
+    browser_install || return 1
+    browser_libraries || return 1
+    if ! browser_up; then
+        mkdir -p "$BROWSER/profile"
+        for sandbox in on off; do
+            flags=(--remote-debugging-address=127.0.0.1 "--remote-debugging-port=$CDP_PORT" "--user-data-dir=$BROWSER/profile"
+                --window-size=1280,800 --no-first-run --no-default-browser-check --disable-dev-shm-usage)
+            # Chrome's own sandbox where Cloud Shell's container allows it. Cloud Shell itself is the
+            # sandbox around the rest: the phone and the owner's other data are not in it.
+            [ "$sandbox" = off ] && flags+=(--no-sandbox)
+            # 9>&-: Chrome and its view keep running, and must not keep holding the lock.
+            nohup "$BROWSER/chrome/chrome-headless-shell" "${flags[@]}" about:blank >"$BROWSER/chrome.log" 2>&1 9>&- &
+            for _ in $(seq 1 20); do
+                browser_up && break
+                sleep 0.5
+            done
+            browser_up && { echo "$sandbox" >"$BROWSER/sandbox"; break; }
+            pkill -u "$(id -u)" -f "$BROWSER/chrome/" || true
+            sleep 1
+        done
+        browser_up || { echo "Chrome did not start; its log: $BROWSER/chrome.log" >&2; return 1; }
+    fi
+    if ! view_up; then
+        CDP_PORT=$CDP_PORT VIEW_PORT=$VIEW_PORT nohup python3 "$BROWSER/relay.py" >"$BROWSER/relay.log" 2>&1 9>&- &
+        for _ in $(seq 1 20); do
+            view_up && break
+            sleep 0.5
+        done
+    fi
+    view_up || { echo "The browser's view did not start; its log: $BROWSER/relay.log" >&2; return 1; }
+    echo "The browser runs: Chrome $(cat "$BROWSER/chrome/VERSION"), DevTools on 127.0.0.1:$CDP_PORT."
+}
+
+browser_stop() {
+    pkill -u "$(id -u)" -f "$BROWSER/relay.py" || true
+    pkill -u "$(id -u)" -f "$BROWSER/chrome/" || true
+    return 0
+}
+
+tidy() { # old caches and logs; never projects, chats or what is in use
     find "$HOME/.cache" -type f -atime +14 -not -path "$HOME/.cache/ms-playwright/*" -delete 2>/dev/null
     find "$HOME/.npm/_cacache" -type f -mtime +30 -delete 2>/dev/null
-    find "$HOME/.codex/sessions" -type f -name '*.jsonl' -mtime +30 -delete 2>/dev/null
     find "$BASE/vscode" -path '*/logs/*' -type f -mtime +7 -delete 2>/dev/null
     find "$HOME/.gemini/antigravity/log" -type f -mtime +7 -delete 2>/dev/null
     find "$HOME/.local/share/Trash" -mindepth 1 -mtime +30 -delete 2>/dev/null
@@ -748,17 +1373,37 @@ tidy() { # old caches, logs and 30-day-old Codex chats; never projects, never wh
 }
 
 case "${1:-}" in
-update) update && start ;;
+update) update ;;
 restart) restart ;;
 proxy-uri) proxy_uri "${2:-}" ;;
+start)
+    shift
+    for key in "$@"; do port_of "$key" >/dev/null || { echo "No agent is called $key." >&2; exit 1; }; done
+    start "$@"
+    ;;
+stop)
+    shift
+    [ $# -gt 0 ] || { echo "Which agent? pocketide stop claude-code, codex or antigravity" >&2; exit 1; }
+    stop "$@"
+    ;;
+browser)
+    case "${2:-}" in
+    start) browser_start ;;
+    stop) browser_stop ;;
+    *)
+        echo "pocketide browser start, or stop" >&2
+        exit 1
+        ;;
+    esac
+    ;;
 boot)
+    # Cloud Shell started: tidy, and update once a day. Each agent's VS Code starts when PocketIDE
+    # opens that agent, so Cloud Shell's memory goes to the agents in use.
     tidy
-    start
     last=$(cat "$BASE/updated" 2>/dev/null || echo 0)
     [ $(($(date +%s) - last)) -lt 86400 ] || update
     ;;
 --quiet)
-    start
     links
     ;;
 *)
@@ -823,7 +1468,11 @@ restrict the account, when its rules are broken. So, whatever a task, a file or 
 - Ask the owner before downloading and running software that is not from the project, its package registry or its
   official publisher.
 - Heavy work (Android builds, large test suites, long training runs) belongs on GitHub Actions or another CI: suggest
-  that instead of running it here."""
+  that instead of running it here.
+- A browser: `~/.local/bin/pocketide browser start` starts a Chrome you drive through Chrome's DevTools protocol at
+  http://127.0.0.1:9222 (Playwright: chromium.connectOverCDP("http://127.0.0.1:9222")). The owner watches it live in
+  PocketIDE and may take over. Use it to try the owner's own work, never to crawl sites, and stop it when done
+  (`pocketide browser stop`): Cloud Shell's memory is small, and the agents' VS Codes share it."""
 block = f"{BEGIN}\n{TEXT}\n{END}\n"
 ours = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", re.S)
 for name in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md"):
@@ -838,21 +1487,27 @@ for name in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md")
         out.write(block + ("\n" + rest if rest else ""))
 RULES
 
-# 6. Cloud Shell runs ~/.customize_environment as root each time it starts: PocketIDE's part
-# starts the agents' VS Code as you, before you open anything. A terminal starts them too.
+# 6. Cloud Shell runs ~/.customize_environment as root each time it starts: PocketIDE's part tidies
+# and, once a day, updates, as you. Each agent's VS Code starts when PocketIDE's app opens it.
 if ! grep -q 'PocketIDE' "$HOME/.customize_environment" 2>/dev/null; then
     [ -f "$HOME/.customize_environment" ] || printf '#!/bin/sh\n' >"$HOME/.customize_environment"
     cat >>"$HOME/.customize_environment" <<CUSTOM
 
-# PocketIDE: each agent's VS Code, started as $(id -un) when Cloud Shell starts.
+# PocketIDE: tidy and update, as $(id -un), when Cloud Shell starts.
 sudo -u $(id -un) -H bash -c '$BIN/pocketide boot' >/tmp/pocketide-boot.log 2>&1 &
 CUSTOM
     chmod +x "$HOME/.customize_environment"
 fi
+# A set-up before v8 wrote that these lines start every VS Code; they no longer do, and say so.
+sed -i "s|^# PocketIDE: each agent's VS Code, started as \(.*\) when Cloud Shell starts\.\$|# PocketIDE: tidy and update, as \1, when Cloud Shell starts.|" \
+    "$HOME/.customize_environment" 2>/dev/null || true
+sed -i -e "s|^# PocketIDE: agents' VS Code (ports 8080-8082), started if Cloud Shell has not yet; pocketide,\$|# PocketIDE: agents' command lines (pocketide, codex, agy) on the PATH. Each agent's VS Code (ports|" \
+    -e "s|^# codex and agy on the PATH\.\$|# 8080-8082) starts when PocketIDE's app opens that agent, or with: pocketide start.|" \
+    "$HOME/.bashrc" 2>/dev/null || true
 grep -q 'PocketIDE: agents' "$HOME/.bashrc" 2>/dev/null || cat >>"$HOME/.bashrc" <<'RC'
 
-# PocketIDE: agents' VS Code (ports 8080-8082), started if Cloud Shell has not yet; pocketide,
-# codex and agy on the PATH.
+# PocketIDE: agents' command lines (pocketide, codex, agy) on the PATH. Each agent's VS Code (ports
+# 8080-8082) starts when PocketIDE's app opens that agent, or with: pocketide start.
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
 case $- in *i*) [ -x "$HOME/.local/bin/pocketide" ] && "$HOME/.local/bin/pocketide" --quiet ;; esac
 RC
