@@ -349,6 +349,33 @@ jobs:
           HOME="$home" "$launcher" proxy-uri "$door"
           test "$(pgrep -f 'code-server.*127.0.0.1:8080' | head -n 1)" = "$before"
 
+      - name: PocketIDE's Chats and Usage read this Cloud Shell
+        run: |
+          set -euo pipefail
+          # The app sends assets/cloudshell/info.py over its connection and reads one line of JSON
+          # back: here, against the VS Codes and agents the set-up just started.
+          home="$RUNNER_TEMP/cloudshell-home"
+          info=pocket/app/src/main/assets/cloudshell/info.py
+          for command in status chats usage; do
+            HOME="$home" python3 "$info" "$command" > "$RUNNER_TEMP/$command.json"
+          done
+          python3 - "$RUNNER_TEMP" <<'PY'
+          import json, os, sys
+          read = lambda name: json.load(open(os.path.join(sys.argv[1], name + ".json")))
+          status, chats, usage = read("status"), read("chats"), read("usage")
+          for answer in (status, chats, usage):
+              assert answer["ok"], answer
+          agents = status["agents"]
+          assert [agent["agent"] for agent in agents] == ["claude-code", "codex", "antigravity"], agents
+          assert all(agent["running"] and agent["version"] for agent in agents), agents
+          assert status["memoryTotal"] > 0 and status["homeTotal"] > status["homeUsed"] > 0, status
+          assert chats["problems"] == [], chats["problems"]
+          assert all("error" not in usage[name] for name in ("claude", "codex", "antigravity")), usage
+          print("Cloud Shell's numbers:", {key: status[key] for key in ("processors", "memoryTotal", "homeUsed", "homeTotal")})
+          print("Agents:", [(agent["agent"], agent["version"]) for agent in agents])
+          print("Chats:", len(chats["chats"]))
+          PY
+
       - name: Each agent's VS Code at a phone's size, as PocketIDE's app shows it
         run: |
           set -euo pipefail

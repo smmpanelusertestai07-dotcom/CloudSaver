@@ -27,7 +27,7 @@ object DocsContent {
     const val TAGLINE = "Agentic development on your phone"
 
     /** Raised when the terms or the privacy policy change in a way the owner should see again. */
-    const val TERMS_VERSION = 7
+    const val TERMS_VERSION = 8
 
     // Page ids other screens open directly.
     const val TERMS_ID = "terms"

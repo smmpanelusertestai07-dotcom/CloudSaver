@@ -1,6 +1,7 @@
 package com.pocketide
 
 import android.content.Context
+import com.pocketide.cloudshell.CloudShellInfo
 import com.pocketide.core.Clock
 import com.pocketide.core.LogBackgroundFailure
 import com.pocketide.core.SettingsStore
@@ -48,4 +49,7 @@ class AppGraph(val context: Context) {
 
     /** The agents' VS Code pages, kept while the app runs so that leaving one does not reload it. */
     val pages: AgentPages by lazy { AgentPages(context) }
+
+    /** Cloud Shell's numbers and the agents' chats, read there over the open connection. */
+    val cloudInfo: CloudShellInfo by lazy { CloudShellInfo(context, link) }
 }

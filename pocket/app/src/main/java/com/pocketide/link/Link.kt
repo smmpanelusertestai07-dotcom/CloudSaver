@@ -5,6 +5,7 @@ import com.pocketide.cloudshell.CloudShell
 import com.pocketide.core.Clock
 import com.pocketide.core.LogBackgroundFailure
 import com.pocketide.core.SettingsStore
+import com.pocketide.core.withConnectedTime
 import com.pocketide.linux.Computer
 import com.pocketide.linux.ComputerState
 import com.pocketide.linux.LinuxDirs
@@ -87,6 +88,11 @@ class Link internal constructor(
     @Volatile
     private var signingIn: Process? = null
 
+    /** Since when the connection is up (UTC epoch ms); null while it is not. */
+    @Volatile
+    var connectedSince: Long? = null
+        private set
+
     /** The secret every address of PocketIDE's door carries; made once and kept. */
     val key: String
         get() {
@@ -149,6 +155,18 @@ class Link internal constructor(
         connect()
     }
 
+    /**
+     * A screen of Cloud Shell's own data (Chats, Usage) came to the front: an open connection stays
+     * open while it is there; none is opened for it, so Cloud Shell never starts only to be looked at.
+     * [screenHidden] when it leaves.
+     */
+    fun dataShown() {
+        scope.launch(control) {
+            screens++
+            idleStop?.cancel()
+        }
+    }
+
     /** An agent's screen left the front; with none left, the connection ends after [IDLE_MS]. */
     fun screenHidden() {
         scope.launch(control) {
@@ -186,6 +204,7 @@ class Link internal constructor(
             retries = 0
             val now = clock.now()
             settings.update { it.copy(cloudOpenedAt = now) }
+            connectedSince = now
             mutableState.value = LinkState.On
             // Connected from the set-up, with no agent open: it ends by itself unless one opens.
             if (screens == 0) endWhenIdle()
@@ -370,6 +389,7 @@ class Link internal constructor(
         if (master !== process) return
         master = null
         forwarded.clear()
+        countConnectedTime()
         // Not wanted: disconnect says so. Still connecting: its next step fails and says why.
         if (!wanted || (connecting?.isActive == true && mutableState.value !is LinkState.On)) return
         if (screens > 0 && retries < MAX_RETRIES) {
@@ -392,11 +412,37 @@ class Link internal constructor(
         val process = master
         master = null
         forwarded.clear()
+        countConnectedTime()
         if (process != null) {
             if (process.isAlive) withTimeoutOrNull(CLOSE_TIMEOUT_MS) { runCatching { quiet(Gcloud.close()) } }
             computer.stop(process)
         }
         clearSockets()
+    }
+
+    /** The time the connection was up goes into the week's count (Usage), once. */
+    private fun countConnectedTime() {
+        val since = connectedSince ?: return
+        connectedSince = null
+        val now = clock.now()
+        if (now > since) settings.update { it.withConnectedTime(since, now) }
+    }
+
+    /**
+     * What [command] printed in Cloud Shell (its output, not its errors), through the open
+     * connection; null when not connected, when it failed, or when it said more than [ASK_LIMIT]
+     * characters. It never connects by itself.
+     */
+    suspend fun ask(command: String): String? {
+        if (!connected) return null
+        val said = StringBuilder()
+        var tooMuch = false
+        val code = withTimeoutOrNull(ASK_TIMEOUT_MS) {
+            computer.run(Gcloud.command(Gcloud.through(command)).copy(mergeErrors = false)) { line ->
+                if (said.length + line.length < ASK_LIMIT) said.append(line).append('\n') else tooMuch = true
+            }
+        }
+        return said.toString().takeIf { code == 0 && !tooMuch }
     }
 
     private fun clearSockets() {
@@ -558,6 +604,8 @@ class Link internal constructor(
         private const val OPEN_TRIES = 2
         private const val SUSPECT_EVERY_MS = 10_000L
         private const val SAID_LINES = 40
+        private const val ASK_TIMEOUT_MS = 60_000L
+        private const val ASK_LIMIT = 4_000_000
         private const val KEY_BYTES = 16
         private val KEY = Regex("[0-9a-f]{32}")
     }

@@ -113,6 +113,23 @@ internal object Faq {
                 "PocketIDE. Either way, turn on 2-Step Verification.",
         ),
         faq(
+            "chats-phone",
+            "chats-usage",
+            "Are my chats copied to the phone?",
+            "No. Chats and Usage read them in Cloud Shell, over PocketIDE's private connection, each time you open them, " +
+                "show them and keep nothing: once the page closes they are gone from the phone. They stay where each agent " +
+                "keeps them in Cloud Shell (~/.claude, ~/.codex, ~/.gemini).",
+        ),
+        faq(
+            "usage-limits",
+            "chats-usage",
+            "Why does Usage show tokens, and not how much of my plan is left?",
+            "The plan's limits live at each AI company and need your sign-in there, which PocketIDE never reads. Usage " +
+                "adds up the tokens each agent wrote in its own files, and its buttons open each company's own usage page; " +
+                "/usage in Claude Code and /status in Codex show the limits too. Codex's show on Usage when Codex wrote them " +
+                "in its files.",
+        ),
+        faq(
             "tools-back",
             DocsContent.IDE_ID,
             "How do Tools and Back work in an agent's VS Code?",

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -44,12 +46,17 @@ import com.pocketide.graph
 import com.pocketide.linux.ComputerState
 import com.pocketide.ui.lock.HiddenContentCover
 import com.pocketide.ui.lock.LockScreen
+import com.pocketide.ui.nav.ChatRoute
+import com.pocketide.ui.nav.ChatsRoute
 import com.pocketide.ui.nav.ComputerRoute
 import com.pocketide.ui.nav.DataRoute
 import com.pocketide.ui.nav.HelpPageRoute
 import com.pocketide.ui.nav.HelpRoute
 import com.pocketide.ui.nav.HomeRoute
 import com.pocketide.ui.nav.SettingsRoute
+import com.pocketide.ui.nav.UsageRoute
+import com.pocketide.ui.screens.chats.ChatScreen
+import com.pocketide.ui.screens.chats.ChatsScreen
 import com.pocketide.ui.screens.cloudshell.CloudShellScreen
 import com.pocketide.ui.screens.cloudshell.SetUpScreen
 import com.pocketide.ui.screens.data.YourDataScreen
@@ -59,6 +66,7 @@ import com.pocketide.ui.screens.help.LocalOpenPlace
 import com.pocketide.ui.screens.home.HomeScreen
 import com.pocketide.ui.screens.onboarding.Onboarding
 import com.pocketide.ui.screens.settings.SettingsScreen
+import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.shell.LocalBottomBarPadding
 import com.pocketide.ui.theme.PocketTheme
 import dev.chrisbanes.haze.HazeState
@@ -103,6 +111,8 @@ fun PocketRoot(activity: MainActivity) {
 
 private enum class Tab(val label: String, val icon: ImageVector, val route: Any) {
     HOME("Home", Icons.Outlined.Home, HomeRoute),
+    CHATS("Chats", Icons.Outlined.Forum, ChatsRoute),
+    USAGE("Usage", Icons.Outlined.DataUsage, UsageRoute),
     COMPUTER("Computer", Icons.Outlined.Cloud, ComputerRoute),
     SETTINGS("Settings", Icons.Outlined.Settings, SettingsRoute),
 }
@@ -142,6 +152,14 @@ private fun MainScreens() {
                             onHelp = { nav.navigate(HelpRoute) },
                         )
                     }
+                    composable<ChatsRoute> {
+                        ChatsScreen(onOpen = { chat -> nav.navigate(ChatRoute(chat.agent, chat.id)) })
+                    }
+                    composable<ChatRoute> { backStack ->
+                        val chat = backStack.toRoute<ChatRoute>()
+                        ChatScreen(agentKey = chat.agent, id = chat.id, onBack = { nav.popBackStack() })
+                    }
+                    composable<UsageRoute> { UsageScreen() }
                     composable<ComputerRoute> {
                         CloudShellScreen(onHelp = { nav.navigate(HelpRoute) }, onHelpPage = { nav.navigate(HelpPageRoute(it)) })
                     }

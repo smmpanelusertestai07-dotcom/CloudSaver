@@ -25,6 +25,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.pocketide.core.ThemeMode
 import com.pocketide.docs.DocsContent
 import com.pocketide.ui.lock.HiddenContentCover
+import com.pocketide.ui.screens.chats.ChatsScreen
 import com.pocketide.ui.screens.cloudshell.CloudShellScreen
 import com.pocketide.ui.screens.cloudshell.SetUpScreen
 import com.pocketide.ui.screens.data.YourDataScreen
@@ -33,6 +34,7 @@ import com.pocketide.ui.screens.help.HelpScreen
 import com.pocketide.ui.screens.home.HomeScreen
 import com.pocketide.ui.screens.onboarding.WelcomeScreen
 import com.pocketide.ui.screens.settings.SettingsScreen
+import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.theme.PocketTheme
 import com.pocketide.ui.workspace.ToolsSheet
 import org.junit.Assume.assumeTrue
@@ -107,6 +109,13 @@ class ScreenTour {
 
     // What Recents shows while App lock is on.
     @Test fun recentsCover() = shoot("15-recents-cover") { HiddenContentCover() }
+
+    // Not connected, as on a phone that has not opened Cloud Shell yet: they ask to connect, nothing more.
+    @Test fun chats() = shoot("16-chats") { ChatsScreen(onOpen = {}) }
+
+    @Test fun usage() = shoot("17-usage") { UsageScreen() }
+
+    @Test fun usageDarkSmall() = shoot("18-usage-small-large-text-dark", ThemeMode.DARK, SMALL_PHONE, LARGE_TEXT) { UsageScreen() }
 
     @Composable
     private fun Home() = HomeScreen(onComputer = {}, onYourData = {}, onHelp = {})

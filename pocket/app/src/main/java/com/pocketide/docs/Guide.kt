@@ -75,27 +75,27 @@ internal object Guide {
         "PocketIDE's connection (gcloud)",
         "How PocketIDE reaches Cloud Shell without a Google Cloud project, what it keeps, and how to remove it.",
         p(
-            "PocketIDE runs Google's own command-line tool, gcloud, on your phone, unchanged, in PocketIDE's private storage " +
-                "(with a small Ubuntu under PRoot: no root, no virtual machine). gcloud signs in with Google, starts Cloud " +
-                "Shell when it is off, and opens one encrypted SSH connection to it through Google's own servers.",
+            "PocketIDE runs Google's own gcloud, unchanged, on your phone in its private storage (a small Ubuntu under PRoot: " +
+                "no root, no virtual machine). gcloud signs in with Google, starts Cloud Shell when it is off, and opens one " +
+                "encrypted SSH connection to it through Google's servers.",
         ),
         table(
             listOf("Question", "Answer"),
             row(
                 "Does gcloud set up and run by itself?",
-                "Yes. PocketIDE downloads it as soon as the set-up page opens (Google's own release, checked by its SHA-256), " +
-                    "sets it up, runs it and updates it once a day with gcloud's own updater. You do not type any command.",
+                "Yes: downloaded when the set-up page opens (Google's release, checked by its SHA-256), then run and updated " +
+                    "daily by gcloud's own updater. You type no command.",
             ),
             row(
                 "What if a gcloud update breaks the connection?",
-                "PocketIDE checks gcloud before it connects. When an update changed how gcloud connects, PocketIDE undoes it " +
-                    "(gcloud's own restore) or puts back the version this PocketIDE was tested with, and gcloud's updates wait " +
-                    "for the next PocketIDE. Only if both fail does it ask you to update PocketIDE.",
+                "PocketIDE checks gcloud first. If an update changed how it connects, PocketIDE undoes it (gcloud's restore) or " +
+                    "puts back the version it was tested with, and holds gcloud's updates until the next PocketIDE. Only if " +
+                    "both fail does it ask you to update PocketIDE.",
             ),
             row(
                 "Does the connection delete itself after the set-up?",
-                "No: gcloud on the phone opens every connection, so it stays (about 500 MB). Only gcloud and ssh run on the " +
-                    "phone, never the agents. Computer > Remove the connection deletes it; the set-up then downloads it again.",
+                "No: every connection needs it. Only gcloud and ssh run on the phone; VS Code, the agents, your projects and " +
+                    "chats are in Cloud Shell.",
             ),
             row(
                 "What do I do once?",
@@ -104,13 +104,7 @@ internal object Guide {
             ),
             row(
                 "Is a Google Cloud project made?",
-                "No. No project, no billing, no OAuth client and no keys of PocketIDE's own are made. Only Cloud Shell's free " +
-                    "hours (50 a week) are used.",
-            ),
-            row(
-                "Where does everything run?",
-                "In Cloud Shell: VS Code, the agents, your projects and chats. The phone keeps only gcloud, ssh and gcloud's " +
-                    "sign-in, in PocketIDE's private storage, which no other app can read.",
+                "No project, billing, OAuth client or key of PocketIDE's own; only Cloud Shell's free hours (50 a week).",
             ),
             row(
                 "How do I take the access back?",
@@ -119,17 +113,15 @@ internal object Guide {
             ),
         ),
         bullets(
-            "Ports stay private. VS Code and the agents listen only inside Cloud Shell. On the phone, each port arrives as a " +
-                "socket file in PocketIDE's private storage, which no other app can open, and gcloud's own tunnel listens on " +
-                "such a file too (PocketIDE's one change to how gcloud runs). PocketIDE's screens reach them through its " +
-                "private door on this phone's own address, which answers only requests carrying its secret key.",
-            "A sign-in page (Claude Code's, Codex's, Antigravity's Google page) returns to localhost on the phone: PocketIDE " +
-                "listens there only during that sign-in and passes the return on to the agent in Cloud Shell, unchanged.",
-            "PocketIDE connects while you use the agents, and disconnects 15 minutes after you leave them; Cloud Shell then " +
-                "stops by itself, as when you close its page. Nothing keeps it awake. While connected, a notice with a " +
-                "Disconnect button says so.",
-            "Size on the phone: about 130 MB to download, about 500 MB set up. Computer > Remove the connection deletes it " +
-                "all (your Cloud Shell stays).",
+            "Ports stay private: VS Code and the agents listen only inside Cloud Shell. On the phone each port is a socket " +
+                "file only PocketIDE can open (gcloud's tunnel too: PocketIDE's one change to how gcloud runs), reached " +
+                "through PocketIDE's private door, which answers only requests carrying its secret key.",
+            "A sign-in page returns to localhost on the phone: PocketIDE listens there only during that sign-in and passes " +
+                "the return to the agent in Cloud Shell, unchanged.",
+            "PocketIDE connects while you use the agents and disconnects 15 minutes after you leave them; Cloud Shell then " +
+                "stops by itself. Nothing keeps it awake; while connected, a notice with Disconnect says so.",
+            "Size: about 130 MB to download, 500 MB set up. Computer > Remove the connection deletes it all (your Cloud Shell " +
+                "stays).",
         ),
         link("Google Account: third-party connections", "https://myaccount.google.com/connections"),
     )
@@ -190,6 +182,22 @@ internal object Guide {
                 "the phone sideways gives VS Code more room.",
             "Uploading: VS Code's Upload uses Android's own picker. A file to keep: put it on GitHub (git push).",
         ),
+    )
+
+    private val chatsUsage = section(
+        "chats-usage",
+        "Chats and Usage",
+        "The agents' chats and the numbers that count, live from Cloud Shell.",
+        bullets(
+            "Chats: each agent's chats, newest first; tap one to read it, with the commands and files used. Open goes to " +
+                "the agent; Delete removes a Claude Code or Codex chat from Cloud Shell for good. Antigravity's show their " +
+                "title and plain-text files; delete those in Antigravity.",
+            "Usage: this session against Google's 12 hours, memory, the home folder, the week's hours against Google's 50 " +
+                "(PocketIDE's count), and each agent's tokens. The plans' limits: each company's page (the buttons), /usage " +
+                "in Claude Code, /status in Codex.",
+            "Both read only while connected (Connect starts Cloud Shell) and keep nothing on the phone.",
+        ),
+        link("Google's Cloud Shell limits", DocLinks.CLOUD_SHELL_QUOTA),
     )
 
     private val projects = section(
@@ -265,5 +273,5 @@ internal object Guide {
     )
 
     /** The guide, in reading order. */
-    val all: List<DocSection> = listOf(start, computer, connection, agents, ide, projects, trouble, yourData, permissions)
+    val all: List<DocSection> = listOf(start, computer, connection, agents, ide, chatsUsage, projects, trouble, yourData, permissions)
 }

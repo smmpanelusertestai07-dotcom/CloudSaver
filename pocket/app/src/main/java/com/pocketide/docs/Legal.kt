@@ -13,7 +13,7 @@ internal object Legal {
         DocsContent.TERMS_ID,
         "Terms of use",
         "Plain terms for using PocketIDE. Effective $EFFECTIVE_DATE.",
-        p("Effective $EFFECTIVE_DATE, for PocketIDE 7. The app asks you again when they change."),
+        p("Effective $EFFECTIVE_DATE, for PocketIDE 8. The app asks you again when they change."),
         steps(
             "PocketIDE is free and open source under the Apache License 2.0. It is provided as is, without warranty of any " +
                 "kind. Keep your own judgement about what you build, run and publish.",
@@ -40,14 +40,15 @@ internal object Legal {
         DocsContent.PRIVACY_ID,
         "Privacy policy",
         "What data exists, where it is, and who can see it. Effective $EFFECTIVE_DATE.",
-        p("Effective $EFFECTIVE_DATE, for PocketIDE 7."),
+        p("Effective $EFFECTIVE_DATE, for PocketIDE 8."),
         p(
             "Who we are: PocketIDE is an open-source app with no server behind it. Its developer receives nothing from it: " +
                 "no account, no analytics, no crash reports, no ads, no tracking.",
         ),
         p(
-            "On this phone: PocketIDE's settings, including the Google account's address Cloud Shell opens with, and when it " +
-                "was set up and last opened; and PocketIDE's connection, in its private storage: Ubuntu with Google's gcloud, " +
+            "On this phone: PocketIDE's settings, including the Google account's address Cloud Shell opens with, when it " +
+                "was set up and last opened, and when its connection was up in the last 8 days (Usage's count of the week's " +
+                "hours); and PocketIDE's connection, in its private storage: Ubuntu with Google's gcloud, " +
                 "and gcloud's sign-in (a token from Google that lets gcloud reach your Cloud Shell), which no other app can " +
                 "read and which never leaves the phone except to Google. Android's cloud backup and device transfer are off " +
                 "for PocketIDE.",
@@ -56,6 +57,12 @@ internal object Legal {
             "In your Google Cloud Shell: your projects, each agent's chats and sign-in, and each agent's VS Code, in the " +
                 "home folder only your Google account opens. Google keeps it under its privacy notice for Google Cloud, and " +
                 "deletes it after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
+        ),
+        p(
+            "Chats and Usage: when you open them, PocketIDE reads each agent's chats and Cloud Shell's own numbers (memory, " +
+                "disk, the tokens the agents wrote down) in your Cloud Shell, over its private connection, and shows them; " +
+                "it keeps none of it on the phone and never reads a sign-in. Delete on a chat deletes it in Cloud Shell, " +
+                "with its lines in that agent's prompt history.",
         ),
         p(
             "What else leaves: gcloud talks to Google (its sign-in, starting Cloud Shell, the encrypted connection) under " +

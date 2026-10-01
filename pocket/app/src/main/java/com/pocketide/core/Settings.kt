@@ -36,7 +36,30 @@ data class Settings(
      */
     val proxyKey: String = "",
     val proxyPort: Int = 0,
+    /**
+     * When PocketIDE's connection to Cloud Shell was up in the last 8 days: start and end (UTC epoch
+     * ms) of each time, one after the other. Usage adds them up against Google's weekly hours.
+     */
+    val connectedTimes: List<Long> = emptyList(),
 )
+
+/** The connection's last 8 days of [Settings.connectedTimes], with [start] to [end] added. */
+fun Settings.withConnectedTime(start: Long, end: Long): Settings {
+    val keep = end - CONNECTED_TIMES_KEPT_MS
+    val pairs = connectedTimes.chunked(2).filter { it.size == 2 && it[1] >= keep } + listOf(listOf(start, end))
+    return copy(connectedTimes = pairs.takeLast(CONNECTED_TIMES_MAX).flatten())
+}
+
+/** How long, of the [windowMs] before [now], the connection was up ([openSince]: up since then, still). */
+fun Settings.connectedFor(now: Long, windowMs: Long, openSince: Long? = null): Long {
+    val from = now - windowMs
+    val times = connectedTimes.chunked(2).filter { it.size == 2 }.map { it[0] to it[1] } +
+        listOfNotNull(openSince?.let { it to now })
+    return times.sumOf { (start, end) -> (minOf(end, now) - maxOf(start, from)).coerceAtLeast(0) }
+}
+
+private const val CONNECTED_TIMES_KEPT_MS = 8 * 24 * 60 * 60 * 1000L
+private const val CONNECTED_TIMES_MAX = 500
 
 /** The settings after "Delete everything": every choice back to its default. */
 fun Settings.afterDeleteEverything(): Settings = Settings()
