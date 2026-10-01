@@ -145,6 +145,15 @@ interface Computer {
     /** Ubuntu's updates (security fixes included), a set-up script an app update changed, and gcloud's own updater. */
     suspend fun updateBase(): UpdateOutcome
 
+    /**
+     * gcloud again from the version this app pins, after an update of gcloud PocketIDE cannot use;
+     * gcloud's own updates then wait for the next app version. True when it starts.
+     */
+    suspend fun reinstallGcloud(): Boolean
+
+    /** gcloud's own updates wait for the next app version: its last update changed what PocketIDE needs, and was undone. */
+    suspend fun holdGcloudUpdates()
+
     /** The set-up again, safe to repeat: installs what is missing and reports each item. */
     suspend fun repair(): List<RepairItem>
 

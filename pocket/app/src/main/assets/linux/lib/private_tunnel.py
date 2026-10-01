@@ -28,6 +28,10 @@ TUNNEL_MODULE = "googlecloudsdk.command_lib.cloud_shell.tunnel"
 UNSUPPORTED = "PocketIDE: this gcloud opens its Cloud Shell tunnel in a new way; update PocketIDE."
 
 
+class PhoneProblem(OSError):
+    """The phone, not gcloud, stopped the tunnel (its folder, its socket file): said as it is."""
+
+
 def _remove(path):
     try:
         os.unlink(path)
@@ -46,12 +50,16 @@ class PrivateListener:
         pass
 
     def bind(self, _address):
-        _remove(self._path)
-        old = os.umask(0o077)
         try:
-            self._socket.bind(self._path)
-        finally:
-            os.umask(old)
+            os.makedirs(os.path.dirname(self._path), mode=0o700, exist_ok=True)
+            _remove(self._path)
+            old = os.umask(0o077)
+            try:
+                self._socket.bind(self._path)
+            finally:
+                os.umask(old)
+        except OSError as error:
+            raise PhoneProblem(f"{self._path}: {error.strerror or error}") from error
 
     def listen(self, backlog):
         self._socket.listen(backlog)
@@ -133,30 +141,46 @@ def _gcloud_path(gcloud_py):
 
 
 def check(gcloud_py, path):
-    """True when this gcloud's tunnel listens on the private socket and nowhere else."""
+    """None when this gcloud's tunnel listens on the private socket and nowhere else; else why not.
+
+    Whatever goes wrong inside gcloud's own code (its tunnel moved, renamed, opened another way, or
+    gcloud is damaged) is reported as UNSUPPORTED, so PocketIDE puts back a gcloud it knows; only
+    a problem on the phone itself (PhoneProblem) is reported as it is.
+    """
     sys.path[0:0] = _gcloud_path(gcloud_py)
     sys.meta_path.insert(0, _Finder(path))
-    tunnel = importlib.import_module(TUNNEL_MODULE)
-    made = tunnel.socket
-    connection = tunnel.CloudShellTunnel(host="localhost", jwt="check")
-    connection.Start()
     try:
-        listening = stat.S_ISSOCK(os.stat(path).st_mode) and made.made == 1
-    finally:
-        connection.Stop()
-    return listening and not os.path.exists(path)
+        tunnel = importlib.import_module(TUNNEL_MODULE)
+        made = tunnel.socket
+        connection = tunnel.CloudShellTunnel(host="localhost", jwt="check")
+        connection.Start()
+        try:
+            listening = os.path.exists(path) and stat.S_ISSOCK(os.stat(path).st_mode) and made.made == 1
+        finally:
+            connection.Stop()
+    except PhoneProblem:
+        raise
+    except Exception as error:  # any failure inside gcloud's own code: not the gcloud this file knows
+        said = str(error)
+        return said if UNSUPPORTED in said else f"{UNSUPPORTED} ({type(error).__name__}: {said})"
+    if not listening or os.path.exists(path):
+        # The tunnel did not take its listener from PocketIDE: gcloud opens it another way now.
+        return UNSUPPORTED
+    return None
 
 
 def main(argv):
     path = os.environ.get("POCKETIDE_TUNNEL", "")
     if len(argv) >= 2 and argv[0] == "--check":
+        if not path:
+            print("private tunnel: POCKETIDE_TUNNEL is not set")
+            return 1
         try:
-            ok = bool(path) and check(argv[1], path)
-        except Exception as error:  # the check itself is the answer: anything unexpected is "no"
-            print(f"private tunnel: {type(error).__name__}: {error}", file=sys.stderr)
-            ok = False
-        print("private tunnel: " + ("ok" if ok else "no"))
-        return 0 if ok else 1
+            why = check(argv[1], path)
+        except Exception as error:  # the check itself is the answer: anything unexpected is "no", with its reason
+            why = f"{type(error).__name__}: {error}"
+        print("private tunnel: " + (why or "ok"))
+        return 0 if why is None else 1
     if not argv:
         print("usage: private_tunnel.py <gcloud.py> <arguments>", file=sys.stderr)
         return 2

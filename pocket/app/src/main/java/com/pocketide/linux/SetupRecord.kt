@@ -24,6 +24,8 @@ internal data class SetupRecord(
     /** The gcloud first unpacked at /opt/google-cloud-sdk, and the SHA-256 of its archive (it updates itself after). */
     val gcloud: String? = null,
     val gcloudSha256: String? = null,
+    /** The app version that put the pinned gcloud back after an update it could not use: until it changes, gcloud does not update. */
+    val gcloudHeld: String? = null,
     /** When set-up finished (UTC epoch ms); null while it is still under way. */
     val readyAt: Long? = null,
     /** When Ubuntu's updates last finished (UTC epoch ms). */

@@ -3,6 +3,7 @@ package com.pocketide.linux
 import android.content.Context
 import android.os.Build
 import android.os.storage.StorageManager
+import com.pocketide.BuildConfig
 import com.pocketide.core.Clock
 import com.pocketide.core.Http
 import com.pocketide.core.LogBackgroundFailure
@@ -100,6 +101,7 @@ internal class ProotComputer(
             clock = clock,
             publish = { mutableState.value = it },
             arch = arch,
+            appVersion = BuildConfig.VERSION_NAME,
         )
     }
 
@@ -180,6 +182,16 @@ internal class ProotComputer(
     }
 
     override fun stop(process: Process) = processes.stop(process)
+
+    override suspend fun reinstallGcloud(): Boolean {
+        val setup = setup ?: return false
+        return exclusively { setup.reinstallGcloud(BuildConfig.VERSION_NAME) }
+    }
+
+    override suspend fun holdGcloudUpdates() {
+        val setup = setup ?: return
+        exclusively { setup.holdGcloudUpdates(BuildConfig.VERSION_NAME) }
+    }
 
     override suspend fun updateBase(): UpdateOutcome {
         val setup = setup ?: return UpdateOutcome.Waiting(NOT_SUPPORTED)

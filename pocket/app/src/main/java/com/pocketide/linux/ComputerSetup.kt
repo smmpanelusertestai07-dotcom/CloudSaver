@@ -3,7 +3,10 @@ package com.pocketide.linux
 import com.pocketide.core.Clock
 import com.pocketide.core.SemVer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -53,6 +56,7 @@ internal class ComputerSetup(
     private val ubuntuVersion: String = LinuxPins.UBUNTU_VERSION,
     private val gcloud: GcloudPin = LinuxPins.gcloud(arch),
     private val extractor: TarGzExtractor = TarGzExtractor(),
+    private val appVersion: String = "",
 ) {
     private val records = RecordStore(places.record)
     private val scripts = GuestScripts(assets, runner)
@@ -230,6 +234,8 @@ internal class ComputerSetup(
 
     /** gcloud's own updater (components it checks against Google's list); true when it installed something. */
     private suspend fun updateGcloud(): Boolean {
+        // Held back after an update PocketIDE could not use, until the next app version (reinstallGcloud).
+        if (records.load().gcloudHeld == appVersion) return false
         var changed = false
         val code = runner.run(places.rootfs, listOf(GCLOUD_COMMAND, "components", "update", "--quiet")) { line ->
             if (line.contains("Performing update") || line.contains("Update done")) changed = true
@@ -237,7 +243,41 @@ internal class ComputerSetup(
         return code == 0 && changed
     }
 
-    private suspend fun build(start: SetupRecord) {
+    /**
+     * gcloud from the version this app pins, unpacked over the one in place (after an update whose
+     * tunnel PocketIDE cannot keep private); gcloud's updates then wait for the next app version.
+     */
+    suspend fun reinstallGcloud(heldFor: String): Boolean = withContext(Dispatchers.IO) {
+        val record = records.load()
+        if (record.readyAt == null || !healthy(record)) return@withContext false
+        publish(ComputerState.Updating("Google's gcloud"))
+        try {
+            val pin = gcloud
+            val archive = fetcher.fetch(pin.download(), File(places.downloads, pin.download().fileName)) {}
+            slot.unpack(pin.version, archive) {}
+            slot.switchTo(pin.version)
+            val starts = slot.reports(GcloudSlot.LINK, pin.version)
+            if (starts) {
+                records.save(records.load().copy(gcloud = pin.version, gcloudSha256 = pin.sha256, gcloudHeld = heldFor))
+                slot.prune(keep = pin.version)
+            }
+            Files.deleteIfExists(archive.toPath())
+            starts
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (expected: Exception) {
+            false
+        } finally {
+            publish(stateOnDisk())
+        }
+    }
+
+    /** gcloud's own updater waits until the app version is no longer [heldFor]. */
+    fun holdGcloudUpdates(heldFor: String) {
+        records.save(records.load().copy(gcloudHeld = heldFor))
+    }
+
+    private suspend fun build(start: SetupRecord) = coroutineScope {
         records.save(start)
         var record = start
         val baseInPlace = record.base != null && GuestRoot(places.rootfs).existing("/etc/os-release") != null
@@ -254,10 +294,17 @@ internal class ComputerSetup(
             bytesTotal = (if (baseInPlace) 0 else ubuntu.bytes) + (if (gcloudDone) 0 else gcloud.bytes),
             publish = publish,
         )
+        // gcloud's archive downloads while Ubuntu is set up: neither needs the other. A failed download
+        // is reported when its turn comes, so it never stops apt half way.
+        val gcloudArchive = if (gcloudDone) {
+            null
+        } else {
+            async { runCatching { fetcher.fetch(gcloud.download(), File(places.downloads, gcloud.download().fileName)) { bar.aside(it) } } }
+        }
         if (!baseInPlace) record = placeUbuntu(bar)
         refreshGuest(places.rootfs)
         if (!toolsDone) record = runBootstrap(record, bar)
-        if (!gcloudDone) record = placeGcloud(record, bar)
+        if (gcloudArchive != null) record = placeGcloud(record, bar, gcloudArchive)
         records.save(record.copy(readyAt = clock.now(), updatedAt = clock.now()))
         publish(ComputerState.Ready)
     }
@@ -309,11 +356,11 @@ internal class ComputerSetup(
         return record.copy(bootstrap = scripts.bootstrapVersion()).also(records::save)
     }
 
-    private suspend fun placeGcloud(record: SetupRecord, bar: Bar): SetupRecord {
+    private suspend fun placeGcloud(record: SetupRecord, bar: Bar, download: Deferred<Result<File>>): SetupRecord {
         val pin = gcloud
         bar.enter(Stage.DOWNLOAD_GCLOUD, "Downloading Google's gcloud ${pin.version}…")
-        val archive = fetcher.fetch(pin.download(), File(places.downloads, pin.download().fileName)) { bar.downloaded(it, pin.bytes) }
-        bar.downloadFinished(pin.bytes)
+        val archive = download.await().getOrThrow()
+        bar.asideFinished(pin.bytes)
         bar.enter(Stage.UNPACK_GCLOUD, "Unpacking gcloud…")
         slot.unpack(pin.version, archive) { bar.within(it) }
         slot.switchTo(pin.version)
@@ -378,6 +425,24 @@ internal class ComputerSetup(
         private var bytesBefore = 0L
         private var bytes = 0L
 
+        /** Bytes of the download that runs beside the stages (gcloud's, while Ubuntu is set up). */
+        private var aside = 0L
+
+        @Synchronized
+        fun aside(done: Long) {
+            aside = done
+            show()
+        }
+
+        @Synchronized
+        fun asideFinished(size: Long) {
+            bytesBefore += size
+            bytes = bytesBefore
+            aside = 0
+            within(1f)
+        }
+
+        @Synchronized
         fun enter(stage: Stage, text: String) {
             current?.let { finished += it.weight }
             current = stage
@@ -386,21 +451,25 @@ internal class ComputerSetup(
             show()
         }
 
+        @Synchronized
         fun step(text: String) {
             step = text
             show()
         }
 
+        @Synchronized
         fun within(fraction: Float) {
             within = maxOf(within, fraction.coerceIn(0f, 1f))
             show()
         }
 
+        @Synchronized
         fun downloaded(done: Long, size: Long) {
             bytes = bytesBefore + done
             within(done.toFloat() / size.coerceAtLeast(1))
         }
 
+        @Synchronized
         fun downloadFinished(size: Long) {
             bytesBefore += size
             bytes = bytesBefore
@@ -409,7 +478,7 @@ internal class ComputerSetup(
         private fun show() {
             val weight = current?.weight ?: 0
             val fraction = ((finished + weight * within) / total).coerceIn(0f, 1f)
-            publish(ComputerState.Installing(step, fraction, bytes, bytesTotal))
+            publish(ComputerState.Installing(step, fraction, bytes + aside, bytesTotal))
         }
     }
 

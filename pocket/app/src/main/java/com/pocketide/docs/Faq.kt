@@ -99,9 +99,27 @@ internal object Faq {
             DocsContent.COMPUTER_ID,
             "Can this get my Google account in trouble?",
             "PocketIDE uses Cloud Shell as Google intends: through Google's own gcloud, unchanged in how it signs in and " +
-                "talks to Google, only while you use it, and nothing keeps it awake. The set-up only adds files to your home " +
-                "folder. Stay within Google's rules (no mining, scanning or shared Web Preview links). A separate Google " +
-                "account for development keeps your main one apart.",
+                "talks to Google, only while you use it, and nothing keeps it awake. Each agent is told Cloud Shell's rules in " +
+                "its own instructions (no mining, scanning, public tunnels or keep-awake jobs; heavy builds go to GitHub " +
+                "Actions), and the agents ask before they run commands unless you turn that off. No one can promise zero " +
+                "risk: Google decides, and what you ask an agent to do counts as yours. A separate Google account for " +
+                "development keeps your main one, mail and photos apart.",
+        ),
+        faq(
+            "connection-stays",
+            DocsContent.CONNECTION_ID,
+            "Does the connection delete itself after the set-up? Do the agents run on my phone?",
+            "It stays, because gcloud on the phone opens every connection to Cloud Shell (about 500 MB, in PocketIDE's " +
+                "private storage). Only gcloud and ssh run on the phone; the agents, VS Code and your projects run in Cloud " +
+                "Shell. Computer > Remove the connection deletes it, and the agents then open in Chrome.",
+        ),
+        faq(
+            "gcloud-update",
+            DocsContent.CONNECTION_ID,
+            "What if Google changes gcloud?",
+            "PocketIDE checks gcloud before it connects. If an update changed how it connects, PocketIDE undoes the update, " +
+                "or puts back the gcloud this version was tested with, and holds gcloud's updates until the next PocketIDE. " +
+                "Only if both fail does it ask you to update PocketIDE; the Chrome way works meanwhile.",
         ),
         faq(
             "set-up-again",

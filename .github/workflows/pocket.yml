@@ -8,6 +8,9 @@ name: pocketide
 #   cloudshell  the Cloud Shell set-up script, run as PocketIDE runs it on an x86-64 Linux runner
 #               (Cloud Shell is one too): VS Code and the three agents install, each checked, each
 #               agent's VS Code answers on its own port, and starts again with PocketIDE's door
+#   connector   PocketIDE's private tunnel with the gcloud the app pins (its socket folder missing,
+#               as on a new phone; a changed gcloud is caught), and an early warning when Google's
+#               newest gcloud opens its tunnel another way
 #   device      on an Android 15 emulator: the instrumented tests and the screen tour
 #   opens       the signed release APK (shrunk by R8) opens on Android 11, 12 and 15 emulators,
 #               as a new install and over the last 5.x release
@@ -306,6 +309,10 @@ jobs:
             ls "$home/.pocketide/vscode/$agent/extensions" | grep -q '^pocketide.layout-'
           done
           ls "$home/.pocketide/vscode/antigravity/extensions" | grep -qi '^google.google-antigravity-'
+          # Each agent's own instructions begin with Cloud Shell's rules.
+          for rules in .claude/CLAUDE.md .codex/AGENTS.md .gemini/GEMINI.md; do
+            grep -q 'PocketIDE: Cloud Shell rules' "$home/$rules"
+          done
           du -sh "$home"
           # Cloud Shell's own start: tidies, finds everything running, installs nothing again.
           HOME="$home" "$home/.local/bin/pocketide" boot
@@ -368,6 +375,73 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/pocketide/callback/80/Lw)" = 400
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/pocketide/callback/18556/Lw)" = 502
           echo "The sign-in return reaches the agent, and its redirect stays on the bridge."
+
+  connector:
+    name: gcloud's tunnel stays private (the pinned gcloud, and a warning for the newest)
+    # gcloud's Python code is the same for every processor, so the x86-64 archive of the version
+    # the app pins tells what the phone's arm64 one does.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The pinned gcloud's tunnel listens only on PocketIDE's socket file
+        run: |
+          set -euo pipefail
+          pins=pocket/app/src/main/java/com/pocketide/linux/LinuxPins.kt
+          version=$(sed -n 's/.*GCLOUD_VERSION = "\([0-9.]*\)".*/\1/p' "$pins")
+          sha=$(grep -A3 'linux-x86_64.tar.gz' "$pins" | sed -n 's/.*sha256 = "\([0-9a-f]\{64\}\)".*/\1/p')
+          test -n "$version" && test -n "$sha"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/gcloud.tar.gz" \
+            "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-$version-linux-x86_64.tar.gz"
+          echo "$sha  $RUNNER_TEMP/gcloud.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gcloud.tar.gz" -C "$RUNNER_TEMP"
+          tunnel=pocket/app/src/main/assets/linux/lib/private_tunnel.py
+          gcloud_py="$RUNNER_TEMP/google-cloud-sdk/lib/gcloud.py"
+          # As on a phone that never connected: the socket's folder does not exist yet.
+          export POCKETIDE_TUNNEL="$RUNNER_TEMP/never-made/pi/tunnel.sock"
+          said=$(python3 -S "$tunnel" --check "$gcloud_py")
+          echo "$said"
+          test "$said" = "private tunnel: ok"
+          test "$(stat -c %a "$RUNNER_TEMP/never-made/pi")" = 700
+          test ! -e "$POCKETIDE_TUNNEL"
+          # A gcloud whose tunnel opens another way is caught, and said so in the words the app knows.
+          changed="$RUNNER_TEMP/changed/lib"
+          mkdir -p "$changed/googlecloudsdk/command_lib/cloud_shell"
+          touch "$changed/googlecloudsdk/__init__.py" "$changed/googlecloudsdk/command_lib/__init__.py" \
+            "$changed/googlecloudsdk/command_lib/cloud_shell/__init__.py"
+          printf 'import socket\nclass CloudShellTunnel:\n  def __init__(self, host, jwt): pass\n  def Start(self):\n    self.s = socket.create_server(("localhost", 0))\n  def Stop(self):\n    self.s.close()\n' \
+            > "$changed/googlecloudsdk/command_lib/cloud_shell/tunnel.py"
+          touch "$changed/gcloud.py"
+          if said=$(python3 -S "$tunnel" --check "$changed/gcloud.py"); then echo "::error::A changed tunnel passed: $said"; exit 1; fi
+          echo "$said"
+          echo "$said" | grep -q 'opens its Cloud Shell tunnel in a new way'
+          # gcloud itself runs through PocketIDE's Python, with its own flags.
+          sudo install -D -m 0644 "$tunnel" /opt/pocketide/lib/private_tunnel.py
+          sudo install -D -m 0755 pocket/app/src/main/assets/linux/bin/gcloud-python /opt/pocketide/bin/gcloud-python
+          CLOUDSDK_PYTHON=/opt/pocketide/bin/gcloud-python CLOUDSDK_CORE_DISABLE_PROMPTS=1 \
+            "$RUNNER_TEMP/google-cloud-sdk/bin/gcloud" --version | grep -q "Google Cloud SDK $version"
+
+      - name: Early warning - Google's newest gcloud
+        # Not a gate: the app puts back the gcloud it pins when an update changes the tunnel. A
+        # warning here says the next app version should move its pin after checking.
+        run: |
+          set -uo pipefail
+          if ! curl -fsSL --retry 3 -o "$RUNNER_TEMP/newest.tar.gz" \
+            https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz; then
+            echo "::warning::Could not download Google's newest gcloud."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/newest" && tar -xzf "$RUNNER_TEMP/newest.tar.gz" -C "$RUNNER_TEMP/newest"
+          newest=$(cat "$RUNNER_TEMP/newest/google-cloud-sdk/VERSION")
+          export POCKETIDE_TUNNEL="$RUNNER_TEMP/newest-pi/tunnel.sock"
+          if said=$(python3 -S pocket/app/src/main/assets/linux/lib/private_tunnel.py --check "$RUNNER_TEMP/newest/google-cloud-sdk/lib/gcloud.py"); then
+            echo "gcloud $newest: $said"
+          else
+            echo "::warning::gcloud $newest: $said"
+          fi
 
   device:
     name: On an Android 15 emulator
@@ -667,7 +741,7 @@ jobs:
 
   release:
     name: Publish pocketide-v${{ needs.build.outputs.version }}
-    needs: [build, cloudshell, opens, device]
+    needs: [build, cloudshell, connector, opens, device]
     # Only the owner's own key makes an APK that installs over the one before it.
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.stable_key == 'true'
     runs-on: ubuntu-latest

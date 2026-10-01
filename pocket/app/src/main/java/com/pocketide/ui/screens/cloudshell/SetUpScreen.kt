@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,7 +26,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
@@ -49,12 +53,12 @@ import com.pocketide.ui.web.Browser
 import kotlinx.coroutines.launch
 
 /**
- * The set-up PocketIDE opens with until its computer, Google Cloud Shell, is ready. Four steps,
- * three of them one tap: pick the Google account; set up PocketIDE's connection on this phone
- * (Ubuntu with Google's own gcloud, about 130 MB, once); sign in to gcloud with Google's page; and
- * set Cloud Shell up, which PocketIDE does through that connection by itself. No Google Cloud
- * project, billing or OAuth client is made. The Chrome way (paste one command in Cloud Shell's
- * page) stays below, for a phone that cannot use the connection.
+ * The set-up PocketIDE opens with until its computer, Google Cloud Shell, is ready. Four steps that
+ * run by themselves: PocketIDE's connection on this phone (Ubuntu with Google's own gcloud, about
+ * 130 MB, once) downloads as soon as this page opens; the owner picks the Google account; gcloud
+ * signs in with Google's page (the owner taps Allow); and PocketIDE sets Cloud Shell up through
+ * that connection. No Google Cloud project, billing or OAuth client is made. The Chrome way (paste
+ * one command in Cloud Shell's page) stays below, for a phone that cannot use the connection.
  */
 @Composable
 // Four steps on one page, each showing where it is.
@@ -84,6 +88,59 @@ fun SetUpScreen() {
     val unused = CloudShell.daysUnused(settings, graph.clock.now())
     val installed = computer is ComputerState.Ready || computer is ComputerState.Updating
     val signedIn = settings.gcloudAccount.isNotBlank()
+    val resumed by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val installConnection = {
+        askForNotices()
+        graph.holds.hold(Holds.SET_UP)
+        graph.scope.launch {
+            try {
+                graph.computer.install()
+            } finally {
+                graph.holds.release(Holds.SET_UP)
+            }
+        }
+        Unit
+    }
+    val signInGcloud = {
+        signingIn = true
+        signInProblem = null
+        scope.launch {
+            when (val result = graph.link.signIn(account)) {
+                is SignInResult.Failed -> signInProblem = result.why
+                is SignInResult.SignedIn, SignInResult.Cancelled -> Unit
+            }
+            signingIn = false
+        }
+        Unit
+    }
+
+    // Each step starts by itself, once, while this screen is in front: the download right away (it
+    // needs no account), then gcloud's sign-in and Cloud Shell's set-up. Picking the account is the
+    // only tap, besides Google's own Allow.
+    var autoInstalled by rememberSaveable { mutableStateOf(false) }
+    var autoSignedIn by rememberSaveable { mutableStateOf(false) }
+    var autoSetUp by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(computer) {
+        if ((computer == ComputerState.NotInstalled || computer is ComputerState.Broken) && !autoInstalled) {
+            autoInstalled = true
+            installConnection()
+        }
+    }
+    val needsSignIn = installed && !signedIn && account.isNotBlank()
+    val signInNext = needsSignIn && !signingIn && resumed.isAtLeast(Lifecycle.State.RESUMED)
+    LaunchedEffect(signInNext) {
+        if (signInNext && !autoSignedIn) {
+            autoSignedIn = true
+            signInGcloud()
+        }
+    }
+    val setUpNext = installed && signedIn && link == LinkState.Off
+    LaunchedEffect(setUpNext) {
+        if (setUpNext && !autoSetUp) {
+            autoSetUp = true
+            graph.link.connect()
+        }
+    }
 
     reading?.let { page ->
         HelpPageScreen(id = page, onBack = { reading = null }, onOpen = { reading = it })
@@ -126,25 +183,15 @@ fun SetUpScreen() {
                 Text(
                     "Google's own gcloud, in PocketIDE's private storage on this phone (with a small Ubuntu, about 500 MB): it " +
                         "signs in with Google and connects to your Cloud Shell. Nothing is made in Google Cloud: no project, no " +
-                        "billing, no keys of PocketIDE's own. Use Wi-Fi if you can.",
+                        "billing, no keys of PocketIDE's own. It downloads by itself as soon as this page opens, and stays for " +
+                        "every connection (the agents never run on the phone); Computer > Remove the connection deletes it.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 ConnectorState(computer)
                 when (computer) {
                     ComputerState.NotInstalled, is ComputerState.Broken -> PrimaryAction(
                         if (computer is ComputerState.Broken) "Set up again" else "Set up the connection",
-                        enabled = account.isNotBlank(),
-                        onClick = {
-                            askForNotices()
-                            graph.holds.hold(Holds.SET_UP)
-                            graph.scope.launch {
-                                try {
-                                    graph.computer.install()
-                                } finally {
-                                    graph.holds.release(Holds.SET_UP)
-                                }
-                            }
-                        },
+                        onClick = installConnection,
                     )
                     else -> Unit
                 }
@@ -163,17 +210,12 @@ fun SetUpScreen() {
                 signInProblem?.let { NoticeCard(it, tone = Tone.WARN) }
                 if (!signedIn) {
                     ActionRow {
-                        PrimaryAction("Sign in with Google", busy = signingIn, enabled = installed && account.isNotBlank() && !signingIn, onClick = {
-                            signingIn = true
-                            signInProblem = null
-                            scope.launch {
-                                when (val result = graph.link.signIn(account)) {
-                                    is SignInResult.Failed -> signInProblem = result.why
-                                    is SignInResult.SignedIn, SignInResult.Cancelled -> Unit
-                                }
-                                signingIn = false
-                            }
-                        })
+                        PrimaryAction(
+                            "Sign in with Google",
+                            busy = signingIn,
+                            enabled = installed && account.isNotBlank() && !signingIn,
+                            onClick = signInGcloud,
+                        )
                         if (signingIn) TextButton(onClick = graph.link::cancelSignIn) { Text("Cancel") }
                     }
                 }

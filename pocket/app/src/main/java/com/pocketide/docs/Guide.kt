@@ -82,8 +82,19 @@ internal object Guide {
             listOf("Question", "Answer"),
             row(
                 "Does gcloud set up and run by itself?",
-                "Yes. PocketIDE downloads it (Google's own release, checked by its SHA-256), sets it up, runs it and updates " +
-                    "it once a day with gcloud's own updater. You do not type any command.",
+                "Yes. PocketIDE downloads it as soon as the set-up page opens (Google's own release, checked by its SHA-256), " +
+                    "sets it up, runs it and updates it once a day with gcloud's own updater. You do not type any command.",
+            ),
+            row(
+                "What if a gcloud update breaks the connection?",
+                "PocketIDE checks gcloud before it connects. When an update changed how gcloud connects, PocketIDE undoes it " +
+                    "(gcloud's own restore) or puts back the version this PocketIDE was tested with, and gcloud's updates wait " +
+                    "for the next PocketIDE. Only if both fail does it ask you to update PocketIDE; the Chrome way still works.",
+            ),
+            row(
+                "Does the connection delete itself after the set-up?",
+                "No: gcloud on the phone opens every connection, so it stays (about 500 MB). Only gcloud and ssh run on the " +
+                    "phone, never the agents. Computer > Remove the connection deletes it; the agents then open in Chrome.",
             ),
             row(
                 "What do I do once?",

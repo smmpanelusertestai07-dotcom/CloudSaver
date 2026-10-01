@@ -209,22 +209,55 @@ class Link internal constructor(
         }
     }
 
-    /** Once per app start (and after gcloud updated itself): the tunnel must still open privately. */
+    /**
+     * Once per app start (and after gcloud updated itself): the tunnel must still open privately.
+     * When a gcloud update changed how it opens, PocketIDE goes back to a gcloud it knows: gcloud's
+     * own undo first, else the version this app pins, whose updates then wait for the next app
+     * version. Only when neither works does the connection wait for an app update.
+     */
     private suspend fun checkTunnel() {
         if (tunnelChecked) return
         step("Checking the connection…")
-        if (quiet(Gcloud.checkTunnel()) != 0) {
-            // gcloud updated itself to a version whose tunnel PocketIDE cannot keep private: undo that update.
+        Files.createDirectories(dirs.sockets.toPath())
+        var check = collect(Gcloud.checkTunnel())
+        if (check.code != 0 && GcloudSays.tunnelChanged(check.lines)) {
+            step("Going back to the gcloud PocketIDE knows…")
             quiet(Gcloud.restore())
-            if (quiet(Gcloud.checkTunnel()) != 0) {
-                throw LinkFailure(
-                    Problem.APP_UPDATE,
-                    "Google's gcloud changed how it connects to Cloud Shell, so PocketIDE cannot keep the connection " +
-                        "private. Update PocketIDE; until then, open the agents in Chrome.",
-                )
+            check = collect(Gcloud.checkTunnel())
+            if (check.code == 0) {
+                // The same update would come back tomorrow: it waits for the next app version.
+                computer.holdGcloudUpdates()
+            } else if (GcloudSays.tunnelChanged(check.lines) && computer.reinstallGcloud()) {
+                check = collect(Gcloud.checkTunnel())
             }
         }
-        tunnelChecked = true
+        when {
+            check.code == 0 -> tunnelChecked = true
+            GcloudSays.tunnelChanged(check.lines) -> throw LinkFailure(
+                Problem.APP_UPDATE,
+                "Google's gcloud changed how it connects to Cloud Shell, so PocketIDE cannot keep the connection " +
+                    "private. Update PocketIDE; until then, open the agents in Chrome.",
+            )
+            else -> throw LinkFailure(
+                Problem.OTHER,
+                "PocketIDE could not check its connection" + (GcloudSays.lastWords(check.lines)?.let { ": $it" } ?: "") +
+                    ". Try again; if it keeps failing, remove the connection (Computer) and set it up again.",
+            )
+        }
+    }
+
+    /** What a command printed, with its exit code. */
+    private class Said(val code: Int, val lines: List<String>)
+
+    private suspend fun collect(argv: List<String>): Said {
+        val lines = ArrayDeque<String>()
+        val code = computer.run(Gcloud.command(argv)) { line ->
+            synchronized(lines) {
+                lines.addLast(line)
+                while (lines.size > SAID_LINES) lines.removeFirst()
+            }
+        }
+        return Said(code, synchronized(lines) { lines.toList() })
     }
 
     /** After gcloud's own updater ran: the next connection checks the tunnel again. */
@@ -376,8 +409,36 @@ class Link internal constructor(
      */
     internal fun open(port: Int): Duplex? {
         if (master?.isAlive != true) return null
-        if (!forward(port)) return null
-        return LocalDuplex.connect(socketFile(port))
+        var duplex: Duplex? = null
+        var tries = 0
+        while (duplex == null && tries < OPEN_TRIES && forward(port)) {
+            tries++
+            duplex = LocalDuplex.connect(socketFile(port))
+            if (duplex == null) {
+                // A socket file left from a connection that ended: forward the port again.
+                forwarded.remove(port)
+                socketFile(port).delete()
+            }
+        }
+        if (duplex == null) suspect()
+        return duplex
+    }
+
+    @Volatile
+    private var suspectedAt = 0L
+
+    /**
+     * A port could not be reached: when gcloud still runs but its connection is gone (the network
+     * changed), it is ended, and the connection starts again while an agent is open.
+     */
+    private fun suspect() {
+        val now = System.currentTimeMillis()
+        if (now - suspectedAt < SUSPECT_EVERY_MS) return
+        suspectedAt = now
+        scope.launch(control) {
+            val process = master ?: return@launch
+            if (quiet(Gcloud.check()) != 0 && master === process) computer.stop(process)
+        }
     }
 
     private fun socketFile(port: Int) = File(dirs.sockets, "p$port.sock")
@@ -494,6 +555,8 @@ class Link internal constructor(
         private const val LAST_WORDS_MS = 500L
         private const val RETRY_DELAY_MS = 3_000L
         private const val MAX_RETRIES = 3
+        private const val OPEN_TRIES = 2
+        private const val SUSPECT_EVERY_MS = 10_000L
         private const val SAID_LINES = 40
         private const val KEY_BYTES = 16
         private val KEY = Regex("[0-9a-f]{32}")

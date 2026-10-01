@@ -82,6 +82,14 @@ class CloudShellTest {
     }
 
     @Test
+    fun `each agent is told Cloud Shell's rules, in its own instructions file`() {
+        val text = script.readText()
+        listOf("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md").forEach { assertTrue(it, text.contains("\"$it\"")) }
+        listOf("mine cryptocurrency", "scan networks", "expose a port to the internet", "keep Cloud Shell running on purpose")
+            .forEach { assertTrue(it, text.contains(it)) }
+    }
+
+    @Test
     fun `the set-up is asked for until it is done, and again before Google deletes an unused home folder`() {
         val day = 24 * 60 * 60 * 1000L
         val now = 1_000 * day

@@ -1,7 +1,9 @@
 package com.pocketide.link
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GcloudSaysTest {
@@ -32,6 +34,19 @@ class GcloudSaysTest {
         assertEquals(Problem.NETWORK, problem("ERROR: gcloud crashed (ConnectionError): HTTPSConnectionPool: Max retries exceeded"))
         assertEquals(Problem.APP_UPDATE, problem("ImportError: PocketIDE: this gcloud ${GcloudSays.TUNNEL_CHANGED}; update PocketIDE."))
         assertEquals(Problem.OTHER, problem("ERROR: (gcloud.cloud-shell.ssh) Something new."))
+    }
+
+    @Test
+    fun `only a changed gcloud makes the check ask for gcloud to be put back`() {
+        // Word for word what private_tunnel.py --check prints (run against gcloud 587 and a changed copy).
+        val changed = "private tunnel: PocketIDE: this gcloud opens its Cloud Shell tunnel in a new way; update PocketIDE. " +
+            "(ModuleNotFoundError: No module named 'googlecloudsdk.command_lib.cloud_shell.tunnel')"
+        assertTrue(GcloudSays.tunnelChanged(listOf("Listening on local port [22].", changed)))
+        // The phone's own problem (here the 7.0.0 one: the socket's folder) is said as it is, not as a gcloud change.
+        val phone = "private tunnel: PhoneProblem: /tmp/pi/tunnel.sock: No such file or directory"
+        assertFalse(GcloudSays.tunnelChanged(listOf(phone)))
+        assertEquals(phone, GcloudSays.lastWords(listOf("Tunnel stopped.", phone)))
+        assertFalse(GcloudSays.tunnelChanged(listOf("Listening on local port [22].", "Tunnel stopped.", "private tunnel: ok")))
     }
 
     @Test

@@ -92,6 +92,9 @@ internal object GcloudSays {
             ?.take(MAX_WORDS)
     }
 
+    /** True when PocketIDE's check found that gcloud opens its Cloud Shell tunnel in a way it cannot keep private. */
+    fun tunnelChanged(lines: List<String>): Boolean = lines.any { it.contains(TUNNEL_CHANGED) }
+
     /** A line without terminal colours. */
     fun clean(line: String): String = line.replace(ANSI, "").trim()
 
