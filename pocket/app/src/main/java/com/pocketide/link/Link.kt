@@ -1,6 +1,8 @@
 package com.pocketide.link
 
+import com.pocketide.agents.AddedAgent
 import com.pocketide.agents.Agent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.core.Clock
 import com.pocketide.core.LogBackgroundFailure
@@ -103,12 +105,12 @@ class Link internal constructor(
     private val forwarded = ConcurrentHashMap.newKeySet<Int>()
     private val forwardLocks = ConcurrentHashMap<Int, Any>()
 
-    private val mutableAgentsUp = MutableStateFlow<Set<Agent>>(emptySet())
+    private val mutableAgentsUp = MutableStateFlow<Set<String>>(emptySet())
     private val mutableBrowser = MutableStateFlow<BrowserStart>(BrowserStart.Idle)
     private var browserStart: Job? = null
 
-    /** The agents whose VS Code answered on this connection ([openAgent]); empty while not connected. */
-    val agentsUp: StateFlow<Set<Agent>> = mutableAgentsUp.asStateFlow()
+    /** The agents (by [AgentSlot.key]) whose VS Code answered on this connection ([openAgent]); empty while not connected. */
+    val agentsUp: StateFlow<Set<String>> = mutableAgentsUp.asStateFlow()
 
     /** How the owner's last [startBrowser] went. */
     val browser: StateFlow<BrowserStart> = mutableBrowser.asStateFlow()
@@ -133,7 +135,7 @@ class Link internal constructor(
     val connected: Boolean get() = state.value == LinkState.On && master?.isAlive == true
 
     /** [agent]'s VS Code, through PocketIDE's door; null until connected. */
-    fun agentUrl(agent: Agent): String? = pageUrl(CloudShell.port(agent), "/")
+    fun agentUrl(agent: AgentSlot): String? = pageUrl(agent.port, "/")
 
     /** [path] on Cloud Shell's [port] (its 127.0.0.1), through PocketIDE's door; null until connected. */
     fun pageUrl(port: Int, path: String): String? {
@@ -475,23 +477,48 @@ class Link internal constructor(
      * Starts [agent]'s VS Code in Cloud Shell when it is not running there, and waits until it
      * answers: true then (and the agent is in [agentsUp]); false when not connected or it did not start.
      */
-    suspend fun openAgent(agent: Agent): Boolean {
-        if (!connected || tried(Gcloud.launcher("start", CloudShell.key(agent))) != 0) return false
-        if (!awaitServer(CloudShell.port(agent))) return false
-        mutableAgentsUp.update { it + agent }
+    suspend fun openAgent(agent: AgentSlot): Boolean {
+        if (!connected || tried(Gcloud.launcher("start", agent.key)) != 0) return false
+        if (!awaitServer(agent.port)) return false
+        mutableAgentsUp.update { it + agent.key }
         return true
     }
 
     /** [agent]'s page could not reach its VS Code: the next [openAgent] starts it again if it stopped. */
-    fun agentGone(agent: Agent) {
-        mutableAgentsUp.update { it - agent }
+    fun agentGone(agent: AgentSlot) {
+        mutableAgentsUp.update { it - agent.key }
     }
 
     /** Stops [agent]'s VS Code in Cloud Shell to free its memory; what the agent was doing there ends. */
-    suspend fun stopAgent(agent: Agent): Boolean {
+    suspend fun stopAgent(agent: AgentSlot): Boolean {
         if (!connected) return false
-        mutableAgentsUp.update { it - agent }
-        return tried(Gcloud.launcher("stop", CloudShell.key(agent))) == 0
+        mutableAgentsUp.update { it - agent.key }
+        return tried(Gcloud.launcher("stop", agent.key)) == 0
+    }
+
+    suspend fun stopAgent(agent: Agent): Boolean = stopAgent(AgentSlot.Official(agent))
+
+    /**
+     * Adds extension [id] (publisher.name) from Open VSX as an agent with its own VS Code and port
+     * in Cloud Shell, with the launcher's words as it goes ([onLine]); its name there (x-<name>), or
+     * null when it was not added. [anyPublisher] when the owner accepted an unverified publisher.
+     */
+    suspend fun addAgent(id: String, anyPublisher: Boolean, onLine: (String) -> Unit): String? {
+        if (!connected) return null
+        var key: String? = null
+        val code = tried(Gcloud.agentAdd(id, anyPublisher)) { line ->
+            GcloudSays.clean(line).takeIf { it.isNotEmpty() }?.let {
+                if (ADDED_KEY.matches(it)) key = it else onLine(it)
+            }
+        }
+        return key?.takeIf { code == 0 }
+    }
+
+    /** Removes an agent the owner added: its VS Code stops and goes; its projects stay in Cloud Shell. */
+    suspend fun removeAgent(added: AddedAgent): Boolean {
+        if (!connected) return false
+        mutableAgentsUp.update { it - added.key }
+        return tried(Gcloud.launcher("agent", "remove", added.key)) == 0
     }
 
     /**
@@ -545,6 +572,8 @@ class Link internal constructor(
         scope.launch {
             if (connected) {
                 tried(Gcloud.launcher("stop", *Agent.entries.map(CloudShell::key).toTypedArray()))
+                // One at a time: an agent removed elsewhere meanwhile stops nothing else.
+                settings.settings.value.addedAgents.forEach { tried(Gcloud.launcher("stop", it.key)) }
                 tried(Gcloud.launcher("browser", "stop"))
             }
             disconnect()
@@ -555,8 +584,8 @@ class Link internal constructor(
      * Installs ([install] true) or removes extension [id] in [agent]'s VS Code in Cloud Shell, with
      * the launcher's words as it goes ([onLine]); true when it worked. Never connects by itself.
      */
-    suspend fun extension(install: Boolean, agent: Agent, id: String, anyPublisher: Boolean, onLine: (String) -> Unit): Boolean =
-        connected && tried(Gcloud.extension(install, CloudShell.key(agent), id, anyPublisher)) { line ->
+    suspend fun extension(install: Boolean, agent: AgentSlot, id: String, anyPublisher: Boolean, onLine: (String) -> Unit): Boolean =
+        connected && tried(Gcloud.extension(install, agent.key, id, anyPublisher)) { line ->
             GcloudSays.clean(line).takeIf { it.isNotEmpty() }?.let(onLine)
         } == 0
 
@@ -780,5 +809,8 @@ class Link internal constructor(
         private const val ASK_LIMIT = 4_000_000
         private const val KEY_BYTES = 16
         private val KEY = Regex("[0-9a-f]{32}")
+
+        /** The launcher's name for an agent the owner added, the last line `pocketide agent add` prints. */
+        private val ADDED_KEY = Regex("^x-[a-z0-9-]{1,30}$")
     }
 }

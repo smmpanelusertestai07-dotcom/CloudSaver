@@ -1,5 +1,6 @@
 package com.pocketide.core
 
+import com.pocketide.agents.AddedAgent
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 
@@ -43,6 +44,8 @@ data class Settings(
     val connectedTimes: List<Long> = emptyList(),
     /** The keys a phone keyboard lacks stay above the screen's foot, keyboard or not (Tools > Keys bar). */
     val keysAlways: Boolean = false,
+    /** The AI agents the owner added, as Cloud Shell last said (Home lists them while not connected). */
+    val addedAgents: List<AddedAgent> = emptyList(),
 )
 
 /** The connection's last 8 days of [Settings.connectedTimes], with [start] to [end] added. */

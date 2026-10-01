@@ -35,7 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.agents.AddedAgent
 import com.pocketide.agents.Agent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.AgentStatus
 import com.pocketide.cloudshell.AgentUsage
 import com.pocketide.cloudshell.Answer
@@ -47,6 +49,7 @@ import com.pocketide.core.connectedFor
 import com.pocketide.docs.DocLinks
 import com.pocketide.graph
 import com.pocketide.link.LinkState
+import com.pocketide.ui.components.AddedAgentLogo
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.Formats
 import com.pocketide.ui.components.InfoRow
@@ -77,7 +80,7 @@ fun UsageScreen() {
     var usage by remember { mutableStateOf<Answer<UsageReport>?>(null) }
     var asking by remember { mutableStateOf(false) }
     var again by remember { mutableIntStateOf(0) }
-    var stopping by remember { mutableStateOf<Agent?>(null) }
+    var stopping by remember { mutableStateOf<AgentSlot?>(null) }
     var working by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // Stops [what] in Cloud Shell, then reads everything again.
@@ -139,7 +142,7 @@ fun UsageScreen() {
         stopping?.let { agent ->
             StopQuestion(agent, onDismiss = { stopping = null }) {
                 stopping = null
-                graph.pages.release(agent)
+                graph.pages.release(agent.key)
                 stop({ graph.link.stopAgent(agent) }, "${agent.displayName}'s VS Code did not stop. Try again.")
             }
         }
@@ -200,7 +203,7 @@ private fun Live(
     usage: Answer<UsageReport>?,
     enabled: Boolean,
     onStopBrowser: () -> Unit,
-    onStopAgent: (Agent) -> Unit,
+    onStopAgent: (AgentSlot) -> Unit,
 ) {
     when (machine) {
         is Answer.Got -> {
@@ -221,7 +224,7 @@ private fun Live(
 
 /** Asks before [agent]'s VS Code stops: what it was doing in Cloud Shell ends. */
 @Composable
-private fun StopQuestion(agent: Agent, onDismiss: () -> Unit, onStop: () -> Unit) {
+private fun StopQuestion(agent: AgentSlot, onDismiss: () -> Unit, onStop: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Stop ${agent.displayName}'s VS Code?") },
@@ -265,10 +268,14 @@ private fun BrowserCard(browser: BrowserStatus, enabled: Boolean, onStop: () -> 
 
 /** Each agent: its VS Code, its sign-in, what it used, and its company's page of the plan's limits. */
 @Composable
-private fun Agents(report: UsageReport, machine: MachineStatus?, enabled: Boolean, onStop: (Agent) -> Unit) {
+private fun Agents(report: UsageReport, machine: MachineStatus?, enabled: Boolean, onStop: (AgentSlot) -> Unit) {
     Agent.entries.forEach { agent ->
         val status = machine?.agents?.firstOrNull { it.agent == CloudShellInfo.key(agent) }
-        AgentCard(agent, report, status, enabled) { onStop(agent) }
+        AgentCard(agent, report, status, enabled) { onStop(AgentSlot.Official(agent)) }
+        Gap(12.dp)
+    }
+    machine?.let(CloudShellInfo::added)?.forEach { added ->
+        AddedCard(added, machine.agents.firstOrNull { it.agent == added.key }, enabled) { onStop(AgentSlot.Added(added)) }
         Gap(12.dp)
     }
     if (report.partial) FinePrint("Cloud Shell took long to read every file: some numbers may be low. Read again.")
@@ -300,6 +307,25 @@ private fun AgentCard(agent: Agent, report: UsageReport, status: AgentStatus?, e
         }
         val (label, url) = usagePage(agent)
         OutlinedButton(onClick = { Browser.open(context, url) }) { Text(label) }
+        if (status?.running == true) {
+            OutlinedButton(onClick = onStop, enabled = enabled) { Text("Stop its VS Code") }
+        }
+    }
+}
+
+/** An agent the owner added: its VS Code, and Stop. Its usage is its own, in its own screen. */
+@Composable
+private fun AddedCard(added: AddedAgent, status: AgentStatus?, enabled: Boolean, onStop: () -> Unit) {
+    SectionCard(null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AddedAgentLogo(added, size = 32.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(added.name, style = MaterialTheme.typography.titleMedium)
+                facts(status)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+        Note("An agent you added (${added.extension}); what it used shows in its own screen.")
         if (status?.running == true) {
             OutlinedButton(onClick = onStop, enabled = enabled) { Text("Stop its VS Code") }
         }

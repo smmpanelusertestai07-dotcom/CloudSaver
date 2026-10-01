@@ -22,7 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pocketide.agents.AddedAgent
 import com.pocketide.agents.Agent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.core.AppJson
 import com.pocketide.core.Http
 import com.pocketide.core.await
@@ -66,6 +68,33 @@ fun AgentLogo(agent: Agent, modifier: Modifier = Modifier, size: Dp = 40.dp) {
     }
 }
 
+/** Any agent's logo: one of PocketIDE's own three, or one the owner added. */
+@Composable
+fun AgentLogo(agent: AgentSlot, modifier: Modifier = Modifier, size: Dp = 40.dp) = when (agent) {
+    is AgentSlot.Official -> AgentLogo(agent.agent, modifier, size)
+    is AgentSlot.Added -> AddedAgentLogo(agent.added, modifier, size)
+}
+
+/** An agent the owner added: its extension's own icon from Open VSX, kept like the others; its initial until then. */
+@Composable
+fun AddedAgentLogo(added: AddedAgent, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+    val context = LocalContext.current
+    val icon by produceState(AgentIcons.cached(added.extension), added.extension) {
+        if (value == null) value = AgentIcons.load(context.cacheDir, added.extension)
+    }
+    val bitmap = icon
+    if (bitmap == null) {
+        ExtensionLogo(added.name, modifier, size)
+        return
+    }
+    Box(
+        modifier.size(size).clip(RoundedCornerShape(size * 0.26f)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(bitmap, contentDescription = null, modifier = Modifier.size(size * 0.78f))
+    }
+}
+
 /** Any other extension: its initial on a tile, until it is opened (its own icon then shows in its screen). */
 @Composable
 fun ExtensionLogo(name: String, modifier: Modifier = Modifier, size: Dp = 40.dp) {
@@ -88,23 +117,32 @@ fun ExtensionLogo(name: String, modifier: Modifier = Modifier, size: Dp = 40.dp)
  * is then fetched again). A copy older than a week is fetched again, so a new icon arrives.
  */
 object AgentIcons {
-    private val memory = LruCache<Agent, ImageBitmap>(Agent.entries.size)
+    private val memory = LruCache<String, ImageBitmap>(ICONS_KEPT)
 
-    fun cached(agent: Agent): ImageBitmap? = memory.get(agent)
+    fun cached(agent: Agent): ImageBitmap? = memory.get(idOf(agent))
+
+    /** An added agent's icon, by its extension (publisher.name). */
+    fun cached(extension: String): ImageBitmap? = memory.get(extension.lowercase())
 
     /** Fetches every agent's icon ahead of the screens that show them; failures wait for the next time. */
     suspend fun preload(cacheDir: File) = Agent.entries.forEach { load(cacheDir, it) }
 
-    suspend fun load(cacheDir: File, agent: Agent): ImageBitmap? = withContext(Dispatchers.IO) {
-        memory.get(agent)?.let { return@withContext it }
-        val file = File(File(cacheDir, FOLDER), "${agent.name.lowercase()}.png")
+    suspend fun load(cacheDir: File, agent: Agent): ImageBitmap? = load(cacheDir, idOf(agent), agent.name.lowercase())
+
+    suspend fun load(cacheDir: File, extension: String): ImageBitmap? = extension.lowercase().let { id -> load(cacheDir, id, "x-$id") }
+
+    private fun idOf(agent: Agent) = "${agent.publisher}.${agent.extensionName}".lowercase()
+
+    private suspend fun load(cacheDir: File, id: String, fileName: String): ImageBitmap? = withContext(Dispatchers.IO) {
+        memory.get(id)?.let { return@withContext it }
+        val file = File(File(cacheDir, FOLDER), "$fileName.png")
         val kept = file.takeIf { it.isFile }?.readBytes()?.let(::decode)
         if (kept != null && System.currentTimeMillis() - file.lastModified() < REFRESH_MS) {
-            memory.put(agent, kept)
+            memory.put(id, kept)
             return@withContext kept
         }
-        val fresh = fetch(agent)?.let { bytes -> decode(bytes)?.also { save(file, bytes) } }
-        (fresh ?: kept)?.also { memory.put(agent, it) }
+        val fresh = fetch(id)?.let { bytes -> decode(bytes)?.also { save(file, bytes) } }
+        (fresh ?: kept)?.also { memory.put(id, it) }
     }
 
     private fun decode(bytes: ByteArray): ImageBitmap? = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
@@ -120,8 +158,8 @@ object AgentIcons {
         }
     }
 
-    private suspend fun fetch(agent: Agent): ByteArray? = try {
-        val info = get("https://open-vsx.org/api/${agent.publisher}/${agent.extensionName}")?.decodeToString()
+    private suspend fun fetch(id: String): ByteArray? = try {
+        val info = get("https://open-vsx.org/api/${id.substringBefore('.')}/${id.substringAfter('.')}")?.decodeToString()
         val iconUrl = info?.let { AppJson.parseToJsonElement(it) as? JsonObject }
             ?.get("files")?.let { it as? JsonObject }
             ?.get("icon")?.jsonPrimitive?.content
@@ -146,5 +184,6 @@ object AgentIcons {
     private const val OPEN_VSX = "https://open-vsx.org/"
     private const val MAX_BYTES = 512 * 1024
     private const val FOLDER = "agent-icons"
+    private const val ICONS_KEPT = 24
     private const val REFRESH_MS = 7L * 24 * 60 * 60 * 1000
 }

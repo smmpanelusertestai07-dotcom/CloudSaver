@@ -240,6 +240,32 @@ class Info(unittest.TestCase):
         self.assertEqual(["esbenp.prettier-vscode", "openai.chatgpt", "PocketIDE.layout"], [item["id"] for item in codex])
         self.assertEqual([False, True, True], [item["own"] for item in codex], "the agent and PocketIDE's layout stay")
 
+    def test_an_added_agent_shows_with_its_own_name_port_and_extensions(self):
+        (self.home / ".pocketide").mkdir(exist_ok=True)
+        (self.home / ".pocketide" / "agents").write_text(
+            "x-claude-dev:8083:saoudrizwan/claude-dev\n"
+            "x-roo:8084:RooVeterinaryInc/roo-cline:any\n"
+            "codex:8085:openai/chatgpt\n"
+            "x-bad:8080:a/b\n"
+            "x-evil:8086:a/b; rm -rf ~\n")
+        cline = self.home / ".pocketide" / "vscode" / "x-claude-dev" / "extensions"
+        (cline / "saoudrizwan.claude-dev-4.1.22").mkdir(parents=True)
+        (cline / "saoudrizwan.claude-dev-4.1.22" / "package.json").write_text(json.dumps({"displayName": "Cline"}))
+        (cline / "extensions.json").write_text(json.dumps([{"identifier": {"id": "saoudrizwan.claude-dev"}, "version": "4.1.22"}]))
+        roo = self.home / ".pocketide" / "vscode" / "x-roo" / "extensions" / "rooveterinaryinc.roo-cline-3.54.0"
+        roo.mkdir(parents=True)
+        (roo / "package.json").write_text(json.dumps({"displayName": "%extension.displayName%"}))
+        (roo / "package.nls.json").write_text(json.dumps({"extension.displayName": "Roo Code"}))
+        status = self.run_info("status")
+        added = [agent for agent in status["agents"] if agent["agent"].startswith("x-")]
+        self.assertEqual([("x-claude-dev", 8083, "saoudrizwan.claude-dev", "Cline", "4.1.22"),
+                          ("x-roo", 8084, "rooveterinaryinc.roo-cline", "Roo Code", "3.54.0")],
+                         [(a["agent"], a["port"], a["extension"], a["name"], a["version"]) for a in added],
+                         "only lines the launcher writes; PocketIDE's own ports and names are never an added agent's")
+        self.assertNotIn("extension", status["agents"][0], "PocketIDE's own agents carry no extension field")
+        found = self.run_info("extensions")["agents"]
+        self.assertEqual([{"id": "saoudrizwan.claude-dev", "version": "4.1.22", "own": True}], found["x-claude-dev"])
+
     def test_nothing_outside_the_agents_folders(self):
         for argv in (("chat", "claude-code", "../../etc/passwd"), ("delete", "codex", "../x"), ("chat", "vim", CLAUDE_ID),
                      ("delete", "claude-code", "*"), ("rm", "-rf"), ()):

@@ -25,7 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.pocketide.agents.Agent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.Answer
 import com.pocketide.cloudshell.CloudShellInfo
 import com.pocketide.graph
@@ -57,16 +57,16 @@ internal fun BrowserStarting(said: String?) {
  * starts after.
  */
 @Composable
-internal fun BrowserRefused(refused: BrowserStart.Refused, current: Agent, onStop: (Agent) -> Unit, onRetry: () -> Unit, onClose: () -> Unit) {
+internal fun BrowserRefused(refused: BrowserStart.Refused, current: AgentSlot, onStop: (AgentSlot) -> Unit, onRetry: () -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
-    val others by produceState<List<Agent>?>(initialValue = null, refused) {
+    val others by produceState<List<AgentSlot>?>(initialValue = null, refused) {
         value = if (!refused.lowMemory) {
             emptyList()
         } else {
             when (val answer = context.graph.cloudInfo.status()) {
                 is Answer.Got -> answer.value.agents.filter { it.running }
-                    .mapNotNull { CloudShellInfo.agentOf(it.agent) }
-                    .filter { it != current }
+                    .mapNotNull { AgentSlot.of(it.agent, CloudShellInfo.added(answer.value)) }
+                    .filter { it.key != current.key }
                 else -> emptyList()
             }
         }

@@ -29,6 +29,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.pocketide.BuildConfig
 import com.pocketide.agents.Agent
+import com.pocketide.cloudshell.CloudShell
 import org.json.JSONObject
 
 /** What an agent's screen shows over or instead of its page. */
@@ -54,7 +55,8 @@ interface PageHost {
 
     fun downloadRefused()
 
-    fun onPageState(agent: Agent, state: PageState)
+    /** [key]: the agent's name in Cloud Shell ([com.pocketide.agents.AgentSlot.key]). */
+    fun onPageState(key: String, state: PageState)
 }
 
 /**
@@ -69,37 +71,39 @@ interface PageHost {
  * page can call into the app.
  */
 class AgentPages(private val app: Context) {
-    private val pages = LinkedHashMap<Agent, AgentPage>(KEEP, LOAD_FACTOR, true)
+    private val pages = LinkedHashMap<String, AgentPage>(KEEP, LOAD_FACTOR, true)
 
-    /** [agent]'s page at [url], created on first use (or when [url] changed) and moved onto [activity]. */
-    fun attach(agent: Agent, url: String, activity: Activity, host: PageHost): WebView {
-        val page = pages[agent]?.takeIf { it.url == url && it.web != null } ?: AgentPage(app, agent, url).also {
-            pages.remove(agent)?.release()
-            pages[agent] = it
-            trim(keep = agent)
+    /** The page of the agent called [key] at [url], created on first use (or when [url] changed) and moved onto [activity]. */
+    fun attach(key: String, url: String, activity: Activity, host: PageHost): WebView {
+        val page = pages[key]?.takeIf { it.url == url && it.web != null } ?: AgentPage(app, key, url).also {
+            pages.remove(key)?.release()
+            pages[key] = it
+            trim(keep = key)
         }
         return page.attach(activity, host)
     }
 
-    fun detach(agent: Agent, host: PageHost) {
-        pages[agent]?.detach(host)
+    fun detach(key: String, host: PageHost) {
+        pages[key]?.detach(host)
     }
 
-    fun page(agent: Agent): AgentPage? = pages[agent]
+    fun page(key: String): AgentPage? = pages[key]
 
-    fun has(agent: Agent, url: String): Boolean = pages[agent]?.let { it.url == url && it.web != null } == true
+    fun has(key: String, url: String): Boolean = pages[key]?.let { it.url == url && it.web != null } == true
 
-    /** Ends [agent]'s page; the next attach loads it again. */
-    fun release(agent: Agent) {
-        pages.remove(agent)?.release()
+    /** Ends the page of the agent called [key]; the next attach loads it again. */
+    fun release(key: String) {
+        pages.remove(key)?.release()
     }
+
+    fun release(agent: Agent) = release(CloudShell.key(agent))
 
     fun releaseAll() {
         pages.values.forEach { it.release() }
         pages.clear()
     }
 
-    private fun trim(keep: Agent) {
+    private fun trim(keep: String) {
         while (pages.size > KEEP) {
             val oldest = pages.keys.firstOrNull { it != keep } ?: return
             pages.remove(oldest)?.release()
@@ -113,7 +117,7 @@ class AgentPages(private val app: Context) {
 }
 
 /** One agent's VS Code page. */
-class AgentPage(private val app: Context, val agent: Agent, val url: String) {
+class AgentPage(private val app: Context, val key: String, val url: String) {
     var web: WebView? = null
         private set
     private var wrapper: MutableContextWrapper? = null
@@ -296,7 +300,7 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-            host?.onPageState(agent, PageState.Loading(0))
+            host?.onPageState(key, PageState.Loading(0))
         }
 
         override fun onPageFinished(view: WebView, url: String) {
@@ -304,24 +308,24 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
                 view.evaluateJavascript(PageScript.source(app), null)
             }
             if (zoom < 1f || wide) applyZoom(view)
-            host?.onPageState(agent, PageState.Ready)
+            host?.onPageState(key, PageState.Ready)
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-            if (request.isForMainFrame) host?.onPageState(agent, PageState.Failed(PageText.unreachable(error.description?.toString())))
+            if (request.isForMainFrame) host?.onPageState(key, PageState.Failed(PageText.unreachable(error.description?.toString())))
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             // The renderer is gone, so this WebView is unusable: drop it; a reload makes a new one.
             if (view === web) release()
-            host?.onPageState(agent, PageState.Stopped)
+            host?.onPageState(key, PageState.Stopped)
             return true
         }
     }
 
     private inner class ChromeClient : WebChromeClient() {
         override fun onProgressChanged(view: WebView, newProgress: Int) {
-            if (newProgress < FULL) host?.onPageState(agent, PageState.Loading(newProgress))
+            if (newProgress < FULL) host?.onPageState(key, PageState.Loading(newProgress))
         }
 
         /** A new window is a link to open elsewhere: its first address goes to the screen, and the window never shows. */

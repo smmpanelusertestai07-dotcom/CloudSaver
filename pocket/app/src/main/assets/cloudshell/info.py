@@ -29,6 +29,10 @@ from datetime import datetime, timezone
 HOME = os.path.expanduser("~")
 AGENTS = (("claude-code", 8080, "anthropic.claude-code"), ("codex", 8081, "openai.chatgpt"),
           ("antigravity", 8082, "google.google-antigravity"))
+# Agents the owner added (pocketide agent add), each with its own VS Code and port.
+ADDED = os.path.join(HOME, ".pocketide", "agents")
+ADDED_ENTRY = re.compile(r"^(x-[a-z0-9-]{1,30}):(80(?:8[3-9]|9[0-9])):([A-Za-z0-9][A-Za-z0-9_-]{0,63})/"
+                         r"([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?::any)?$")
 SIGN_INS = {"claude-code": ".claude/.credentials.json", "codex": ".codex/auth.json"}
 CLAUDE = os.path.join(HOME, ".claude")
 CODEX = os.path.join(HOME, ".codex")
@@ -152,6 +156,42 @@ def running(port):
     return False
 
 
+def added_agents():
+    """The agents the owner added: (name, port, extension id in lower case) each."""
+    found = []
+    try:
+        with open(ADDED, encoding="utf-8") as lines:
+            for line in lines:
+                match = ADDED_ENTRY.match(line.strip())
+                if match:
+                    found.append((match.group(1), int(match.group(2)), (match.group(3) + "." + match.group(4)).lower()))
+    except OSError:
+        pass
+    return found
+
+
+def every_agent():
+    return AGENTS + tuple(added_agents())
+
+
+def extension_title(prefix, key):
+    """An installed extension's own name, from its manifest (its translations too); None when unknown."""
+    folder = os.path.join(HOME, ".pocketide", "vscode", key, "extensions")
+    for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        if not re.match(re.escape(prefix) + r"-\d", name.lower()):
+            continue
+        try:
+            with open(os.path.join(folder, name, "package.json"), encoding="utf-8") as source:
+                title = str(json.load(source).get("displayName") or "")
+            if title.startswith("%") and title.endswith("%"):
+                with open(os.path.join(folder, name, "package.nls.json"), encoding="utf-8") as source:
+                    title = str(json.load(source).get(title.strip("%")) or "")
+        except (OSError, ValueError, AttributeError):
+            continue
+        return title.strip()[:80] or None
+    return None
+
+
 def extension_version(prefix, key):
     folder = os.path.join(HOME, ".pocketide", "vscode", key, "extensions")
     found = []
@@ -208,15 +248,19 @@ def status():
         updated = 0
     current = os.path.join(HOME, ".pocketide", "code-server", "current")
     agents = []
-    for key, port, prefix in AGENTS:
+    for key, port, prefix in every_agent():
         sign_in = SIGN_INS.get(key)
-        agents.append({
+        agent = {
             "agent": key,
             "port": port,
             "running": running(port),
             "version": extension_version(prefix, key),
             "signedIn": os.path.isfile(os.path.join(HOME, sign_in)) if sign_in else None,
-        })
+        }
+        if key.startswith("x-"):
+            agent["extension"] = prefix
+            agent["name"] = extension_title(prefix, key) or prefix
+        agents.append(agent)
     return {
         "ok": True,
         "now": now_ms(),
@@ -796,7 +840,7 @@ def usage():
 def extensions():
     """The extensions in each agent's VS Code, from VS Code's own list of them (newest version each)."""
     found = {}
-    for key, _port, own in AGENTS:
+    for key, _port, own in every_agent():
         listed = {}
         path = os.path.join(HOME, ".pocketide", "vscode", key, "extensions", "extensions.json")
         try:

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -61,7 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pocketide.agents.Agent
+import com.pocketide.agents.AddedAgent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.Answer
 import com.pocketide.cloudshell.CloudShellInfo
 import com.pocketide.cloudshell.InstalledExtension
@@ -69,6 +71,7 @@ import com.pocketide.cloudshell.OpenVsx
 import com.pocketide.cloudshell.OpenVsxExtension
 import com.pocketide.graph
 import com.pocketide.link.LinkState
+import com.pocketide.ui.components.AddedAgentLogo
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.DialogBody
 import com.pocketide.ui.components.ExtensionLogo
@@ -78,6 +81,8 @@ import com.pocketide.ui.screens.live.Asking
 import com.pocketide.ui.screens.live.ConnectFirst
 import com.pocketide.ui.screens.live.KeepConnectionWhileShown
 import com.pocketide.ui.shell.NoticeCard
+import com.pocketide.ui.shell.PrimaryAction
+import com.pocketide.ui.workspace.WorkspaceActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,6 +101,7 @@ private typealias Installed = Map<String, List<InstalledExtension>>
 fun ExtensionsScreen(onBack: () -> Unit) {
     val graph = LocalContext.current.graph
     val link by graph.link.state.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var found by remember { mutableStateOf<OpenVsx.Found?>(null) }
     var installed by remember { mutableStateOf<Installed?>(null) }
@@ -138,7 +144,8 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (query.isBlank()) item { InstalledCard(link, installed, installedWhy, onChanged = { asked++ }) }
+                if (query.isBlank() && settings.addedAgents.isNotEmpty()) item { AddedAgentsCard(link, settings.addedAgents, onChanged = { asked++ }) }
+                if (query.isBlank()) item { InstalledCard(link, installed, installedWhy, settings.addedAgents, onChanged = { asked++ }) }
                 item {
                     Text(
                         if (query.isBlank()) "Most installed on Open VSX" else "On Open VSX",
@@ -146,25 +153,30 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                         modifier = Modifier.semantics { heading() },
                     )
                 }
-                when (val now = found) {
-                    null -> item { Asking("Searching Open VSX…") }
-                    is OpenVsx.Found.Failed -> item { NoticeCard(now.why, tone = Tone.WARN) }
-                    is OpenVsx.Found.Some -> {
-                        if (now.extensions.isEmpty()) item { Text("Open VSX has nothing by that name.") }
-                        items(now.extensions, key = { it.id }) { extension -> ExtensionRow(extension, onClick = { picked = extension }) }
-                    }
-                }
+                searchResults(found, onPick = { picked = it })
             }
         }
     }
     picked?.let { extension ->
-        ExtensionDialog(extension, link, installed, onChanged = { asked++ }, onClose = { picked = null })
+        ExtensionDialog(extension, link, installed, settings.addedAgents, onChanged = { asked++ }, onClose = { picked = null })
+    }
+}
+
+/** What Open VSX answered: each extension found, or why there is none. */
+private fun LazyListScope.searchResults(found: OpenVsx.Found?, onPick: (OpenVsxExtension) -> Unit) {
+    when (found) {
+        null -> item { Asking("Searching Open VSX…") }
+        is OpenVsx.Found.Failed -> item { NoticeCard(found.why, tone = Tone.WARN) }
+        is OpenVsx.Found.Some -> {
+            if (found.extensions.isEmpty()) item { Text("Open VSX has nothing by that name.") }
+            items(found.extensions, key = { it.id }) { extension -> ExtensionRow(extension, onClick = { onPick(extension) }) }
+        }
     }
 }
 
 /** What each agent's VS Code has now, read from Cloud Shell; anything but the agent's own can go. */
 @Composable
-private fun InstalledCard(link: LinkState, installed: Installed?, why: String?, onChanged: () -> Unit) {
+private fun InstalledCard(link: LinkState, installed: Installed?, why: String?, added: List<AddedAgent>, onChanged: () -> Unit) {
     if (link != LinkState.On) {
         ConnectFirst(link, "Each agent's extensions are")
         return
@@ -179,13 +191,13 @@ private fun InstalledCard(link: LinkState, installed: Installed?, why: String?, 
             }
             return@SectionCard
         }
-        Agent.entries.forEach { agent ->
+        AgentSlot.all(added).forEach { agent ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AgentLogo(agent, size = 24.dp)
                 Spacer(Modifier.width(8.dp))
                 Text(agent.displayName, style = MaterialTheme.typography.titleSmall)
             }
-            installed[CloudShellInfo.key(agent)].orEmpty().forEach { extension ->
+            installed[agent.key].orEmpty().forEach { extension ->
                 InstalledRow(agent, extension, onChanged)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -200,7 +212,7 @@ private fun InstalledCard(link: LinkState, installed: Installed?, why: String?, 
 }
 
 @Composable
-private fun InstalledRow(agent: Agent, extension: InstalledExtension, onChanged: () -> Unit) {
+private fun InstalledRow(agent: AgentSlot, extension: InstalledExtension, onChanged: () -> Unit) {
     val graph = LocalContext.current.graph
     val scope = rememberCoroutineScope()
     var said by remember { mutableStateOf<String?>(null) }
@@ -275,14 +287,22 @@ private fun ExtensionRow(extension: OpenVsxExtension, onClick: () -> Unit) {
  * has not verified needs a second tap, after the warning.
  */
 @Composable
-private fun ExtensionDialog(extension: OpenVsxExtension, link: LinkState, installed: Installed?, onChanged: () -> Unit, onClose: () -> Unit) {
+private fun ExtensionDialog(
+    extension: OpenVsxExtension,
+    link: LinkState,
+    installed: Installed?,
+    added: List<AddedAgent>,
+    onChanged: () -> Unit,
+    onClose: () -> Unit,
+) {
     val graph = LocalContext.current.graph
     val uri = LocalUriHandler.current
     val scope = rememberCoroutineScope()
-    var working by remember { mutableStateOf<Agent?>(null) }
+    var working by remember { mutableStateOf<String?>(null) }
     var said by remember { mutableStateOf<String?>(null) }
     var unverifiedOk by remember { mutableStateOf(extension.verified) }
-    val has = { agent: Agent -> installed?.get(CloudShellInfo.key(agent)).orEmpty().any { it.id.equals(extension.id, ignoreCase = true) } }
+    val agent by produceState(false, extension.id) { value = OpenVsx.isAgent(extension) }
+    val has = { slot: AgentSlot -> installed?.get(slot.key).orEmpty().any { it.id.equals(extension.id, ignoreCase = true) } }
     AlertDialog(
         onDismissRequest = { if (working == null) onClose() },
         icon = { ExtensionIcon(extension, 48.dp) },
@@ -303,20 +323,25 @@ private fun ExtensionDialog(extension: OpenVsxExtension, link: LinkState, instal
                 if (link != LinkState.On) {
                     Text("Connect to install it: the agents' VS Code is in Cloud Shell. Home > Open the computer, or Computer > Connect.")
                 } else {
-                    Agent.entries.forEach { agent ->
-                        AgentTarget(agent, installed = has(agent), working = working, enabled = working == null) {
+                    if (agent) {
+                        AddAsAgent(extension, added, onAdded = onChanged)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Text("Or install it in an agent's VS Code:", style = MaterialTheme.typography.bodySmall)
+                    }
+                    AgentSlot.all(added).forEach { slot ->
+                        AgentTarget(slot, installed = has(slot), working = working == slot.key, enabled = working == null) {
                             if (!unverifiedOk) {
                                 unverifiedOk = true
                                 said = "Tap again to install it anyway."
                                 return@AgentTarget
                             }
-                            working = agent
+                            working = slot.key
                             said = null
                             scope.launch {
-                                val done = graph.link.extension(install = true, agent, extension.id, anyPublisher = !extension.verified) { said = it }
+                                val done = graph.link.extension(install = true, slot, extension.id, anyPublisher = !extension.verified) { said = it }
                                 working = null
                                 said = if (done) {
-                                    "Installed in ${agent.displayName}'s VS Code. If it is open, reload it to use the " +
+                                    "Installed in ${slot.displayName}'s VS Code. If it is open, reload it to use the " +
                                         "extension now: Tools > Reload this VS Code."
                                 } else {
                                     said ?: "It was not installed. Try again."
@@ -335,16 +360,121 @@ private fun ExtensionDialog(extension: OpenVsxExtension, link: LinkState, instal
 }
 
 @Composable
-private fun AgentTarget(agent: Agent, installed: Boolean, working: Agent?, enabled: Boolean, onInstall: () -> Unit) {
+private fun AgentTarget(agent: AgentSlot, installed: Boolean, working: Boolean, enabled: Boolean, onInstall: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         AgentLogo(agent, size = 28.dp)
         Spacer(Modifier.width(10.dp))
         Text(agent.displayName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         when {
-            working == agent -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            working -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             installed -> Text("Installed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             else -> OutlinedButton(onClick = onInstall, enabled = enabled) { Text("Install") }
         }
+    }
+}
+
+/**
+ * An AI agent from Open VSX as an agent of its own: its own VS Code on its own port in Cloud Shell,
+ * on Home with the others and opened the same way. A publisher Open VSX has not verified needs a
+ * second tap, after the dialog's warning.
+ */
+@Composable
+private fun AddAsAgent(extension: OpenVsxExtension, added: List<AddedAgent>, onAdded: () -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
+    val scope = rememberCoroutineScope()
+    var working by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
+    var unverifiedOk by remember { mutableStateOf(extension.verified) }
+    val already = added.firstOrNull { it.extension.equals(extension.id, ignoreCase = true) }
+    Text(
+        "An AI agent: it can have its own VS Code, on its own port in Cloud Shell, and open from Home like the others.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    when {
+        already != null -> PrimaryAction("Open ${already.name}", onClick = { WorkspaceActivity.open(context, AgentSlot.Added(already)) })
+        else -> PrimaryAction("Add as an agent", busy = working, onClick = {
+            if (!unverifiedOk) {
+                unverifiedOk = true
+                said = "Tap again to add it anyway."
+                return@PrimaryAction
+            }
+            working = true
+            said = null
+            scope.launch {
+                val key = graph.link.addAgent(extension.id, anyPublisher = !extension.verified) { said = it }
+                // Cloud Shell's list of agents, now with this one: Home shows it.
+                if (key != null) graph.cloudInfo.status()
+                working = false
+                said = if (key != null) "Added, with its own VS Code: it is on Home." else said ?: "It was not added. Try again."
+                if (key != null) onAdded()
+            }
+        })
+    }
+    said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+}
+
+/** The agents the owner added: open one, or remove it (its VS Code goes; its projects stay). */
+@Composable
+private fun AddedAgentsCard(link: LinkState, added: List<AddedAgent>, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    val graph = context.graph
+    val scope = rememberCoroutineScope()
+    var removing by remember { mutableStateOf<AddedAgent?>(null) }
+    var working by remember { mutableStateOf<String?>(null) }
+    var said by remember { mutableStateOf<String?>(null) }
+    SectionCard("Agents you added") {
+        added.forEach { agent ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                AddedAgentLogo(agent, size = 28.dp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(agent.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${agent.extension} · port ${agent.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (working == agent.key) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    TextButton(onClick = { WorkspaceActivity.open(context, AgentSlot.Added(agent)) }) { Text("Open") }
+                    TextButton(onClick = { removing = agent }, enabled = link == LinkState.On && working == null) { Text("Remove") }
+                }
+            }
+        }
+        said?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+    removing?.let { agent ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${agent.name}?") },
+            text = {
+                Text(
+                    "Its VS Code stops and goes from Cloud Shell, with its own settings, sign-in and chats there. Your projects " +
+                        "stay in ${agent.projects}. You can add it again from Open VSX.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    removing = null
+                    working = agent.key
+                    said = null
+                    scope.launch {
+                        graph.pages.release(agent.key)
+                        val done = graph.link.removeAgent(agent)
+                        if (done) graph.cloudInfo.status()
+                        working = null
+                        said = if (done) "${agent.name} is removed." else "${agent.name} was not removed. Try again."
+                        if (done) onChanged()
+                    }
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
     }
 }
 

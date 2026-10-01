@@ -191,11 +191,22 @@ internal object Faq {
                 "after ${CloudShell.DELETED_AFTER_DAYS}. Connect once: PocketIDE sets up again only what is missing.",
         ),
         faq(
+            "more-agents",
+            "agents",
+            "Can I add other AI agents, like Cline or Roo Code?",
+            "Yes: Home > Extensions and more agents, search for it, and tap Add as an agent (it shows for extensions Open VSX " +
+                "files under AI or Chat). It gets its own VS Code on its own private port in Cloud Shell (8083 and up) and its " +
+                "own projects folder (~/projects/x-<its name>), and opens from Home and the top bar alone, full screen, like " +
+                "the others. Remove takes its VS Code away again; your projects stay. Each signs in its own way, often with an " +
+                "API key of your own.",
+        ),
+        faq(
             "phone-files",
             DocsContent.IDE_ID,
             "How do I give an agent a file from my phone?",
             "Tap the agent's own add-files button (Claude Code's paper clip, Codex's +, or File > Open File): Android's picker " +
-                "opens by itself. The file is copied to ~/projects/<agent>/uploads in Cloud Shell, which git ignores, and the " +
+                "opens on the same tap, every time; Codex's request is answered from the phone, so VS Code's dialog does not " +
+                "show. The file is copied to ~/projects/<agent>/uploads in Cloud Shell, which git ignores, and the " +
                 "agent takes it. A folder or a save stays in Cloud Shell's folders, where the agents work.",
         ),
         faq(

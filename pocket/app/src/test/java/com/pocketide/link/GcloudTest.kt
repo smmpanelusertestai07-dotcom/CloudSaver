@@ -66,5 +66,19 @@ class GcloudTest {
             assertThrows(IllegalArgumentException::class.java) { Gcloud.launcher("start", word) }
         }
         assertThrows(IllegalArgumentException::class.java) { Gcloud.launcher() }
+        // An added agent's name has digits too (x-gpt5-helper).
+        assertEquals("bash -lc '~/.local/bin/pocketide '\\''stop'\\'' '\\''x-gpt5-helper'\\'''", Gcloud.launcher("stop", "x-gpt5-helper"))
+    }
+
+    @Test
+    fun `an agent is added only by its extension's own name`() {
+        assertEquals(
+            "bash -lc '~/.local/bin/pocketide '\\''agent'\\'' '\\''add'\\'' '\\''saoudrizwan.claude-dev'\\'''",
+            Gcloud.agentAdd("saoudrizwan.claude-dev", anyPublisher = false),
+        )
+        assertTrue(Gcloud.agentAdd("Some-One.agent", anyPublisher = true).endsWith("'\\''any'\\'''"))
+        listOf("", "claude-dev", "a.b.c", "x;reboot.y", "\$(id).x", "a .b", "-x.y").forEach { id ->
+            assertThrows(IllegalArgumentException::class.java) { Gcloud.agentAdd(id, anyPublisher = false) }
+        }
     }
 }

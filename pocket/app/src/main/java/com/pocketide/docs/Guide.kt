@@ -133,8 +133,9 @@ internal object Guide {
             "A sign-in that ends at \"localhost refused to connect\": open the agent in PocketIDE and sign in again.",
         ),
         p(
-            "More extensions: Home > Extensions searches Open VSX and installs in the agent's VS Code you pick; Tools > " +
-                "Install from a link takes a maker's .vsix. Microsoft's own are not on Open VSX.",
+            "More agents: Home > Extensions adds an AI agent from Open VSX (Cline, Roo Code, Kilo Code…) with its own VS " +
+                "Code on its own port (8083 and up); it opens from Home like the others. Other extensions install in the " +
+                "agent's VS Code you pick. Microsoft's own are not on Open VSX.",
         ),
         link("Claude Code's guide", Agent.CLAUDE.docsUrl),
         link("Codex's guide", Agent.CODEX.docsUrl),

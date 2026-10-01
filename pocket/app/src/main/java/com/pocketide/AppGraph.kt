@@ -51,5 +51,5 @@ class AppGraph(val context: Context) {
     val pages: AgentPages by lazy { AgentPages(context) }
 
     /** Cloud Shell's numbers and the agents' chats, read there over the open connection. */
-    val cloudInfo: CloudShellInfo by lazy { CloudShellInfo(context, link) }
+    val cloudInfo: CloudShellInfo by lazy { CloudShellInfo(context, link, settings) }
 }

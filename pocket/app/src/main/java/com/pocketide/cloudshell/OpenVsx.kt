@@ -40,6 +40,9 @@ data class OpenVsxExtension(
 private const val SITE = "https://open-vsx.org"
 
 @Serializable
+private data class OpenVsxDetails(val categories: List<String> = emptyList())
+
+@Serializable
 private data class OpenVsxSearch(val extensions: List<OpenVsxExtension> = emptyList(), val error: String? = null)
 
 /**
@@ -78,6 +81,24 @@ object OpenVsx {
         Found.Failed(NO_ANSWER)
     } catch (expected: IllegalArgumentException) {
         Found.Failed(NO_ANSWER)
+    }
+
+    /**
+     * True when Open VSX files [extension] under AI or Chat: an agent, which can have a VS Code and a
+     * port of its own; false when not, or when Open VSX did not answer.
+     */
+    suspend fun isAgent(extension: OpenVsxExtension): Boolean = try {
+        val text = get("$SITE/api/${extension.namespace}/${extension.name}", SEARCH_BYTES)?.decodeToString()
+        val details = text?.let { AppJson.decodeFromString(OpenVsxDetails.serializer(), it) }
+        details?.categories.orEmpty().any { it.equals("AI", ignoreCase = true) || it.equals("Chat", ignoreCase = true) }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (expected: IOException) {
+        false
+    } catch (expected: SerializationException) {
+        false
+    } catch (expected: IllegalArgumentException) {
+        false
     }
 
     /** [extension]'s icon file (PNG or JPEG), from Open VSX only; null when it has none or it is too big. */

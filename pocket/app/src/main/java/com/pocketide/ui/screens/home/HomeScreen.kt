@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,7 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pocketide.agents.AddedAgent
 import com.pocketide.agents.Agent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.core.AppFolders
 import com.pocketide.core.OldComputer
@@ -45,6 +48,7 @@ import com.pocketide.docs.DocsContent
 import com.pocketide.graph
 import com.pocketide.link.LinkState
 import com.pocketide.ui.components.ActionRow
+import com.pocketide.ui.components.AddedAgentLogo
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.screens.cloudshell.SignInHelpDialog
 import com.pocketide.ui.shell.BrandMark
@@ -69,6 +73,10 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
     val link by graph.link.state.collectAsStateWithLifecycle()
     var signIn by remember { mutableStateOf<Agent?>(null) }
     val oldComputer = remember { OldComputer(AppFolders.of(context).oldComputer).exists() }
+    // Cloud Shell's list of agents, the ones the owner added there too, once connected.
+    LaunchedEffect(link == LinkState.On) {
+        if (link == LinkState.On) graph.cloudInfo.status()
+    }
     ShellPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
             BrandMark(36.dp)
@@ -122,10 +130,15 @@ fun HomeScreen(onComputer: () -> Unit, onYourData: () -> Unit, onHelp: () -> Uni
                 AgentRow(agent, onOpen = { WorkspaceActivity.open(context, agent) }, onSignIn = { signIn = agent })
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
+            // AI agents the owner added from Open VSX: each with its own VS Code on its own port.
+            settings.addedAgents.forEach { added ->
+                AddedAgentRow(added, onOpen = { WorkspaceActivity.open(context, AgentSlot.Added(added)) })
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
             ListRow(
                 leading = { Icon(Icons.Outlined.Extension, contentDescription = null, modifier = Modifier.size(28.dp)) },
-                title = "Extensions",
-                subtitle = "Search Open VSX and install in an agent's VS Code; they update by themselves",
+                title = "Extensions and more agents",
+                subtitle = "Search Open VSX: add an AI agent with its own VS Code, or install in an agent's; they update by themselves",
                 onClick = onExtensions,
             )
         }
@@ -171,6 +184,34 @@ private fun AgentRow(agent: Agent, onOpen: () -> Unit, onSignIn: () -> Unit) {
             )
         }
         IconButton(onClick = onSignIn) { Icon(Icons.Outlined.Key, contentDescription = "How to sign in to ${agent.displayName}") }
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+    }
+}
+
+/** An agent the owner added: its own icon and name; a tap opens its own VS Code. */
+@Composable
+private fun AddedAgentRow(added: AddedAgent, onOpen: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clickable(onClickLabel = "Open ${added.name}", onClick = onOpen)
+            .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AddedAgentLogo(added, size = 40.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(added.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "Added · ${added.projects}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
     }

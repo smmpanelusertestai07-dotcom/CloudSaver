@@ -139,11 +139,21 @@ internal object Gcloud {
         return login("~/.local/bin/pocketide " + words.joinToString(" ") { quote(it) })
     }
 
+    /**
+     * The launcher adding extension [id] (publisher.name) as an agent with its own VS Code and port;
+     * [anyPublisher] when the owner accepted one Open VSX has not verified.
+     */
+    fun agentAdd(id: String, anyPublisher: Boolean): String {
+        require(EXTENSION.matches(id)) { "Not an extension the launcher takes: $id" }
+        val words = listOf("agent", "add", id) + if (anyPublisher) listOf("any") else emptyList()
+        return login("~/.local/bin/pocketide " + words.joinToString(" ") { quote(it) })
+    }
+
     /** Exit 0 when Cloud Shell has PocketIDE's launcher (its home may have been reset or deleted since). */
     const val HAS_LAUNCHER = "test -x ~/.local/bin/pocketide"
 
     fun quote(text: String) = "'" + text.replace("'", "'\\''") + "'"
 
-    private val LAUNCHER_WORD = Regex("^[a-z][a-z-]{0,31}$")
+    private val LAUNCHER_WORD = Regex("^[a-z][a-z0-9-]{0,31}$")
     private val EXTENSION = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 }

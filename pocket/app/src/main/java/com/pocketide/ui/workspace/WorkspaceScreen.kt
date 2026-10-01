@@ -70,7 +70,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.pocketide.agents.Agent
+import com.pocketide.agents.AddedAgent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.cloudshell.SignInCatcher
 import com.pocketide.docs.DocLinks
@@ -79,6 +80,7 @@ import com.pocketide.link.BrowserStart
 import com.pocketide.link.LinkState
 import com.pocketide.link.Problem
 import com.pocketide.link.SignInResult
+import com.pocketide.ui.components.AddedAgentLogo
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.cloudshell.openGooglePage
@@ -98,15 +100,15 @@ import kotlinx.coroutines.launch
 @Composable
 // One screen: each state of the connection, and each problem, has its own few lines.
 @Suppress("CyclomaticComplexMethod", "LongMethod")
-internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent: (Agent) -> Unit, onHome: () -> Unit) {
+internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAgent: (AgentSlot) -> Unit, onHome: () -> Unit) {
     val graph = activity.graph
     val link by graph.link.state.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val up by graph.link.agentsUp.collectAsStateWithLifecycle()
     val browserStart by graph.link.browser.collectAsStateWithLifecycle()
-    var pageStates by remember { mutableStateOf(mapOf<Agent, PageState>()) }
-    var notStarted by remember { mutableStateOf<Agent?>(null) }
+    var pageStates by remember { mutableStateOf(mapOf<String, PageState>()) }
+    var notStarted by remember { mutableStateOf<String?>(null) }
     var viewer by remember { mutableStateOf<String?>(null) }
     var askOpen by remember { mutableStateOf<String?>(null) }
     var pendingFiles by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
@@ -115,7 +117,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     var signingIn by remember { mutableStateOf(false) }
     var tools by remember { mutableStateOf(false) }
     val account = settings.gcloudAccount.ifBlank { settings.cloudAccount }
-    val page = { graph.pages.page(agent) }
+    val page = { graph.pages.page(agent.key) }
     val toast = { text: String -> Toast.makeText(activity, text, Toast.LENGTH_LONG).show() }
 
     val open: (String, Boolean) -> Unit = { url, fromTap ->
@@ -164,13 +166,13 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                 toast("VS Code's downloads do not reach the phone; the file stays in Cloud Shell.")
             }
 
-            override fun onPageState(agent: Agent, state: PageState) {
-                pageStates = pageStates + (agent to state)
+            override fun onPageState(key: String, state: PageState) {
+                pageStates = pageStates + (key to state)
             }
         }
     }
     DisposableEffect(agent) {
-        onDispose { graph.pages.detach(agent, host) }
+        onDispose { graph.pages.detach(agent.key, host) }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -200,8 +202,8 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     // a restart of Cloud Shell), then its page loads afresh.
     val reload: () -> Unit = {
         if (link == LinkState.On) {
-            pageStates = pageStates - agent
-            graph.pages.release(agent)
+            pageStates = pageStates - agent.key
+            graph.pages.release(agent.key)
             graph.link.agentGone(agent)
             generation++
         } else {
@@ -232,6 +234,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     ) {
         TopBar(
             agent = agent,
+            added = settings.addedAgents,
             onBack = back,
             onAgent = { picked ->
                 viewer = null
@@ -260,7 +263,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                     val url = graph.link.agentUrl(agent)
                     when {
                         url == null -> Waiting("Connecting…", null)
-                        notStarted == agent -> Problem(
+                        notStarted == agent.key -> Problem(
                             "${agent.displayName}'s VS Code did not start in Cloud Shell.",
                             "Try again. If it keeps failing, Cloud Shell may be short of memory: stop an agent's VS Code " +
                                 "you are not using (PocketIDE's Usage), or disconnect and connect again.",
@@ -269,17 +272,17 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                             TextButton(onClick = { graph.link.disconnect() }) { Text("Disconnect") }
                         }
                         // Each agent's VS Code starts when it opens, so Cloud Shell's memory goes to the agents in use.
-                        agent !in up -> {
+                        agent.key !in up -> {
                             Waiting("Starting ${agent.displayName}'s VS Code…", "The first start after a break takes a minute.")
-                            LaunchedEffect(agent, url) {
-                                if (!graph.link.openAgent(agent)) notStarted = agent
+                            LaunchedEffect(agent.key, url) {
+                                if (!graph.link.openAgent(agent)) notStarted = agent.key
                             }
                         }
                         else -> {
-                            key(agent, url, generation) {
-                                AndroidView(factory = { graph.pages.attach(agent, url, activity, host) }, modifier = Modifier.fillMaxSize())
+                            key(agent.key, url, generation) {
+                                AndroidView(factory = { graph.pages.attach(agent.key, url, activity, host) }, modifier = Modifier.fillMaxSize())
                             }
-                            PageOverlay(pageStates[agent], onReload = reload)
+                            PageOverlay(pageStates[agent.key], onReload = reload)
                         }
                     }
                 }
@@ -373,7 +376,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
             current = agent,
             onStop = { other ->
                 graph.link.browserShown()
-                graph.pages.release(other)
+                graph.pages.release(other.key)
                 scope.launch {
                     if (graph.link.stopAgent(other)) graph.link.startBrowser() else toast("${other.displayName}'s VS Code did not stop. Try again.")
                 }
@@ -421,9 +424,10 @@ private fun fixOf(problem: Problem): String = when (problem) {
 @Composable
 @Suppress("LongParameterList") // One callback per button in the bar.
 private fun TopBar(
-    agent: Agent,
+    agent: AgentSlot,
+    added: List<AddedAgent>,
     onBack: () -> Unit,
-    onAgent: (Agent) -> Unit,
+    onAgent: (AgentSlot) -> Unit,
     ideShown: Boolean,
     onIde: () -> Unit,
     onTools: () -> Unit,
@@ -433,8 +437,9 @@ private fun TopBar(
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                Agent.entries.forEach { each -> AgentChip(each, selected = each == agent, onClick = { onAgent(each) }) }
+            // PocketIDE's three, then the agents the owner added; the row scrolls when they do not fit.
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                AgentSlot.all(added).forEach { each -> AgentChip(each, selected = each.key == agent.key, onClick = { onAgent(each) }) }
             }
             IconButton(onClick = onIde) {
                 if (ideShown) {
@@ -463,7 +468,7 @@ private fun TopBar(
 
 /** An agent's logo; the one on screen is framed. */
 @Composable
-private fun AgentChip(agent: Agent, selected: Boolean, onClick: () -> Unit) {
+private fun AgentChip(agent: AgentSlot, selected: Boolean, onClick: () -> Unit) {
     val frame = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
     Box(
         Modifier
@@ -473,7 +478,10 @@ private fun AgentChip(agent: Agent, selected: Boolean, onClick: () -> Unit) {
             .clickable(role = Role.Tab, onClickLabel = "Open ${agent.displayName}", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        AgentLogo(agent, size = 30.dp)
+        when (agent) {
+            is AgentSlot.Official -> AgentLogo(agent.agent, size = 30.dp)
+            is AgentSlot.Added -> AddedAgentLogo(agent.added, size = 30.dp)
+        }
     }
 }
 

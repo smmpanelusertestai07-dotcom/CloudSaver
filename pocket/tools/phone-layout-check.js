@@ -1,7 +1,7 @@
 // Each agent's VS Code in Cloud Shell, as PocketIDE's app shows it on a phone: a 360 x 700 screen,
 // with the app's own page script (pocket/app/src/main/assets/workspace/pagescript.js). CI runs it
 // after the Cloud Shell set-up script, against the VS Code it installed:
-//   node phone-layout-check.js <folder for the screenshots>
+//   node phone-layout-check.js <folder for the screenshots> [name:port:title, for one agent only]
 // It checks what the owner sees: the agent's own panel alone, full screen; the terminal full screen
 // over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
 // an editor left behind it; the command palette inside the screen and closed by Back's Escape. Any
@@ -11,9 +11,12 @@ const path = require('path');
 const { chromium } = require('playwright');
 
 const out = process.argv[2] || 'phone-screens';
+// One agent only, as name:port:title (an agent the owner added, say x-claude-dev:8083:Cline).
+const only = process.argv[3] && /^([a-z0-9-]+):(\d{4,5}):(\w[\w ]*)$/.exec(process.argv[3]);
 const script = fs.readFileSync(path.join(__dirname, '../app/src/main/assets/workspace/pagescript.js'), 'utf8');
 // Each agent's VS Code and the title of the agent's own panel (VS Code's own Chat is not the agent).
-const AGENTS = [['claude-code', 8080, /Claude/], ['codex', 8081, /Codex/], ['antigravity', 8082, /Antigravity/]];
+const AGENTS = only ? [[only[1], Number(only[2]), new RegExp(only[3])]]
+  : [['claude-code', 8080, /Claude/], ['codex', 8081, /Codex/], ['antigravity', 8082, /Antigravity/]];
 const PHONE = {
   viewport: { width: 360, height: 700 },
   deviceScaleFactor: 2,

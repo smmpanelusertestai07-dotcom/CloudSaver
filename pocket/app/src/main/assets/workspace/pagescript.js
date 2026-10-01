@@ -13,13 +13,14 @@
 // - escape(), backTarget(): what Back closes first (a menu, a dialog, a notice), then what covers
 //   the agent, else nothing ('none': PocketIDE's Back leaves the screen).
 // - fit(zoom, widthDp): the page drawn smaller on a short screen; type(text): the Paste key.
-// - Phone files: when an agent's own "add files" opens VS Code's file dialog, Android's picker opens
-//   by itself, on the same tap; the file goes to Cloud Shell's file drop (files.py) into the agent's
-//   ~/projects/<agent>/uploads, and the dialog takes it as if it had been picked there. Nothing is
-//   added to the dialog; a folder or save dialog stays as it is, with Cloud Shell's folders, and so
-//   does a dialog after the picker was closed. Files go to this page's own address
-//   (/__pocketide/drop/), which PocketIDE's door passes to the drop: VS Code's own security policy
-//   lets a page connect only to its own address.
+// - Phone files: an agent's own "add files" opens Android's picker on the same tap. Codex and Cline
+//   ask their extension for files over their webview's message port; that request is answered here
+//   with the files picked on the phone, so VS Code's dialog never opens. Claude Code's own file
+//   input opens the picker by itself. Any other extension's VS Code file dialog opens the picker with it. Files
+//   go to Cloud Shell's file drop (files.py) into the agent's ~/projects/<agent>/uploads, through
+//   this page's own address (/__pocketide/drop/), which PocketIDE's door passes to the drop: VS
+//   Code's own security policy lets a page connect only to its own address. Nothing is added to the
+//   screen; asking for a folder or a save stays VS Code's, with Cloud Shell's folders.
 (() => {
   if (window.__pocketide || window.top !== window) return;
   const style = `
@@ -89,10 +90,12 @@
   };
   // Each agent's VS Code port (pocket/cloudshell/pocketide-cloudshell.sh): this page's agent, from
   // its address through PocketIDE's door (<port>-<key>.localhost), else Cloud Shell's own (tests).
-  const AGENTS = { 8080: 'claude-code', 8081: 'codex', 8082: 'antigravity' };
-  const pageAgent = () => {
+  // This agent's VS Code port in Cloud Shell (8080 to 8099: each agent has its own), from the door's
+  // address for it; 0 for any other page. The file drop knows which agent each port is.
+  const pagePort = () => {
     const door = location.host.match(/^(\d+)-[0-9a-f]{32}\.localhost(?::\d+)?$/);
-    return AGENTS[door ? door[1] : location.port];
+    const port = Number(door ? door[1] : location.port);
+    return port >= 8080 && port <= 8099 ? port : 0;
   };
   // VS Code's own file dialog: a quick input with a title and a path from the root, and its buttons;
   // [files] unless its title says it picks a folder or saves.
@@ -106,20 +109,113 @@
     const files = !/folder|directory|save/i.test(title.textContent);
     return { widget, input, actions, files };
   };
-  // The phone's picker for [dialog]; the file picked goes to Cloud Shell and the dialog takes it.
-  const fromPhone = (dialog) => {
+  // Files picked on the phone go to Cloud Shell's file drop, into this agent's
+  // ~/projects/<agent>/uploads, and come back as VS Code names them there.
+  const send = async (files) => {
+    const sent = [];
+    for (const file of files) {
+      const answer = await fetch(`/__pocketide/drop/upload?port=${pagePort()}&name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file });
+      const result = await answer.json();
+      if (!answer.ok || !result.path) throw new Error('not sent');
+      sent.push({ label: result.name, path: result.path, fsPath: result.path });
+    }
+    return sent;
+  };
+  // Android's picker, on the tap that asked for it: the files picked, or none when it was closed.
+  const pick = (options) => new Promise((resolve) => {
     const chooser = document.createElement('input');
     chooser.type = 'file';
+    chooser.multiple = options.allowMultiple !== false;
+    if (options.imagesOnly) chooser.accept = 'image/*';
+    else if (Array.isArray(options.acceptedFileExtensions) && options.acceptedFileExtensions.length) {
+      chooser.accept = options.acceptedFileExtensions.map((extension) => '.' + String(extension).replace(/^\./, '')).join(',');
+    }
     chooser.style.display = 'none';
-    chooser.addEventListener('change', async () => {
-      const file = chooser.files && chooser.files[0];
+    let done = false;
+    const finish = (files) => {
+      if (done) return;
+      done = true;
       chooser.remove();
-      const agent = pageAgent();
-      if (!file || !agent) return;
+      resolve(files);
+    };
+    chooser.addEventListener('change', () => finish([...(chooser.files || [])]), { once: true });
+    chooser.addEventListener('cancel', () => finish([]), { once: true });
+    (document.body || document.documentElement).appendChild(chooser);
+    chooser.click();
+  });
+  // A picture picked on the phone, as a data: URL (an agent that takes pictures in the chat itself).
+  const dataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  const options = (body) => {
+    try {
+      return JSON.parse(body || '{}') || {};
+    } catch (e) {
+      return {};
+    }
+  };
+  // An agent's own "add files" asks its extension for files over its webview's message port. Those
+  // requests are answered here, on the same tap, as the extension would answer them: the phone's
+  // picker opens, the files go to Cloud Shell, and VS Code's dialog never opens. Asking for a folder
+  // stays VS Code's, with Cloud Shell's folders. [answer] gets the files picked (none when closed).
+  const REQUESTS = [
+    // Codex: a fetch of vscode://codex/pick-files (or pick-file).
+    {
+      asks: (m) => m.type === 'fetch' && typeof m.url === 'string' && /^vscode:\/\/codex\/pick-files?$/.test(m.url),
+      options: (m) => options(m.body),
+      answer: async (m, picked) => {
+        const files = picked.length ? await send(picked) : [];
+        return {
+          type: 'fetch-response', requestId: m.requestId, responseType: 'success', status: 200, headers: {},
+          bodyJsonString: JSON.stringify(m.url.endsWith('/pick-file') ? { file: files[0] || null } : { files }),
+        };
+      },
+    },
+    // Cline (and its forks): FileService's selectFiles. Pictures come back as data: URLs when its
+    // model takes pictures (the request's value), other files as paths.
+    {
+      asks: (m) => m.type === 'grpc_request' && !!m.grpc_request && m.grpc_request.method === 'selectFiles' &&
+        /\.FileService$/.test(String(m.grpc_request.service)),
+      options: () => ({ allowMultiple: true }),
+      answer: async (m, picked) => {
+        const takesPictures = !!(m.grpc_request.message && m.grpc_request.message.value);
+        const pictures = takesPictures ? picked.filter((file) => /\.(png|jpe?g|webp)$/i.test(file.name)) : [];
+        const others = picked.filter((file) => !pictures.includes(file));
+        const values1 = await Promise.all(pictures.map(dataUrl));
+        const values2 = (others.length ? await send(others) : []).map((file) => file.path);
+        return { type: 'grpc_response', grpc_response: { message: { values1, values2 }, request_id: m.grpc_request.request_id } };
+      },
+    },
+  ];
+  const fromAgent = (port, event) => {
+    const data = event.data;
+    const message = data && data.channel === 'onmessage' && data.data && data.data.message;
+    const request = message && typeof message === 'object' && REQUESTS.find((each) => each.asks(message));
+    if (!request || !pagePort() || !(navigator.userActivation && navigator.userActivation.isActive)) return;
+    const wanted = request.options(message);
+    if (wanted.kind === 'directory') return;
+    event.stopImmediatePropagation();
+    const reply = (answer) => port.postMessage({ channel: 'message', args: { message: answer, transfer: [] } });
+    pick(wanted)
+      .then((picked) => request.answer(message, picked))
+      .catch(() => request.answer(message, []))
+      .then(reply);
+  };
+  // Each webview's port, as VS Code gets it, before VS Code listens on it.
+  window.addEventListener('message', (event) => {
+    const port = event.data && event.data.channel === 'webview-ready' && event.ports && event.ports[0];
+    if (port) port.addEventListener('message', (e) => fromAgent(port, e));
+  }, true);
+  // Any other extension's "add files" that opens VS Code's file dialog: the phone's picker opens with
+  // it while the tap that opened it still counts, and the dialog takes the file sent.
+  const fromPhone = (dialog) => {
+    pick({ allowMultiple: false }).then(async (files) => {
+      if (!files.length) return;
       try {
-        const answer = await fetch(`/__pocketide/drop/upload?agent=${agent}&name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file });
-        const sent = await answer.json();
-        if (!answer.ok || !sent.path) return;
+        const [sent] = await send(files.slice(0, 1));
         dialog.input.focus();
         dialog.input.value = sent.path;
         dialog.input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -127,12 +223,9 @@
       } catch (e) {
         // Not sent (the connection dropped): the dialog stays, with Cloud Shell's files.
       }
-    }, { once: true });
-    document.body.appendChild(chooser);
-    chooser.click();
+    });
   };
-  // Each file dialog once, as it opens: the tap that opened it (the agent's own "add files") still
-  // counts, so the phone's picker opens without a second tap. A dialog not opened by a tap is left.
+  // Each file dialog once, as it opens. A dialog not opened by a tap is left as it is.
   let seen = null;
   let checking = false;
   new MutationObserver(() => {
@@ -147,7 +240,7 @@
       }
       if (seen === dialog.input) return;
       seen = dialog.input;
-      if (dialog.files && pageAgent() && navigator.userActivation && navigator.userActivation.isActive) fromPhone(dialog);
+      if (dialog.files && pagePort() && navigator.userActivation && navigator.userActivation.isActive) fromPhone(dialog);
     });
   // `document` itself: the script may run before the page has any element (a document-start script).
   }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });

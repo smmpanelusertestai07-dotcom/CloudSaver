@@ -1,8 +1,10 @@
 package com.pocketide.cloudshell
 
 import android.content.Context
+import com.pocketide.agents.AddedAgent
 import com.pocketide.agents.Agent
 import com.pocketide.core.AppJson
+import com.pocketide.core.SettingsStore
 import com.pocketide.link.Gcloud
 import com.pocketide.link.Link
 import kotlinx.serialization.KSerializer
@@ -37,6 +39,9 @@ data class AgentStatus(
     val version: String? = null,
     /** True when the agent's sign-in file is there; null when PocketIDE cannot tell. */
     val signedIn: Boolean? = null,
+    /** An agent the owner added: its extension (publisher.name) and that extension's own name. */
+    val extension: String? = null,
+    val name: String? = null,
 )
 
 /** Cloud Shell's machine, now. Sizes in bytes, times in epoch milliseconds. */
@@ -157,10 +162,16 @@ data class UsageReport(
  * the app sends over its open connection each time. Nothing of it is stored on the phone, and
  * nothing starts Cloud Shell: without a connection, the answer is [Answer.NotConnected].
  */
-class CloudShellInfo(private val context: Context, private val link: Link) {
+class CloudShellInfo(private val context: Context, private val link: Link, private val settings: SettingsStore) {
     private val script: ByteArray by lazy { context.assets.open(ASSET).use { it.readBytes() } }
 
-    suspend fun status(): Answer<MachineStatus> = ask(listOf("status"), MachineStatus.serializer())
+    /** Cloud Shell's machine and agents; the agents the owner added are kept for Home as well. */
+    suspend fun status(): Answer<MachineStatus> = ask(listOf("status"), MachineStatus.serializer()).also { answer ->
+        if (answer is Answer.Got) {
+            val added = added(answer.value)
+            if (added != settings.settings.value.addedAgents) settings.update { it.copy(addedAgents = added) }
+        }
+    }
 
     suspend fun chats(): Answer<ChatList> = ask(listOf("chats"), ChatList.serializer())
 
@@ -204,5 +215,14 @@ class CloudShellInfo(private val context: Context, private val link: Link) {
         fun key(agent: Agent): String = CloudShell.key(agent)
 
         fun agentOf(key: String): Agent? = Agent.entries.firstOrNull { key(it) == key }
+
+        /** The agents the owner added, in [status]; anything the launcher could not have written is left out. */
+        fun added(status: MachineStatus): List<AddedAgent> = status.agents.mapNotNull { each ->
+            val extension = each.extension ?: return@mapNotNull null
+            if (!AddedAgent.valid(each.agent, each.port, extension)) return@mapNotNull null
+            AddedAgent(each.agent, each.port, extension, each.name?.trim()?.take(NAME_CHARS)?.ifBlank { null } ?: extension)
+        }
+
+        private const val NAME_CHARS = 60
     }
 }

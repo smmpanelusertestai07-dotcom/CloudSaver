@@ -452,6 +452,46 @@ jobs:
           if listed | grep -qw editorconfig.editorconfig; then echo "::error::the extension is still there"; exit 1; fi
           echo "Installed from Open VSX after its checksum, listed, and removed."
 
+      - name: An AI agent the owner adds gets its own VS Code, port and screen
+        run: |
+          set -euo pipefail
+          # As Home > Extensions > Add as an agent does it: Cline from its verified publisher on Open VSX.
+          home="$RUNNER_TEMP/cloudshell-home"
+          launcher="$home/.local/bin/pocketide"
+          HOME="$home" "$launcher" agent add saoudrizwan.claude-dev | tee "$RUNNER_TEMP/added.txt"
+          test "$(tail -n 1 "$RUNNER_TEMP/added.txt")" = x-claude-dev
+          grep -qx 'x-claude-dev:8083:saoudrizwan/claude-dev' "$home/.pocketide/agents"
+          # Once only: the same extension again is the same agent.
+          test "$(HOME="$home" "$launcher" agent add saoudrizwan.claude-dev | tail -n 1)" = x-claude-dev
+          test "$(wc -l <"$home/.pocketide/agents")" = 1
+          if HOME="$home" "$launcher" agent add 'bad;name'; then echo "::error::agent add took a name that is no extension's"; exit 1; fi
+          HOME="$home" "$launcher" start x-claude-dev
+          code=000
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8083/healthz" || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          test "$code" = 200 || { echo "::error::Cline's VS Code did not start on 8083 ($code)"; exit 1; }
+          HOME="$home" python3 pocket/app/src/main/assets/cloudshell/info.py status | python3 -c '
+          import json, sys
+          added = [a for a in json.load(sys.stdin)["agents"] if a["agent"] == "x-claude-dev"]
+          assert added and added[0]["port"] == 8083 and added[0]["running"] and added[0]["name"] == "Cline", added
+          print("PocketIDE sees it:", added[0])'
+          # Its own view, alone and full screen at a phone's size, with Back, the terminal and the IDE button.
+          NODE_PATH="$RUNNER_TEMP/phone-check/node_modules" node pocket/tools/phone-layout-check.js "$RUNNER_TEMP/phone-screens" x-claude-dev:8083:Cline
+          # Its own "add files" opens the phone's picker on the tap; the files reach its own uploads folder.
+          CLOUD_SHELL_HOME="$home" NODE_PATH="$RUNNER_TEMP/phone-check/node_modules" \
+            node pocket/tools/phone-files-check.js "$RUNNER_TEMP/phone-screens" cline:8083
+          # Removed: its VS Code goes, its projects stay; PocketIDE's own agents cannot be removed.
+          if HOME="$home" "$launcher" agent remove codex; then echo "::error::PocketIDE's own agent was removed"; exit 1; fi
+          HOME="$home" "$launcher" agent remove x-claude-dev
+          if pgrep -f "$home/.pocketide/code-server/.* --bind-addr 127.0.0.1:8083 "; then echo "::error::its VS Code still runs"; exit 1; fi
+          test ! -e "$home/.pocketide/vscode/x-claude-dev"
+          ls "$home/projects/x-claude-dev/uploads" | grep -q '^for-cline-'
+          test ! -s "$home/.pocketide/agents"
+          echo "Added with its own VS Code on 8083, shown alone at a phone's size, and removed."
+
       - name: The browser, for an agent and for the owner's view
         run: |
           set -euo pipefail

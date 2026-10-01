@@ -116,6 +116,25 @@ class CloudShellTest {
     }
 
     @Test
+    fun `an agent the owner adds gets its own VS Code and port, read the same way everywhere`() {
+        val text = script.readText()
+        val launcher = text.substringAfter("cat >\"\$BIN/pocketide\" <<'LAUNCHER'\n").substringBefore("\nLAUNCHER\n")
+        // The launcher writes the list; the file drop and the app's info.py read it, each with the same rule.
+        assertTrue(launcher.contains("ADDED_ENTRY='^x-[a-z0-9-]{1,30}:80(8[3-9]|9[0-9]):"))
+        val drop = text.substringAfter("cat >\"\$BASE/files.py\" <<'FILES'\n").substringBefore("\nFILES\n")
+        assertTrue(drop.contains("re.compile(r\"^(x-[a-z0-9-]{1,30}):(80(?:8[3-9]|9[0-9])):\")"))
+        val info = listOf("src/main/assets", "app/src/main/assets").map { File(it, "cloudshell/info.py") }.first { it.isFile }.readText()
+        assertTrue(info.contains("re.compile(r\"^(x-[a-z0-9-]{1,30}):(80(?:8[3-9]|9[0-9])):"))
+        assertTrue("add and remove", launcher.contains("add) agent_add \"\${3:-}\" \"\${4:-}\" ;;") && launcher.contains("remove) agent_remove \"\${3:-}\" ;;"))
+        assertTrue("only added agents can be removed", launcher.contains("Only an agent you added can be removed"))
+        assertTrue("ports from 8083", launcher.contains("for candidate in \$(seq 8083 8099); do"))
+        // The layout extension finds an added agent's own view in its manifest.
+        val layout = text.substringAfter("cat >\"\$BASE/layout/extension.js\" <<'JS'\n").substringBefore("\nJS\n")
+        assertTrue(layout.contains("AGENTS[config.get('agent', '')] || addedAgent(config.get('extension', ''))"))
+        assertTrue(text.contains("\"pocketide.extension\": {"))
+    }
+
+    @Test
     fun `each agent's VS Code starts only when PocketIDE opens it`() {
         val text = script.readText()
         val launcher = text.substringAfter("cat >\"\$BIN/pocketide\" <<'LAUNCHER'\n").substringBefore("\nLAUNCHER\n")

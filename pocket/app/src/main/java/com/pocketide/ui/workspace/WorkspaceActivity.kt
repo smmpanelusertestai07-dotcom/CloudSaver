@@ -26,6 +26,7 @@ import androidx.lifecycle.lifecycleScope
 import com.pocketide.MainActivity
 import com.pocketide.PocketApp
 import com.pocketide.agents.Agent
+import com.pocketide.agents.AgentSlot
 import com.pocketide.core.ThemeMode
 import com.pocketide.graph
 import com.pocketide.ui.lock.HiddenContentCover
@@ -43,7 +44,7 @@ import kotlinx.coroutines.launch
  * PocketIDE reads.
  */
 class WorkspaceActivity : FragmentActivity() {
-    private var agent by mutableStateOf(Agent.CLAUDE)
+    private var agent by mutableStateOf<AgentSlot>(AgentSlot.Official(Agent.CLAUDE))
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,7 +105,7 @@ class WorkspaceActivity : FragmentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putString(STATE_AGENT, agent.name)
+        outState.putString(STATE_AGENT, agent.key)
     }
 
     /** PocketIDE's home; this screen's pages keep running, and come back as they were. */
@@ -133,20 +134,26 @@ class WorkspaceActivity : FragmentActivity() {
 
         /** The agent opened last, for a return to this screen that names none (code-oss:, Recents). */
         @Volatile
-        private var lastAgent = Agent.CLAUDE
+        private var lastAgent: AgentSlot = AgentSlot.Official(Agent.CLAUDE)
 
         /** The agent opened last (Claude Code at first): "Open the computer". */
         fun openLast(context: Context) = open(context, lastAgent)
 
-        fun open(context: Context, agent: Agent) {
+        fun open(context: Context, agent: Agent) = open(context, AgentSlot.Official(agent))
+
+        /** [agent]'s own VS Code, inside PocketIDE: one of PocketIDE's three, or one the owner added. */
+        fun open(context: Context, agent: AgentSlot) {
             lastAgent = agent
-            val intent = Intent(context, WorkspaceActivity::class.java).putExtra(EXTRA_AGENT, agent.name)
+            val intent = Intent(context, WorkspaceActivity::class.java).putExtra(EXTRA_AGENT, agent.key)
             if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         }
-
-        private fun agentOf(intent: Intent?): Agent? = intent?.getStringExtra(EXTRA_AGENT)?.let(::agentNamed)
-
-        private fun agentNamed(name: String): Agent? = Agent.entries.firstOrNull { it.name == name }
     }
+
+    private fun agentOf(intent: Intent?): AgentSlot? = intent?.getStringExtra(EXTRA_AGENT)?.let(::agentNamed)
+
+    /** The agent called [key] (its Cloud Shell name); an added one only while the owner still has it. */
+    private fun agentNamed(key: String): AgentSlot? = AgentSlot.of(key, graph.settings.settings.value.addedAgents)
+        // Before 9.1 the screen named PocketIDE's agents by their enum names (CLAUDE, CODEX, ANTIGRAVITY).
+        ?: Agent.entries.firstOrNull { it.name == key }?.let { AgentSlot.Official(it) }
 }
