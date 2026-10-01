@@ -24,7 +24,7 @@ class RepositoryGate(TreeTest):
 
     def test_markdown_and_key_stores_fail(self):
         for name in ("README.md", "app/release.jks", "keys/upload.keystore", "a.p12", "b.pfx", "c.pem",
-                     "local.properties", "app/app-release.apk"):
+                     "local.properties", "app/app-release.apk", "app/src/main/assets/cloudshell/__pycache__/info.cpython-311.pyc"):
             with self.subTest(name=name):
                 self.assertFailsWith(repository.check(self.root, [Path(name)]), f"pocket/{name} is tracked")
 

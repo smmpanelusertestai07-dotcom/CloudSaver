@@ -2,7 +2,7 @@
 """What may be tracked under pocket/, in a repository the whole world can read.
 
 No Markdown (the docs live inside the app), no key stores or private keys of any format, no
-local.properties (it can carry the owner's configuration), and no built APKs. And pocket/ stays
+local.properties (it can carry the owner's configuration), no built APKs, and no Python caches. And pocket/ stays
 a standalone Gradle build: the root settings never include it, so CloudSaver's build cannot
 break PocketIDE's, or the other way round.
 """
@@ -23,6 +23,7 @@ FORBIDDEN_SUFFIXES = {
     ".pem": "a PEM key or certificate",
     ".apk": "a built APK",
     ".aab": "a built app bundle",
+    ".pyc": "compiled Python (a cache Python leaves when a test imports a script)",
 }
 FORBIDDEN_NAMES = {"local.properties": "local build configuration"}
 
