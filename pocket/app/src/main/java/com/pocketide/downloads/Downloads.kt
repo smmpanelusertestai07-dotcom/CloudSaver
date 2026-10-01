@@ -1,8 +1,8 @@
 package com.pocketide.downloads
 
+import android.app.DownloadManager
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ActivityNotFoundException
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -10,10 +10,10 @@ import android.net.Uri
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Base64
 import androidx.core.app.NotificationCompat
-import com.pocketide.Foreground
 import com.pocketide.R
 import com.pocketide.core.Channels
 import com.pocketide.core.Http
@@ -56,8 +56,6 @@ data class Download(
     /** Where Android keeps it, once it is all here. */
     val saved: Uri? = null,
     val why: String? = null,
-    /** An APK the owner asked to install as soon as it is here. */
-    val install: Boolean = false,
 ) {
     enum class State { RUNNING, DONE, FAILED, CANCELLED }
 
@@ -84,14 +82,14 @@ interface HeldFile {
 }
 
 /**
- * Files from Cloud Shell, saved on the phone: a link an agent gave (files.py's Download and Install),
- * a file a page in PocketIDE offers, VS Code's own Download. The WebView cannot fetch them for
- * Android (Cloud Shell is reached only through PocketIDE's door, on this phone's loopback), so
- * PocketIDE fetches each through its door itself and writes it into Android's Downloads with
- * MediaStore, which needs no storage permission. An APK installs through Android's own installer,
- * which asks the owner first. While one downloads, its notice shows how far it is.
+ * Files from Cloud Shell, saved on the phone: a link an agent gave (files.py's Download), a file a
+ * page in PocketIDE offers, VS Code's own Download. The WebView cannot fetch them for Android (Cloud
+ * Shell is reached only through PocketIDE's door, on this phone's loopback), so PocketIDE fetches
+ * each through its door itself and writes it into Android's Downloads with MediaStore, which needs
+ * no storage permission. PocketIDE installs nothing: an APK is installed from the phone's Files app,
+ * whose installer asks the owner first. While one downloads, its notice shows how far it is.
  */
-class Downloads(private val context: Context, private val foreground: Foreground) {
+class Downloads(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val main = Handler(Looper.getMainLooper())
     private val state = MutableStateFlow<List<Download>>(emptyList())
@@ -102,21 +100,28 @@ class Downloads(private val context: Context, private val foreground: Foreground
     /** Every download since the app started, newest last. */
     val items: StateFlow<List<Download>> = state
 
-    /** Through PocketIDE's door only: its addresses (<port>-<key>.localhost) are this phone's loopback. */
+    /**
+     * Through PocketIDE's door only: its addresses (<port>-<key>.localhost) are this phone's loopback,
+     * and nothing else is fetched, not even where a page in Cloud Shell redirects.
+     */
     private val client: OkHttpClient by lazy {
         Http.downloads.newBuilder()
             .proxy(Proxy.NO_PROXY)
             .dns(object : Dns {
                 override fun lookup(hostname: String): List<InetAddress> =
-                    if (hostname.endsWith(".localhost")) listOf(InetAddress.getByName(LOOPBACK)) else Dns.SYSTEM.lookup(hostname)
+                    if (hostname.endsWith(DOOR_HOSTS)) listOf(InetAddress.getByName(LOOPBACK)) else Dns.SYSTEM.lookup(hostname)
             })
+            .addNetworkInterceptor { chain ->
+                if (!chain.request().url.host.endsWith(DOOR_HOSTS)) throw IOException("Only Cloud Shell's files, through PocketIDE's door")
+                chain.proceed(chain.request())
+            }
             .build()
     }
 
     /** Starts saving [offer]; returns its id. */
     fun start(offer: FileOffer): Int {
         val id = ids.incrementAndGet()
-        state.update { it + Download(id, offer.url, offer.name, offer.mime, offer.size, install = offer.install) }
+        state.update { it + Download(id, offer.url, offer.name, offer.mime, offer.size) }
         launch(id) { fetch(id, offer) }
         return id
     }
@@ -125,7 +130,7 @@ class Downloads(private val context: Context, private val foreground: Foreground
     fun startData(url: String, name: String?): Int? {
         val (mime, bytes) = dataUrl(url) ?: return null
         val fileName = FileKinds.plainName(name, mime)
-        val arrival = Arrival(fileName, FileKinds.mime(fileName, mime), bytes.size.toLong(), install = false)
+        val arrival = Arrival(fileName, FileKinds.mime(fileName, mime), bytes.size.toLong())
         val id = ids.incrementAndGet()
         state.update { it + Download(id, "data:", arrival.name, arrival.mime, arrival.total) }
         launch(id) { save(id, ByteArrayInputStream(bytes), arrival) }
@@ -137,7 +142,7 @@ class Downloads(private val context: Context, private val foreground: Foreground
         val id = ids.incrementAndGet()
         state.update { it + Download(id, "blob:", file.name, file.mime, file.size) }
         launch(id, after = file::letGo) {
-            save(id, HeldStream(file, { main.post(it) }, { id in cancelled }), Arrival(file.name, file.mime, file.size, install = false))
+            save(id, HeldStream(file, { main.post(it) }, { id in cancelled }), Arrival(file.name, file.mime, file.size))
         }
         return id
     }
@@ -174,7 +179,7 @@ class Downloads(private val context: Context, private val foreground: Foreground
     fun retry(download: Download): Int? {
         if (!download.url.startsWith("http")) return null
         dismiss(download.id)
-        return start(FileOffer(download.url, download.name, download.mime, download.total, decided = true, install = download.install))
+        return start(FileOffer(download.url, download.name, download.mime, download.total, decided = true))
     }
 
     fun cancel(id: Int) {
@@ -205,7 +210,7 @@ class Downloads(private val context: Context, private val foreground: Foreground
     private fun arrival(offer: FileOffer, disposition: String?, type: String?, length: Long): Arrival {
         val named = FileKinds.name(disposition, offer.url, type)
         val name = if (named.startsWith("download") && !offer.name.startsWith("download")) offer.name else named
-        return Arrival(name, FileKinds.mime(name, type ?: offer.mime), length.takeIf { it >= 0 } ?: offer.size, offer.install)
+        return Arrival(name, FileKinds.mime(name, type ?: offer.mime), length.takeIf { it >= 0 } ?: offer.size)
     }
 
     /** Writes [input] into Downloads as it arrives; removes the part when it does not all arrive. */
@@ -229,8 +234,6 @@ class Downloads(private val context: Context, private val foreground: Foreground
         }
         update(id) { it.copy(state = Download.State.DONE, received = received, total = received, saved = uri) }
         notice(id)
-        // Asked to install: Android's installer at once when PocketIDE is in front; its notice otherwise.
-        if (arrival.install && FileKinds.isApk(arrival.name, arrival.mime)) foreground.startInFront(installIntent(uri))
     }
 
     /** A new, still hidden file in Download/PocketIDE. */
@@ -278,16 +281,15 @@ class Downloads(private val context: Context, private val foreground: Foreground
 
     // ---- What opens it ----
 
-    /** Opens it with an app on the phone (an APK: Android's installer). */
+    /**
+     * Opens it with an app on the phone. An APK opens in the phone's Files app instead, in
+     * Download/PocketIDE: a tap on it there installs it (Android asks first), with no permission of
+     * PocketIDE's own.
+     */
     fun open(from: Context, download: Download): Boolean {
         val uri = download.saved ?: return false
-        val intent = if (download.isApk) installIntent(uri) else viewIntent(uri, download.mime)
-        return try {
-            from.startActivity(intent)
-            true
-        } catch (expected: ActivityNotFoundException) {
-            false
-        }
+        val tries = if (download.isApk) listOf(folderIntent(), downloadsIntent()) else listOf(viewIntent(uri, download.mime))
+        return tries.any { intent -> runCatching { from.startActivity(intent) }.isSuccess }
     }
 
     /** Android's share sheet, to send it to another app. */
@@ -298,10 +300,19 @@ class Downloads(private val context: Context, private val foreground: Foreground
         runCatching { from.startActivity(Intent.createChooser(send, download.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
-    private fun installIntent(uri: Uri) = viewIntent(uri, FileKinds.APK)
-
     private fun viewIntent(uri: Uri, mime: String) = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /** The phone's Files app, in Download/PocketIDE. */
+    private fun folderIntent() = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(
+            DocumentsContract.buildDocumentUri(STORAGE_DOCUMENTS, "primary:${Environment.DIRECTORY_DOWNLOADS}/$FOLDER"),
+            DocumentsContract.Document.MIME_TYPE_DIR,
+        )
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /** The phone's own downloads (Files, or the maker's Downloads app), where Download/PocketIDE is. */
+    private fun downloadsIntent() = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     // ---- Its notice ----
 
@@ -328,7 +339,7 @@ class Downloads(private val context: Context, private val foreground: Foreground
                 val opens = PendingIntent.getActivity(
                     context,
                     id,
-                    if (download.isApk) installIntent(uri) else viewIntent(uri, download.mime),
+                    if (download.isApk) downloadsIntent() else viewIntent(uri, download.mime),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 )
                 builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
@@ -346,6 +357,8 @@ class Downloads(private val context: Context, private val foreground: Foreground
         /** Download/PocketIDE, in the phone's own Downloads. */
         const val FOLDER = "PocketIDE"
         private const val LOOPBACK = "127.0.0.1"
+        private const val DOOR_HOSTS = ".localhost"
+        private const val STORAGE_DOCUMENTS = "com.android.externalstorage.documents"
         private const val NOT_SAVED = "Android did not let PocketIDE save it in Downloads. Is the phone's storage full?"
         private const val STOPPED = "The download stopped: Cloud Shell or the network went away. Try again."
         private const val PAGE_GONE = "VS Code's page closed before the file was all here. Download it again in VS Code."
@@ -357,8 +370,8 @@ class Downloads(private val context: Context, private val foreground: Foreground
     }
 }
 
-/** What arrives: its name, type and size as Cloud Shell said them, and whether to install it. */
-private data class Arrival(val name: String, val mime: String, val total: Long, val install: Boolean)
+/** What arrives: its name, type and size as Cloud Shell said them. */
+private data class Arrival(val name: String, val mime: String, val total: Long)
 
 /** Copies everything to [out], saying how much has come after each piece; returns the total. */
 private fun InputStream.copyCounting(out: OutputStream, progress: (Long) -> Unit): Long {

@@ -1,5 +1,8 @@
 package com.pocketide.link
 
+import com.pocketide.agents.AddedAgent
+import com.pocketide.agents.Agent
+import com.pocketide.cloudshell.CloudShell
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,7 +58,7 @@ class PortProxyTest {
     }
 
     @Test
-    fun `PocketIDE's drop path on any address goes to Cloud Shell's file drop`() {
+    fun `an agent's VS Code page uploads the phone's files to Cloud Shell's file drop`() {
         val upload = Head.parse("POST /__pocketide/drop/upload?agent=codex&name=a.png HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
         val (sent, port) = Rewrite.route(upload, 8081)
         assertEquals(PortProxy.DROP_PORT, port)
@@ -65,6 +68,42 @@ class PortProxyTest {
         assertEquals("any other path stays with its port", page.first to 8081, Rewrite.route(page, 8081).let { it.first.first to it.second })
         val near = Head.parse("GET /__pocketide/dropped HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
         assertEquals(8081, Rewrite.route(near, 8081).second)
+        assertEquals("an added agent's VS Code too", PortProxy.DROP_PORT, Rewrite.route(upload, AddedAgent.LAST_PORT).second)
+        assertEquals(PortProxy.VS_CODE_PORTS.first, CloudShell.port(Agent.CLAUDE))
+    }
+
+    @Test
+    fun `no page reads the owner's files through the drop path, and no other page uploads`() {
+        // A page of a dev server (a script it loads from anywhere) asking for a file, as from its own address.
+        val read = Head.parse("GET /__pocketide/drop/r/codex/.env HTTP/1.1\r\nHost: 5173-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        assertEquals(5173, Rewrite.route(read, 5173).second)
+        assertEquals("not from VS Code's page either", 8081, Rewrite.route(read, 8081).second)
+        val page = Head.parse("GET /__pocketide/drop/f/codex HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        assertEquals(8081, Rewrite.route(page, 8081).second)
+        val upload = Head.parse("POST /__pocketide/drop/upload?agent=codex&name=a.png HTTP/1.1\r\nHost: 5173-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        assertEquals("a dev server's page cannot fill the uploads", 5173, Rewrite.route(upload, 5173).second)
+        val sneaky = Head.parse("POST /__pocketide/drop/uploads/../r/x HTTP/1.1\r\nHost: 8081-$key.localhost:4000\r\n\r\n".toByteArray())!!
+        assertEquals(8081, Rewrite.route(sneaky, 8081).second)
+    }
+
+    @Test
+    fun `each page is itself to Cloud Shell, so no other page opens VS Code's connection as if it were VS Code`() {
+        fun originSent(origin: String, port: Int): String {
+            val head = Head.parse(
+                "GET /ws HTTP/1.1\r\nHost: $port-$key.localhost:4000\r\nOrigin: $origin\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".toByteArray(),
+            )!!
+            val sent = String(Rewrite.request(head, port), Charsets.ISO_8859_1)
+            assertFalse("the key never reaches Cloud Shell", sent.contains(key))
+            return Regex("\r\nOrigin: ([^\r]*)\r\n").find(sent)!!.groupValues[1]
+        }
+        assertEquals("VS Code's own page", "http://localhost:8081", originSent("http://8081-$key.localhost:4000", 8081))
+        // code-server answers 403 to a WebSocket from another origin: a dev server's page, as on a computer.
+        assertEquals("http://localhost:5173", originSent("http://5173-$key.localhost:4000", 8081))
+        assertEquals("files.py's pages are not VS Code either", "http://localhost:6081", originSent("http://6081-$key.localhost:4000", 8080))
+        assertEquals("the owner's IDE uses the other ports as its own", "http://localhost:18083", originSent("http://8082-$key.localhost:4000", 18083))
+        assertEquals("a page in a sandbox", "null", originSent("null", 8081))
+        assertEquals("a site", "https://example.com", originSent("https://example.com", 8081))
+        assertEquals("http://localhost:5173/app?x=1", Rewrite.sender("http://5173-$key.localhost:4000/app?x=1", 8081))
     }
 
     @Test

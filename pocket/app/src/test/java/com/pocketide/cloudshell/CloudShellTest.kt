@@ -124,8 +124,13 @@ class CloudShellTest {
         assertTrue(rules.contains("Do the work here, in Cloud Shell, whenever it fits: builds (Android APKs too)"))
         assertTrue(rules.contains("Use GitHub Actions only for what cannot run here"))
         assertFalse("no rule sends builds away by default", rules.contains("belongs on GitHub Actions"))
-        // Files as named links to files.py, which PocketIDE's app opens with a preview and Download.
-        assertTrue(rules.contains("as a named link"))
+        // What the chat can show (a picture, a short text) stays in the chat; anything else is one named link
+        // to files.py, which PocketIDE's app opens with a preview and Download. Nothing installs from PocketIDE.
+        assertTrue(rules.contains("show what your chat can show in the chat\n  itself"))
+        assertTrue(rules.contains("Then no link is needed."))
+        assertTrue(rules.contains("comes as one named link"))
+        assertTrue(rules.contains("an\n  APK is installed from the phone's Files app"))
+        assertFalse("PocketIDE has no Install", rules.contains("install an APK"))
         assertTrue(rules.contains("http://localhost:6081/f/"))
         assertTrue(rules.contains("~/.local/bin/pocketide link <file or"))
         // The rules run at set-up, and again for each agent the owner adds.
@@ -200,6 +205,24 @@ class CloudShellTest {
         listOf("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md").forEach { assertTrue(it, text.contains("\"$it\"")) }
         listOf("mine cryptocurrency", "scan networks", "expose a port to the internet", "keep Cloud Shell running on purpose")
             .forEach { assertTrue(it, text.contains(it)) }
+        // The owner's data and GitHub: nothing sent where the task does not need it, no secret in git, private by default.
+        listOf(
+            "send them to no service the task does not need",
+            "keep secrets out of git",
+            "a new repository is private unless the owner says otherwise",
+            "ask the owner before making a\n  repository public, force-pushing, rewriting history",
+        ).forEach { assertTrue(it, text.contains(it)) }
+    }
+
+    @Test
+    fun `only an agent's VS Code page uploads to the file drop, and only the browser's own page drives it`() {
+        val text = script.readText()
+        val files = text.substringAfter("cat >\"\$BASE/files.py\" <<'FILES'\n").substringBefore("\nFILES\n")
+        assertTrue(files.contains("return self.answer(403, {\"error\": \"Uploads come only from an agent's VS Code.\"})"))
+        assertFalse("no page of another port reads the drop's answers", files.contains("Access-Control-Allow-Origin"))
+        assertTrue("no other page embeds the owner's files", files.contains("if path.startswith((\"/r/\", \"/f/\")) and embedded_elsewhere(self.headers):"))
+        assertFalse("PocketIDE installs nothing", files.contains("download&install"))
+        assertTrue(text.contains("origin.lower() not in (\"http://localhost:%d\" % VIEW_PORT"))
     }
 
     @Test

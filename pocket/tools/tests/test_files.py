@@ -1,6 +1,7 @@
 """PocketIDE's files in Cloud Shell (files.py and `pocketide link`, from the set-up script), against
-a home folder of their own: what an agent links opens as a page, downloads whole or in ranges,
-installs as an APK, and never reaches past ~/projects."""
+a home folder of their own: what an agent links opens as a page, downloads whole or in ranges
+(an APK too, which the phone's Files app installs: PocketIDE asks for no install permission), and
+never reaches past ~/projects."""
 from __future__ import annotations
 
 import http.client
@@ -145,9 +146,17 @@ class Files(unittest.TestCase):
         headers = self.get("/r/codex/site/index.html")[1]
         self.assertTrue(headers["content-security-policy"].startswith("sandbox "))
         self.assertNotIn("allow-same-origin", headers["content-security-policy"])
-        # A folder under /r/ is its index.html, reached with a / so that its own links work.
-        status, headers, _ = self.get("/r/codex/site")
-        self.assertEqual((302, "/r/codex/site/"), (status, headers["location"]))
+        # A web page opens from its own page's Open page, at /s/<a secret of this files.py>/, where its own
+        # scripts and styles load too (from its sandbox, so from no origin). A folder is its index.html,
+        # reached with a / so that its own links work; /r/ leads there.
+        page = self.get("/f/codex/site/index.html")[2].decode()
+        opened = re.search(r'href="(/s/[A-Za-z0-9_-]+/codex/site/index\.html)"', page).group(1)
+        site = opened[:-len("codex/site/index.html")]
+        self.assertEqual(200, self.get(opened, {"Sec-Fetch-Dest": "script", "Sec-Fetch-Site": "cross-site"})[0])
+        self.assertEqual(404, self.get("/s/guessed/codex/site/index.html")[0])
+        for folder in ("/r/codex/site", site + "codex/site"):
+            status, headers, _ = self.get(folder)
+            self.assertEqual((302, site + "codex/site/"), (status, headers["location"]), folder)
 
     def test_nothing_outside_projects(self):
         (self.home / "secret.txt").write_text("the owner's key")
@@ -190,7 +199,7 @@ class Files(unittest.TestCase):
             self.assertEqual({"out/a.txt", "out/deep/b.txt"}, set(archive.namelist()))
             self.assertEqual(b"b", archive.read("out/deep/b.txt"))
 
-    def test_an_apk_shows_its_name_version_and_icon_and_installs(self):
+    def test_an_apk_shows_its_name_version_and_icon_and_downloads(self):
         tools = android_tools()
         if tools is None:
             if os.environ.get("CI"):
@@ -215,11 +224,49 @@ class Files(unittest.TestCase):
         page = self.get("/f/codex/app/app-debug.apk")[2].decode()
         for shown in ("Hello Pocket", "com.example.hello", "1.2.3 (7)", "Android 7 or newer", "Android 15", "android.permission.INTERNET"):
             self.assertIn(shown, page)
-        self.assertIn('href="/f/codex/app/app-debug.apk?download&amp;install"', page)
+        # Download only: the phone's Files app installs it (PocketIDE has no install permission).
+        self.assertIn('href="/f/codex/app/app-debug.apk?download"', page)
+        self.assertNotIn("install&", page)
+        self.assertNotIn(">Install<", page)
         status, headers, body = self.get("/f/codex/app/app-debug.apk?icon=bitmap")
         self.assertEqual((200, "image/png", b"\x89PNG"), (status, headers["content-type"], body[:4]))
-        headers = self.get("/f/codex/app/app-debug.apk?download&install")[1]
+        headers = self.get("/f/codex/app/app-debug.apk?download")[1]
         self.assertEqual("application/vnd.android.package-archive", headers["content-type"])
+        self.assertTrue(headers["content-disposition"].startswith('attachment; filename="app-debug.apk"'))
+
+    def test_only_an_agents_vs_code_uploads_and_no_other_page_embeds_the_owners_files(self):
+        # PocketIDE's door passes an agent's VS Code page on as the drop's own address, and any other page
+        # (a dev server's) as its own port's; a program here sends no origin at all.
+        for origin, status in (("http://localhost:5173", 403), (f"http://localhost:{self.port}", 200), (None, 200)):
+            connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+            headers = {"Content-Length": "1", **({"Origin": origin} if origin else {})}
+            connection.request("POST", "/upload?agent=codex&name=o.txt", body=b"x", headers=headers)
+            answer = connection.getresponse()
+            answer.read()
+            connection.close()
+            self.assertEqual(status, answer.status, origin)
+            self.assertIsNone(answer.getheader("Access-Control-Allow-Origin"), "no other page reads the answer")
+        self.assertFalse((self.projects / "codex" / "uploads" / "o (3).txt").exists())
+        # A script of the owner's, embedded by a page of another port (a dev server's): refused, its globals
+        # would be that page's to read. As PocketIDE's door passes it on: its own port's localhost.
+        self.put("codex/app/config.js", "var TOKEN = 'secret';")
+        elsewhere = {"Sec-Fetch-Dest": "script", "Sec-Fetch-Site": "cross-site"}
+        for path in ("/r/codex/app/config.js", "/f/codex/app/config.js?raw", "/f/codex/app/config.js?download"):
+            self.assertEqual(403, self.get(path, {**elsewhere, "Referer": "http://localhost:5173/"})[0], path)
+            self.assertEqual(403, self.get(path, elsewhere)[0], path + " with no Referer")
+        here = f"http://localhost:{self.port}/"
+        allowed = (
+            {**elsewhere, "Referer": here},  # a page opened from /r/: sandboxed, so from no origin, but sent from here
+            {"Sec-Fetch-Dest": "image", "Sec-Fetch-Site": "same-origin"},  # files.py's own page
+            {"Sec-Fetch-Dest": "document", "Sec-Fetch-Site": "cross-site"},  # opened, as a page
+            {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Site": "cross-site"},  # a fetch, which no other page may read
+            {},  # a program here (PocketIDE's downloads come with none of these)
+        )
+        for headers in allowed:
+            status, answer_headers, body = self.get("/r/codex/app/config.js", headers)
+            self.assertEqual((200, b"var TOKEN = 'secret';"), (status, body), headers)
+            self.assertNotIn("access-control-allow-origin", answer_headers)
+        self.assertEqual("strict-origin", self.get("/r/codex/app/config.js")[1]["referrer-policy"])
 
     def test_files_from_the_phone_still_land_in_the_agents_uploads(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)

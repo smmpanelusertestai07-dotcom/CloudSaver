@@ -55,5 +55,5 @@ class AppGraph(val context: Context) {
     val cloudInfo: CloudShellInfo by lazy { CloudShellInfo(context, link, settings) }
 
     /** Files from Cloud Shell saved on the phone (an agent's links, VS Code's Download), through the door. */
-    val downloads: Downloads by lazy { Downloads(context, foreground) }
+    val downloads: Downloads by lazy { Downloads(context) }
 }

@@ -4,8 +4,9 @@
 //   node phone-layout-check.js <folder for the screenshots> [name:port:title, for one agent only]
 // It checks what the owner sees: the agent's own panel alone, full screen; the terminal full screen
 // over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
-// an editor left behind it; the command palette inside the screen and closed by Back's Escape, then
-// the agent's own notice, if any, by the next Back. Any miss is an error, and the screenshots show it.
+// an editor left behind it; a page (Settings) opened from the whole IDE getting the whole screen, and
+// closed by Back; the command palette inside the screen and closed by Back's Escape, then the agent's
+// own notice, if any, by the next Back. Any miss is an error, and the screenshots show it.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -107,6 +108,21 @@ async function check(browser, agent, port, name) {
     await until('the IDE button again returns to the agent, with the terminal still behind it', agentAlone, 10000);
     await page.waitForTimeout(2000);
     if (!agentAlone(await parts(page))) fail(`${agent}: the editor behind the whole IDE came over the agent`);
+
+    // A page made for a computer's width (VS Code's own Settings here; Antigravity's settings are one
+    // too), opened from the whole IDE, gets the whole screen, not a third of it; Back closes it.
+    await after('the IDE button shows the whole IDE once more', () => run('ide'), wholeIde);
+    await after('a page opened from the whole IDE gets the whole screen', () => page.keyboard.press('Control+Comma'), editorAlone);
+    await shot('3-page');
+    await run('back');
+    await until('Back from the page returns to the agent', agentAlone, 10000);
+    if (/^Settings\b/.test(await page.title())) fail(`${agent}: Back left the page open behind the agent`);
+    // The IDE button over such a page brings the whole IDE back, the agent with it.
+    await after('the IDE button shows the whole IDE before a page', () => run('ide'), wholeIde);
+    await after('the page gets the whole screen again', () => page.keyboard.press('Control+Comma'), editorAlone);
+    await after('the IDE button over the page shows the whole IDE, the agent too', () => run('ide'), wholeIde);
+    await run('agent');
+    await until('the agent comes back from there', agentAlone, 10000);
 
     // A webview that is still starting can take the focus once, which closes the palette: a second
     // tap opens it, as it would for the owner.

@@ -3,9 +3,8 @@
 // and can call nothing in the app (the page has no JavaScript interface).
 //
 // - Fit: on a phone's narrow screen everything VS Code floats (dialogs, notices, palettes, menus,
-//   hovers) stays inside the screen; editors that need more width (VS Code's settings) are drawn
-//   smaller; the secondary side bar's own maximize/restore button goes, because PocketIDE's layout
-//   extension keeps one thing full screen at a time.
+//   hovers) stays inside the screen; the secondary side bar's own maximize/restore button goes,
+//   because PocketIDE's layout extension keeps one thing full screen at a time.
 // - run(name): PocketIDE's commands in VS Code (back, agent, terminal, files, commands, vsix, tools,
 //   ide), pressed as keys no phone keyboard has (F13 to F19), which only PocketIDE's layout
 //   extension listens to. Android's own key events reach the page without the key's code, which VS
@@ -13,9 +12,10 @@
 // - escape(), backTarget(): what Back closes first (a menu, a dialog, a notice), then what covers
 //   the agent, else nothing ('none': PocketIDE's Back leaves the screen).
 // - fit(zoom, widthDp): the page drawn smaller on a short screen; type(text): the Paste key.
-// - A page an extension made for a computer's screen (Antigravity's settings, whose own menu takes
-//   200 of a phone's 360 pixels) is drawn smaller while it is in front, as the IDE button draws the
-//   IDE, so all of it shows; back at the agent, the page is its own size again.
+// - A page made for a computer's screen (Antigravity's settings, whose own menu takes 200 of a
+//   phone's 360 pixels; VS Code's Settings and Keyboard Shortcuts) is drawn smaller while it is in
+//   front, as the IDE button draws the IDE, so all of it shows; back at the agent, the page is its
+//   own size again.
 // - Phone files: an agent's own "add files" opens Android's picker on the same tap. Codex, Cline and
 //   Roo Code ask their extension for files over their webview's message port; that request is
 //   answered here with the files picked on the phone, so VS Code's dialog never opens. Claude
@@ -37,12 +37,6 @@
 .monaco-workbench .part.auxiliarybar > .title .action-item { min-width: 44px !important; }
 .monaco-workbench .editor-group-container:has(> .editor-container > .editor-instance > [id^="webview-editor-element-"]) > .title { display: none !important; }
 .monaco-workbench .editor-group-container:has(> .editor-container > .editor-instance > [id^="webview-editor-element-"]) > .editor-container { height: 100% !important; }
-@media (max-width: 499px) {
-  .monaco-workbench .editor-instance > .settings-editor, .monaco-workbench .editor-instance > .keybindings-editor { zoom: 0.7; }
-}
-@media (max-width: 349px) {
-  .monaco-workbench .editor-instance > .settings-editor, .monaco-workbench .editor-instance > .keybindings-editor { zoom: 0.6; }
-}
 .monaco-dialog-modal-block .monaco-dialog-box { min-width: 0 !important; width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px) !important; box-sizing: border-box !important; }
 .monaco-dialog-box .dialog-message-row, .monaco-dialog-box .dialog-message-container { min-width: 0 !important; max-width: 100% !important; }
 .monaco-dialog-box .dialog-message, .monaco-dialog-box .dialog-message-text, .monaco-dialog-box .dialog-message-detail { white-space: normal !important; overflow-wrap: anywhere !important; }
@@ -241,17 +235,23 @@
       }
     });
   };
-  // What PocketIDE last asked fit() for ({ zoom, width }; null: nothing yet), and whether a page made
-  // for a computer's screen is in front (VS Code names the editor in front in the window's title).
-  const WIDE_PAGES = /^Antigravity Settings\b/;
-  const WIDE_ZOOM = 0.6;
+  // What PocketIDE last asked fit() for ({ zoom, width }; null: nothing yet), and the zoom of the page
+  // made for a computer's screen that is in front (0: none). The whole page is drawn smaller, never
+  // the page alone: VS Code's lists leave their bottom empty inside an element drawn smaller (CSS zoom).
+  const WIDE_PAGES = [
+    // Antigravity's settings (VS Code names the editor in front in the window's title, even while the
+    // agent covers it, hence the editor's own place on the screen too).
+    { zoom: 0.6, shown: () => /^Antigravity Settings\b/.test(document.title || '') && wide('.monaco-workbench .part.editor') },
+    // VS Code's Settings and Keyboard Shortcuts.
+    { zoom: 0.7, shown: () => wide('.monaco-workbench .editor-instance > .settings-editor, .monaco-workbench .editor-instance > .keybindings-editor') },
+  ];
   let fitted = null;
-  let widePage = false;
+  let widePage = 0;
   const applyFit = () => {
     const meta = document.querySelector('meta[name="viewport"]');
     if (!meta) return false;
     const asked = fitted ? fitted.zoom : 1;
-    const z = Math.min(1, Math.max(0.5, widePage ? Math.min(asked, WIDE_ZOOM) : asked));
+    const z = Math.min(1, Math.max(0.5, widePage ? Math.min(asked, widePage) : asked));
     const view = window.visualViewport;
     const widthDp = (fitted && fitted.width) || (view ? view.width * view.scale : window.innerWidth);
     const content = z >= 1
@@ -261,7 +261,8 @@
     return true;
   };
   const checkWidePage = () => {
-    const now = WIDE_PAGES.test(document.title || '');
+    const page = WIDE_PAGES.find((each) => each.shown());
+    const now = page ? page.zoom : 0;
     if (now === widePage) return;
     widePage = now;
     applyFit();

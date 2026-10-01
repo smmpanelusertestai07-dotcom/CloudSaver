@@ -11,22 +11,20 @@ class FileOfferTest {
     private fun door(port: Int, path: String) = "http://$port-$key.localhost:40123$path"
 
     @Test
-    fun `PocketIDE's own Download and Install buttons start at once`() {
+    fun `PocketIDE's own Download buttons start at once`() {
         val apk = FileOffer.of(
-            door(6081, "/f/codex/app/build/outputs/apk/debug/app-debug.apk?download&install"),
+            door(6081, "/f/codex/app/build/outputs/apk/debug/app-debug.apk?download"),
             "attachment; filename=\"app-debug.apk\"; filename*=UTF-8''app-debug.apk",
             "application/vnd.android.package-archive",
             5_168_447,
             fromVsCode = false,
         )!!
         assertTrue(apk.decided)
-        assertTrue(apk.install)
         assertTrue(apk.isApk)
         assertEquals("app-debug.apk", apk.name)
         assertEquals(5_168_447L, apk.size)
         val zip = FileOffer.of(door(6081, "/f/codex/out?zip"), "attachment; filename=\"out.zip\"", "application/zip", -1, fromVsCode = false)!!
         assertTrue(zip.decided)
-        assertFalse(zip.install)
         assertEquals(-1L, zip.size)
     }
 
@@ -35,7 +33,6 @@ class FileOfferTest {
         // An agent's own server (python -m http.server) linking a file directly: the WebView cannot show it.
         val offer = FileOffer.of(door(8000, "/app/build/outputs/apk/release/app-release.apk"), null, "application/octet-stream", 1234, fromVsCode = false)!!
         assertFalse(offer.decided)
-        assertFalse("Install is the owner's choice on the sheet", offer.install)
         assertEquals("app-release.apk", offer.name)
         assertEquals(FileKinds.APK, offer.mime)
         // files.py's own page links that are no download (an image opened in full) are not saved at once either.

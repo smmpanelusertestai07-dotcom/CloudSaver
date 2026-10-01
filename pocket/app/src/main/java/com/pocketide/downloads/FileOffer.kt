@@ -8,8 +8,8 @@ import java.util.Locale
 /**
  * A file a page in PocketIDE hands the phone (a link an agent gave, PocketIDE's own file page, VS
  * Code's own Download), before anything is saved. [decided]: the owner already chose to save it (a
- * Download or Install button on PocketIDE's file page, VS Code's Download), so it starts at once;
- * otherwise PocketIDE shows what it is first, and asks. [install]: an APK to install once it is here.
+ * Download button on PocketIDE's file page, VS Code's Download), so it starts at once; otherwise
+ * PocketIDE shows what it is first, and asks.
  */
 data class FileOffer(
     val url: String,
@@ -17,7 +17,6 @@ data class FileOffer(
     val mime: String,
     val size: Long,
     val decided: Boolean,
-    val install: Boolean,
 ) {
     val isApk: Boolean get() = FileKinds.isApk(name, mime)
 
@@ -25,7 +24,7 @@ data class FileOffer(
         /** `<port>-<32 hex key>.localhost`: an address of PocketIDE's door to Cloud Shell. */
         private val DOOR_HOST = Regex("""^(\d{2,5})-[0-9a-f]{32}\.localhost$""")
 
-        /** Cloud Shell's file links (files.py), whose own Download and Install buttons ask nothing more. */
+        /** Cloud Shell's file links (files.py), whose own Download buttons ask nothing more. */
         const val FILES_PORT = 6081
 
         /**
@@ -38,7 +37,7 @@ data class FileOffer(
             val port = uri.host?.lowercase(Locale.ROOT)?.let { DOOR_HOST.matchEntire(it) }?.groupValues?.get(1)?.toIntOrNull()
             if (uri.scheme?.lowercase(Locale.ROOT) != "http" || port == null) return null
             val asked = uri.rawQuery.orEmpty().split('&').map { it.substringBefore('=') }.toSet()
-            // files.py's Download, Install and Download as zip: the owner tapped them on its page.
+            // files.py's Download and Download as zip: the owner tapped them on its page.
             val ours = port == FILES_PORT && ("download" in asked || "zip" in asked)
             val name = FileKinds.name(contentDisposition, url, mimeType)
             return FileOffer(
@@ -47,7 +46,6 @@ data class FileOffer(
                 mime = FileKinds.mime(name, mimeType),
                 size = contentLength.takeIf { it >= 0 } ?: -1,
                 decided = ours || fromVsCode,
-                install = ours && "install" in asked,
             )
         }
     }

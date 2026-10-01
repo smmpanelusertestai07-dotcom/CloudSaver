@@ -36,9 +36,11 @@ interface Duplex : Closeable {
  * come back as this proxy's addresses, and a page that allows only localhost to frame it also
  * allows the proxy's addresses (Antigravity's panel inside its VS Code).
  *
- * One path is PocketIDE's own on every address: [DROP_PATH] goes to Cloud Shell's file drop
- * ([DROP_PORT], files.py) instead, so an agent's VS Code page sends the phone's files there as to
- * itself, which its own security policy allows.
+ * One request is PocketIDE's own on an agent's VS Code address: an upload to [DROP_PATH] goes to
+ * Cloud Shell's file drop ([DROP_PORT], files.py) instead, so the page sends the phone's files there
+ * as to itself, which its own security policy allows. Nothing else of files.py is reached that way,
+ * and no other page (a dev server, say) reaches it at all: the owner's files open only from files.py's
+ * own address, which no other page can read.
  */
 class PortProxy(
     private val key: String,
@@ -144,9 +146,13 @@ class PortProxy(
     internal companion object {
         const val LOOPBACK = "127.0.0.1"
 
-        /** Cloud Shell's file drop (files.py), and the path that reaches it from any of the door's addresses. */
+        /** Cloud Shell's file drop (files.py), and the path its uploads take from an agent's VS Code page. */
         const val DROP_PORT = 6081
         const val DROP_PATH = "/__pocketide/drop/"
+        const val DROP_UPLOAD = "${DROP_PATH}upload"
+
+        /** Each agent's VS Code in Cloud Shell: PocketIDE's three from 8080, the owner's own up to 8099. */
+        val VS_CODE_PORTS = 8080..8099
         const val LOWEST_PORT = 1024
         const val HIGHEST_PORT = 65535
         private const val BACKLOG = 64
@@ -228,19 +234,23 @@ internal class Head(val first: String, val headers: List<Pair<String, String>>) 
 /** How a request and its answer change on the way through [PortProxy]. */
 internal object Rewrite {
     /**
-     * Where a request to Cloud Shell's [port] goes: a request for [PortProxy.DROP_PATH] goes to the
-     * file drop, without that prefix; any other stays as it is.
+     * Where a request to Cloud Shell's [port] goes: an upload an agent's VS Code page sends to
+     * [PortProxy.DROP_UPLOAD] goes to the file drop, without the prefix; any other stays as it is.
      */
     fun route(head: Head, port: Int): Pair<Head, Int> {
         val parts = head.first.split(' ')
-        val dropped = parts.size == REQUEST_LINE_PARTS && parts[1].startsWith(PortProxy.DROP_PATH)
+        val target = parts.getOrNull(1).orEmpty()
+        val dropped = parts.size == REQUEST_LINE_PARTS && parts[0] == "POST" && port in PortProxy.VS_CODE_PORTS &&
+            (target == PortProxy.DROP_UPLOAD || target.startsWith("${PortProxy.DROP_UPLOAD}?"))
         if (!dropped) return head to port
         val rest = "/" + parts[1].removePrefix(PortProxy.DROP_PATH)
         return Head("${parts[0]} $rest ${parts[2]}", head.headers) to PortProxy.DROP_PORT
     }
 
     private val HOP_BY_HOP = setOf("connection", "keep-alive", "proxy-connection", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded")
-    private val ORIGIN = Regex("""^https?://[^/]+""", RegexOption.IGNORE_CASE)
+
+    /** A page at one of the door's addresses (http://<port>-<key>.localhost:<door's port>), at the start of an address. */
+    private val DOOR_PAGE = Regex("""^https?://(\d{2,5})-[0-9a-f]{32}\.localhost(?::\d+)?(?=/|$)""", RegexOption.IGNORE_CASE)
     private const val REQUEST_LINE_PARTS = 3
     private const val FRAME_ANCESTORS = "frame-ancestors"
     private const val PROXY_ANCESTORS = "http://*.localhost:*"
@@ -253,13 +263,28 @@ internal object Rewrite {
         val headers = head.headers.mapNotNull { (name, value) ->
             when (name.lowercase(Locale.ROOT)) {
                 "host" -> name to local
-                "origin" -> name to "http://$local"
-                "referer" -> name to value.replace(ORIGIN, "http://$local")
+                "origin" -> name to sender(value.trim(), port)
+                "referer" -> name to sender(value, port)
                 in HOP_BY_HOP -> null
                 else -> name to value
             }
         } + ("Connection" to if (upgrade) "Upgrade" else "close")
         return Head(head.first, headers).bytes()
+    }
+
+    /**
+     * Who [value] (an Origin, or the start of a Referer) says sent a request to Cloud Shell's [port]: a
+     * page at one of the door's addresses comes from its own port's localhost, as on a computer, so
+     * each server's own origin checks hold (code-server lets only its own page open its connection; a
+     * dev server's page is not VS Code). An agent's VS Code page, the owner's IDE, uses the other ports
+     * as its own (Antigravity's panel). Any other origin stays as it was ("null" for a page in a
+     * sandbox, a site): the key is in none of them, and it never goes on.
+     */
+    fun sender(value: String, port: Int): String {
+        val door = DOOR_PAGE.find(value) ?: return value
+        val from = door.groupValues[1].toIntOrNull()
+        val seen = if (from == null || from in PortProxy.VS_CODE_PORTS) port else from
+        return "http://localhost:$seen" + value.substring(door.range.last + 1)
     }
 
     /**

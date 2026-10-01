@@ -164,7 +164,8 @@ internal object Guide {
             "Claude Code and Codex send with their Send button; Enter makes a new line.",
             "Phone files: an agent's own add-files button opens Android's picker by itself; the file goes to " +
                 "~/projects/<agent>/uploads (git ignores it) and the agent takes it.",
-            "An agent's file comes as a link: tap it to see it, then Download (an APK: Install) into Download/PocketIDE.",
+            "An agent's file comes as a link (a picture can show in its chat): tap it to see it, then Download into " +
+                "Download/PocketIDE; an APK installs from there, in Files.",
         ),
     )
 
@@ -207,7 +208,7 @@ internal object Guide {
             "To work on a GitHub project, run git clone with its address in Tools > Terminal.",
             "Keep a copy elsewhere: run gh auth login once (GitHub's page opens in Chrome), then git push. Cloud Shell's home " +
                 "folder is deleted after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
-            "Android apps: an agent builds the APK in Cloud Shell and links it (Install); GitHub Actions only for what " +
+            "Android apps: an agent builds the APK in Cloud Shell and links it; GitHub Actions only for what " +
                 "Cloud Shell cannot run, such as an emulator.",
         ),
     )
@@ -262,10 +263,9 @@ internal object Guide {
             row("FOREGROUND_SERVICE_SPECIAL_USE", "The kind of that service Android 14 asks apps to name: the owner's own connection"),
             row("POST_NOTIFICATIONS", "The notice that says PocketIDE is connected, with its Disconnect button (Android asks you)"),
             row("USE_BIOMETRIC", "App lock, with your phone's own screen lock"),
-            row("REQUEST_INSTALL_PACKAGES", "Install on an agent's APK: Android's own installer asks you first"),
         ),
         p(
-            "No storage, camera, microphone, location, contacts or accounts permission (downloads need none). The Google " +
+            "No storage, install, camera, microphone, location, contacts or accounts permission (downloads need none). The Google " +
                 "account comes from " +
                 "Android's own account chooser, which gives PocketIDE only the one you pick. Google's sign-in opens in Chrome, " +
                 "never inside PocketIDE.",

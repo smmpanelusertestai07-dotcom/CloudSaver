@@ -60,7 +60,7 @@ import com.pocketide.downloads.HeldFile
 
 /** What the sheet does for the owner; each is one button. */
 internal class FileActions(
-    val save: (install: Boolean) -> Unit,
+    val save: () -> Unit,
     val cancel: () -> Unit,
     val open: () -> Unit,
     val share: () -> Unit,
@@ -71,7 +71,8 @@ internal class FileActions(
 /**
  * A file from Cloud Shell at the bottom of the screen, as Android's own downloads show one: first
  * what it is (when a page offered it, nothing is saved before the owner says so), then how far it
- * is, then where it is, with Open (an APK: Install) and Share.
+ * is, then where it is, with Open and Share. An APK opens in the phone's Files app, which installs
+ * it (Android asks first): PocketIDE itself installs nothing.
  */
 @Composable
 internal fun FileSheet(offer: FileOffer?, download: Download?, actions: FileActions) {
@@ -130,15 +131,13 @@ internal fun FileSheet(offer: FileOffer?, download: Download?, actions: FileActi
 
 @Composable
 private fun Offered(apk: Boolean, actions: FileActions) {
-    Note("It is in Cloud Shell. PocketIDE saves it in your phone's Downloads, in ${Downloads.FOLDER}.")
+    Note(
+        "It is in Cloud Shell. PocketIDE saves it in your phone's Downloads, in ${Downloads.FOLDER}." +
+            if (apk) " To install it, open it there in Files: Android asks you first." else "",
+    )
     Buttons {
-        if (apk) {
-            OutlinedButton(onClick = { actions.save(false) }) { Text("Download") }
-            Button(onClick = { actions.save(true) }) { Text("Install") }
-        } else {
-            TextButton(onClick = actions.close) { Text("Cancel") }
-            Button(onClick = { actions.save(false) }) { Text("Download") }
-        }
+        TextButton(onClick = actions.close) { Text("Cancel") }
+        Button(onClick = actions.save) { Text("Download") }
     }
 }
 
@@ -158,14 +157,14 @@ private fun Running(download: Download, actions: FileActions) {
 private fun Done(apk: Boolean, actions: FileActions) {
     Note(
         if (apk) {
-            "In Download/${Downloads.FOLDER}. Install opens Android's installer, which asks you first."
+            "In Download/${Downloads.FOLDER}. To install it, tap it there in Files: Android asks you first."
         } else {
             "In Download/${Downloads.FOLDER}."
         },
     )
     Buttons {
         OutlinedButton(onClick = actions.share) { Text("Share") }
-        Button(onClick = actions.open) { Text(if (apk) "Install" else "Open") }
+        Button(onClick = actions.open) { Text(if (apk) "Open in Files" else "Open") }
     }
 }
 
@@ -213,8 +212,8 @@ private const val SCRIM = 0.4f
 
 /**
  * A screen's file sheet: what a page offered (shown first, nothing saved yet), or the download it
- * follows. A page hands files to [take]; the owner's own choice (PocketIDE's Download and Install
- * buttons, VS Code's Download, a file the page [held] for it) starts at once.
+ * follows. A page hands files to [take]; the owner's own choice (PocketIDE's Download buttons, VS
+ * Code's Download, a file the page [held] for it) starts at once.
  */
 internal class FileFlow(private val downloads: Downloads, private val toast: (String) -> Unit) {
     var offer by mutableStateOf<FileOffer?>(null)
@@ -259,8 +258,8 @@ internal fun FileFlowSheet(flow: FileFlow, downloads: Downloads, toast: (String)
         offer,
         download,
         FileActions(
-            save = { install ->
-                offer?.let { flow.shown = downloads.start(it.copy(install = install)) }
+            save = {
+                offer?.let { flow.shown = downloads.start(it) }
                 flow.offer = null
             },
             cancel = {
@@ -268,7 +267,9 @@ internal fun FileFlowSheet(flow: FileFlow, downloads: Downloads, toast: (String)
                 flow.close()
             },
             open = {
-                if (download != null && !downloads.open(context, download)) toast("No app on this phone opens it. It is in Download/${Downloads.FOLDER}.")
+                if (download != null && !downloads.open(context, download)) {
+                    toast("No app on this phone opens it. It is in Download/${Downloads.FOLDER}: open it from the Files app.")
+                }
             },
             share = { download?.let { downloads.share(context, it) } },
             retry = { download?.let { downloads.retry(it) }?.let { flow.shown = it } },

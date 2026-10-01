@@ -41,7 +41,8 @@ async function cline(port) {
   await page.addInitScript(script);
   await page.route('**/__pocketide/drop/**', async (route) => {
     const url = route.request().url().replace(/^http:\/\/127\.0\.0\.1:\d+\/__pocketide\/drop\//, DROP);
-    await route.fulfill({ response: await route.fetch({ url }) });
+    // As PocketIDE's door passes an agent's VS Code page on: from the drop's own address.
+    await route.fulfill({ response: await route.fetch({ url, headers: { ...route.request().headers(), origin: DROP.replace(/\/$/, '').replace('127.0.0.1', 'localhost') } }) });
   });
   await page.goto(`http://127.0.0.1:${port}/`);
   await page.waitForSelector('.monaco-workbench', { timeout: 90000 });
@@ -136,7 +137,8 @@ async function toPhone(browser) {
   await page.addInitScript(script);
   await page.route('**/__pocketide/drop/**', async (route) => {
     const url = route.request().url().replace(/^http:\/\/127\.0\.0\.1:\d+\/__pocketide\/drop\//, DROP);
-    await route.fulfill({ response: await route.fetch({ url }) });
+    // As PocketIDE's door passes an agent's VS Code page on: from the drop's own address.
+    await route.fulfill({ response: await route.fetch({ url, headers: { ...route.request().headers(), origin: DROP.replace(/\/$/, '').replace('127.0.0.1', 'localhost') } }) });
   });
   await page.goto(VS_CODE);
   await page.waitForSelector('.monaco-workbench', { timeout: 90000 });

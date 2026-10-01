@@ -3,7 +3,8 @@
 //   CLOUD_SHELL_HOME=<the set-up's home> node files-check.js <folder for the screenshots>
 // It makes a few files in the Codex agent's projects, links them with `pocketide link`, and checks
 // each page: a folder's files, a picture, a PDF's pages (pdf.js, which the set-up fetched), Markdown,
-// a table, a web page that runs in its sandbox, and the Download a phone saves. Any miss is an error.
+// a table, a web page that runs in its sandbox (its own scripts too, which no other page may embed),
+// and the Download a phone saves. Any miss is an error.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -96,7 +97,11 @@ function makeFiles() {
   await visit('5-table', `${base}/f/codex/files%20check/results.csv`, async () => {
     if ((await page.locator('table tr').count()) !== 3) throw new Error('the CSV is not a table of 3 rows');
   });
-  await visit('6-site', `${base}/r/codex/files%20check/site/index.html`, async () => {
+  // A web page opens from its own page's Open page (/s/<files.py's secret>/...), where its own scripts load.
+  const sitePage = await (await page.request.get(`${base}/f/codex/files%20check/site/index.html`)).text();
+  const opened = (/href="(\/s\/[A-Za-z0-9_-]+\/codex\/files%20check\/site\/index\.html)"/.exec(sitePage) || [])[1];
+  if (!opened) fail("the web page's own page has no Open page");
+  await visit('6-site', `${base}${opened}`, async () => {
     await page.waitForFunction(() => document.title === 'kept apart' || document.title === 'read another file', null, { timeout: 10000 });
     if ((await page.textContent('#state')) !== 'ran') throw new Error("the page's own script did not run");
     if ((await page.title()) !== 'kept apart') throw new Error('a page opened from here read another of the owner\'s files');

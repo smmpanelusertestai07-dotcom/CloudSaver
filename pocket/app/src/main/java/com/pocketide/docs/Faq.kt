@@ -214,12 +214,13 @@ internal object Faq {
             "agent-files",
             DocsContent.IDE_ID,
             "How does an agent give me a file, like an APK, a PDF or a zip?",
-            "As a named link in its chat (each agent's instructions from PocketIDE ask for it). Tap it: PocketIDE shows " +
+            "What its chat can show (a picture, a screenshot, a short text) it shows there; anything else comes as a named " +
+                "link in its chat (each agent's instructions from PocketIDE ask for this). Tap the link: PocketIDE shows " +
                 "the file from Cloud Shell first, with a preview where a phone can show one (a picture, a video, sound, a " +
                 "PDF's pages, text and code, a table, what an archive holds, an APK's name, version and permissions, a " +
-                "folder's files), then Download, and Install for an APK (Android's own installer asks you first). A file a " +
-                "link leads to directly, which a page cannot show, opens the same sheet first: nothing is saved before you " +
-                "say so. Downloads go to Download/PocketIDE, with a notice; Open, Install and Share are on it.",
+                "folder's files), then Download. A file a link leads to directly, which a page cannot show, opens the same " +
+                "sheet first: nothing is saved before you say so. Downloads go to Download/PocketIDE, with a notice; Open " +
+                "and Share are on it.",
             "The link works while the file is in Cloud Shell. A file in ~/projects stays until it is deleted; one the agent " +
                 "made elsewhere (in /tmp, which Cloud Shell empties when it restarts) is copied into ~/projects/<agent>/outbox " +
                 "first, and kept there 30 days. Tools > Files shows the agent's whole folder the same way. VS Code's own " +
@@ -232,7 +233,16 @@ internal object Faq {
             "Yes. Each agent's instructions say to work in Cloud Shell whenever it fits, an APK included, and to look first at " +
                 "what there is (the home folder's 5 GB, the memory). It uses GitHub Actions only for what cannot run here: " +
                 "an Android emulator (Cloud Shell has no KVM), macOS, iOS or Windows, more room or memory than there is, or " +
-                "a job longer than your session; it decides, and tells you why. The APK comes to you as a link: Install.",
+                "a job longer than your session; it decides, and tells you why. The APK comes to you as a link: Download it, " +
+                "then install it from Files.",
+        ),
+        faq(
+            "apk-install",
+            DocsContent.IDE_ID,
+            "Why does PocketIDE not install an APK itself?",
+            "Installing apps takes a permission of its own (REQUEST_INSTALL_PACKAGES), which PocketIDE does not ask for. A " +
+                "downloaded APK is in Download/PocketIDE: Open in Files (on its sheet or its notice), then tap it. The Files " +
+                "app installs it and Android asks you first; the first time, Android also asks you to let Files install apps.",
         ),
         faq(
             "whole-ide",
@@ -262,13 +272,23 @@ internal object Faq {
                 "sign in there yourself.",
         ),
         faq(
+            "pages-apart",
+            DocsContent.CONNECTION_ID,
+            "Can a web page an agent made reach my files or VS Code?",
+            "No more than on a computer. PocketIDE tells Cloud Shell which page asks, so each server's own checks hold: VS " +
+                "Code lets only its own page in, only files.py's own pages show your files, and only an agent's VS Code sends " +
+                "files from the phone to its uploads folder. Downloads come only from Cloud Shell, through PocketIDE's door.",
+        ),
+        faq(
             "agent-limits",
             "agents",
             "What keeps an agent from doing something harmful?",
             "Each agent's own approvals stay on: it asks before commands and edits as its maker set it. PocketIDE adds rules " +
                 "to each agent's instructions (no firewall or tunnel changes, no reading keys or sign-ins, no Google Cloud " +
-                "sign-in, Cloud Shell's limits), and Claude Code's settings also refuse those commands and files. They are " +
-                "seatbelts, not walls: read what an agent asks to do before you allow it, and keep secrets out of Cloud Shell.",
+                "sign-in, Cloud Shell's limits, your data sent nowhere the task does not need, no secrets in git, new GitHub " +
+                "repositories private, and a question before anything public or destructive), and Claude Code's settings also " +
+                "refuse those commands and files. They are seatbelts, not walls: read what an agent asks to do before you " +
+                "allow it, and keep secrets out of Cloud Shell.",
         ),
         faq(
             "on-phone",
