@@ -77,7 +77,7 @@ cat >"$BASE/layout/package.json" <<'JSON'
   "name": "layout",
   "displayName": "PocketIDE layout",
   "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it; or the whole IDE.",
-  "version": "9.3.0",
+  "version": "9.4.0",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": {
@@ -132,6 +132,10 @@ cat >"$BASE/layout/package.json" <<'JSON'
       {
         "command": "pocketide.tools",
         "title": "PocketIDE: Tools"
+      },
+      {
+        "command": "pocketide.front",
+        "title": "PocketIDE: What is in front, alone"
       }
     ],
     "keybindings": [
@@ -146,6 +150,10 @@ cat >"$BASE/layout/package.json" <<'JSON'
       {
         "command": "pocketide.terminal",
         "key": "f15"
+      },
+      {
+        "command": "pocketide.front",
+        "key": "f16"
       },
       {
         "command": "pocketide.commands",
@@ -365,11 +373,31 @@ function tabKey(tab) {
   return `${tab.group.viewColumn}|${tab.label}|${String(where)}`;
 }
 
+// Pages (and nothing the owner has not saved) close when the owner goes elsewhere: a page is only
+// ever in front, full screen, or closed, so opening it again always brings it there. (Asked to open
+// an editor that is already open behind the agent, VS Code itself splits the screen between them and
+// tells no extension: PocketIDE's page script then puts the editor alone again, with F16.)
+async function closePages() {
+  const pages = vscode.window.tabGroups.all.flatMap((group) => group.tabs).filter((tab) => isPage(tab) && !tab.isDirty);
+  if (!pages.length) return;
+  closing = true;
+  try {
+    await vscode.window.tabGroups.close(pages, true);
+  } catch (error) {
+    // Already closed.
+  }
+  await sleep(SETTLE_MS * 2);
+  closing = false;
+  lastActive = tabKey(activeTab());
+}
+
 // The agent, full screen at once; its own panel in front as soon as its extension has started (an
 // agent that is still starting, or downloading its parts, never holds the layout back).
 async function showAgent() {
   ide = false;
+  await closePages();
   await run('workbench.action.closePanel');
+  await run('workbench.action.closeSidebar');
   await run('workbench.action.maximizeAuxiliaryBar');
   covered = false;
   if (!agent || !agentReady) return;
@@ -387,7 +415,8 @@ async function showAgent() {
 async function showIde() {
   ide = true;
   covered = false;
-  // The agent's side bar is hidden while a page covers it: shown (maximized) first, then its own size.
+  await closePages();
+  // The agent's side bar is hidden while an editor covers it: shown (maximized) first, then its own size.
   await run('workbench.action.maximizeAuxiliaryBar');
   await run('workbench.action.restoreAuxiliaryBar');
   await run('workbench.view.explorer');
@@ -437,7 +466,7 @@ function watchEditors(context) {
 // them when this one closes is no new editor, so it does not cover the agent.
 async function back() {
   const tab = activeTab();
-  if (covered && tab && !isTerminal(tab)) {
+  if (tab && !isTerminal(tab) && (covered || isPage(tab))) {
     closing = true;
     try {
       await vscode.window.tabGroups.close(tab, true);
@@ -461,6 +490,14 @@ async function terminal() {
   await arrange(showEditor);
 }
 
+// F16, from PocketIDE's page script, when VS Code itself split the screen between an editor and the
+// agent: the editor alone (the whole IDE stays the whole IDE).
+async function front() {
+  if (ide) return showIde();
+  if (activeTab()) return showEditor();
+  return showAgent();
+}
+
 // The same places from a list, for a keyboard (Ctrl+Alt+P) or a computer's browser.
 const TOOLS = [
   { label: '$(hubot) Agent', detail: 'Back to the agent, full screen', run: () => arrange(showAgent) },
@@ -480,6 +517,7 @@ function commands(context) {
     vscode.commands.registerCommand('pocketide.commands', () => run('workbench.action.showCommands')),
     vscode.commands.registerCommand('pocketide.files', () => run('workbench.action.quickOpen')),
     vscode.commands.registerCommand('pocketide.vsix', installFromLink),
+    vscode.commands.registerCommand('pocketide.front', () => arrange(front)),
     vscode.commands.registerCommand('pocketide.tools', async () => {
       const picked = await vscode.window.showQuickPick(TOOLS, { placeHolder: 'PocketIDE tools' });
       if (picked) await picked.run();
