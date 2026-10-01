@@ -54,8 +54,9 @@ internal object Legal {
                 "for PocketIDE.",
         ),
         p(
-            "In your Google Cloud Shell: your projects, each agent's chats and sign-in, and each agent's VS Code, in the " +
-                "home folder only your Google account opens. Google keeps it under its privacy notice for Google Cloud, and " +
+            "In your Google Cloud Shell: your projects, each agent's chats and sign-in, each agent's VS Code, and the " +
+                "browser's profile (the cookies and sign-ins of sites opened in it, in ~/.pocketide/browser), in the home " +
+                "folder only your Google account opens. Google keeps it under its privacy notice for Google Cloud, and " +
                 "deletes it after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
         ),
         p(
@@ -65,12 +66,18 @@ internal object Legal {
                 "with its lines in that agent's prompt history.",
         ),
         p(
+            "The browser: Tools > Browser shows the Chrome running in your Cloud Shell as pictures Chrome sends while you " +
+                "watch, over PocketIDE's private connection; your taps and typing go back to it. None of it is kept on the " +
+                "phone. The agents use the same browser and can read what it shows.",
+        ),
+        p(
             "What else leaves: gcloud talks to Google (its sign-in, starting Cloud Shell, the encrypted connection) under " +
                 "Google's privacy notice for Google Cloud; it sends no usage reports (PocketIDE turns them off). Each agent " +
                 "sends its company what it needs to work (your prompts, and the code and files it reads) under your account " +
                 "there and that company's policy; PocketIDE cannot delete their copy. Downloads: Ubuntu and its updates from " +
                 "Ubuntu's servers and gcloud from Google, on the phone; in Cloud Shell, the set-up script and code-server from " +
-                "GitHub and the agents from Open VSX; the app reads each agent's icon from Open VSX. They see the request, " +
+                "GitHub, the agents from Open VSX and, for the browser, Chrome for Testing from Google; the app reads each " +
+                "agent's icon from Open VSX. They see the request, " +
                 "like any website does.",
         ),
         p(
@@ -111,7 +118,9 @@ internal object Legal {
         p(
             "Downloaded by the app onto the phone, not part of it: Ubuntu (each package under its own licence) and Google's " +
                 "gcloud (Apache License 2.0 and its bundled components' licences). Installed in your Cloud Shell by the set-up: " +
-                "code-server (MIT) with VS Code's open-source code (MIT), and the agents' extensions under their makers' licences.",
+                "code-server (MIT) with VS Code's open-source code (MIT), the agents' extensions under their makers' licences, " +
+                "and, for the browser, Google's Chrome for Testing headless shell, built from Chromium (BSD 3-Clause, with its " +
+                "third-party licences in its LICENSE.headless_shell).",
         ),
         p("The full notices, with copyright lines and licence texts:"),
     )

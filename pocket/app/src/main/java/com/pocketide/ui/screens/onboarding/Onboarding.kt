@@ -89,8 +89,8 @@ internal fun WelcomeScreen(onRead: (String) -> Unit, onContinue: () -> Unit) {
             Feature(
                 icon = { IconTile(Icons.Outlined.Autorenew, size = 40.dp) },
                 title = "Starts and updates by itself",
-                text = "One command sets it up. Then Cloud Shell starts the agents' VS Code by itself, tidies old caches, and installs " +
-                    "new agent versions, checked before they are used.",
+                text = "One tap sets it up. Then each agent's VS Code starts when you open it, and Cloud Shell tidies old caches " +
+                    "and installs new agent versions, checked before they are used.",
             )
         }
         Gap(28.dp)

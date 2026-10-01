@@ -3,6 +3,7 @@ package com.pocketide.link
 import com.pocketide.linux.GuestConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,8 +53,18 @@ class GcloudTest {
         assertEquals("'it'\\''s'", Gcloud.quote("it's"))
         assertEquals("bash -lc 'echo \$HOME'", Gcloud.login("echo \$HOME"))
         val template = "http://{{port}}-0123456789abcdef0123456789abcdef.localhost:40123/"
-        val start = Gcloud.startAgents(template)
-        assertTrue(start, start.startsWith("bash -lc '"))
-        assertTrue(start, start.contains("~/.local/bin/pocketide proxy-uri '\\''$template'\\''; ~/.local/bin/pocketide --quiet"))
+        val prepare = Gcloud.prepare(template)
+        assertTrue(prepare, prepare.startsWith("bash -lc '"))
+        assertTrue(prepare, prepare.contains("~/.local/bin/pocketide proxy-uri '\\''$template'\\''; ~/.local/bin/pocketide --quiet"))
+    }
+
+    @Test
+    fun `the launcher takes only plain words`() {
+        assertEquals("bash -lc '~/.local/bin/pocketide '\\''start'\\'' '\\''claude-code'\\'''", Gcloud.launcher("start", "claude-code"))
+        assertEquals("bash -lc '~/.local/bin/pocketide '\\''browser'\\'' '\\''stop'\\'''", Gcloud.launcher("browser", "stop"))
+        listOf("", "start;reboot", "\$(id)", "a b", "Start", "../x").forEach { word ->
+            assertThrows(IllegalArgumentException::class.java) { Gcloud.launcher("start", word) }
+        }
+        assertThrows(IllegalArgumentException::class.java) { Gcloud.launcher() }
     }
 }

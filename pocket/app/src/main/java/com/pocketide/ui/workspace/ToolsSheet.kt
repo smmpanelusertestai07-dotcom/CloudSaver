@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SmartToy
@@ -61,10 +62,20 @@ private val TOOLS = listOf(
 
 /**
  * PocketIDE's tools over an agent's VS Code: each opens full screen in that VS Code, one at a time,
- * and Back returns to the agent. [enabled] is false until VS Code is on screen.
+ * and Back returns to the agent. [enabled] is false until VS Code is on screen. The browser (the
+ * Chrome the agents use in Cloud Shell, live) needs only the connection: [browserEnabled].
  */
 @Composable
-internal fun ToolsSheet(enabled: Boolean, onCommand: (String) -> Unit, onReload: () -> Unit, onHome: () -> Unit, onClose: () -> Unit) {
+@Suppress("LongParameterList") // One callback per kind of row.
+internal fun ToolsSheet(
+    enabled: Boolean,
+    browserEnabled: Boolean,
+    onCommand: (String) -> Unit,
+    onBrowser: () -> Unit,
+    onReload: () -> Unit,
+    onHome: () -> Unit,
+    onClose: () -> Unit,
+) {
     Box(
         Modifier
             .fillMaxSize()
@@ -101,6 +112,13 @@ internal fun ToolsSheet(enabled: Boolean, onCommand: (String) -> Unit, onReload:
                 TOOLS.forEach { tool ->
                     ToolRow(tool.title, tool.detail, tool.icon, enabled = enabled) { onCommand(tool.command) }
                 }
+                ToolRow(
+                    "Browser",
+                    "Chrome in Cloud Shell, which the agents use: watch it live, or take over",
+                    Icons.Outlined.Language,
+                    enabled = browserEnabled,
+                    onClick = onBrowser,
+                )
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 ToolRow("Reload this VS Code", "When it looks stuck; the agent keeps working in Cloud Shell", Icons.Outlined.Refresh, onClick = onReload)
                 ToolRow("PocketIDE home", "The agents keep running here", Icons.Outlined.Home, onClick = onHome)

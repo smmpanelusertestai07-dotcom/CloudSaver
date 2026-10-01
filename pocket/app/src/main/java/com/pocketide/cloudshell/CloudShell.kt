@@ -13,11 +13,11 @@ import java.net.URLEncoder
  */
 object CloudShell {
     /** The commit that holds the setup script this app version gives out. */
-    const val SCRIPT_COMMIT = "37cb885c8db4aa9007f124a999db02c82320c998"
+    const val SCRIPT_COMMIT = "86577b6c8cdde7e6013cb9d080559b071aa1d883"
     const val SCRIPT_PATH = "pocket/cloudshell/pocketide-cloudshell.sh"
 
     /** The script's SHA-256: the command runs it only when the download matches. */
-    const val SCRIPT_SHA256 = "90a9620dd03ed94828452799098ef2c4de5f3405f098f6daec2b6d73846a35d8"
+    const val SCRIPT_SHA256 = "6d75dc89806a86e677a5c974311812738f948d079f54e76acd8ad9e029ba9e51"
     val SCRIPT_URL = "https://raw.githubusercontent.com/${BuildConfig.RELEASES_REPO}/$SCRIPT_COMMIT/$SCRIPT_PATH"
 
     /** Google deletes Cloud Shell's home folder after this many days without use. */
@@ -44,6 +44,17 @@ object CloudShell {
 
     /** Each agent's port in Cloud Shell: Claude Code 8080, Codex 8081, Antigravity 8082. */
     fun port(agent: Agent): Int = FIRST_PORT + agent.ordinal
+
+    /** The set-up's name for [agent]: its VS Code's folder, and what `pocketide start` and info.py take. */
+    fun key(agent: Agent): String = when (agent) {
+        Agent.CLAUDE -> "claude-code"
+        Agent.CODEX -> "codex"
+        Agent.ANTIGRAVITY -> "antigravity"
+    }
+
+    /** Where PocketIDE's browser view (relay.py) listens in Cloud Shell; Chrome's DevTools are on [BROWSER_DEVTOOLS_PORT]. */
+    const val BROWSER_PORT = 6080
+    const val BROWSER_DEVTOOLS_PORT = 9222
 
     fun projects(agent: Agent): String = when (agent) {
         Agent.CLAUDE -> "~/projects/claude-code"

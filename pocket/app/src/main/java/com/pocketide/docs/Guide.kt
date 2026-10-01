@@ -46,21 +46,21 @@ internal object Guide {
             listOf("Free limit (Google, checked ${DocLinks.CHECKED_ON})", "Value"),
             row("Hours", "50 a week (about 7 a day), at most 12 in one session"),
             row("When you leave", "It stops after about 40 minutes without use"),
-            row("Home folder", "5 GB, the only part kept; the set-up uses about 1.6 GB"),
+            row("Home folder", "5 GB, the only part kept; the set-up uses about 1.9 GB"),
             row("Not used", "Google deletes the home folder after ${CloudShell.DELETED_AFTER_DAYS} days, and emails you first"),
         ),
         bullets(
-            "The set-up is one script, pinned in this app version and checked by its SHA-256 before it runs: code-server " +
-                "(VS Code for the web), checked against its pinned SHA-256, and each agent from Open VSX, checked against the " +
-                "SHA-256 Open VSX publishes. PocketIDE runs it through its connection.",
+            "The set-up is one script, pinned in this app version and checked by its SHA-256 before it runs; it checks " +
+                "code-server (VS Code for the web) and each agent from Open VSX against their published SHA-256 too.",
             "Each agent gets its own VS Code, with its own port (Claude Code ${CloudShell.port(Agent.CLAUDE)}, Codex " +
                 "${CloudShell.port(Agent.CODEX)}, Antigravity ${CloudShell.port(Agent.ANTIGRAVITY)}), settings, extensions and " +
                 "projects folder. It listens only inside Cloud Shell.",
-            "Whenever Cloud Shell starts, it starts the agents' VS Code by itself, tidies old caches and logs, and once a day " +
-                "installs newer agent and code-server releases. Running work and your projects are never touched.",
-            "After an app update brings a newer set-up, PocketIDE runs it by itself at the next connection. After " +
-                "${CloudShell.ASK_AGAIN_AFTER_DAYS} days without opening Cloud Shell, it asks you to connect once, before Google " +
-                "may delete the home folder: only what is missing is set up again.",
+            "Each agent's VS Code starts when you open that agent, so Cloud Shell's memory goes to the agents you use; Usage " +
+                "stops one you no longer need. Whenever Cloud Shell starts, it tidies old caches and logs, " +
+                "and once a day installs newer agent and code-server releases. Running work and your projects are never touched.",
+            "A newer set-up (after an app update) runs by itself at the next connection. After " +
+                "${CloudShell.ASK_AGAIN_AFTER_DAYS} days unused, PocketIDE asks you to connect once, before Google may delete " +
+                "the home folder.",
         ),
         warn(
             "Use Cloud Shell yourself, while you work, as Google intends: no coin mining, network scanning or tricks to keep " +
@@ -83,28 +83,16 @@ internal object Guide {
             listOf("Question", "Answer"),
             row(
                 "Does gcloud set up and run by itself?",
-                "Yes: downloaded when the set-up page opens (Google's release, checked by its SHA-256), then run and updated " +
-                    "daily by gcloud's own updater. You type no command.",
+                "Yes: downloaded when the set-up page opens (checked by its SHA-256), then updated daily by gcloud's own " +
+                    "updater. You sign in once and type no command.",
             ),
             row(
                 "What if a gcloud update breaks the connection?",
-                "PocketIDE checks gcloud first. If an update changed how it connects, PocketIDE undoes it (gcloud's restore) or " +
-                    "puts back the version it was tested with, and holds gcloud's updates until the next PocketIDE. Only if " +
-                    "both fail does it ask you to update PocketIDE.",
-            ),
-            row(
-                "Does the connection delete itself after the set-up?",
-                "No: every connection needs it. Only gcloud and ssh run on the phone; VS Code, the agents, your projects and " +
-                    "chats are in Cloud Shell.",
-            ),
-            row(
-                "What do I do once?",
-                "Sign in with Google once: Google's page opens in Chrome; pick your account and tap Allow on \"Google Cloud " +
-                    "SDK wants to access your Google Account\".",
+                "PocketIDE undoes it, or puts back the gcloud it was tested with, until the next PocketIDE.",
             ),
             row(
                 "Is a Google Cloud project made?",
-                "No project, billing, OAuth client or key of PocketIDE's own; only Cloud Shell's free hours (50 a week).",
+                "No project, billing or key of PocketIDE's own; only Cloud Shell's free hours.",
             ),
             row(
                 "How do I take the access back?",
@@ -113,15 +101,14 @@ internal object Guide {
             ),
         ),
         bullets(
-            "Ports stay private: VS Code and the agents listen only inside Cloud Shell. On the phone each port is a socket " +
-                "file only PocketIDE can open (gcloud's tunnel too: PocketIDE's one change to how gcloud runs), reached " +
-                "through PocketIDE's private door, which answers only requests carrying its secret key.",
-            "A sign-in page returns to localhost on the phone: PocketIDE listens there only during that sign-in and passes " +
-                "the return to the agent in Cloud Shell, unchanged.",
+            "Ports stay private: VS Code, the agents and the browser listen only inside Cloud Shell; on the phone each is " +
+                "a socket file only PocketIDE can open (gcloud's tunnel too), reached through PocketIDE's private door, which " +
+                "answers only requests carrying its secret key.",
+            "A sign-in's return to localhost on the phone goes to the agent in Cloud Shell, unchanged; PocketIDE listens " +
+                "only during that sign-in.",
             "PocketIDE connects while you use the agents and disconnects 15 minutes after you leave them; Cloud Shell then " +
                 "stops by itself. Nothing keeps it awake; while connected, a notice with Disconnect says so.",
-            "Size: about 130 MB to download, 500 MB set up. Computer > Remove the connection deletes it all (your Cloud Shell " +
-                "stays).",
+            "Size: 130 MB to download, 500 MB set up; Computer > Remove the connection deletes it (your Cloud Shell stays).",
         ),
         link("Google Account: third-party connections", "https://myaccount.google.com/connections"),
     )
@@ -147,10 +134,8 @@ internal object Guide {
                 "PocketIDE meanwhile): open the agent in PocketIDE and start the sign-in again.",
         ),
         p(
-            "More extensions: Tools (the wrench in PocketIDE's bar) > All commands > Install Extensions finds any extension " +
-                "on Open VSX, and Tools > Install from a link installs one Open VSX does not have, from its maker's .vsix link. " +
-                "Each VS Code keeps its own, and Open VSX's update by themselves. Microsoft's own extensions are not on Open " +
-                "VSX (Microsoft allows them only in its products).",
+            "More extensions: Tools > All commands > Install Extensions (Open VSX), or Tools > Install from a link (a maker's " +
+                ".vsix). Microsoft's own extensions are not on Open VSX.",
         ),
         link("Claude Code's guide", Agent.CLAUDE.docsUrl),
         link("Codex's guide", Agent.CODEX.docsUrl),
@@ -165,8 +150,8 @@ internal object Guide {
             listOf("In PocketIDE's bar", "What it does"),
             row("Back (←), and the phone's Back", "Closes a menu, dialog or notice; then what covers the agent; home only on a second Back"),
             row("The three logos", "Switch agents; each keeps its page, so nothing loads again"),
-            row("Reload", "Loads this VS Code again"),
-            row("Tools (the wrench)", "The agent, open a file, terminal, settings, install from a link, all commands"),
+            row("Reload", "Starts this VS Code again if it stopped, and loads it again"),
+            row("Tools (the wrench)", "The agent, open a file, terminal, settings, install from a link, all commands, the browser"),
             row("⋮", "PocketIDE's home, Disconnect"),
         ),
         bullets(
@@ -178,9 +163,23 @@ internal object Guide {
                 "viewer, through the private door: its Back goes to the page before, its ✕ back to the agent.",
             "Other web pages and sign-ins open in Chrome (a page that opens without your tap asks first); Chrome's back arrow " +
                 "returns to the agent.",
-            "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects. Turning " +
-                "the phone sideways gives VS Code more room.",
+            "Claude Code and Codex send with their Send button; Enter makes a new line.",
             "Uploading: VS Code's Upload uses Android's own picker. A file to keep: put it on GitHub (git push).",
+        ),
+    )
+
+    private val browser = section(
+        "browser",
+        "The browser",
+        "The Chrome the agents use in Cloud Shell: watch it live, or take over.",
+        bullets(
+            "Tools > Browser starts Google's Chrome for Testing in Cloud Shell (the set-up installs it, updates keep it " +
+                "current) and shows it live, as an agent uses it.",
+            "Tap, scroll or type to take over; Watch only keeps your taps out, and Phone size shows a page as a phone would.",
+            "Agents drive it through Chrome's DevTools on Cloud Shell's 127.0.0.1:${CloudShell.BROWSER_DEVTOOLS_PORT} " +
+                "(Playwright's connectOverCDP); their instructions say how.",
+            "Short of memory, PocketIDE offers to stop another agent's VS Code. It stops after 20 minutes unused; Usage stops it at once.",
+            "Agents can read what it shows, signed-in pages included: sign in there only where you are happy for them to see.",
         ),
     )
 
@@ -193,8 +192,8 @@ internal object Guide {
                 "the agent; Delete removes a Claude Code or Codex chat from Cloud Shell for good. Antigravity's show their " +
                 "title and plain-text files; delete those in Antigravity.",
             "Usage: this session against Google's 12 hours, memory, the home folder, the week's hours against Google's 50 " +
-                "(PocketIDE's count), and each agent's tokens. The plans' limits: each company's page (the buttons), /usage " +
-                "in Claude Code, /status in Codex.",
+                "(PocketIDE's count), each agent's tokens, and Stop for a VS Code or the browser. The plans' limits: each " +
+                "company's page (the buttons), /usage in Claude Code, /status in Codex.",
             "Both read only while connected (Connect starts Cloud Shell) and keep nothing on the phone.",
         ),
         link("Google's Cloud Shell limits", DocLinks.CLOUD_SHELL_QUOTA),
@@ -224,11 +223,12 @@ internal object Guide {
             row("\"Sign in to gcloud again\"", "Tap Sign in to gcloud; Google's page opens in Chrome. Allow, and it connects."),
             row("\"Accept Google Cloud's terms\" or \"verify your account\"", "Tap Open Google's page (once), do what Google asks, then Try again."),
             row("The connection dropped", "It connects again by itself while an agent is open; else tap Try again."),
-            row("VS Code says it cannot reconnect", "Tap Reload in PocketIDE's bar."),
+            row("VS Code says it cannot reconnect", "Tap Reload in PocketIDE's bar: it starts VS Code again if it stopped."),
+            row("A VS Code or the browser needs memory", "Usage: stop an agent's VS Code you are not using, then try again."),
             row("An agent is missing", "Tools > Terminal, run pocketide update."),
             row("Nothing helps", "Disconnect, connect again; then Computer > Run the set-up again (your projects and chats stay)."),
             row("Cloud Shell says the weekly quota is used", "It comes back the next week; Cloud Shell's page shows the usage."),
-            row("The home folder is full", "Delete old projects or files; the first set-up needs about 2 GB free."),
+            row("The home folder is full", "Delete old projects or files; the first set-up needs about 2.5 GB free."),
         ),
         link("PocketIDE's connection", "help:${DocsContent.CONNECTION_ID}"),
     )
@@ -238,13 +238,12 @@ internal object Guide {
         "Your data",
         "What is where, who can see it, and how to delete it.",
         bullets(
-            "In your Cloud Shell, which only your Google account opens: your projects, each agent's chats and sign-in, and each " +
-                "agent's VS Code. Google's privacy notice for Google Cloud applies. It is not in Drive or Photos.",
+            "In your Cloud Shell, which only your Google account opens: your projects, each agent's chats and sign-in, each " +
+                "agent's VS Code, and the browser's profile (~/.pocketide/browser). Google's privacy notice for Google Cloud " +
+                "applies. It is not in Drive or Photos.",
             "On this phone: PocketIDE's settings, and its connection in PocketIDE's private storage: Ubuntu with Google's " +
                 "gcloud and gcloud's sign-in, which no other app can read. Android's backup copies none of it.",
             "At the AI companies: what you ask an agent, and the code it reads, under your account there.",
-            "Downloads: on the phone, Ubuntu (from Ubuntu's servers) and gcloud (from Google), each checked by its SHA-256; " +
-                "in Cloud Shell, the script and code-server from GitHub and the agents from Open VSX.",
             "Delete: in Cloud Shell, run sudo rm -rf \$HOME, then restart it. On the phone: Settings > Your data (it signs " +
                 "gcloud out first).",
         ),
@@ -273,5 +272,5 @@ internal object Guide {
     )
 
     /** The guide, in reading order. */
-    val all: List<DocSection> = listOf(start, computer, connection, agents, ide, chatsUsage, projects, trouble, yourData, permissions)
+    val all: List<DocSection> = listOf(start, computer, connection, agents, ide, browser, chatsUsage, projects, trouble, yourData, permissions)
 }

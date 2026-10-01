@@ -98,12 +98,48 @@ class CloudShellTest {
     @Test
     fun `the script keeps to the home folder and to Google's rules`() {
         val text = script.readText()
-        // Only root's start-up hook uses sudo, and only to drop to the owner's own account.
-        Regex("\\bsudo\\b[^\\n]*").findAll(text).map { it.value }.forEach { assertTrue(it, it.startsWith("sudo -u ")) }
-        listOf("apt-get", "apt install", "while true", "sleep infinity", "keepalive", "keep-alive", "xmrig", "nmap", "masscan", "0.0.0.0")
+        // The browser's libraries come from Cloud Shell's own package lists, and only there; they
+        // last one session (Cloud Shell's system goes back to Google's image each time it starts).
+        val libraries = text.substringAfter("browser_libraries() {").substringBefore("\n}\n")
+        val rest = text.replace(libraries, "")
+        Regex("\\bsudo\\b[^\\n]*").findAll(libraries).forEach { assertTrue(it.value, it.value.startsWith("sudo -n apt-get ")) }
+        // Otherwise only root's start-up hook uses sudo, and only to drop to the owner's own account.
+        Regex("\\bsudo\\b[^\\n]*").findAll(rest).map { it.value }.forEach { assertTrue(it, it.startsWith("sudo -u ")) }
+        listOf("apt-get", "apt install").forEach { assertFalse("the script uses $it outside the browser's libraries", rest.contains(it)) }
+        listOf("apt install", "while true", "sleep infinity", "keepalive", "keep-alive", "xmrig", "nmap", "masscan", "0.0.0.0")
             .forEach { assertFalse("the script uses $it", text.contains(it)) }
         assertFalse("nothing downloaded runs unchecked", Regex("(curl|wget)[^\\n|]*\\|\\s*(ba)?sh").containsMatchIn(text))
         assertTrue("VS Code listens only inside Cloud Shell", text.contains("--bind-addr \"127.0.0.1:"))
+    }
+
+    @Test
+    fun `each agent's VS Code starts only when PocketIDE opens it`() {
+        val text = script.readText()
+        val launcher = text.substringAfter("cat >\"\$BIN/pocketide\" <<'LAUNCHER'\n").substringBefore("\nLAUNCHER\n")
+        val cases = launcher.substringAfter("case \"\${1:-}\" in\n")
+        fun branch(name: String) = cases.substringAfter("\n$name)").substringBefore(";;")
+        assertFalse("Cloud Shell's start starts no VS Code", Regex("\\bstart\\b").containsMatchIn(branch("boot")))
+        assertEquals("a new terminal only puts the command lines in place", "links", branch("--quiet").trim())
+        assertTrue("one agent at a time, by its name", branch("start").contains("port_of \"\$key\""))
+        assertTrue(branch("stop").contains("stop \"\$@\""))
+        assertTrue("Antigravity's backend stops with its VS Code", launcher.contains("pkill -u \"\$(id -u)\" -f \"agy --hub --hub-port=\$AGY_PORT \""))
+        Agent.entries.forEach { agent -> assertTrue(launcher.contains("AGENTS=\"") && text.contains("${CloudShell.key(agent)}:${CloudShell.port(agent)}:")) }
+    }
+
+    @Test
+    fun `the browser listens only inside Cloud Shell, comes from Google, and stops when unused`() {
+        val text = script.readText()
+        assertTrue(text.contains("--remote-debugging-address=127.0.0.1"))
+        assertTrue(text.contains("\"--remote-debugging-port=\$CDP_PORT\""))
+        assertTrue(text.contains("CDP_PORT=${CloudShell.BROWSER_DEVTOOLS_PORT}"))
+        assertTrue(text.contains("VIEW_PORT=${CloudShell.BROWSER_PORT}"))
+        val relay = text.substringAfter("cat >\"\$BASE/browser/relay.py\" <<'RELAY'\n").substringBefore("\nRELAY\n")
+        assertTrue("its view listens only inside Cloud Shell", relay.contains("Server((\"127.0.0.1\", VIEW_PORT), View)"))
+        assertTrue("it stops when no one used it for a while", relay.contains("IDLE_MINUTES = 20"))
+        assertTrue("the owner's input is checked", relay.contains("if urllib.parse.urlparse(url).scheme in (\"http\", \"https\")"))
+        assertTrue("Chrome comes from Google's own address", text.contains("startswith(\"https://storage.googleapis.com/chrome-for-testing-public/\")"))
+        assertTrue("the agents are told how to use it, and to stop it", text.contains("pocketide browser stop"))
+        assertTrue("it needs memory: the launcher says so first", text.contains("return 3"))
     }
 
     @Test

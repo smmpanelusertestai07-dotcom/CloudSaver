@@ -141,6 +141,8 @@ class Info(unittest.TestCase):
         self.assertEqual(["claude-code", "codex", "antigravity"], [agent["agent"] for agent in status["agents"]])
         self.assertEqual([8080, 8081, 8082], [agent["port"] for agent in status["agents"]])
         self.assertEqual([True, False, None], [agent["signedIn"] for agent in status["agents"]])
+        self.assertEqual({"version", "running", "sandbox"}, set(status["browser"]))
+        self.assertIsNone(status["browser"]["version"], "no Chrome downloaded in this home")
 
     def test_chats_of_all_three_agents_newest_first(self):
         found = self.run_info("chats")

@@ -1,5 +1,6 @@
 package com.pocketide.ui.screens.usage
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,18 +10,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +39,7 @@ import com.pocketide.agents.Agent
 import com.pocketide.cloudshell.AgentStatus
 import com.pocketide.cloudshell.AgentUsage
 import com.pocketide.cloudshell.Answer
+import com.pocketide.cloudshell.BrowserStatus
 import com.pocketide.cloudshell.CloudShellInfo
 import com.pocketide.cloudshell.MachineStatus
 import com.pocketide.cloudshell.UsageReport
@@ -55,6 +60,7 @@ import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.web.Browser
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
@@ -71,6 +77,18 @@ fun UsageScreen() {
     var usage by remember { mutableStateOf<Answer<UsageReport>?>(null) }
     var asking by remember { mutableStateOf(false) }
     var again by remember { mutableIntStateOf(0) }
+    var stopping by remember { mutableStateOf<Agent?>(null) }
+    var working by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // Stops [what] in Cloud Shell, then reads everything again.
+    val stop: (suspend () -> Boolean, String) -> Unit = { what, failed ->
+        working = true
+        scope.launch {
+            if (!what()) Toast.makeText(context, failed, Toast.LENGTH_LONG).show()
+            working = false
+            again++
+        }
+    }
     KeepConnectionWhileShown()
     LifecycleStartEffect(Unit) {
         again++
@@ -110,18 +128,19 @@ fun UsageScreen() {
         when {
             link != LinkState.On -> ConnectFirst(link, "Cloud Shell's numbers and the agents' usage are")
             asking && machine == null -> Asking("Reading Cloud Shell's numbers…")
-            else -> {
-                when (val shown = machine) {
-                    is Answer.Got -> Machine(shown.value)
-                    is Answer.Failed -> NoticeCard(shown.why, tone = Tone.WARN)
-                    else -> Unit
-                }
-                Gap(12.dp)
-                when (val shown = usage) {
-                    is Answer.Got -> Agents(shown.value, (machine as? Answer.Got)?.value)
-                    is Answer.Failed -> NoticeCard(shown.why, tone = Tone.WARN)
-                    else -> Unit
-                }
+            else -> Live(
+                machine,
+                usage,
+                enabled = !working,
+                onStopBrowser = { stop({ graph.link.stopBrowser() }, "The browser did not stop. Try again.") },
+                onStopAgent = { stopping = it },
+            )
+        }
+        stopping?.let { agent ->
+            StopQuestion(agent, onDismiss = { stopping = null }) {
+                stopping = null
+                graph.pages.release(agent)
+                stop({ graph.link.stopAgent(agent) }, "${agent.displayName}'s VS Code did not stop. Try again.")
             }
         }
         FinePrint(
@@ -174,18 +193,89 @@ private fun Meter(text: String, fraction: Double) {
     }
 }
 
+/** What Cloud Shell answered: its machine and the browser, then each agent. */
+@Composable
+private fun Live(
+    machine: Answer<MachineStatus>?,
+    usage: Answer<UsageReport>?,
+    enabled: Boolean,
+    onStopBrowser: () -> Unit,
+    onStopAgent: (Agent) -> Unit,
+) {
+    when (machine) {
+        is Answer.Got -> {
+            Machine(machine.value)
+            Gap(12.dp)
+            BrowserCard(machine.value.browser, enabled, onStopBrowser)
+        }
+        is Answer.Failed -> NoticeCard(machine.why, tone = Tone.WARN)
+        else -> Unit
+    }
+    Gap(12.dp)
+    when (usage) {
+        is Answer.Got -> Agents(usage.value, (machine as? Answer.Got)?.value, enabled, onStopAgent)
+        is Answer.Failed -> NoticeCard(usage.why, tone = Tone.WARN)
+        else -> Unit
+    }
+}
+
+/** Asks before [agent]'s VS Code stops: what it was doing in Cloud Shell ends. */
+@Composable
+private fun StopQuestion(agent: Agent, onDismiss: () -> Unit, onStop: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Stop ${agent.displayName}'s VS Code?") },
+        text = {
+            Text(
+                "It frees its memory in Cloud Shell. What ${agent.displayName} is doing there ends; its chats and projects " +
+                    "stay. It starts again when you open ${agent.displayName}.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onStop) { Text("Stop") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * PocketIDE's browser in Cloud Shell: Chrome's version, whether it runs, and whether Chrome's own
+ * sandbox is on there; [onStop] stops it.
+ */
+@Composable
+private fun BrowserCard(browser: BrowserStatus, enabled: Boolean, onStop: () -> Unit) {
+    SectionCard("Browser") {
+        InfoRow("Chrome", browser.version ?: "Not downloaded yet")
+        InfoRow("Running", if (browser.running) "Yes" else "No")
+        browser.sandbox?.let { InfoRow("Chrome's own sandbox", if (it) "On" else "Off") }
+        Note(
+            when {
+                browser.version == null ->
+                    "Chrome comes with the set-up and Cloud Shell's daily update; Tools > Browser downloads it if it is missing " +
+                        "(about 120 MB)."
+                browser.sandbox == false ->
+                    "Cloud Shell's container does not let Chrome turn its own sandbox on. Cloud Shell itself still keeps the " +
+                        "browser apart from your phone and your other data. The agents can read what it shows."
+                else -> "The agents drive it, and can read what it shows: sign in there only where you are happy for them to see."
+            },
+        )
+        if (browser.running) {
+            OutlinedButton(onClick = onStop, enabled = enabled) { Text("Stop the browser") }
+        }
+    }
+}
+
 /** Each agent: its VS Code, its sign-in, what it used, and its company's page of the plan's limits. */
 @Composable
-private fun Agents(report: UsageReport, machine: MachineStatus?) {
+private fun Agents(report: UsageReport, machine: MachineStatus?, enabled: Boolean, onStop: (Agent) -> Unit) {
     Agent.entries.forEach { agent ->
-        AgentCard(agent, report, machine?.agents?.firstOrNull { it.agent == CloudShellInfo.key(agent) })
+        val status = machine?.agents?.firstOrNull { it.agent == CloudShellInfo.key(agent) }
+        AgentCard(agent, report, status, enabled) { onStop(agent) }
         Gap(12.dp)
     }
     if (report.partial) FinePrint("Cloud Shell took long to read every file: some numbers may be low. Read again.")
 }
 
 @Composable
-private fun AgentCard(agent: Agent, report: UsageReport, status: AgentStatus?) {
+private fun AgentCard(agent: Agent, report: UsageReport, status: AgentStatus?, enabled: Boolean, onStop: () -> Unit) {
     val context = LocalContext.current
     SectionCard(null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -210,6 +300,9 @@ private fun AgentCard(agent: Agent, report: UsageReport, status: AgentStatus?) {
         }
         val (label, url) = usagePage(agent)
         OutlinedButton(onClick = { Browser.open(context, url) }) { Text(label) }
+        if (status?.running == true) {
+            OutlinedButton(onClick = onStop, enabled = enabled) { Text("Stop its VS Code") }
+        }
     }
 }
 
@@ -218,7 +311,7 @@ private fun facts(status: AgentStatus?): String? {
     status ?: return null
     return listOfNotNull(
         status.version?.let { "version $it" },
-        if (status.running) "VS Code running" else "VS Code stopped",
+        if (status.running) "VS Code running" else "VS Code not running",
         "signed in".takeIf { status.signedIn == true },
     ).joinToString(" · ")
 }

@@ -3,7 +3,9 @@ package com.pocketide.ui
 import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -36,6 +38,7 @@ import com.pocketide.ui.screens.onboarding.WelcomeScreen
 import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.screens.usage.UsageScreen
 import com.pocketide.ui.theme.PocketTheme
+import com.pocketide.ui.workspace.BrowserStarting
 import com.pocketide.ui.workspace.ToolsSheet
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -117,11 +120,18 @@ class ScreenTour {
 
     @Test fun usageDarkSmall() = shoot("18-usage-small-large-text-dark", ThemeMode.DARK, SMALL_PHONE, LARGE_TEXT) { UsageScreen() }
 
+    // The line under the agent while Tools > Browser starts Chrome in Cloud Shell.
+    @Test fun browserStarting() = shoot("19-browser-starting-small-large-text", width = SMALL_PHONE, fontScale = LARGE_TEXT) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Bottom) {
+            BrowserStarting("Downloading Chrome 154.0.8037.92 (about 120 MB)...")
+        }
+    }
+
     @Composable
     private fun Home() = HomeScreen(onComputer = {}, onYourData = {}, onHelp = {})
 
     @Composable
-    private fun Tools() = ToolsSheet(enabled = true, onCommand = {}, onReload = {}, onHome = {}, onClose = {})
+    private fun Tools() = ToolsSheet(enabled = true, browserEnabled = true, onCommand = {}, onBrowser = {}, onReload = {}, onHome = {}, onClose = {})
 
     @Composable
     private fun Settings() = SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {})

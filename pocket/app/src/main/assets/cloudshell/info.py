@@ -8,7 +8,7 @@ whether an agent's sign-in file is there), sends nothing anywhere, and writes no
 history.
 
   status            the machine: how long it has run, processors, memory, the home folder's disk,
-                    and each agent's VS Code
+                    each agent's VS Code, and PocketIDE's browser
   chats             every chat of the three agents, newest first
   chat AGENT ID     one chat's messages (text; long ones cut, only the newest kept)
   usage             what the agents used in the last day and week, from their own files, and
@@ -22,6 +22,7 @@ import re
 import sqlite3
 import sys
 import time
+import urllib.request
 from datetime import datetime, timezone
 
 HOME = os.path.expanduser("~")
@@ -42,6 +43,7 @@ IN_USE_SECONDS = 120
 DAY = 86400
 WEEK = 7 * DAY
 DEADLINE = time.monotonic() + 25
+BROWSER_DEVTOOLS_PORT = 9222
 # What Claude Code writes as a user's message but the owner never typed.
 NOT_TYPED = ("<command-", "<local-command", "Caveat:", "<system-reminder>", "<bash-", "[Request interrupted")
 # What Codex sends as the user's first message: its own context, not the owner's words.
@@ -159,6 +161,33 @@ def extension_version(prefix, key):
     return ".".join(str(part) for part in max(found)) if found else None
 
 
+def answers(port, path):
+    """True when this computer's [port] answers [path]: never through a proxy the environment may name."""
+    local = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with local.open("http://127.0.0.1:%d%s" % (port, path), timeout=1) as answer:
+            return answer.status == 200
+    except OSError:
+        return False
+
+
+def browser():
+    """PocketIDE's browser: Chrome's version once downloaded, whether it runs, and with Chrome's own sandbox or not."""
+    base = os.path.join(HOME, ".pocketide", "browser")
+    try:
+        with open(os.path.join(base, "chrome", "VERSION")) as source:
+            version = source.read().strip() or None
+    except OSError:
+        version = None
+    running = answers(BROWSER_DEVTOOLS_PORT, "/json/version")
+    try:
+        with open(os.path.join(base, "sandbox")) as source:
+            sandbox = source.read().strip() == "on"
+    except OSError:
+        sandbox = None
+    return {"version": version, "running": running, "sandbox": sandbox if running else None}
+
+
 def status():
     with open("/proc/uptime") as source:
         uptime = float(source.read().split()[0])
@@ -201,6 +230,7 @@ def status():
         "codeServer": os.path.basename(os.path.realpath(current)) if os.path.exists(current) else None,
         "updated": updated,
         "agents": agents,
+        "browser": browser(),
     }
 
 

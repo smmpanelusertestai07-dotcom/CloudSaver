@@ -110,7 +110,8 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                 Text(
                     "50 hours a week (about 7 hours a day), at most 12 hours in one session. Cloud Shell stops about 40 minutes " +
                         "after you stop using it, so agents do not work on while you are away. 5 GB home folder; the set-up uses " +
-                        "about 1.6 GB. The machine itself is small (2 GB of memory; Google's Boost mode gives 4 GB for a day).",
+                        "about 1.9 GB. Its memory is shared by everything running there: each agent's VS Code starts when you " +
+                        "open it, and Usage shows the memory.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TextButton(onClick = { Browser.open(context, CloudShell.LIMITS) }) { Text("Google's limits") }
@@ -119,14 +120,14 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
             SectionCard("Where your data is") {
                 Text(
                     "Only in your Cloud Shell home folder, which only your Google account opens: each agent's projects, its " +
-                        "chats and sign-in (~/.claude, ~/.codex, ~/.gemini) and its VS Code (~/.pocketide). What you ask an agent, " +
+                        "chats and sign-in (~/.claude, ~/.codex, ~/.gemini), its VS Code and the browser's profile (~/.pocketide). What you ask an agent, " +
                         "and the code it reads, also goes to its company. It is not in Drive, Photos or your Google Cloud " +
                         "projects, and agent chats do not show on claude.ai or chatgpt.com.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    "Tidied by itself when Cloud Shell starts: caches unused for 14 days, logs after 7 days, Codex chats after " +
-                        "30 days (Claude Code deletes its own after 30 days). Projects are never deleted.",
+                    "Tidied by itself when Cloud Shell starts: caches unused for 14 days and logs after 7 days. Chats stay until " +
+                        "you delete them (Chats); Claude Code deletes its own after 30 days. Projects are never deleted.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

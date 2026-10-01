@@ -74,6 +74,7 @@ import com.pocketide.cloudshell.CloudShell
 import com.pocketide.cloudshell.SignInCatcher
 import com.pocketide.docs.DocLinks
 import com.pocketide.graph
+import com.pocketide.link.BrowserStart
 import com.pocketide.link.LinkState
 import com.pocketide.link.Problem
 import com.pocketide.link.SignInResult
@@ -101,8 +102,9 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     val link by graph.link.state.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val up by graph.link.agentsUp.collectAsStateWithLifecycle()
+    val browserStart by graph.link.browser.collectAsStateWithLifecycle()
     var pageStates by remember { mutableStateOf(mapOf<Agent, PageState>()) }
-    var started by remember { mutableStateOf(setOf<Agent>()) }
     var notStarted by remember { mutableStateOf<Agent?>(null) }
     var viewer by remember { mutableStateOf<String?>(null) }
     var askOpen by remember { mutableStateOf<String?>(null) }
@@ -193,6 +195,32 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     BackHandler(enabled = viewer == null && !tools) { back() }
     BackHandler(enabled = tools) { tools = false }
 
+    // Reload: the agent's VS Code starts again in Cloud Shell first if it stopped there (its memory,
+    // a restart of Cloud Shell), then its page loads afresh.
+    val reload: () -> Unit = {
+        if (link == LinkState.On) {
+            pageStates = pageStates - agent
+            graph.pages.release(agent)
+            graph.link.agentGone(agent)
+            generation++
+        } else {
+            graph.link.connect()
+        }
+    }
+
+    // A connection that comes back tries each agent's VS Code again.
+    LaunchedEffect(link) {
+        if (link != LinkState.On) notStarted = null
+    }
+
+    // The browser's view opens once it runs (Tools > Browser).
+    LaunchedEffect(browserStart) {
+        if (browserStart == BrowserStart.Ready) {
+            graph.link.pageUrl(CloudShell.BROWSER_PORT, "/")?.let { viewer = it }
+            graph.link.browserShown()
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -208,13 +236,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                 viewer = null
                 if (picked != agent) onAgent(picked)
             },
-            onReload = {
-                if (link == LinkState.On) {
-                    page()?.reload() ?: run { generation++ }
-                } else {
-                    graph.link.connect()
-                }
-            },
+            onReload = reload,
             onTools = { tools = true },
             menu = listOf(
                 "PocketIDE home" to onHome,
@@ -228,35 +250,28 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
             when (val state = link) {
                 LinkState.On -> {
                     val url = graph.link.agentUrl(agent)
-                    val ready = url != null && (agent in started || graph.pages.has(agent, url))
                     when {
                         url == null -> Waiting("Connecting…", null)
                         notStarted == agent -> Problem(
                             "${agent.displayName}'s VS Code did not start in Cloud Shell.",
-                            "Try again. If it keeps failing, disconnect and connect again: PocketIDE starts every VS Code again.",
+                            "Try again. If it keeps failing, Cloud Shell may be short of memory: stop an agent's VS Code " +
+                                "you are not using (PocketIDE's Usage), or disconnect and connect again.",
                         ) {
                             PrimaryAction("Try again", onClick = { notStarted = null })
                             TextButton(onClick = { graph.link.disconnect() }) { Text("Disconnect") }
                         }
-                        !ready -> {
+                        // Each agent's VS Code starts when it opens, so Cloud Shell's memory goes to the agents in use.
+                        agent !in up -> {
                             Waiting("Starting ${agent.displayName}'s VS Code…", "The first start after a break takes a minute.")
                             LaunchedEffect(agent, url) {
-                                if (graph.link.awaitServer(CloudShell.port(agent))) started = started + agent else notStarted = agent
+                                if (!graph.link.openAgent(agent)) notStarted = agent
                             }
                         }
                         else -> {
                             key(agent, url, generation) {
                                 AndroidView(factory = { graph.pages.attach(agent, url, activity, host) }, modifier = Modifier.fillMaxSize())
                             }
-                            PageOverlay(pageStates[agent], onReload = {
-                                pageStates = pageStates - agent
-                                if (pageStates[agent] == PageState.Stopped || page()?.web == null) {
-                                    graph.pages.release(agent)
-                                    generation++
-                                } else {
-                                    page()?.reload()
-                                }
-                            })
+                            PageOverlay(pageStates[agent], onReload = reload)
                         }
                     }
                 }
@@ -300,6 +315,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                 )
             }
         }
+        (browserStart as? BrowserStart.Starting)?.let { BrowserStarting(it.said) }
         if (imeVisible() && viewer == null && link == LinkState.On) {
             KeyBar(
                 onKey = { code, meta -> page()?.sendKey(code, meta) },
@@ -319,19 +335,43 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     if (tools) {
         ToolsSheet(
             enabled = link == LinkState.On && page()?.web != null,
+            browserEnabled = link == LinkState.On,
             onCommand = { command ->
                 tools = false
                 page()?.run(command)
             },
+            onBrowser = {
+                tools = false
+                graph.link.startBrowser()
+            },
             onReload = {
                 tools = false
-                if (link == LinkState.On) page()?.reload() ?: run { generation++ } else graph.link.connect()
+                reload()
             },
             onHome = {
                 tools = false
                 onHome()
             },
             onClose = { tools = false },
+        )
+    }
+
+    (browserStart as? BrowserStart.Refused)?.let { refused ->
+        BrowserRefused(
+            refused = refused,
+            current = agent,
+            onStop = { other ->
+                graph.link.browserShown()
+                graph.pages.release(other)
+                scope.launch {
+                    if (graph.link.stopAgent(other)) graph.link.startBrowser() else toast("${other.displayName}'s VS Code did not stop. Try again.")
+                }
+            },
+            onRetry = {
+                graph.link.browserShown()
+                graph.link.startBrowser()
+            },
+            onClose = { graph.link.browserShown() },
         )
     }
 
@@ -354,6 +394,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
 /** How an address of the door shows in the page viewer: as the Cloud Shell address it is (localhost:PORT/…). */
 private fun shownAs(url: String, doorPort: (String) -> Int?): String {
     val port = doorPort(url) ?: return url
+    if (port == CloudShell.BROWSER_PORT) return "Browser · Chrome in Cloud Shell"
     return "localhost:$port" + Opening.pathOf(url).takeIf { it != "/" }.orEmpty()
 }
 
@@ -384,7 +425,7 @@ private fun TopBar(
                 Agent.entries.forEach { each -> AgentChip(each, selected = each == agent, onClick = { onAgent(each) }) }
             }
             IconButton(onClick = onReload) { Icon(Icons.Outlined.Refresh, contentDescription = "Reload this VS Code") }
-            IconButton(onClick = onTools) { Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, settings, all commands") }
+            IconButton(onClick = onTools) { Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, settings, the browser, all commands") }
             Box {
                 IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More") }
                 DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

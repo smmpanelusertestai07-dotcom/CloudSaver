@@ -16,20 +16,37 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.security.SecureRandom
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
+
+/** PocketIDE's browser in Cloud Shell, as the owner last asked for it (Tools > Browser). */
+sealed interface BrowserStart {
+    data object Idle : BrowserStart
+
+    /** Starting; [said] is the launcher's latest line (Chrome's download, its libraries). */
+    data class Starting(val said: String? = null) : BrowserStart
+
+    /** It runs: its view opens. */
+    data object Ready : BrowserStart
+
+    /** It did not start: [why] in the launcher's words; [lowMemory] when Cloud Shell's memory was short. */
+    data class Refused(val why: String, val lowMemory: Boolean) : BrowserStart
+}
 
 /** How gcloud's sign-in on this phone ended. */
 sealed interface SignInResult {
@@ -42,9 +59,10 @@ sealed interface SignInResult {
  * PocketIDE's connection to Google Cloud Shell, made by Google's own gcloud on this phone: no
  * Google Cloud project, no key of PocketIDE's own. gcloud signs in once (Google's page, in Chrome),
  * starts Cloud Shell when it is off and opens one SSH connection to it through Google's servers.
- * Through that connection PocketIDE sets Cloud Shell up (its pinned, checked script),
- * starts the agents' VS Code there and brings their ports to the phone as socket files only this
- * app can open. [PortProxy] shows them to PocketIDE's own screens, behind a secret key.
+ * Through that connection PocketIDE sets Cloud Shell up (its pinned, checked script), starts each
+ * agent's VS Code there when it opens (and the browser, when asked), and brings their ports to the
+ * phone as socket files only this app can open. [PortProxy] shows them to PocketIDE's own screens,
+ * behind a secret key.
  *
  * It connects while the owner uses the agents and disconnects [IDLE_MS] after they leave them,
  * so Cloud Shell stops as Google intends; it never keeps Cloud Shell awake by itself.
@@ -84,6 +102,16 @@ class Link internal constructor(
     private var door: PortProxy? = null
     private val forwarded = ConcurrentHashMap.newKeySet<Int>()
     private val forwardLocks = ConcurrentHashMap<Int, Any>()
+
+    private val mutableAgentsUp = MutableStateFlow<Set<Agent>>(emptySet())
+    private val mutableBrowser = MutableStateFlow<BrowserStart>(BrowserStart.Idle)
+    private var browserStart: Job? = null
+
+    /** The agents whose VS Code answered on this connection ([openAgent]); empty while not connected. */
+    val agentsUp: StateFlow<Set<Agent>> = mutableAgentsUp.asStateFlow()
+
+    /** How the owner's last [startBrowser] went. */
+    val browser: StateFlow<BrowserStart> = mutableBrowser.asStateFlow()
 
     @Volatile
     private var signingIn: Process? = null
@@ -328,16 +356,19 @@ class Link internal constructor(
         watch(process)
     }
 
-    /** Sets Cloud Shell up when it needs it, then starts the agents' VS Code with PocketIDE's door. */
+    /**
+     * Sets Cloud Shell up when it needs it and tells it PocketIDE's door. No VS Code starts here:
+     * each starts when its agent opens ([openAgent]), so Cloud Shell's memory goes to the agents in use.
+     */
     private suspend fun prepareCloudShell() {
         step("Checking Cloud Shell…")
         val current = settings.settings.value.let { it.cloudScript == CloudShell.SCRIPT_COMMIT && it.cloudSetUpAt != 0L }
         if (!current || through(Gcloud.HAS_LAUNCHER) != 0) setUp()
         val port = openDoor()
-        step("Starting VS Code…")
+        step("Preparing Cloud Shell…")
         val template = "http://{{port}}-$key.localhost:$port/"
-        if (through(Gcloud.startAgents(template)) != 0) {
-            throw LinkFailure(Problem.OTHER, "The agents' VS Code did not start in Cloud Shell. Try again, or set Cloud Shell up again.")
+        if (through(Gcloud.prepare(template)) != 0) {
+            throw LinkFailure(Problem.OTHER, "PocketIDE could not prepare Cloud Shell. Try again, or set Cloud Shell up again.")
         }
         // The agents' ports come to the phone now, so their screens open without a wait.
         Agent.entries.forEach { forward(CloudShell.port(it)) }
@@ -389,6 +420,7 @@ class Link internal constructor(
         if (master !== process) return
         master = null
         forwarded.clear()
+        mutableAgentsUp.value = emptySet()
         countConnectedTime()
         // Not wanted: disconnect says so. Still connecting: its next step fails and says why.
         if (!wanted || (connecting?.isActive == true && mutableState.value !is LinkState.On)) return
@@ -412,6 +444,9 @@ class Link internal constructor(
         val process = master
         master = null
         forwarded.clear()
+        mutableAgentsUp.value = emptySet()
+        browserStart?.cancel()
+        mutableBrowser.value = BrowserStart.Idle
         countConnectedTime()
         if (process != null) {
             if (process.isAlive) withTimeoutOrNull(CLOSE_TIMEOUT_MS) { runCatching { quiet(Gcloud.close()) } }
@@ -429,6 +464,75 @@ class Link internal constructor(
     }
 
     /**
+     * Starts [agent]'s VS Code in Cloud Shell when it is not running there, and waits until it
+     * answers: true then (and the agent is in [agentsUp]); false when not connected or it did not start.
+     */
+    suspend fun openAgent(agent: Agent): Boolean {
+        if (!connected || tried(Gcloud.launcher("start", CloudShell.key(agent))) != 0) return false
+        if (!awaitServer(CloudShell.port(agent))) return false
+        mutableAgentsUp.update { it + agent }
+        return true
+    }
+
+    /** [agent]'s page could not reach its VS Code: the next [openAgent] starts it again if it stopped. */
+    fun agentGone(agent: Agent) {
+        mutableAgentsUp.update { it - agent }
+    }
+
+    /** Stops [agent]'s VS Code in Cloud Shell to free its memory; what the agent was doing there ends. */
+    suspend fun stopAgent(agent: Agent): Boolean {
+        if (!connected) return false
+        mutableAgentsUp.update { it - agent }
+        return tried(Gcloud.launcher("stop", CloudShell.key(agent))) == 0
+    }
+
+    /**
+     * Starts PocketIDE's browser in Cloud Shell (Chrome, downloaded the first time, and its view),
+     * once at a time; [browser] says how it goes. It goes on when the screen that asked leaves.
+     */
+    fun startBrowser() {
+        scope.launch(control) {
+            if (browserStart?.isActive == true) return@launch
+            mutableBrowser.value = BrowserStart.Starting()
+            browserStart = scope.launch { mutableBrowser.value = browserStarted() }
+        }
+    }
+
+    /** The screen showed what [browser] said (the view, or why not): back to [BrowserStart.Idle]. */
+    fun browserShown() {
+        mutableBrowser.update { if (it is BrowserStart.Ready || it is BrowserStart.Refused) BrowserStart.Idle else it }
+    }
+
+    private suspend fun browserStarted(): BrowserStart {
+        if (!connected) return BrowserStart.Refused("Connect first: the browser runs in Cloud Shell.", lowMemory = false)
+        val said = ArrayDeque<String>()
+        val job = currentCoroutineContext()[Job]
+        val code = withTimeoutOrNull(BROWSER_START_MS) {
+            tried(Gcloud.launcher("browser", "start")) { line ->
+                val clean = GcloudSays.clean(line)
+                if (clean.isNotEmpty()) {
+                    synchronized(said) {
+                        said.addLast(clean)
+                        while (said.size > SAID_LINES) said.removeFirst()
+                    }
+                    // A line read after the start was called off (disconnected) changes nothing.
+                    if (job?.isActive == true) mutableBrowser.value = BrowserStart.Starting(clean)
+                }
+            }
+        }
+        val last = synchronized(said) { said.lastOrNull() }
+        return when (code) {
+            0 -> BrowserStart.Ready
+            null -> BrowserStart.Refused("The browser took too long to start. Try again.", lowMemory = false)
+            LOW_MEMORY -> BrowserStart.Refused(last ?: "Cloud Shell has too little memory free for the browser.", lowMemory = true)
+            else -> BrowserStart.Refused(last ?: "The browser did not start. Try again.", lowMemory = false)
+        }
+    }
+
+    /** Stops PocketIDE's browser in Cloud Shell (Chrome and its view). */
+    suspend fun stopBrowser(): Boolean = connected && tried(Gcloud.launcher("browser", "stop")) == 0
+
+    /**
      * What [command] printed in Cloud Shell (its output, not its errors), through the open
      * connection; null when not connected, when it failed, or when it said more than [ASK_LIMIT]
      * characters. It never connects by itself.
@@ -438,8 +542,14 @@ class Link internal constructor(
         val said = StringBuilder()
         var tooMuch = false
         val code = withTimeoutOrNull(ASK_TIMEOUT_MS) {
-            computer.run(Gcloud.command(Gcloud.through(command)).copy(mergeErrors = false)) { line ->
-                if (said.length + line.length < ASK_LIMIT) said.append(line).append('\n') else tooMuch = true
+            try {
+                computer.run(Gcloud.command(Gcloud.through(command)).copy(mergeErrors = false)) { line ->
+                    if (said.length + line.length < ASK_LIMIT) said.append(line).append('\n') else tooMuch = true
+                }
+            } catch (expected: IllegalStateException) {
+                NOT_RUN // the connection's Linux closed meanwhile
+            } catch (expected: IOException) {
+                NOT_RUN
             }
         }
         return said.toString().takeIf { code == 0 && !tooMuch }
@@ -588,6 +698,15 @@ class Link internal constructor(
     private suspend fun through(command: String, onLine: (String) -> Unit = {}): Int =
         computer.run(Gcloud.command(Gcloud.through(command)), onLine)
 
+    /** [through], for what the owner asks from a screen: [NOT_RUN] when the connection's Linux cannot run it now. */
+    private suspend fun tried(command: String, onLine: (String) -> Unit = {}): Int = try {
+        through(command, onLine)
+    } catch (expected: IllegalStateException) {
+        NOT_RUN // closed meanwhile (removed, or updating)
+    } catch (expected: IOException) {
+        NOT_RUN
+    }
+
     companion object {
         /** How long after the owner leaves the agents the connection ends. */
         const val IDLE_MS = 15 * 60 * 1000L
@@ -605,6 +724,15 @@ class Link internal constructor(
         private const val SUSPECT_EVERY_MS = 10_000L
         private const val SAID_LINES = 40
         private const val ASK_TIMEOUT_MS = 60_000L
+
+        /** The first browser downloads Chrome (about 120 MB) and may install its libraries. */
+        private const val BROWSER_START_MS = 6 * 60_000L
+
+        /** `pocketide browser start`'s exit code when Cloud Shell has too little memory free. */
+        private const val LOW_MEMORY = 3
+
+        /** What [tried] says when the command could not run at all. */
+        private const val NOT_RUN = -1
         private const val ASK_LIMIT = 4_000_000
         private const val KEY_BYTES = 16
         private val KEY = Regex("[0-9a-f]{32}")

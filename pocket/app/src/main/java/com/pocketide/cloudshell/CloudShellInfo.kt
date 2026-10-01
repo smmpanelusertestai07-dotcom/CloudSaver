@@ -52,7 +52,12 @@ data class MachineStatus(
     val codeServer: String? = null,
     val updated: Long = 0,
     val agents: List<AgentStatus> = emptyList(),
+    val browser: BrowserStatus = BrowserStatus(),
 ) : Reply
+
+/** PocketIDE's browser in Cloud Shell: Chrome's [version] once downloaded; [sandbox] once it ran. */
+@Serializable
+data class BrowserStatus(val version: String? = null, val running: Boolean = false, val sandbox: Boolean? = null)
 
 @Serializable
 data class ChatSummary(
@@ -182,11 +187,7 @@ class CloudShellInfo(private val context: Context, private val link: Link) {
         }
 
         /** The script's name for [agent] (its VS Code's folder in Cloud Shell). */
-        fun key(agent: Agent): String = when (agent) {
-            Agent.CLAUDE -> "claude-code"
-            Agent.CODEX -> "codex"
-            Agent.ANTIGRAVITY -> "antigravity"
-        }
+        fun key(agent: Agent): String = CloudShell.key(agent)
 
         fun agentOf(key: String): Agent? = Agent.entries.firstOrNull { key(it) == key }
     }

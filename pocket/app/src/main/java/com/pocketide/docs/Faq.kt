@@ -81,7 +81,7 @@ internal object Faq {
             "more-extensions",
             "agents",
             "Can I add other extensions?",
-            "Yes: in any agent's VS Code, Tools > Extensions finds everything on Open VSX, and Tools > Install " +
+            "Yes: in any agent's VS Code, Tools > All commands > Install Extensions finds everything on Open VSX, and Tools > Install " +
                 "from a link installs one that is not there, from its maker's .vsix link. Each VS Code keeps its own; Open VSX's " +
                 "update by themselves. Microsoft's own extensions (Pylance, C# Dev Kit, Remote, Live Share) are not on Open VSX.",
         ),
@@ -133,10 +133,35 @@ internal object Faq {
             "tools-back",
             DocsContent.IDE_ID,
             "How do Tools and Back work in an agent's VS Code?",
-            "Tools (the wrench) opens the agent, a file, the terminal, settings, install from a link or all commands, each " +
-                "full screen, one at a time. Back closes a menu, dialog or notice first, then what covers the agent, and leaves " +
+            "Tools (the wrench) opens the agent, a file, the terminal, settings, install from a link, all commands or the " +
+                "browser, each full screen, one at a time. Back closes a menu, dialog or notice first, then what covers the agent, and leaves " +
                 "the agent only on a second Back. An extension's own page (Antigravity's settings, for example) opens full " +
                 "screen too, and Back returns to the agent.",
+        ),
+        faq(
+            "browser-watch",
+            "browser",
+            "Can I watch the browser the agents use, and take over?",
+            "Yes: Tools > Browser shows the Chrome the agents use in Cloud Shell, live. Tap, scroll and type to take over; " +
+                "Watch only keeps your taps out while an agent works. The agents drive it through Chrome's DevTools inside " +
+                "Cloud Shell, as Playwright does.",
+        ),
+        faq(
+            "browser-safe",
+            "browser",
+            "Is the browser safe?",
+            "It runs in your Cloud Shell, never on the phone, and listens only inside it; PocketIDE shows it through its " +
+                "private door. Chrome's own sandbox is on where Cloud Shell allows it (Usage says); Cloud Shell still keeps it " +
+                "apart from your phone and your other data. The agents can read what it shows, signed-in pages included, so " +
+                "sign in there only where you are happy for them to see. It stops by itself after 20 minutes without use.",
+        ),
+        faq(
+            "vscode-memory",
+            DocsContent.COMPUTER_ID,
+            "Why does an agent's VS Code start only when I open it?",
+            "Everything in Cloud Shell shares its memory. Each VS Code starts when you open its agent, so the memory goes to " +
+                "the agents you use. Usage shows the memory and stops a VS Code you no longer need: what that agent was doing " +
+                "ends, its chats and projects stay, and it starts again when you open it.",
         ),
         faq(
             "connection-stays",

@@ -116,12 +116,23 @@ internal object Gcloud {
     /** [command] in a login shell, where Cloud Shell's PATH (with ~/.local/bin) is set up. */
     fun login(command: String): String = "bash -lc " + quote(command)
 
-    /** The launcher starts each agent's VS Code that is not running, with code-server's links to a port going to [template]. */
-    fun startAgents(template: String): String =
+    /**
+     * The launcher learns where code-server's links to a port go ([template]; a VS Code already
+     * running starts again with it) and puts the agents' command lines in place. No VS Code starts.
+     */
+    fun prepare(template: String): String =
         login("~/.local/bin/pocketide proxy-uri " + quote(template) + "; ~/.local/bin/pocketide --quiet")
+
+    /** The launcher with [words] (an agent's start or stop, the browser's): each a plain word, quoted anyway. */
+    fun launcher(vararg words: String): String {
+        require(words.isNotEmpty() && words.all { LAUNCHER_WORD.matches(it) }) { "Not a word the launcher takes: ${words.toList()}" }
+        return login("~/.local/bin/pocketide " + words.joinToString(" ") { quote(it) })
+    }
 
     /** Exit 0 when Cloud Shell has PocketIDE's launcher (its home may have been reset or deleted since). */
     const val HAS_LAUNCHER = "test -x ~/.local/bin/pocketide"
 
     fun quote(text: String) = "'" + text.replace("'", "'\\''") + "'"
+
+    private val LAUNCHER_WORD = Regex("^[a-z][a-z-]{0,31}$")
 }
