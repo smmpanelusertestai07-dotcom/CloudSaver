@@ -99,6 +99,7 @@ fun ExtensionsScreen(onBack: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var found by remember { mutableStateOf<OpenVsx.Found?>(null) }
     var installed by remember { mutableStateOf<Installed?>(null) }
+    var installedWhy by remember { mutableStateOf<String?>(null) }
     var picked by remember { mutableStateOf<OpenVsxExtension?>(null) }
     var asked by remember { mutableIntStateOf(0) }
     KeepConnectionWhileShown()
@@ -108,7 +109,14 @@ fun ExtensionsScreen(onBack: () -> Unit) {
         found = OpenVsx.search(query)
     }
     LaunchedEffect(link == LinkState.On, asked) {
-        if (link == LinkState.On) installed = (graph.cloudInfo.extensions() as? Answer.Got)?.value?.agents
+        if (link == LinkState.On) {
+            installedWhy = null
+            when (val answer = graph.cloudInfo.extensions()) {
+                is Answer.Got -> installed = answer.value.agents
+                is Answer.Failed -> installedWhy = answer.why
+                Answer.NotConnected -> Unit
+            }
+        }
     }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -130,7 +138,7 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (query.isBlank()) item { InstalledCard(link, installed, onChanged = { asked++ }) }
+                if (query.isBlank()) item { InstalledCard(link, installed, installedWhy, onChanged = { asked++ }) }
                 item {
                     Text(
                         if (query.isBlank()) "Most installed on Open VSX" else "On Open VSX",
@@ -156,14 +164,19 @@ fun ExtensionsScreen(onBack: () -> Unit) {
 
 /** What each agent's VS Code has now, read from Cloud Shell; anything but the agent's own can go. */
 @Composable
-private fun InstalledCard(link: LinkState, installed: Installed?, onChanged: () -> Unit) {
+private fun InstalledCard(link: LinkState, installed: Installed?, why: String?, onChanged: () -> Unit) {
     if (link != LinkState.On) {
         ConnectFirst(link, "Each agent's extensions are")
         return
     }
     SectionCard("In each agent's VS Code") {
         if (installed == null) {
-            Asking("Asking Cloud Shell…")
+            if (why == null) {
+                Asking("Asking Cloud Shell…")
+            } else {
+                NoticeCard(why, tone = Tone.WARN)
+                TextButton(onClick = onChanged) { Text("Try again") }
+            }
             return@SectionCard
         }
         Agent.entries.forEach { agent ->
@@ -291,7 +304,7 @@ private fun ExtensionDialog(extension: OpenVsxExtension, link: LinkState, instal
                     Text("Connect to install it: the agents' VS Code is in Cloud Shell. Home > Open the computer, or Computer > Connect.")
                 } else {
                     Agent.entries.forEach { agent ->
-                        AgentTarget(agent, installed = has(agent), working = working, enabled = working == null && installed != null) {
+                        AgentTarget(agent, installed = has(agent), working = working, enabled = working == null) {
                             if (!unverifiedOk) {
                                 unverifiedOk = true
                                 said = "Tap again to install it anyway."
