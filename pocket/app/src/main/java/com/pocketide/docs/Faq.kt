@@ -259,7 +259,8 @@ internal object Faq {
             "Why does a settings page close when I go to the agent or the whole IDE?",
             "A page (Antigravity's settings, VS Code's Settings, an extension's own page) is only ever in front, alone and " +
                 "full screen, or closed: it is made for a computer's width, so it never shares the screen, even in the whole " +
-                "IDE. Going to the agent or to the whole IDE closes it, and it opens full screen again next time; what you " +
+                "IDE; if something opens beside it (the agent's panel, the Explorer), it has the whole screen back within a " +
+                "second or two. Going to the agent or to the whole IDE closes it, and it opens full screen again next time; what you " +
                 "changed in it is already saved. Files close too when the agent comes back (they save by themselves), so " +
                 "whatever you open next opens alone, full screen; a terminal keeps running behind the agent.",
         ),

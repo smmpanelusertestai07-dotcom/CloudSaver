@@ -5,7 +5,8 @@
 // It checks what the owner sees: the agent's own panel alone, full screen; the terminal full screen
 // over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
 // an editor left behind it; a page (Settings) opened from the whole IDE getting the whole screen, closed
-// by Back, by the IDE button and by the agent's, and in front again whenever it opens; a file opened
+// by Back, by the IDE button and by the agent's, in front again whenever it opens, and alone again when
+// the Explorer opens beside it; a file opened
 // again after the agent, alone (VS Code would split the screen); the command palette inside
 // the screen and closed by Back's Escape, then the agent's own notice, if any, by the next Back. Any
 // miss is an error, and the screenshots show it.
@@ -85,6 +86,21 @@ async function check(browser, agent, port, name) {
       !shown('.quick-input-widget') && !shown('.monaco-dialog-box') && !shown('.context-view .monaco-menu');
   });
   const run = (name) => page.evaluate((command) => window.__pocketide.run(command), name);
+  // One of VS Code's commands, from the palette as the owner runs it. An agent's webview that is still
+  // starting can take the focus once, which closes the palette: a second tap opens it, as for the owner.
+  const command = async (title) => {
+    for (let tries = 0; tries < 3; tries++) {
+      await run('commands');
+      if (!(await page.waitForSelector('.quick-input-widget input', { timeout: 5000 }).then(() => true, () => false))) continue;
+      await page.waitForTimeout(800);
+      if (!(await page.isVisible('.quick-input-widget input'))) continue;
+      await page.keyboard.type(title);
+      await page.waitForTimeout(1000);
+      await page.keyboard.press('Enter');
+      return;
+    }
+    throw new Error(`the command palette did not stay open to run "${title}"`);
+  };
   try {
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.monaco-workbench', { timeout: 120000 });
@@ -129,19 +145,24 @@ async function check(browser, agent, port, name) {
     await run('agent');
     await until('the agent comes back from there', agentAlone, 10000);
     await after('a page opened again after the agent is in front, full screen', () => page.keyboard.press('Control+Comma'), editorAlone);
+    // Something that opens a side bar beside the page (an agent focusing its own panel, the Explorer
+    // for a folder link) tells the layout extension nothing: the page script sees it, and the page
+    // has the whole screen again within seconds.
+    await command('View: Show Explorer');
+    let beside = false;
+    for (let waited = 0; waited < 3000 && !beside; waited += 200) {
+      beside = (await parts(page)).sidebar > 100;
+      if (!beside) await page.waitForTimeout(200);
+    }
+    if (!beside) fail(`${agent}: the Explorer did not open beside the page, which this check needs`);
+    await until('the page has the whole screen again after the Explorer opened beside it', editorAlone, 10000);
+    await shot('3-page-alone-again');
     await run('agent');
     await until('the agent button closes the page', agentAlone, 10000);
     if (await pageOpen()) fail(`${agent}: the page stayed open behind the agent`);
     // A file opened again after the agent came back (a file link tapped twice): alone, full screen. (Left
     // open behind the agent, VS Code would split the screen between them: nothing stays behind it now.)
-    const userSettings = async () => {
-      await run('commands');
-      await page.waitForSelector('.quick-input-widget input', { timeout: 15000 });
-      await page.waitForTimeout(800);
-      await page.keyboard.type('Preferences: Open User Settings (JSON)');
-      await page.waitForTimeout(1000);
-      await page.keyboard.press('Enter');
-    };
+    const userSettings = () => command('Preferences: Open User Settings (JSON)');
     await after('a file opens full screen', userSettings, editorAlone);
     await run('agent');
     await until('the agent covers the file', agentAlone, 10000);

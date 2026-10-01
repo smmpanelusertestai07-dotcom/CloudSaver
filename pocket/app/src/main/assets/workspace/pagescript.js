@@ -15,7 +15,8 @@
 // - A page made for a computer's screen (Antigravity's settings, whose own menu takes 200 of a
 //   phone's 360 pixels; VS Code's Settings and Keyboard Shortcuts) is drawn smaller while it is in
 //   front, as the IDE button draws the IDE, so all of it shows; back at the agent, the page is its
-//   own size again.
+//   own size again. Such a page is only ever alone: when something opens beside it (a side bar, the
+//   panel, a second editor group), F16 has the layout extension put it alone again.
 // - Phone files: an agent's own "add files" opens Android's picker on the same tap. Codex, Cline and
 //   Roo Code ask their extension for files over their webview's message port; that request is
 //   answered here with the files picked on the phone, so VS Code's dialog never opens. Claude
@@ -325,6 +326,35 @@
     reader.onerror = () => file.pieces.set(index, null);
     reader.readAsDataURL(file.blob.slice(index * PIECE, (index + 1) * PIECE));
   };
+  // A page (Antigravity's settings, VS Code's Settings, an extension's own screen) is only ever alone
+  // on the screen. Something that reveals a side bar, the panel or a second editor group beside it (an
+  // agent focusing its own panel, the Explorer for a folder link) tells the layout extension nothing,
+  // so when one shares the screen for a second, the page script presses its key for that (F16): at
+  // most three times in a row, never while a menu, a dialog or the palette is open.
+  const PAGE_EDITORS = ':scope > [id^="webview-editor-element-"], :scope > .settings-editor, :scope > .keybindings-editor, :scope > .extension-editor';
+  const shownWide = (selector) => [...document.querySelectorAll(selector)].filter((el) => shown(el) && el.getBoundingClientRect().width > 40);
+  const pageCrowded = () => {
+    if (!shownWide('.monaco-workbench .part.editor .editor-instance').some((el) => el.querySelector(PAGE_EDITORS))) return false;
+    return shownWide('.monaco-workbench .part.editor .editor-group-container').length > 1 ||
+      wide('.monaco-workbench .part.sidebar') || wide('.monaco-workbench .part.auxiliarybar') || wide('.monaco-workbench .part.panel');
+  };
+  let crowdedSince = 0;
+  let alonePressed = 0;
+  let alonePresses = 0;
+  setInterval(() => {
+    if (document.hidden || any('.quick-input-widget') || any('.monaco-dialog-box') || any('.context-view .monaco-menu')) return;
+    if (!pageCrowded()) {
+      crowdedSince = 0;
+      alonePresses = 0;
+      return;
+    }
+    const now = Date.now();
+    crowdedSince = crowdedSince || now;
+    if (now - crowdedSince < 1000 || now - alonePressed < 2000 || alonePresses >= 3) return;
+    alonePressed = now;
+    alonePresses += 1;
+    press('F16');
+  }, 500);
   window.__pocketide = {
     overlayOpen,
     run(name) {

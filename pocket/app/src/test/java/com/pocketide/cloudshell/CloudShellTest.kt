@@ -204,6 +204,19 @@ class CloudShellTest {
     }
 
     @Test
+    fun `the layout extension is replaced whenever it changes, and a page sharing the screen is put alone`() {
+        val text = script.readText()
+        assertTrue(
+            "an older build of the same version is replaced",
+            text.contains("[ \"\$(cat \"\$1/layout.sha256\" 2>/dev/null)\" = \"\$made\" ] && return 0"),
+        )
+        assertTrue("what it installed is recorded", text.contains("printf '%s\\n' \"\$made\" >\"\$1/layout.sha256\""))
+        assertTrue("F16 puts the page in front alone", text.contains("\"command\": \"pocketide.alone\",\n        \"key\": \"f16\""))
+        val page = listOf("src/main/assets", "app/src/main/assets").map { File(it, "workspace/pagescript.js") }.first { it.isFile }.readText()
+        assertTrue("the page script presses it when a page shares the screen", page.contains("press('F16');"))
+    }
+
+    @Test
     fun `each agent is told Cloud Shell's rules, in its own instructions file`() {
         val text = script.readText()
         listOf("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md").forEach { assertTrue(it, text.contains("\"$it\"")) }

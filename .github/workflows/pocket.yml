@@ -318,6 +318,18 @@ jobs:
             ls "$home/.pocketide/vscode/$agent/extensions" | grep -q '^pocketide.layout-'
           done
           ls "$home/.pocketide/vscode/antigravity/extensions" | grep -qi '^google.google-antigravity-'
+          # A layout extension an older set-up installed under the same version number is replaced
+          # (9.4.1's and 9.4.2's set-ups kept 9.4.0's): Codex's as a set-up before 9.4.3 left it (no
+          # record of what it installed), Antigravity's as one with other contents left it.
+          for agent in codex antigravity; do
+            echo '// an older build' >>"$(ls -d "$home"/.pocketide/vscode/$agent/extensions/pocketide.layout-*)/extension.js"
+          done
+          rm "$home/.pocketide/vscode/codex/layout.sha256"
+          echo 0000 >"$home/.pocketide/vscode/antigravity/layout.sha256"
+          HOME="$home" "$home/.local/bin/pocketide" update >/dev/null
+          for agent in claude-code codex antigravity; do
+            cmp "$home/.pocketide/layout/extension.js" "$(ls -d "$home"/.pocketide/vscode/$agent/extensions/pocketide.layout-*)/extension.js"
+          done
           # Each agent's own instructions begin with Cloud Shell's rules.
           for rules in .claude/CLAUDE.md .codex/AGENTS.md .gemini/GEMINI.md; do
             grep -q 'PocketIDE: Cloud Shell rules' "$home/$rules"
