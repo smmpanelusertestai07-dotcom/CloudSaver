@@ -77,7 +77,7 @@ cat >"$BASE/layout/package.json" <<'JSON'
   "name": "layout",
   "displayName": "PocketIDE layout",
   "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it; or the whole IDE.",
-  "version": "9.4.0",
+  "version": "9.4.3",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": {
@@ -132,6 +132,10 @@ cat >"$BASE/layout/package.json" <<'JSON'
       {
         "command": "pocketide.tools",
         "title": "PocketIDE: Tools"
+      },
+      {
+        "command": "pocketide.alone",
+        "title": "PocketIDE: The page in front, alone"
       }
     ],
     "keybindings": [
@@ -146,6 +150,10 @@ cat >"$BASE/layout/package.json" <<'JSON'
       {
         "command": "pocketide.terminal",
         "key": "f15"
+      },
+      {
+        "command": "pocketide.alone",
+        "key": "f16"
       },
       {
         "command": "pocketide.commands",
@@ -220,7 +228,7 @@ cat >"$BASE/layout/extension.js" <<'JS'
 // agent, or what covers it (a file, a diff, an extension's own page, a terminal). Back returns to
 // the agent. PocketIDE's IDE button shows the whole IDE around the agent instead. PocketIDE's bar
 // reaches these commands through keys a phone's keyboard does not have (F13 to F19, Ctrl+F13,
-// Ctrl+F14), which PocketIDE's page script presses.
+// Ctrl+F14), which PocketIDE's page script presses (F16 by itself: a page shares the screen).
 const vscode = require('vscode');
 
 const fs = require('fs');
@@ -455,6 +463,20 @@ function watchEditors(context) {
   );
 }
 
+// A page in front gets the whole screen again. Something that reveals a side bar beside it (an agent
+// focusing its own panel, the Explorer for a folder link, VS Code restoring its layout) tells no
+// extension, so PocketIDE's page script, which sees the screen, presses this. A page beside another
+// editor group (VS Code split the screen) comes to the front first.
+const GROUPS = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth'];
+async function alone() {
+  const tab = activeTab();
+  const page = isPage(tab) ? tab : vscode.window.tabGroups.all.map((group) => group.activeTab).find(isPage);
+  if (!page) return;
+  if (!page.group.isActive && GROUPS[page.group.viewColumn - 1]) await run(`workbench.action.focus${GROUPS[page.group.viewColumn - 1]}EditorGroup`);
+  lastActive = tabKey(page);
+  await showEditor();
+}
+
 // Back: what covers the agent closes (a terminal only steps aside: it keeps running), and the
 // agent is back on screen, with nothing else left open behind it (see closeTabs).
 async function back() {
@@ -498,6 +520,7 @@ function commands(context) {
     vscode.commands.registerCommand('pocketide.agent', () => arrange(showAgent)),
     vscode.commands.registerCommand('pocketide.ide', () => arrange(showIde)),
     vscode.commands.registerCommand('pocketide.back', back),
+    vscode.commands.registerCommand('pocketide.alone', () => arrange(alone)),
     vscode.commands.registerCommand('pocketide.terminal', terminal),
     vscode.commands.registerCommand('pocketide.commands', () => run('workbench.action.showCommands')),
     vscode.commands.registerCommand('pocketide.files', () => run('workbench.action.quickOpen')),
@@ -2306,9 +2329,13 @@ print(json.dumps({
 PY
 }
 
-layout() { # $1: an agent's VS Code folder: PocketIDE's layout extension in it, once for each version
+layout() { # $1: an agent's VS Code folder: PocketIDE's layout extension in it, again whenever it changes
     version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$BASE/layout/package.json" 2>/dev/null) || return 0
-    ls -d "$1/extensions/pocketide.layout-$version"* >/dev/null 2>&1 && return 0
+    # This set-up's own extension, known by what is in it: one an older set-up installed under the same
+    # version number is replaced too (9.4.1's and 9.4.2's set-ups kept the one 9.4.0's had installed).
+    made=$(cat "$BASE/layout/package.json" "$BASE/layout/extension.js" "$BASE/layout/agent.svg" | sha256sum | cut -d' ' -f1)
+    ls -d "$1/extensions/pocketide.layout-$version"* >/dev/null 2>&1 &&
+        [ "$(cat "$1/layout.sha256" 2>/dev/null)" = "$made" ] && return 0
     vsix="$BASE/pocketide.layout-$version.vsix"
     python3 - "$BASE/layout" "$vsix" "$version" <<'PY'
 import os, sys, zipfile
@@ -2341,6 +2368,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as package:
 PY
     if "$CODE" --user-data-dir "$1" --extensions-dir "$1/extensions" --install-extension "$vsix" --force >/dev/null; then
         find "$1/extensions" -maxdepth 1 -name 'pocketide.layout-*' ! -name "pocketide.layout-$version*" -exec rm -rf {} +
+        printf '%s\n' "$made" >"$1/layout.sha256"
     else
         echo "PocketIDE's layout extension was not installed in $1." >&2
     fi
