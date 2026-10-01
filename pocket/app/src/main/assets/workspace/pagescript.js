@@ -11,9 +11,6 @@
 //   Code needs for a shortcut, so they are pressed here, in the page, with it.
 // - escape(), backTarget(): what Back closes first (a menu, a dialog, a notice), then what covers
 //   the agent, else nothing ('none': PocketIDE's Back leaves the screen).
-// - One thing at a time: asked to open an editor that is already open behind the agent (a file
-//   link tapped twice), VS Code itself splits the screen between the editor and the agent and tells
-//   no extension. The split is seen here, and the layout extension puts the editor alone (F16).
 // - fit(zoom, widthDp): the page drawn smaller on a short screen; type(text): the Paste key.
 // - A page made for a computer's screen (Antigravity's settings, whose own menu takes 200 of a
 //   phone's 360 pixels; VS Code's Settings and Keyboard Shortcuts) is drawn smaller while it is in
@@ -74,8 +71,6 @@
     files: ['F13', 'ctrl'], ide: ['F14', 'ctrl'],
   };
   const CODES = { F13: 124, F14: 125, F15: 126, F16: 127, F17: 128, F18: 129, F19: 130, Escape: 27, Enter: 13 };
-  // When PocketIDE last asked for a layout (its own commands take a moment to arrange the screen).
-  let askedAt = 0;
   const press = (key, modifier, target) => {
     const at = target || document.querySelector('.monaco-workbench') || document.body;
     const init = {
@@ -272,36 +267,6 @@
     widePage = now;
     applyFit();
   };
-  // An editor beside the agent with no side bar is never a layout of PocketIDE's: it is VS Code's own
-  // split (see above). Once the layout extension has put the agent up, a split that stays (and no
-  // command of PocketIDE's is arranging the screen) goes back to one thing at a time.
-  const SPLIT_MS = 700;
-  const QUIET_MS = 1500;
-  const HEALS = 3;
-  let arranged = false;
-  let healing = null;
-  let healedAt = 0;
-  let heals = 0; // for this split: a layout extension that does not answer F16 is asked only so often
-  const split = () => wide('.monaco-workbench .part.editor') && wide('.monaco-workbench .part.auxiliarybar') &&
-    !wide('.monaco-workbench .part.sidebar');
-  const checkSplit = () => {
-    if (!arranged) {
-      arranged = wide('.monaco-workbench .part.auxiliarybar') && !wide('.monaco-workbench .part.editor');
-      return;
-    }
-    if (!split()) heals = 0;
-    if (healing || !split() || heals >= HEALS) return;
-    healing = setTimeout(() => {
-      healing = null;
-      if (!split()) return;
-      // A palette, dialog or menu open takes the keys: later. (A notice does not.)
-      const busy = any('.quick-input-widget') || any('.monaco-dialog-box') || any('.context-view .monaco-menu');
-      if (busy || Date.now() - Math.max(askedAt, healedAt) < QUIET_MS) return checkSplit();
-      healedAt = Date.now();
-      heals += 1;
-      press('F16');
-    }, SPLIT_MS);
-  };
   // Each file dialog once, as it opens. A dialog not opened by a tap is left as it is.
   let seen = null;
   let checking = false;
@@ -311,7 +276,6 @@
     requestAnimationFrame(() => {
       checking = false;
       checkWidePage();
-      checkSplit();
       const dialog = fileDialog();
       if (!dialog) {
         seen = null;
@@ -366,7 +330,6 @@
     run(name) {
       const key = KEYS[name];
       if (!key) return false;
-      askedAt = Date.now();
       press(key[0], key[1]);
       return true;
     },

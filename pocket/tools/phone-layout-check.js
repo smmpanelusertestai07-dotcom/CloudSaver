@@ -6,7 +6,7 @@
 // over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
 // an editor left behind it; a page (Settings) opened from the whole IDE getting the whole screen, closed
 // by Back, by the IDE button and by the agent's, and in front again whenever it opens; a file opened
-// again while it is behind the agent, alone (VS Code would split the screen); the command palette inside
+// again after the agent, alone (VS Code would split the screen); the command palette inside
 // the screen and closed by Back's Escape, then the agent's own notice, if any, by the next Back. Any
 // miss is an error, and the screenshots show it.
 const fs = require('fs');
@@ -132,8 +132,8 @@ async function check(browser, agent, port, name) {
     await run('agent');
     await until('the agent button closes the page', agentAlone, 10000);
     if (await pageOpen()) fail(`${agent}: the page stayed open behind the agent`);
-    // An editor opened again while it is open behind the agent (a file link tapped twice): VS Code
-    // splits the screen between them; the page script and the layout extension put it alone again.
+    // A file opened again after the agent came back (a file link tapped twice): alone, full screen. (Left
+    // open behind the agent, VS Code would split the screen between them: nothing stays behind it now.)
     const userSettings = async () => {
       await run('commands');
       await page.waitForSelector('.quick-input-widget input', { timeout: 15000 });
