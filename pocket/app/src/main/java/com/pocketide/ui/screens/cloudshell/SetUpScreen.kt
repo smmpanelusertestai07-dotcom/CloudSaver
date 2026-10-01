@@ -74,8 +74,8 @@ fun SetUpScreen() {
     var signingIn by remember { mutableStateOf(false) }
     var signInProblem by remember { mutableStateOf<String?>(null) }
     var chromeWay by rememberSaveable { mutableStateOf(false) }
-    val pick = rememberAccountPicker { name -> graph.settings.update { it.copy(cloudAccount = name) } }
     // The connection's notice (with its Disconnect button) needs Android 13's notification permission; without it, it still works.
+    // Android asks only after one of the owner's own taps (picking the account), never by itself when the page opens.
     val notices = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val askForNotices = {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -84,13 +84,16 @@ fun SetUpScreen() {
             runCatching { notices.launch(Manifest.permission.POST_NOTIFICATIONS) }
         }
     }
+    val pick = rememberAccountPicker { name ->
+        graph.settings.update { it.copy(cloudAccount = name) }
+        askForNotices()
+    }
     val account = settings.cloudAccount
     val unused = CloudShell.daysUnused(settings, graph.clock.now())
     val installed = computer is ComputerState.Ready || computer is ComputerState.Updating
     val signedIn = settings.gcloudAccount.isNotBlank()
     val resumed by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val installConnection = {
-        askForNotices()
+    val startInstall = {
         graph.holds.hold(Holds.SET_UP)
         graph.scope.launch {
             try {
@@ -100,6 +103,10 @@ fun SetUpScreen() {
             }
         }
         Unit
+    }
+    val installConnection = {
+        askForNotices()
+        startInstall()
     }
     val signInGcloud = {
         signingIn = true
@@ -123,7 +130,7 @@ fun SetUpScreen() {
     LaunchedEffect(computer) {
         if ((computer == ComputerState.NotInstalled || computer is ComputerState.Broken) && !autoInstalled) {
             autoInstalled = true
-            installConnection()
+            startInstall()
         }
     }
     val needsSignIn = installed && !signedIn && account.isNotBlank()
