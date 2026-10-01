@@ -4,8 +4,8 @@
 //   node phone-layout-check.js <folder for the screenshots> [name:port:title, for one agent only]
 // It checks what the owner sees: the agent's own panel alone, full screen; the terminal full screen
 // over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
-// an editor left behind it; the command palette inside the screen and closed by Back's Escape. Any
-// miss is an error, and the screenshots show it.
+// an editor left behind it; the command palette inside the screen and closed by Back's Escape, then
+// the agent's own notice, if any, by the next Back. Any miss is an error, and the screenshots show it.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -25,8 +25,10 @@ const PHONE = {
   userAgent: 'Mozilla/5.0 (Linux; Android 13; Phone; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0.0.0 Mobile Safari/537.36',
 };
 
+let failures = 0;
 const fail = (message) => {
   console.log(`::error::${message}`);
+  failures += 1;
   process.exitCode = 1;
 };
 
@@ -46,6 +48,7 @@ const editorAlone = (p) => p.editor > 300 && p.auxiliarybar < 40 && p.sidebar < 
 const wholeIde = (p) => p.sidebar > 100 && p.auxiliarybar > 100;
 
 async function check(browser, agent, port, name) {
+  const failed = failures;
   const agentAlone = (p) => p.auxiliarybar > 300 && p.editor < 40 && p.sidebar < 40 && p.panel < 40 && name.test(p.title);
   const context = await browser.newContext(PHONE);
   await context.addInitScript({ content: script });
@@ -127,8 +130,17 @@ async function check(browser, agent, port, name) {
     await shot('4-commands');
     await page.evaluate(() => window.__pocketide.escape());
     await page.waitForTimeout(1000);
-    if (await page.evaluate(() => window.__pocketide.overlayOpen())) fail(`${agent}: Back's Escape closes the command palette`);
-    console.log(`${agent}: one thing at a time, Back and the palette work at a phone's size.`);
+    const paletteShown = () => page.evaluate(() => [...document.querySelectorAll('.quick-input-widget')]
+      .some((el) => el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none'));
+    if (await paletteShown()) fail(`${agent}: Back's Escape closes the command palette`);
+    // What can be left is the agent's own notice (Cline's welcome, say): the next Back closes it.
+    for (let backs = 0; backs < 3 && (await target()) === 'overlay'; backs++) {
+      if (!(await toastOnly())) break;
+      await page.evaluate(() => window.__pocketide.escape());
+      await page.waitForTimeout(1000);
+    }
+    if ((await target()) === 'overlay') fail(`${agent}: after the palette, Back closes what is left, one thing at a time`);
+    if (failures === failed) console.log(`${agent}: one thing at a time, Back and the palette work at a phone's size.`);
   } catch (error) {
     fail(`${agent}: ${error.message}`);
     await shot('error').catch(() => undefined);

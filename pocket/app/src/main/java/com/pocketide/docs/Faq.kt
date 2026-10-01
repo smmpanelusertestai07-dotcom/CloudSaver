@@ -205,9 +205,10 @@ internal object Faq {
             DocsContent.IDE_ID,
             "How do I give an agent a file from my phone?",
             "Tap the agent's own add-files button (Claude Code's paper clip, Codex's +, or File > Open File): Android's picker " +
-                "opens on the same tap, every time; Codex's request is answered from the phone, so VS Code's dialog does not " +
-                "show. The file is copied to ~/projects/<agent>/uploads in Cloud Shell, which git ignores, and the " +
-                "agent takes it. A folder or a save stays in Cloud Shell's folders, where the agents work.",
+                "opens on the same tap, every time; Codex's, Cline's and Roo Code's own requests (Roo Code's, for pictures) " +
+                "are answered from the phone, so VS Code's dialog does not show. The file is copied to " +
+                "~/projects/<agent>/uploads in Cloud Shell, which git ignores, and the agent takes it. A folder or a save " +
+                "stays in Cloud Shell's folders, where the agents work.",
         ),
         faq(
             "whole-ide",

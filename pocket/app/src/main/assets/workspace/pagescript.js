@@ -13,14 +13,15 @@
 // - escape(), backTarget(): what Back closes first (a menu, a dialog, a notice), then what covers
 //   the agent, else nothing ('none': PocketIDE's Back leaves the screen).
 // - fit(zoom, widthDp): the page drawn smaller on a short screen; type(text): the Paste key.
-// - Phone files: an agent's own "add files" opens Android's picker on the same tap. Codex and Cline
-//   ask their extension for files over their webview's message port; that request is answered here
-//   with the files picked on the phone, so VS Code's dialog never opens. Claude Code's own file
-//   input opens the picker by itself. Any other extension's VS Code file dialog opens the picker with it. Files
-//   go to Cloud Shell's file drop (files.py) into the agent's ~/projects/<agent>/uploads, through
-//   this page's own address (/__pocketide/drop/), which PocketIDE's door passes to the drop: VS
-//   Code's own security policy lets a page connect only to its own address. Nothing is added to the
-//   screen; asking for a folder or a save stays VS Code's, with Cloud Shell's folders.
+// - Phone files: an agent's own "add files" opens Android's picker on the same tap. Codex, Cline and
+//   Roo Code ask their extension for files over their webview's message port; that request is
+//   answered here with the files picked on the phone, so VS Code's dialog never opens. Claude
+//   Code's own file input opens the picker by itself. Any other extension's VS Code file dialog
+//   opens the picker with it. Files go to Cloud Shell's file drop (files.py) into the agent's
+//   ~/projects/<agent>/uploads, through this page's own address (/__pocketide/drop/), which
+//   PocketIDE's door passes to the drop: VS Code's own security policy lets a page connect only to
+//   its own address. Nothing is added to the screen; asking for a folder or a save stays VS
+//   Code's, with Cloud Shell's folders.
 (() => {
   if (window.__pocketide || window.top !== window) return;
   const style = `
@@ -188,6 +189,15 @@
         const values2 = (others.length ? await send(others) : []).map((file) => file.path);
         return { type: 'grpc_response', grpc_response: { message: { values1, values2 }, request_id: m.grpc_request.request_id } };
       },
+    },
+    // Roo Code: selectImages, for pictures in the chat; they come back as data: URLs.
+    {
+      asks: (m) => m.type === 'selectImages',
+      options: () => ({ allowMultiple: true, imagesOnly: true }),
+      answer: async (m, picked) => ({
+        type: 'selectedImages', context: m.context, messageTs: m.messageTs,
+        images: await Promise.all(picked.filter((file) => /\.(png|jpe?g|webp)$/i.test(file.name)).map(dataUrl)),
+      }),
     },
   ];
   const fromAgent = (port, event) => {
