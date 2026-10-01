@@ -5,6 +5,9 @@
 #   Claude Code  port 8080  ~/projects/claude-code
 #   Codex        port 8081  ~/projects/codex
 #   Antigravity  port 8082  ~/projects/antigravity
+# Any other AI agent from Open VSX that the owner adds (`pocketide agent add publisher.name`, from
+# PocketIDE's Extensions) gets the same: its own VS Code on its own port from 8083, its own projects
+# folder (~/projects/x-<its name>), and its own view full screen.
 # Each VS Code listens only inside Cloud Shell (127.0.0.1). PocketIDE's app reaches them through
 # Google's own gcloud (`gcloud cloud-shell ssh`), from the phone's own address only.
 # Each agent's VS Code starts when PocketIDE's app opens that agent, so Cloud Shell's memory goes to
@@ -74,7 +77,7 @@ cat >"$BASE/layout/package.json" <<'JSON'
   "name": "layout",
   "displayName": "PocketIDE layout",
   "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it; or the whole IDE.",
-  "version": "9.0.0",
+  "version": "9.1.0",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": {
@@ -198,6 +201,11 @@ cat >"$BASE/layout/package.json" <<'JSON'
           "type": "string",
           "default": "",
           "description": "The agent this VS Code opens full screen."
+        },
+        "pocketide.extension": {
+          "type": "string",
+          "default": "",
+          "description": "An agent the owner added: its extension (publisher.name), whose own view opens full screen."
         }
       }
     }
@@ -210,8 +218,9 @@ SVG
 cat >"$BASE/layout/extension.js" <<'JS'
 // PocketIDE layout: a phone's narrow screen shows one thing at a time, full screen: this VS Code's
 // agent, or what covers it (a file, a diff, an extension's own page, a terminal). Back returns to
-// the agent. PocketIDE's IDE button shows the whole IDE around the agent instead. PocketIDE's bar reaches these commands through keys a phone's keyboard does
-// not have (F13 to F19, Ctrl+F13, Ctrl+F14), which PocketIDE's page script presses.
+// the agent. PocketIDE's IDE button shows the whole IDE around the agent instead. PocketIDE's bar
+// reaches these commands through keys a phone's keyboard does not have (F13 to F19, Ctrl+F13,
+// Ctrl+F14), which PocketIDE's page script presses.
 const vscode = require('vscode');
 
 const fs = require('fs');
@@ -227,6 +236,8 @@ const AGENTS = {
   antigravity: { move: ['antigravity.panel'], open: ['antigravity.panel.focus'] },
 };
 const CONTAINER = 'workbench.view.extension.pocketide-agent';
+// Containers of VS Code's own, never an added agent's.
+const CORE_CONTAINERS = new Set(['explorer', 'scm', 'debug', 'test', 'remote']);
 const WAIT_MS = 90000;
 const STEP_MS = 1000;
 const SETTLE_MS = 150;
@@ -235,6 +246,31 @@ const VSIX_MAX_BYTES = 300 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const run = (command, ...args) => Promise.resolve(vscode.commands.executeCommand(command, ...args)).then(() => true, () => false);
+
+// An agent the owner added (pocketide.extension: publisher.name): its own view, found in its
+// manifest (a chat webview in its own side bar container, as Cline, Roo Code, Kilo Code or Gemini
+// Code Assist have), moves into PocketIDE's container in the secondary side bar and opens there,
+// as Antigravity's does. A chat or agent webview first; else its first view of any kind.
+function addedAgent(id) {
+  const extension = id ? vscode.extensions.getExtension(id) : undefined;
+  const contributes = extension && extension.packageJSON && extension.packageJSON.contributes;
+  const views = contributes && contributes.views;
+  if (!views || typeof views !== 'object') return undefined;
+  let best;
+  let bestScore = -1;
+  for (const [container, list] of Object.entries(views)) {
+    if (CORE_CONTAINERS.has(container) || !Array.isArray(list)) continue;
+    for (const view of list) {
+      if (!view || typeof view.id !== 'string') continue;
+      const score = (view.type === 'webview' ? 2 : 0) + (/chat|agent|assistant|sidebar/i.test(`${view.id} ${container}`) ? 1 : 0);
+      if (score > bestScore) {
+        best = view.id;
+        bestScore = score;
+      }
+    }
+  }
+  return best ? { move: [best], open: [`${best}.focus`] } : undefined;
+}
 
 // The agent's extension registers its commands once it has started: wait for them.
 async function ready(names) {
@@ -442,7 +478,8 @@ function commands(context) {
 }
 
 async function activate(context) {
-  agent = AGENTS[vscode.workspace.getConfiguration('pocketide').get('agent', '')];
+  const config = vscode.workspace.getConfiguration('pocketide');
+  agent = AGENTS[config.get('agent', '')] || addedAgent(config.get('extension', ''));
   commands(context);
   watchEditors(context);
   lastActive = tabKey(activeTab());
@@ -925,10 +962,27 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FILES_PORT = int(os.environ.get("FILES_PORT", "6081"))
 PROJECTS = os.path.join(os.path.expanduser("~"), "projects")
-AGENTS = ("claude-code", "codex", "antigravity")
+# Each agent's VS Code port and name: PocketIDE's three, and those the owner added (~/.pocketide/agents).
+AGENTS = {"8080": "claude-code", "8081": "codex", "8082": "antigravity"}
+ADDED = os.path.join(os.path.expanduser("~"), ".pocketide", "agents")
+ADDED_ENTRY = re.compile(r"^(x-[a-z0-9-]{1,30}):(80(?:8[3-9]|9[0-9])):")
 LIMIT = 512 * 1024 * 1024
 UNSAFE = re.compile(r"[\x00-\x1f/\\]")
 IGNORE = "# Files sent from the phone (PocketIDE): kept out of git.\n*\n"
+
+
+def agents():
+    """Each agent's port and name, the added ones read afresh (one may have been added meanwhile)."""
+    known = dict(AGENTS)
+    try:
+        with open(ADDED, encoding="utf-8") as lines:
+            for line in lines:
+                match = ADDED_ENTRY.match(line.strip())
+                if match:
+                    known[match.group(2)] = match.group(1)
+    except OSError:
+        pass
+    return known
 
 
 def uploads(agent):
@@ -999,8 +1053,11 @@ class Drop(BaseHTTPRequestHandler):
         if path != "/upload":
             return self.answer(404, {"error": "Not here."})
         params = urllib.parse.parse_qs(query)
-        agent = (params.get("agent") or [""])[0]
-        if agent not in AGENTS:
+        known = agents()
+        # An agent's VS Code names itself by its port (port=8081), or the agent by its name (agent=codex).
+        port = (params.get("port") or [""])[0]
+        agent = known.get(port) if port else (params.get("agent") or [""])[0]
+        if agent not in known.values():
             return self.answer(400, {"error": "No agent is called that."})
         try:
             name = plain_name((params.get("name") or [""])[0])
@@ -1044,22 +1101,34 @@ if __name__ == "__main__":
 FILES
 
 # 3. `pocketide`: starts or stops an agent's VS Code (`pocketide start|stop <agent>`), installs or
-# updates the agents (`pocketide update`), starts the browser (`pocketide browser start|stop`), and,
-# when Cloud Shell starts (`pocketide boot`), tidies and updates.
+# updates the agents (`pocketide update`), adds or removes an agent of the owner's choice
+# (`pocketide agent add|remove`), starts the browser (`pocketide browser start|stop`), and, when
+# Cloud Shell starts (`pocketide boot`), tidies and updates.
 cat >"$BIN/pocketide" <<'LAUNCHER'
 #!/usr/bin/env bash
 # PocketIDE's launcher in Google Cloud Shell; see ~/pocketide-cloudshell.sh.
 set -uo pipefail
-AGENTS="claude-code:8080:anthropic/claude-code codex:8081:openai/chatgpt antigravity:8082:google/google-antigravity"
 BASE="$HOME/.pocketide"
+# Each agent: its name, its VS Code's port, and its extension (publisher/name) from Open VSX.
+AGENTS="claude-code:8080:anthropic/claude-code codex:8081:openai/chatgpt antigravity:8082:google/google-antigravity"
+# Agents the owner added (`pocketide agent add`), one a line: x-<name>:<port 8083-8099>:publisher/name,
+# and :any when the owner accepted a publisher Open VSX has not verified. Each has its own VS Code
+# and port too; nothing else in the file is read.
+ADDED="$BASE/agents"
+ADDED_ENTRY='^x-[a-z0-9-]{1,30}:80(8[3-9]|9[0-9]):[A-Za-z0-9][A-Za-z0-9_-]{0,63}/[A-Za-z0-9][A-Za-z0-9_-]{0,63}(:any)?$'
+if [ -f "$ADDED" ]; then
+    while IFS= read -r line; do
+        printf '%s' "$line" | grep -Eq "$ADDED_ENTRY" && AGENTS="$AGENTS $line"
+    done <"$ADDED"
+fi
 CODE="$BASE/code-server/current/bin/code-server"
 # Antigravity's extension starts Google's agy on this port (its own setting), for its panel.
 AGY_PORT=18083
 # PocketIDE's file drop (files.py): files from the phone arrive through it, for the agents.
 FILES_PORT=6081
 
-settings() { # $1: the agent; the settings its VS Code starts with: phone screen, no telemetry, its agent full screen
-    python3 - "$1" "$AGY_PORT" <<'PY'
+settings() { # $1: the agent, $2: an added agent's extension; the settings its VS Code starts with: phone screen, no telemetry, its agent full screen
+    python3 - "$1" "$AGY_PORT" "${2:-}" <<'PY'
 import json, sys
 agent = sys.argv[1]
 print(json.dumps({
@@ -1088,6 +1157,7 @@ print(json.dumps({
     "workbench.editor.useModal": "off",
     "terminal.integrated.defaultLocation": "editor",
     "pocketide.agent": agent,
+    "pocketide.extension": sys.argv[3],
     "claudeCode.preferredLocation": "sidebar",
     "claudeCode.useCtrlEnterToSend": True,
     "chatgpt.openOnStartup": agent == "codex",
@@ -1245,13 +1315,17 @@ update() {
     code_server_update || echo "code-server is tried again tomorrow." >&2
     missing=""
     for entry in $AGENTS; do
-        key=${entry%%:*} rest=${entry#*:}
-        agent=${rest#*:} ns=${agent%/*} name=${agent#*/}
+        key=${entry%%:*}
+        agent=$(extension_of "$entry") ns=${agent%/*} name=${agent#*/}
+        any=""
+        case "$entry" in *:any) any=any ;; esac
+        added=""
+        case "$key" in x-*) added="$ns.$name" ;; esac
         data="$BASE/vscode/$key"
         mkdir -p "$data/Machine" "$data/extensions" "$HOME/projects/$key"
-        settings "$key" >"$data/Machine/settings.json"
+        settings "$key" "$added" >"$data/Machine/settings.json"
         layout "$data"
-        choice=$(pick "$ns" "$name" linux-x64 || pick "$ns" "$name" universal) || { echo "Open VSX has no release of $ns.$name now." >&2; continue; }
+        choice=$(pick "$ns" "$name" linux-x64 "$any" || pick "$ns" "$name" universal "$any") || { echo "Open VSX has no release of $ns.$name now." >&2; continue; }
         read -r version download sha <<<"$choice"
         if ls -d "$data/extensions/$ns.$name-$version"* >/dev/null 2>&1; then
             echo "$ns.$name $version is installed."
@@ -1379,12 +1453,87 @@ stop() { # $@: the agents whose VS Code stops, to free memory (what the agent wa
 }
 
 own_extension() { # $1: an agent -> its own extension's id, lower case (publisher.name)
-    local entry rest
+    local entry
     for entry in $AGENTS; do
-        rest=${entry#*:}
-        [ "${entry%%:*}" = "$1" ] && { echo "${rest#*:}" | tr '/A-Z' '.a-z'; return 0; }
+        [ "${entry%%:*}" = "$1" ] && { extension_of "$entry" | tr '/A-Z' '.a-z'; return 0; }
     done
     return 1
+}
+
+extension_of() { # $1: an entry of AGENTS -> its extension, publisher/name
+    local rest=${1#*:}
+    rest=${rest#*:}
+    echo "${rest%:any}"
+}
+
+listening() { # $1: a port -> true when something on this computer listens on it
+    (: <"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+# An AI agent from Open VSX that the owner adds: its own VS Code on its own port (the first free one
+# from 8083), its own projects folder, PocketIDE's layout showing its own view full screen. Prints
+# its name (x-<its name>) last. An extension that already is an agent here is not added again.
+agent_add() { # $1: publisher.name; $2: "any" when the owner accepted an unverified publisher
+    extension_name "$1" || { echo "That is not an extension's name (publisher.name)." >&2; return 1; }
+    local id ns name stem key number port candidate entry rest data
+    id=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+    ns=${1%%.*} name=${1#*.}
+    for entry in $AGENTS; do
+        if [ "$(extension_of "$entry" | tr '/A-Z' '.a-z')" = "$id" ]; then
+            echo "$1 is an agent here already."
+            echo "${entry%%:*}"
+            return 0
+        fi
+    done
+    stem="x-$(printf '%s' "$name" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '-' | sed 's/--*/-/g; s/^-//; s/-$//' | cut -c1-24)"
+    stem=${stem%-}
+    [ "$stem" = x- ] && stem=x-agent
+    key=$stem number=2
+    while port_of "$key" >/dev/null; do
+        key="$stem-$number" number=$((number + 1))
+    done
+    port=""
+    for candidate in $(seq 8083 8099); do
+        for entry in $AGENTS; do
+            rest=${entry#*:}
+            [ "${rest%%:*}" = "$candidate" ] && continue 2
+        done
+        listening "$candidate" && continue
+        port=$candidate
+        break
+    done
+    [ -n "$port" ] || { echo "Every port for added agents (8083 to 8099) is taken: remove an agent first." >&2; return 1; }
+    entry="$key:$port:$ns/$name"
+    [ "${2:-}" = any ] && entry="$entry:any"
+    AGENTS="$AGENTS $entry"
+    data="$BASE/vscode/$key"
+    mkdir -p "$data/Machine" "$data/extensions" "$HOME/projects/$key"
+    settings "$key" "$ns.$name" >"$data/Machine/settings.json"
+    layout "$data"
+    if ! install_extension "$key" "$1" "${2:-}"; then
+        rm -rf "${data:?}"
+        rmdir "$HOME/projects/$key" 2>/dev/null
+        return 1
+    fi
+    printf '%s\n' "$entry" >>"$ADDED"
+    echo "$1 is an agent now, with its own VS Code on port $port."
+    echo "$key"
+}
+
+agent_remove() { # $1: an added agent: its VS Code stops and goes, with its settings and extensions; its projects stay
+    case "$1" in
+    x-*) ;;
+    *)
+        echo "Only an agent you added can be removed; $1 is one of PocketIDE's own." >&2
+        return 1
+        ;;
+    esac
+    port_of "$1" >/dev/null || { echo "No agent is called $1." >&2; return 1; }
+    stop "$1"
+    grep -v "^$1:" "$ADDED" >"$ADDED.new"
+    mv "$ADDED.new" "$ADDED"
+    rm -rf "${BASE:?}/vscode/${1:?}"
+    echo "$1 is removed; its projects stay in ~/projects/$1."
 }
 
 extension_name() { # $1 -> true for an Open VSX extension's id (publisher.name)
@@ -1641,6 +1790,16 @@ stop)
 install) install_extension "${2:-}" "${3:-}" "${4:-}" ;;
 uninstall) uninstall_extension "${2:-}" "${3:-}" ;;
 signout) signout "${2:-}" ;;
+agent)
+    case "${2:-}" in
+    add) agent_add "${3:-}" "${4:-}" ;;
+    remove) agent_remove "${3:-}" ;;
+    *)
+        echo "pocketide agent add <publisher.name> [any], or pocketide agent remove <x-name>" >&2
+        exit 1
+        ;;
+    esac
+    ;;
 browser)
     case "${2:-}" in
     start) browser_start ;;
