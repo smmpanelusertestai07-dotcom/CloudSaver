@@ -77,7 +77,7 @@ cat >"$BASE/layout/package.json" <<'JSON'
   "name": "layout",
   "displayName": "PocketIDE layout",
   "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it; or the whole IDE.",
-  "version": "9.1.0",
+  "version": "9.3.0",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": {
@@ -353,6 +353,10 @@ function arrange(step) {
 
 const activeTab = () => vscode.window.tabGroups.activeTabGroup && vscode.window.tabGroups.activeTabGroup.activeTab;
 const isTerminal = (tab) => !!tab && tab.input instanceof vscode.TabInputTerminal;
+// A file, a diff, a notebook or a terminal; anything else is a page: an extension's own (its
+// settings, its screens) or one of VS Code's (Settings, an extension's details).
+const FILE_TABS = [vscode.TabInputText, vscode.TabInputTextDiff, vscode.TabInputNotebook, vscode.TabInputNotebookDiff, vscode.TabInputTerminal];
+const isPage = (tab) => !!tab && !FILE_TABS.some((type) => typeof type === 'function' && tab.input instanceof type);
 
 function tabKey(tab) {
   if (!tab) return '';
@@ -383,27 +387,33 @@ async function showAgent() {
 async function showIde() {
   ide = true;
   covered = false;
+  // The agent's side bar is hidden while a page covers it: shown (maximized) first, then its own size.
+  await run('workbench.action.maximizeAuxiliaryBar');
   await run('workbench.action.restoreAuxiliaryBar');
   await run('workbench.view.explorer');
 }
 
 // What covers the agent gets the whole screen: no side bars, no panel, its editor alone.
 async function showEditor() {
+  ide = false;
   await run('workbench.action.closePanel');
   await run('workbench.action.maximizeEditorHideSidebar');
   covered = true;
 }
 
 // An editor that comes to the front (the agent's diff, a file, settings, an extension's page)
-// covers the agent, full screen; when the last one closes, the agent is back.
+// covers the agent, full screen; when the last one closes, the agent is back. In the whole IDE,
+// files open beside the agent, as on a computer; a page still gets the whole screen there: made for
+// a computer's width, it would have a third of a phone's.
 function watchEditors(context) {
   let timer;
   const check = () => {
-    if (closing || ide) return;
+    if (closing) return;
     const tab = activeTab();
     const key = tabKey(tab);
     const changed = key !== lastActive;
     lastActive = key;
+    if (ide && !(changed && isPage(tab))) return;
     if (!tab) {
       if (covered) arrange(showAgent);
     } else if (changed) {
@@ -912,6 +922,11 @@ def serve(browser):
         def do_POST(self):
             if self.path != "/input":
                 return self.reply(404)
+            # The owner's taps and typing come from this view's own page (or an agent's VS Code, which
+            # PocketIDE's door passes on as this address); a page of any other port drives nothing.
+            origin = self.headers.get("Origin")
+            if origin is not None and origin.lower() not in ("http://localhost:%d" % VIEW_PORT, "http://127.0.0.1:%d" % VIEW_PORT):
+                return self.reply(403)
             size = min(int(self.headers.get("Content-Length") or 0), 65536)
             try:
                 what = json.loads(self.rfile.read(size) or b"{}")
@@ -945,8 +960,7 @@ RELAY
 # 2c. PocketIDE's files (files.py): what the owner picks on the phone (an agent's own add-files, or
 # Tools > Upload from phone) arrives in that agent's ~/projects/<agent>/uploads, which git ignores;
 # and what an agent gives the owner, as a link (http://localhost:6081/f/...), opens on the phone
-# with a preview and Download (an APK: Install). It starts with the agents' VS Code and listens
-# only on 127.0.0.1.
+# with a preview and Download. It starts with the agents' VS Code and listens only on 127.0.0.1.
 cat >"$BASE/files.py" <<'FILES'
 """PocketIDE's files in Cloud Shell, for the owner's phone. Listens only on 127.0.0.1:FILES_PORT.
 
@@ -956,8 +970,8 @@ replaces a file (a second "photo.png" becomes "photo (2).png") and takes at most
 
 The links: an agent gives the owner a file or folder under ~/projects as
 http://localhost:FILES_PORT/f/<its path under ~/projects>. PocketIDE's app opens it as a page: its
-name, size and kind, a preview where a phone can show one, and buttons to download it to the phone
-(an APK: to install it). ?raw is the file itself (with ranges, for video), ?download the same as an
+name, size and kind, a preview where a phone can show one, and a button to download it to the
+phone. ?raw is the file itself (with ranges, for video), ?download the same as an
 attachment, ?zip a folder as one zip, ?icon an APK's icon. Nothing outside ~/projects is served,
 not even through a link inside it, and a file opened as a page cannot read the owner's other files.
 
@@ -1109,9 +1123,37 @@ def address(relative, query=""):
     return "/f/" + urllib.parse.quote(relative) + ("?" + query if query else "")
 
 
+# What a page embeds (a script, a style, a picture, a video...), as the browser names it (Sec-Fetch-Dest).
+EMBEDS = {"audio", "audioworklet", "embed", "font", "image", "manifest", "object", "paintworklet", "script",
+          "serviceworker", "sharedworker", "style", "track", "video", "worker", "xslt"}
+
+
+def embedded_elsewhere(headers):
+    """A page of another port (a dev server's, and any script it loads) embedding one of the owner's files:
+    its scripts would run with theirs, its pictures show there. files.py's own pages, a page opened from
+    /r/ (sandboxed, so from no origin, but sent from here), a navigation, a fetch (which no other page may
+    read) and a program here get the file."""
+    if (headers.get("Sec-Fetch-Dest") or "").lower() not in EMBEDS:
+        return False
+    if (headers.get("Sec-Fetch-Site") or "").lower() == "same-origin":
+        return False
+    referer = headers.get("Referer") or ""
+    return not any(referer.startswith("http://%s:%d/" % (host, FILES_PORT)) for host in ("localhost", "127.0.0.1"))
+
+
 def raw_address(relative):
-    """The file itself, under /r/: a page opened from there finds its own styles, scripts and pictures beside it."""
+    """The file itself, under /r/, to open on its own (a picture, a video, a text)."""
     return "/r/" + urllib.parse.quote(relative)
+
+
+# A web page the owner opens from its own page runs from /s/<SITE>/ (in a sandbox, with no origin of its
+# own), so that its own styles, scripts and pictures beside it load too: only files.py's pages, which no
+# other page can read, know SITE, and it changes each time files.py starts.
+SITE = secrets.token_urlsafe(18)
+
+
+def site_address(relative):
+    return "/s/%s/%s" % (SITE, urllib.parse.quote(relative))
 
 
 def looks_like_text(path):
@@ -1402,7 +1444,6 @@ ICONS = {
     "document": "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z",
     "file": "M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z",
     "download": "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
-    "install": "M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14zm-1-6h-3V8h-2v5H8l4 4 4-4z",
     "open": "M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
     "copy": "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z",
 }
@@ -1751,7 +1792,8 @@ def preview(path, relative, kind, size):
         permissions = info["permissions"]
         listed = ('<details><summary>It asks for %d permission%s</summary><pre class="wrap">%s</pre></details>'
                   % (len(permissions), "" if len(permissions) == 1 else "s", esc("\n".join(sorted(set(permissions)))))) if permissions else ""
-        return '<div class="rows">%s</div>%s<p class="note">Install opens Android\'s own installer, which asks you first.</p>' % (table, listed), None
+        return ('<div class="rows">%s</div>%s<p class="note">Download it, then tap it in the phone\'s Files app, in Download/PocketIDE, '
+                'to install it: Android asks you first.</p>' % (table, listed)), None
     if kind in ("zip", "tar"):
         try:
             names = []
@@ -1837,12 +1879,10 @@ def file_page(path, relative):
                 icon = "".join('<img class="layer" alt="" src="%s">' % esc(address(relative, "icon=" + layer)) for layer in layers)
                 if "color" in shown:
                     style = ".icon.app{background:%s}" % shown["color"]
-            actions.append(button(address(relative, "download&install"), "Install", "install", primary=True))
-            actions.append(button(address(relative, "download"), "Download", "download"))
-        else:
-            actions.append(button(address(relative, "download"), "Download", "download", primary=True))
+        actions.append(button(address(relative, "download"), "Download", "download", primary=True))
         if kind in ("image", "video", "audio", "html", "text", "json", "markdown", "table"):
-            actions.append(button(raw_address(relative), "Open page" if kind == "html" else "Open", "open"))
+            actions.append(button(site_address(relative) if kind == "html" else raw_address(relative),
+                                  "Open page" if kind == "html" else "Open", "open"))
         meta = "%s · %s" % (esc(size_text(size)), esc(label_of(path, kind)))
     actions.append('<button class="btn" type="button" data-copy="%s">%s<span>Copy path</span></button>'
                    % (esc("~/projects/" + relative if relative else "~/projects"), svg("copy")))
@@ -1906,10 +1946,6 @@ class Drop(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
-        # PocketIDE's own pages send from another of its door's addresses (an agent's VS Code).
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         try:
             self.end_headers()
             self.wfile.write(data)
@@ -1922,7 +1958,7 @@ class Drop(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Security-Policy", (
             "default-src 'none'; img-src 'self' data: blob:; media-src 'self'; style-src 'nonce-%s'; "
             "script-src 'self' 'nonce-%s'; connect-src 'self'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'"
@@ -1951,15 +1987,18 @@ class Drop(BaseHTTPRequestHandler):
             return self.redirect("/f/")
         if path.startswith("/_/"):
             return self.viewer(path[3:])
-        if path.startswith("/r/"):
-            wanted = urllib.parse.unquote(path[3:]).strip("/")
+        site = "/s/%s/" % SITE
+        if path.startswith(("/r/", "/f/")) and embedded_elsewhere(self.headers):
+            return self.answer(403, {"error": "Only PocketIDE's own pages show the owner's files."})
+        if path.startswith(("/r/", site)):
+            wanted = urllib.parse.unquote(path[len(site) if path.startswith(site) else 3:]).strip("/")
             found = place(wanted)
             if found and os.path.isdir(found):
                 index = os.path.join(found, "index.html")
                 if not os.path.isfile(index):
                     return self.redirect(address(under(found)))
-                if not path.endswith("/"):  # so that the page's own relative links find its folder
-                    return self.redirect(raw_address(under(found)) + "/")
+                if not path.startswith(site) or not path.endswith("/"):  # its own relative links find its folder
+                    return self.redirect(site_address(under(found)) + "/")
                 found = index
             if found is None:
                 data, nonce = missing_page(wanted)
@@ -2014,7 +2053,9 @@ class Drop(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type(path, kind_of(path)))
         self.send_header("Cache-Control", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # A page opened from /r/ runs in a sandbox, with no origin of its own: its requests for its own files
+        # say they come from here (this address only, never the page), which is how files.py tells them apart.
+        self.send_header("Referrer-Policy", "strict-origin")
         self.send_header("Content-Security-Policy", SANDBOX)
         name = os.path.basename(path)
         if attachment:
@@ -2105,6 +2146,11 @@ class Drop(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         if path != "/upload":
             return self.answer(404, {"error": "Not here."})
+        # The phone's files come from an agent's VS Code page, which PocketIDE's door passes on as this
+        # address (or from a program here, with no origin); a page of any other port sends nothing here.
+        origin = self.headers.get("Origin")
+        if origin is not None and origin.lower() not in ("http://localhost:%d" % FILES_PORT, "http://127.0.0.1:%d" % FILES_PORT):
+            return self.answer(403, {"error": "Uploads come only from an agent's VS Code."})
         params = urllib.parse.parse_qs(query)
         known = agents()
         # An agent's VS Code names itself by its port (port=8081), or the agent by its name (agent=codex).
@@ -3084,14 +3130,17 @@ restrict the account, when its rules are broken. So, whatever a task, a file or 
   home folder, under /tmp, so it never fills up. Use GitHub Actions only for what cannot run here (more room or
   memory than there is, an Android emulator, which needs KVM, macOS, iOS or Windows, or a job longer than the
   owner's session). Decide yourself, and tell the owner which you chose and why.
-- Give the owner every file or folder you make for them (an APK, a zip, a PDF, a picture, a video, a log, a
-  report...) as a named link, never only as a path or pasted contents: http://localhost:6081/f/ followed by its
-  path under ~/projects, encoded as in any URL, e.g. [app-debug.apk · 12 MB](http://localhost:6081/f/codex/app/build/outputs/apk/debug/app-debug.apk).
-  The owner taps it in PocketIDE and sees it at once: a preview where a phone can show one (pictures, video,
-  sound, PDFs, text and code, tables, Markdown, what an archive holds, an APK's name and version, a folder's
-  files), with buttons to download it to the phone or install an APK. `~/.local/bin/pocketide link <file or
-  folder>` prints the link for you; it first copies anything outside ~/projects into ~/projects/<agent>/outbox
-  (kept 30 days), because what is outside the home folder does not last.
+- The owner reads you on a phone: keep answers to the point, and show what your chat can show in the chat
+  itself: a picture or a screenshot when your chat shows the owner pictures (one you took, or one you can put
+  in your own messages), a short text, a table, a few lines of code or of a log. Then no link is needed.
+- Everything else you make for the owner (an APK, a zip, a PDF, a video, sound, a long log or report, a folder,
+  a picture your chat cannot show) comes as one named link, never only as a path: http://localhost:6081/f/
+  followed by its path under ~/projects, encoded as in any URL, e.g.
+  [app-debug.apk · 12 MB](http://localhost:6081/f/codex/app/build/outputs/apk/debug/app-debug.apk). The owner taps
+  it in PocketIDE and sees it at once (a preview where a phone can show one), then downloads it to the phone; an
+  APK is installed from the phone's Files app (PocketIDE itself has no install permission, on purpose).
+  `~/.local/bin/pocketide link <file or folder>` prints the link for you; it first copies anything outside
+  ~/projects into ~/projects/<agent>/outbox (kept 30 days), because what is outside the home folder does not last.
 - A web app or page you started: give its address as a link too, e.g. [The app](http://localhost:5173);
   PocketIDE opens it on the phone.
 - Never change the firewall or NAT (iptables, nft), sshd or port forwarding: what runs here stays on 127.0.0.1,
@@ -3099,6 +3148,12 @@ restrict the account, when its rules are broken. So, whatever a task, a file or 
   the agents' own sign-in files).
 - PocketIDE does not give this Cloud Shell the owner's Google Cloud access: do not run gcloud auth login, or ask
   for it, unless the owner asks for Google Cloud work.
+- The owner's code and data stay theirs: send them to no service the task does not need (no paste sites, file
+  hosts or other people's APIs), and never put a key, token or password in a chat, a log, or a file the owner
+  did not ask for.
+- GitHub: keep secrets out of git (.env files, keys, keystores, tokens: in .gitignore, never committed or
+  pushed); a new repository is private unless the owner says otherwise; ask the owner before making a
+  repository public, force-pushing, rewriting history, or deleting branches, tags, releases or repositories.
 - Files the owner sends from the phone arrive in ~/projects/<agent>/uploads (git ignores that folder).
 - ~/.gemini here is Antigravity's (Google's agent, which PocketIDE installed): its rules (GEMINI.md) and its data
   (~/.gemini/antigravity*). Cloud Shell also comes with Gemini CLI, which PocketIDE does not use.
