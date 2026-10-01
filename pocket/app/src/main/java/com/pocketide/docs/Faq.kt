@@ -101,8 +101,8 @@ internal object Faq {
             "PocketIDE uses Cloud Shell as Google intends: through Google's own gcloud, unchanged in how it signs in and " +
                 "talks to Google, only while you use it, and nothing keeps it awake. Each agent is told Cloud Shell's rules in " +
                 "its own instructions (no mining, scanning, public tunnels or keep-awake jobs; heavy builds go to GitHub " +
-                "Actions), and the agents ask before they run commands unless you turn that off. No one can promise zero " +
-                "risk: Google decides, and what you ask an agent to do counts as yours. A separate Google account for " +
+                "Actions), and PocketIDE never turns off an agent's own approval settings. No one can promise zero risk: " +
+                "Google decides, and what you ask an agent to do counts as yours. A separate Google account for " +
                 "development keeps your main one, mail and photos apart.",
         ),
         faq(
