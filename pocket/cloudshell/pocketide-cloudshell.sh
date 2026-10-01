@@ -6,12 +6,10 @@
 #   Codex        port 8081  ~/projects/codex
 #   Antigravity  port 8082  ~/projects/antigravity
 # Each VS Code listens only inside Cloud Shell (127.0.0.1). PocketIDE's app reaches them through
-# Google's own gcloud (`gcloud cloud-shell ssh`), from the phone's own address only; in Chrome,
-# Cloud Shell's Web Preview reaches them, for your Google account only.
+# Google's own gcloud (`gcloud cloud-shell ssh`), from the phone's own address only.
 # From then on Cloud Shell starts them by itself when it starts, tidies old caches, logs and
 # 30-day-old Codex chats (never your projects), and once a day installs newer releases of the
 # agents and of code-server (a code-server release only once it is a week old), each checked.
-# A small sign-in bridge (port 8090, Web Preview only) finishes a sign-in in Chrome on a phone.
 # Each agent's own instructions begin with Cloud Shell's rules (no mining, scanning, public tunnels
 # or keeping Cloud Shell up), so an agent never puts the Google account at risk by itself.
 # Run it again at any time: it only adds what is missing.
@@ -61,44 +59,141 @@ else
 fi
 
 # 2. PocketIDE's layout extension, which each agent's VS Code gets: on a phone's narrow screen it
-# opens that VS Code's agent full screen, in the secondary side bar, maximized. PocketIDE's own
-# buttons (Tools, the keys) reach it through its keyboard shortcuts.
+# shows one thing at a time, full screen: the agent (in the secondary side bar, maximized), or
+# what covers it (a file, a diff, settings, an extension's page, a terminal), and Back returns to
+# the agent. PocketIDE's own buttons (Back, Tools) reach it through keys only PocketIDE presses.
 # Each VS Code installs it once for each version: raise the version when a file changes.
 mkdir -p "$BASE/layout"
 cat >"$BASE/layout/package.json" <<'JSON'
 {
   "name": "layout",
   "displayName": "PocketIDE layout",
-  "description": "Opens this VS Code's agent full screen for PocketIDE on a phone.",
-  "version": "7.0.0",
+  "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it.",
+  "version": "8.0.0",
   "publisher": "pocketide",
   "license": "Apache-2.0",
-  "engines": { "vscode": "^1.94.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./extension.js",
-  "extensionKind": ["workspace"],
-  "capabilities": { "untrustedWorkspaces": { "supported": true }, "virtualWorkspaces": true },
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
   "contributes": {
     "commands": [
-      { "command": "pocketide.tools", "title": "PocketIDE: Tools" },
-      { "command": "pocketide.agent", "title": "PocketIDE: The agent, full screen" },
-      { "command": "pocketide.vsix", "title": "PocketIDE: Install an extension from a link (.vsix)" }
+      {
+        "command": "pocketide.agent",
+        "title": "PocketIDE: The agent, full screen"
+      },
+      {
+        "command": "pocketide.back",
+        "title": "PocketIDE: Back"
+      },
+      {
+        "command": "pocketide.terminal",
+        "title": "PocketIDE: Terminal, full screen"
+      },
+      {
+        "command": "pocketide.settings",
+        "title": "PocketIDE: Settings"
+      },
+      {
+        "command": "pocketide.files",
+        "title": "PocketIDE: Open a file"
+      },
+      {
+        "command": "pocketide.commands",
+        "title": "PocketIDE: All commands"
+      },
+      {
+        "command": "pocketide.vsix",
+        "title": "PocketIDE: Install an extension from a link (.vsix)"
+      },
+      {
+        "command": "pocketide.tools",
+        "title": "PocketIDE: Tools"
+      }
     ],
     "keybindings": [
-      { "command": "pocketide.tools", "key": "ctrl+alt+p" },
-      { "command": "pocketide.agent", "key": "ctrl+alt+a" }
+      {
+        "command": "pocketide.back",
+        "key": "f13"
+      },
+      {
+        "command": "pocketide.agent",
+        "key": "f14"
+      },
+      {
+        "command": "pocketide.terminal",
+        "key": "f15"
+      },
+      {
+        "command": "pocketide.settings",
+        "key": "f16"
+      },
+      {
+        "command": "pocketide.commands",
+        "key": "f17"
+      },
+      {
+        "command": "pocketide.vsix",
+        "key": "f18"
+      },
+      {
+        "command": "pocketide.tools",
+        "key": "f19"
+      },
+      {
+        "command": "pocketide.files",
+        "key": "ctrl+f13"
+      },
+      {
+        "command": "pocketide.tools",
+        "key": "ctrl+alt+p"
+      },
+      {
+        "command": "pocketide.agent",
+        "key": "ctrl+alt+a"
+      }
     ],
     "viewsContainers": {
-      "secondarySidebar": [{ "id": "pocketide-agent", "title": "Agent", "icon": "agent.svg" }]
+      "secondarySidebar": [
+        {
+          "id": "pocketide-agent",
+          "title": "Agent",
+          "icon": "agent.svg"
+        }
+      ]
     },
     "views": {
-      "pocketide-agent": [{ "id": "pocketide.placeholder", "name": "Agent", "when": "pocketide.never" }]
+      "pocketide-agent": [
+        {
+          "id": "pocketide.placeholder",
+          "name": "Agent",
+          "when": "pocketide.never"
+        }
+      ]
     },
     "configuration": {
       "title": "PocketIDE",
       "properties": {
-        "pocketide.agent": { "type": "string", "default": "", "description": "The agent this VS Code opens full screen." }
+        "pocketide.agent": {
+          "type": "string",
+          "default": "",
+          "description": "The agent this VS Code opens full screen."
+        }
       }
     }
   }
@@ -108,7 +203,10 @@ cat >"$BASE/layout/agent.svg" <<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a5 5 0 0 1 5 5v1h1a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V7a5 5 0 0 1 5-5zm-3 11a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
 SVG
 cat >"$BASE/layout/extension.js" <<'JS'
-// PocketIDE layout: opens this VS Code's agent full screen, as a phone's narrow screen needs it.
+// PocketIDE layout: a phone's narrow screen shows one thing at a time, full screen: this VS Code's
+// agent, or what covers it (a file, a diff, settings, an extension's own page, a terminal). Back
+// returns to the agent. PocketIDE's bar reaches these commands through keys a phone's keyboard does
+// not have (F13 to F19, Ctrl+F13), which PocketIDE's page script presses.
 const vscode = require('vscode');
 
 const fs = require('fs');
@@ -126,6 +224,8 @@ const AGENTS = {
 const CONTAINER = 'workbench.view.extension.pocketide-agent';
 const WAIT_MS = 90000;
 const STEP_MS = 1000;
+const SETTLE_MS = 150;
+const OPEN_MS = 3000;
 const VSIX_MAX_BYTES = 300 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -196,152 +296,157 @@ async function installFromLink() {
   }
 }
 
-// Everything the hidden activity bar held, and the agent again.
-const TOOLS = [
-  { label: '$(hubot) Agent', detail: 'Back to the agent, full screen', command: 'pocketide.agent' },
-  { label: '$(terminal) Terminal', detail: 'A command line in this project', command: 'workbench.action.terminal.focus', restore: true },
-  { label: '$(files) Files', detail: 'This project\'s files', command: 'workbench.view.explorer', restore: true },
-  { label: '$(search) Search', detail: 'Search the project', command: 'workbench.view.search', restore: true },
-  { label: '$(source-control) Git', detail: 'Changes and commits', command: 'workbench.view.scm', restore: true },
-  { label: '$(extensions) Extensions', detail: 'Add or update extensions from Open VSX', command: 'workbench.view.extensions', restore: true },
-  { label: '$(cloud-download) Install from a link', detail: 'An extension (.vsix) Open VSX does not have, from its maker', command: 'pocketide.vsix' },
-  { label: '$(gear) Settings', detail: 'This VS Code\'s settings', command: 'workbench.action.openSettings' },
-  { label: '$(list-flat) All commands', detail: 'Everything VS Code can do', command: 'workbench.action.showCommands' },
-];
+let agent; // this VS Code's agent, from its settings
+let agentReady = false; // the agent's extension has started: its panel can open
+let covered = false; // an editor covers the agent, full screen
+let lastActive = ''; // the editor tab in front when the layout last changed
+let closing = false; // Back is closing what covers the agent
+let queue = Promise.resolve();
 
-async function openAgent(agent) {
-  if (!(await ready(agent.open))) return;
-  if (agent.move) await run('vscode.moveViews', { viewIds: agent.move, destinationId: CONTAINER });
-  for (const command of agent.open) await run(command);
+// Layout changes run one after another, never two at once.
+function arrange(step) {
+  queue = queue.then(step, step).catch(() => undefined);
+  return queue;
+}
+
+const activeTab = () => vscode.window.tabGroups.activeTabGroup && vscode.window.tabGroups.activeTabGroup.activeTab;
+const isTerminal = (tab) => !!tab && tab.input instanceof vscode.TabInputTerminal;
+
+function tabKey(tab) {
+  if (!tab) return '';
+  const input = tab.input || {};
+  const where = input.uri || input.modified || input.viewType || input.notebookType || '';
+  return `${tab.group.viewColumn}|${tab.label}|${String(where)}`;
+}
+
+// The agent, full screen at once; its own panel in front as soon as its extension has started (an
+// agent that is still starting, or downloading its parts, never holds the layout back).
+async function showAgent() {
+  await run('workbench.action.closePanel');
+  await run('workbench.action.maximizeAuxiliaryBar');
+  covered = false;
+  if (!agent || !agentReady) return;
+  if (agent.move) {
+    await run('vscode.moveViews', { viewIds: agent.move, destinationId: CONTAINER });
+    await run('workbench.action.maximizeAuxiliaryBar');
+  }
+  // Antigravity's panel, for one, answers only once its backend is downloaded and started.
+  for (const command of agent.open) await Promise.race([run(command), sleep(OPEN_MS)]);
   await run('workbench.action.maximizeAuxiliaryBar');
 }
 
-// PocketIDE's Tools button opens this (Ctrl+Alt+P); its agent button, the agent (Ctrl+Alt+A).
-function commands(context, agent) {
+// What covers the agent gets the whole screen: no side bars, no panel, its editor alone.
+async function showEditor() {
+  await run('workbench.action.closePanel');
+  await run('workbench.action.maximizeEditorHideSidebar');
+  covered = true;
+}
+
+// An editor that comes to the front (the agent's diff, a file, settings, an extension's page)
+// covers the agent, full screen; when the last one closes, the agent is back.
+function watchEditors(context) {
+  let timer;
+  const check = () => {
+    if (closing) return;
+    const tab = activeTab();
+    const key = tabKey(tab);
+    const changed = key !== lastActive;
+    lastActive = key;
+    if (!tab) {
+      if (covered) arrange(showAgent);
+    } else if (changed) {
+      arrange(showEditor);
+    }
+  };
+  const soon = () => {
+    clearTimeout(timer);
+    timer = setTimeout(check, SETTLE_MS);
+  };
   context.subscriptions.push(
-    vscode.commands.registerCommand('pocketide.agent', () => (agent ? openAgent(agent) : undefined)),
+    vscode.window.tabGroups.onDidChangeTabs((change) => {
+      if (change.opened.length || change.closed.length || change.changed.some((tab) => tab.isActive)) soon();
+    }),
+    vscode.window.tabGroups.onDidChangeTabGroups(soon),
+  );
+}
+
+// Back: what covers the agent closes (a terminal only steps aside: it keeps running), and the
+// agent is back on screen. Other editors stay open behind it: the one that comes to the front of
+// them when this one closes is no new editor, so it does not cover the agent.
+async function back() {
+  const tab = activeTab();
+  if (covered && tab && !isTerminal(tab)) {
+    closing = true;
+    try {
+      await vscode.window.tabGroups.close(tab, true);
+    } catch (error) {
+      // Already closed.
+    }
+    await sleep(SETTLE_MS * 2);
+    closing = false;
+  }
+  lastActive = tabKey(activeTab());
+  await arrange(showAgent);
+}
+
+async function terminal() {
+  const open = vscode.window.terminals.find((each) => each.exitStatus === undefined);
+  const shown = open || vscode.window.createTerminal({ location: vscode.TerminalLocation.Editor });
+  shown.show(false);
+  await sleep(SETTLE_MS * 2);
+  lastActive = tabKey(activeTab());
+  await arrange(showEditor);
+}
+
+async function settings() {
+  await run('workbench.action.openSettings');
+  await sleep(SETTLE_MS * 2);
+  lastActive = tabKey(activeTab());
+  await arrange(showEditor);
+}
+
+// The same places from a list, for a keyboard (Ctrl+Alt+P) or a computer's browser.
+const TOOLS = [
+  { label: '$(hubot) Agent', detail: 'Back to the agent, full screen', run: () => arrange(showAgent) },
+  { label: '$(terminal) Terminal', detail: 'A command line in this project', run: terminal },
+  { label: '$(go-to-file) Open a file', detail: 'Find a file in this project by its name', run: () => run('workbench.action.quickOpen') },
+  { label: '$(gear) Settings', detail: 'This VS Code\'s settings', run: settings },
+  { label: '$(cloud-download) Install from a link', detail: 'An extension (.vsix) Open VSX does not have, from its maker', run: installFromLink },
+  { label: '$(list-flat) All commands', detail: 'Everything VS Code can do', run: () => run('workbench.action.showCommands') },
+];
+
+function commands(context) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pocketide.agent', () => arrange(showAgent)),
+    vscode.commands.registerCommand('pocketide.back', back),
+    vscode.commands.registerCommand('pocketide.terminal', terminal),
+    vscode.commands.registerCommand('pocketide.settings', settings),
+    vscode.commands.registerCommand('pocketide.commands', () => run('workbench.action.showCommands')),
+    vscode.commands.registerCommand('pocketide.files', () => run('workbench.action.quickOpen')),
     vscode.commands.registerCommand('pocketide.vsix', installFromLink),
     vscode.commands.registerCommand('pocketide.tools', async () => {
       const picked = await vscode.window.showQuickPick(TOOLS, { placeHolder: 'PocketIDE tools' });
-      if (!picked) return;
-      if (picked.restore) await run('workbench.action.restoreAuxiliaryBar');
-      await run(picked.command);
+      if (picked) await picked.run();
     }),
   );
 }
 
 async function activate(context) {
-  const agent = AGENTS[vscode.workspace.getConfiguration('pocketide').get('agent', '')];
-  commands(context, agent);
-  if (agent) await openAgent(agent);
+  agent = AGENTS[vscode.workspace.getConfiguration('pocketide').get('agent', '')];
+  commands(context);
+  watchEditors(context);
+  lastActive = tabKey(activeTab());
+  await arrange(showAgent);
+  if (agent) {
+    ready(agent.open).then((found) => {
+      agentReady = found;
+      if (found) arrange(() => (covered ? undefined : showAgent()));
+    });
+  }
 }
 
 module.exports = { activate, deactivate() {} };
 JS
-
-# The sign-in bridge PocketIDE opens in Chrome when a sign-in page returns to localhost (see its own words).
-cat >"$BASE/bridge.py" <<'BRIDGE'
-#!/usr/bin/env python3
-"""PocketIDE's sign-in return in Cloud Shell, reached only through Cloud Shell's Web Preview, which
-only the owner's Google account can open. PocketIDE's app reaches Cloud Shell through Google's own
-gcloud; this is for when an agent is opened in Chrome instead.
-
-An agent that signs in with a browser (Codex's Sign in with ChatGPT, Antigravity's Continue with
-Google) waits for the sign-in page to return to http://localhost:PORT here in Cloud Shell. On a
-phone that return lands on the phone, where nothing waits, so Chrome says "localhost refused".
-PocketIDE opens this bridge with that same address instead, and the bridge hands it to the agent
-waiting here, as localhost. Only GET, only this computer's ports 1024-65535. Nothing it passes on
-is written to a log.
-"""
-import base64
-import http.client
-import http.server
-import sys
-import time
-
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8090
-PREFIX = "/pocketide/callback/"
-PASSED = ("content-type", "content-length", "cache-control")
-RETRY_SECONDS = 10
-
-
-def decode(token):
-    return base64.urlsafe_b64decode((token + "=" * (-len(token) % 4)).encode("ascii")).decode("utf-8")
-
-
-def encode(text):
-    return base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii").rstrip("=")
-
-
-class Return(http.server.BaseHTTPRequestHandler):
-    """GET /pocketide/callback/<port>/<the address after localhost, base64url>."""
-
-    server_version = "PocketIDE"
-    sys_version = ""
-
-    def do_GET(self):  # noqa: N802 (the name http.server calls)
-        if self.path == "/pocketide/health":
-            return self.reply(200, "ok")
-        if not self.path.startswith(PREFIX):
-            return self.reply(404, "This is PocketIDE's sign-in bridge; it only finishes sign-ins.")
-        try:
-            port_text, token = self.path[len(PREFIX):].split("/", 1)
-            port = int(port_text)
-            target = decode(token.split("?", 1)[0])
-        except (ValueError, UnicodeDecodeError):
-            return self.reply(400, "This sign-in link is not complete.")
-        if not 1024 <= port <= 65535 or port == PORT or not target.startswith("/") or target.startswith("//"):
-            return self.reply(400, "This sign-in link is not complete.")
-        try:
-            upstream = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
-            upstream.request("GET", target, headers={
-                "Host": f"localhost:{port}",
-                "User-Agent": self.headers.get("User-Agent", "PocketIDE"),
-                "Accept": self.headers.get("Accept", "*/*"),
-            })
-            answer = upstream.getresponse()
-            body = answer.read()
-        except OSError:
-            return self.reply(502, "Nothing waits for this sign-in in Cloud Shell any more. Start the sign-in again in the agent.")
-        self.send_response(answer.status)
-        for name, value in answer.getheaders():
-            lowered = name.lower()
-            if lowered == "location":
-                self.send_header("Location", self.moved(value, port))
-            elif lowered in PASSED:
-                self.send_header(name, value)
-        self.end_headers()
-        self.wfile.write(body)
-
-    def moved(self, location, port):
-        """A redirect back to the agent's own address stays on this bridge."""
-        for origin in (f"http://localhost:{port}", f"http://127.0.0.1:{port}"):
-            if location.startswith(origin + "/") or location == origin:
-                location = location[len(origin):] or "/"
-                break
-        if location.startswith("/") and not location.startswith("//"):
-            return PREFIX + f"{port}/" + encode(location)
-        return location
-
-    def reply(self, status, text):
-        body = (text + "\n").encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, format, *args):  # noqa: A002 (the name http.server uses)
-        pass  # sign-in codes never go to a log
-
-
-if __name__ == "__main__":
-    while True:
-        try:
-            http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Return).serve_forever()
-        except OSError:
-            time.sleep(RETRY_SECONDS)
-BRIDGE
 
 # 3. `pocketide`: starts each agent's VS Code that is not running, installs or updates the agents
 # (`pocketide update`), and, when Cloud Shell starts (`pocketide boot`), tidies and updates too.
@@ -352,7 +457,6 @@ set -uo pipefail
 AGENTS="claude-code:8080:anthropic/claude-code codex:8081:openai/chatgpt antigravity:8082:google/google-antigravity"
 BASE="$HOME/.pocketide"
 CODE="$BASE/code-server/current/bin/code-server"
-BRIDGE_PORT=8090
 # Antigravity's extension starts Google's agy on this port (its own setting), for its panel.
 AGY_PORT=18083
 
@@ -383,6 +487,8 @@ print(json.dumps({
     "telemetry.telemetryLevel": "off",
     "chat.disableAIFeatures": True,
     "task.allowAutomaticTasks": "off",
+    "workbench.editor.useModal": "off",
+    "terminal.integrated.defaultLocation": "editor",
     "pocketide.agent": agent,
     "claudeCode.preferredLocation": "sidebar",
     "claudeCode.useCtrlEnterToSend": True,
@@ -408,7 +514,7 @@ manifest = f"""<?xml version="1.0" encoding="utf-8"?>
   <Metadata>
     <Identity Language="en-US" Id="layout" Version="{version}" Publisher="pocketide" />
     <DisplayName>PocketIDE layout</DisplayName>
-    <Description xml:space="preserve">Opens this VS Code's agent full screen, as a phone needs it.</Description>
+    <Description xml:space="preserve">One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it.</Description>
     <Categories>Other</Categories>
     <Properties>
       <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.94.0" />
@@ -586,13 +692,15 @@ links() { # the agents' own command lines, where a terminal finds them
     return 0
 }
 
-start() { # each agent's VS Code that is not running, on its own port, and the sign-in bridge
-    if [ -f "$BASE/bridge.py" ] && ! pgrep -u "$(id -u)" -f "$BASE/bridge.py" >/dev/null; then
-        nohup python3 "$BASE/bridge.py" "$BRIDGE_PORT" >"$BASE/bridge.log" 2>&1 &
-    fi
+start() { # each agent's VS Code that is not running, on its own port
     # Where PocketIDE's app shows this computer's ports (`pocketide proxy-uri`): code-server's own
     # links to a port (Antigravity's panel, a dev server) go there.
     proxy=$(cat "$BASE/proxy-uri" 2>/dev/null || true)
+    # A link to another site opens without code-server's own question: PocketIDE's app decides
+    # where each link opens, and asks first when it was not tapped. A code-server release without
+    # this option starts without it (never not at all).
+    links=()
+    "$CODE" --help 2>/dev/null | grep -q -- '--link-protection-trusted-domains' && links=(--link-protection-trusted-domains '*')
     for entry in $AGENTS; do
         key=${entry%%:*} rest=${entry#*:} port=${rest%%:*}
         data="$BASE/vscode/$key"
@@ -601,7 +709,7 @@ start() { # each agent's VS Code that is not running, on its own port, and the s
         (
             [ -n "$proxy" ] && export VSCODE_PROXY_URI="$proxy"
             exec nohup "$CODE" --bind-addr "127.0.0.1:$port" --auth none --disable-telemetry --disable-update-check \
-                --disable-workspace-trust --disable-getting-started-override \
+                --disable-workspace-trust --disable-getting-started-override ${links[@]+"${links[@]}"} \
                 --user-data-dir "$data" --extensions-dir "$data/extensions" "$HOME/projects/$key" \
                 >"$data/code-server.log" 2>&1
         ) &
@@ -614,6 +722,10 @@ proxy_uri() { # $1: http://{{port}}-<key>.localhost:<port>/, where the phone's P
     [ "$(cat "$BASE/proxy-uri" 2>/dev/null)" = "$1" ] && return 0
     (umask 077 && printf '%s\n' "$1" >"$BASE/proxy-uri")
     # code-server reads it when it starts: each VS Code starts again with it.
+    restart
+}
+
+restart() { # each VS Code starts again (a new address, new flags, a new layout extension)
     pkill -u "$(id -u)" -f "$BASE/code-server/" || true
     for _ in $(seq 1 20); do
         pgrep -u "$(id -u)" -f "$BASE/code-server/" >/dev/null || break
@@ -637,6 +749,7 @@ tidy() { # old caches, logs and 30-day-old Codex chats; never projects, never wh
 
 case "${1:-}" in
 update) update && start ;;
+restart) restart ;;
 proxy-uri) proxy_uri "${2:-}" ;;
 boot)
     tidy
@@ -650,7 +763,7 @@ boot)
     ;;
 *)
     start
-    echo "PocketIDE: Claude Code on port 8080, Codex on 8081, Antigravity on 8082 (Web Preview)."
+    echo "PocketIDE: Claude Code on port 8080, Codex on 8081, Antigravity on 8082, for PocketIDE's app."
     ;;
 esac
 LAUNCHER
@@ -658,10 +771,12 @@ chmod +x "$BIN/pocketide"
 
 # PocketIDE 6.1 showed Antigravity's own screen instead of its VS Code: PocketIDE started agy on
 # port 18082 and a bridge showed it on 8082. Antigravity's VS Code is back on 8082, and its
-# extension starts agy itself; the rest of 6.1's screen goes. The bridge restarts with this script.
+# extension starts agy itself; the rest of 6.1's screen goes. PocketIDE 7's sign-in bridge (port
+# 8090, for agents opened in Chrome) goes too: the agents open only in PocketIDE's app now.
 pkill -u "$(id -u)" -f "agy --hub --hub-port=18082 " || true
 rm -rf "${BASE:?}/bin" "$BASE/signin-url" "$BASE/signin-url.new" "$BASE/antigravity.log"
 pkill -u "$(id -u)" -f "$BASE/bridge.py" || true
+rm -f "$BASE/bridge.py" "$BASE/bridge.log"
 
 # The first PocketIDE script kept one VS Code for all three agents, on port 8080, in
 # ~/.local/share/code-server. Each agent now has its own, so that one goes; the agents' chats and
@@ -682,6 +797,12 @@ fi
 say "Installing the three agents..."
 installed=yes
 "$BIN/pocketide" update || installed=no
+# A VS Code that was already running keeps its old flags and layout until it starts again.
+if [ -z "${VSCODE_IPC_HOOK_CLI:-}" ]; then
+    "$BIN/pocketide" restart
+else
+    echo "The agents' VS Code starts with this set-up next time (this terminal runs inside one of them)."
+fi
 
 # 5. Each agent's own instructions begin with Cloud Shell's rules, so that an agent never puts
 # the Google account at risk by itself: no mining, scanning, public tunnels, or keeping Cloud Shell
@@ -741,10 +862,9 @@ if [ "$installed" = no ]; then
 fi
 say "Done."
 cat <<'NEXT'
-PocketIDE opens each agent's own VS Code, the agent full screen. (Set up from Chrome? Go back to
-PocketIDE and tap Set-up is done.) Sign in once, in the agent itself (Claude Code's Sign in,
-Codex's Sign in with ChatGPT, Antigravity's Continue with Google): the page opens in Chrome and
-comes back to the agent by itself.
+PocketIDE opens each agent's own VS Code, the agent full screen. Sign in once, in the agent
+itself (Claude Code's Sign in, Codex's Sign in with ChatGPT, Antigravity's Continue with Google):
+only that sign-in page opens in the phone's browser, and it comes back to the agent by itself.
 Your files:    projects in ~/projects/claude-code, ~/projects/codex and ~/projects/antigravity;
                chats and sign-ins in ~/.claude, ~/.codex and ~/.gemini.
 NEXT
