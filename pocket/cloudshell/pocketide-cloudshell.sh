@@ -543,6 +543,7 @@ only Python's standard library, and stops Chrome and itself when no one has watc
 browser for IDLE_MINUTES.
 """
 import base64
+import itertools
 import json
 import os
 import socket
@@ -644,6 +645,8 @@ class Browser:
         self.picked = None  # the tab the owner picked, kept in front while they use it
         self.touched = 0.0  # when the owner last picked or used a page
         self.active = None  # the page something last happened in: the one the agent works in
+        self.opened = {}  # each tab's place in the view's list (place)
+        self.places = itertools.count()
         self.casting = False
         self.frame = None
         self.frame_no = 0
@@ -696,20 +699,29 @@ class Browser:
                     self.call("Page.screencastFrameAck", {"sessionId": params.get("sessionId")}, self.session, wait=False)
                 elif method in ("Target.targetCreated", "Target.targetDestroyed", "Target.targetInfoChanged"):
                     info = params.get("targetInfo") or {}
-                    if method != "Target.targetDestroyed" and info.get("type") == "page":
+                    if method == "Target.targetDestroyed":
+                        self.opened.pop(params.get("targetId"), None)
+                    elif info.get("type") == "page":
+                        self.place(info.get("targetId"))
                         self.active = info.get("targetId")
                     self.used = time.time()
                     threading.Thread(target=self.follow, daemon=True).start()
         except (OSError, ValueError):
             self.closed.set()
 
+    def place(self, target):
+        """A tab's place in the view's list. Chrome lists its tabs in no fixed order, one that can
+        change from one start to the next: the view keeps the order they opened in, so its list
+        stays put and the last tab is the newest."""
+        return self.opened.setdefault(target, next(self.places))
+
     def pages(self):
         found = (self.call("Target.getTargets") or {}).get("targetInfos", [])
-        return [page for page in found if page.get("type") == "page"]
+        return sorted((page for page in found if page.get("type") == "page"), key=lambda page: self.place(page["targetId"]))
 
     def follow(self):
         """The page shown: the one the owner picked, while they use it (OWNER_SECONDS); else the
-        one something last happened in, which is where the agent works; else the last one."""
+        one something last happened in, which is where the agent works; else the newest."""
         pages = self.pages()
         if not pages:
             return
