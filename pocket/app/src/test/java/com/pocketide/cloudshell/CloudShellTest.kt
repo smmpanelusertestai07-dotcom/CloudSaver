@@ -194,6 +194,10 @@ class CloudShellTest {
         assertTrue("its view listens only inside Cloud Shell", relay.contains("Server((\"127.0.0.1\", VIEW_PORT), View)"))
         assertTrue("it stops when no one used it for a while", relay.contains("IDLE_MINUTES = 20"))
         assertTrue("the owner's input is checked", relay.contains("if urllib.parse.urlparse(url).scheme in (\"http\", \"https\")"))
+        assertTrue(
+            "its tabs keep the order they opened in, not Chrome's, which changes",
+            relay.contains("key=lambda page: self.place(page[\"targetId\"])"),
+        )
         assertTrue("Chrome comes from Google's own address", text.contains("startswith(\"https://storage.googleapis.com/chrome-for-testing-public/\")"))
         assertTrue("the agents are told how to use it, and to stop it", text.contains("pocketide browser stop"))
         assertTrue("it needs memory: the launcher says so first", text.contains("return 3"))

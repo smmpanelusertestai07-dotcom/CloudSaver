@@ -13,11 +13,11 @@ import java.net.URLEncoder
  */
 object CloudShell {
     /** The commit that holds the setup script this app version gives out. */
-    const val SCRIPT_COMMIT = "b753eb5960be3f915a42e5be6dd2657bc984dc7a"
+    const val SCRIPT_COMMIT = "2c51e0d880f94747c68c784af8b8b76318dad8af"
     const val SCRIPT_PATH = "pocket/cloudshell/pocketide-cloudshell.sh"
 
     /** The script's SHA-256: the command runs it only when the download matches. */
-    const val SCRIPT_SHA256 = "e2ce8da0f174f8c960cc539fa2eaa3d384b3bd37d45518b2cc7a2cd733de9172"
+    const val SCRIPT_SHA256 = "570c39d16ca5731ba437b13893d03bcff5c31c5ecc17ff801f1f99f5024330cd"
     val SCRIPT_URL = "https://raw.githubusercontent.com/${BuildConfig.RELEASES_REPO}/$SCRIPT_COMMIT/$SCRIPT_PATH"
 
     /** Google deletes Cloud Shell's home folder after this many days without use. */

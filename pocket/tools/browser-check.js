@@ -4,8 +4,9 @@
 // An agent drives Chrome through its DevTools protocol (127.0.0.1:9222, as Playwright's
 // connectOverCDP does) and opens a page of its own dev server; the owner's view (127.0.0.1:6080, in
 // a phone-sized Chromium as PocketIDE's app shows it) must show that page live, pass a tap and
-// typing to it, switch it to a phone's size, follow a new tab the agent opens, and keep taps out
-// in Watch only. Any miss is an error, and the screenshots show it.
+// typing to it, switch it to a phone's size, follow a new tab the agent opens, list the tabs in the
+// order they opened, show the one the owner picks, and keep taps out in Watch only. Any miss is an
+// error, and the screenshots show it.
 const http = require('http');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -79,10 +80,18 @@ const say = (what) => fetch(VIEW + 'input', { method: 'POST', headers: { 'Conten
   await phone.screenshot({ path: path.join(out, 'browser-3-new-tab.png') });
   console.log('The view follows the tab the agent works in.');
 
-  // The owner picks the first tab again, and Watch only keeps their taps out of it.
-  const first = await phone.evaluate(() => document.querySelector('#pages option').value);
-  await phone.selectOption('#pages', first);
-  await phone.waitForFunction(() => !document.querySelector('#pages option:checked').textContent.startsWith('Second'), null, { timeout: 10000 });
+  // The tabs are listed in the order they opened (Chrome's own list has no fixed order): the tab
+  // the agent opened last comes last, after its first one.
+  const tabs = await phone.$$eval('#pages option', (options) => options.map((option) => option.textContent));
+  if (!tabs.includes("Agent's page") || tabs.at(-1) !== 'Second tab') {
+    throw new Error(`The tabs are not in the order they opened: ${tabs.join(' | ')}`);
+  }
+  console.log('The tabs are in the order they opened.');
+
+  // The owner picks the agent's first tab again: the view shows it (its address comes from the
+  // relay, not from the list), and Watch only keeps their taps out of it.
+  await phone.selectOption('#pages', { label: "Agent's page" });
+  await phone.waitForFunction((shown) => document.getElementById('url').value === shown, address, { timeout: 10000 });
   await page.evaluate(() => { document.getElementById('b').textContent = 'Tap me'; });
   await phone.click('#watch');
   await tap();
