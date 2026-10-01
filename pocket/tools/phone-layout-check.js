@@ -4,9 +4,11 @@
 //   node phone-layout-check.js <folder for the screenshots> [name:port:title, for one agent only]
 // It checks what the owner sees: the agent's own panel alone, full screen; the terminal full screen
 // over it; the IDE button's whole IDE around the agent; Back (the app's) returning to the agent, with
-// an editor left behind it; a page (Settings) opened from the whole IDE getting the whole screen, and
-// closed by Back; the command palette inside the screen and closed by Back's Escape, then the agent's
-// own notice, if any, by the next Back. Any miss is an error, and the screenshots show it.
+// an editor left behind it; a page (Settings) opened from the whole IDE getting the whole screen, closed
+// by Back, by the IDE button and by the agent's, and in front again whenever it opens; a file opened
+// again while it is behind the agent, alone (VS Code would split the screen); the command palette inside
+// the screen and closed by Back's Escape, then the agent's own notice, if any, by the next Back. Any
+// miss is an error, and the screenshots show it.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -117,12 +119,37 @@ async function check(browser, agent, port, name) {
     await run('back');
     await until('Back from the page returns to the agent', agentAlone, 10000);
     if (/^Settings\b/.test(await page.title())) fail(`${agent}: Back left the page open behind the agent`);
-    // The IDE button over such a page brings the whole IDE back, the agent with it.
+    // A page is only ever in front, full screen, or closed: the IDE button over it closes it and shows
+    // the whole IDE; opened again (from there, or after the agent), it is in front, full screen again.
+    const pageOpen = async () => /^Settings\b/.test(await page.title());
     await after('the IDE button shows the whole IDE before a page', () => run('ide'), wholeIde);
     await after('the page gets the whole screen again', () => page.keyboard.press('Control+Comma'), editorAlone);
-    await after('the IDE button over the page shows the whole IDE, the agent too', () => run('ide'), wholeIde);
+    await after('the IDE button over the page closes it and shows the whole IDE', () => run('ide'), wholeIde);
+    if (await pageOpen()) fail(`${agent}: the page stayed open behind the whole IDE`);
     await run('agent');
     await until('the agent comes back from there', agentAlone, 10000);
+    await after('a page opened again after the agent is in front, full screen', () => page.keyboard.press('Control+Comma'), editorAlone);
+    await run('agent');
+    await until('the agent button closes the page', agentAlone, 10000);
+    if (await pageOpen()) fail(`${agent}: the page stayed open behind the agent`);
+    // An editor opened again while it is open behind the agent (a file link tapped twice): VS Code
+    // splits the screen between them; the page script and the layout extension put it alone again.
+    const userSettings = async () => {
+      await run('commands');
+      await page.waitForSelector('.quick-input-widget input', { timeout: 15000 });
+      await page.waitForTimeout(800);
+      await page.keyboard.type('Preferences: Open User Settings (JSON)');
+      await page.waitForTimeout(1000);
+      await page.keyboard.press('Enter');
+    };
+    await after('a file opens full screen', userSettings, editorAlone);
+    await run('agent');
+    await until('the agent covers the file', agentAlone, 10000);
+    await userSettings();
+    await until('the same file, opened again, is alone, full screen (not beside the agent)', editorAlone, 15000);
+    await shot('3-file-again');
+    await run('back');
+    await until('Back from the file returns to the agent', agentAlone, 10000);
 
     // A webview that is still starting can take the focus once, which closes the palette: a second
     // tap opens it, as it would for the owner.

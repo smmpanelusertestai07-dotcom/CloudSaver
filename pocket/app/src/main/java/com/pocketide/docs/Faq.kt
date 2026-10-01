@@ -254,6 +254,16 @@ internal object Faq {
                 "on its own private port in Cloud Shell; PocketIDE opens it straight on that agent.",
         ),
         faq(
+            "pages-alone",
+            DocsContent.IDE_ID,
+            "Why does a settings page close when I go to the agent or the whole IDE?",
+            "A page (Antigravity's settings, VS Code's Settings, an extension's own page) is only ever in front, alone and " +
+                "full screen, or closed: it is made for a computer's width, so it never shares the screen, even in the whole " +
+                "IDE. Going to the agent or to the whole IDE closes it, and it opens full screen again next time; what you " +
+                "changed in it is already saved. Files and terminals stay open behind the agent, and a file opened again " +
+                "comes back alone, full screen.",
+        ),
+        faq(
             "no-repeat",
             DocsContent.COMPUTER_ID,
             "Does anything download again when Cloud Shell stops and starts?",
