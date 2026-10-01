@@ -6,6 +6,7 @@ import com.pocketide.core.Clock
 import com.pocketide.core.LogBackgroundFailure
 import com.pocketide.core.SettingsStore
 import com.pocketide.core.createSettingsStore
+import com.pocketide.downloads.Downloads
 import com.pocketide.link.Holds
 import com.pocketide.link.Link
 import com.pocketide.link.LinkOpener
@@ -52,4 +53,7 @@ class AppGraph(val context: Context) {
 
     /** Cloud Shell's numbers and the agents' chats, read there over the open connection. */
     val cloudInfo: CloudShellInfo by lazy { CloudShellInfo(context, link, settings) }
+
+    /** Files from Cloud Shell saved on the phone (an agent's links, VS Code's Download), through the door. */
+    val downloads: Downloads by lazy { Downloads(context, foreground) }
 }

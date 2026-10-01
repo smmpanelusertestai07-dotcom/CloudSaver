@@ -423,17 +423,33 @@ jobs:
           "$tools/node_modules/.bin/playwright" install --with-deps chromium
           NODE_PATH="$tools/node_modules" node pocket/tools/phone-layout-check.js "$RUNNER_TEMP/phone-screens"
 
-      - name: Files from the phone reach the agent, through its own file dialog
+      - name: Files from the phone reach the agent, and VS Code's Download reaches the phone
         run: |
           set -euo pipefail
           # Codex's "add files" (VS Code's file dialog) with PocketIDE's page script: the tap opens the
           # phone's picker by itself, and the file lands in ~/projects/codex/uploads through Cloud
-          # Shell's file drop (127.0.0.1:6081), which listens only inside Cloud Shell.
+          # Shell's file drop (127.0.0.1:6081), which listens only inside Cloud Shell. The other way,
+          # VS Code's own Download of a small file (a blob: address) is kept by the page script, whole,
+          # for the app to read.
           home="$RUNNER_TEMP/cloudshell-home"
           curl -fs -m 5 http://127.0.0.1:6081/state
           CLOUD_SHELL_HOME="$home" NODE_PATH="$RUNNER_TEMP/phone-check/node_modules" \
             node pocket/tools/phone-files-check.js "$RUNNER_TEMP/phone-screens"
           grep -qx '\*' "$home/projects/codex/uploads/.gitignore"
+
+      - name: An agent's links to files open on the phone, with a preview and Download
+        run: |
+          set -euo pipefail
+          # What an agent gives the owner: `pocketide link` prints a named link to files.py, whose
+          # page for each file PocketIDE's app opens (a folder, a PDF's pages with pdf.js, which the
+          # set-up fetched and checked, a picture, Markdown, a table, a sandboxed page, a download).
+          home="$RUNNER_TEMP/cloudshell-home"
+          launcher="$home/.local/bin/pocketide"
+          test "$(cat "$home/.pocketide/viewer/version")" = "$(sed -n 's/^PDFJS_VERSION=//p' "$launcher")"
+          CLOUD_SHELL_HOME="$home" NODE_PATH="$RUNNER_TEMP/phone-check/node_modules" \
+            node pocket/tools/files-check.js "$RUNNER_TEMP/phone-screens"
+          # The agents' own rules say so: Cloud Shell first, files as links.
+          grep -q 'http://localhost:6081/f/' "$home/.claude/CLAUDE.md" "$home/.codex/AGENTS.md" "$home/.gemini/GEMINI.md"
 
       - name: Extensions from Open VSX, as PocketIDE's Extensions screen installs and removes them
         run: |
@@ -461,6 +477,8 @@ jobs:
           HOME="$home" "$launcher" agent add saoudrizwan.claude-dev | tee "$RUNNER_TEMP/added.txt"
           test "$(tail -n 1 "$RUNNER_TEMP/added.txt")" = x-claude-dev
           grep -qx 'x-claude-dev:8083:saoudrizwan/claude-dev' "$home/.pocketide/agents"
+          # Its rules (Cloud Shell first, files as links) in its projects folder, where Cline reads AGENTS.md.
+          grep -q 'http://localhost:6081/f/' "$home/projects/x-claude-dev/AGENTS.md"
           # Once only: the same extension again is the same agent.
           test "$(HOME="$home" "$launcher" agent add saoudrizwan.claude-dev | tail -n 1)" = x-claude-dev
           test "$(wc -l <"$home/.pocketide/agents")" = 1

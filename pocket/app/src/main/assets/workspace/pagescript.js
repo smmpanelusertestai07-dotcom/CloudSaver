@@ -13,6 +13,9 @@
 // - escape(), backTarget(): what Back closes first (a menu, a dialog, a notice), then what covers
 //   the agent, else nothing ('none': PocketIDE's Back leaves the screen).
 // - fit(zoom, widthDp): the page drawn smaller on a short screen; type(text): the Paste key.
+// - A page an extension made for a computer's screen (Antigravity's settings, whose own menu takes
+//   200 of a phone's 360 pixels) is drawn smaller while it is in front, as the IDE button draws the
+//   IDE, so all of it shows; back at the agent, the page is its own size again.
 // - Phone files: an agent's own "add files" opens Android's picker on the same tap. Codex, Cline and
 //   Roo Code ask their extension for files over their webview's message port; that request is
 //   answered here with the files picked on the phone, so VS Code's dialog never opens. Claude
@@ -22,6 +25,9 @@
 //   PocketIDE's door passes to the drop: VS Code's own security policy lets a page connect only to
 //   its own address. Nothing is added to the screen; asking for a folder or a save stays VS
 //   Code's, with Cloud Shell's folders.
+// - VS Code's own Download of a file under 32 MB gives the browser a blob: address and takes it back
+//   at once, so nothing outside the page can read it. The file clicked is kept here for a few
+//   minutes, and PocketIDE reads it (heldFile, piece, letGo) into the phone's Downloads.
 (() => {
   if (window.__pocketide || window.top !== window) return;
   const style = `
@@ -235,6 +241,31 @@
       }
     });
   };
+  // What PocketIDE last asked fit() for ({ zoom, width }; null: nothing yet), and whether a page made
+  // for a computer's screen is in front (VS Code names the editor in front in the window's title).
+  const WIDE_PAGES = /^Antigravity Settings\b/;
+  const WIDE_ZOOM = 0.6;
+  let fitted = null;
+  let widePage = false;
+  const applyFit = () => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return false;
+    const asked = fitted ? fitted.zoom : 1;
+    const z = Math.min(1, Math.max(0.5, widePage ? Math.min(asked, WIDE_ZOOM) : asked));
+    const view = window.visualViewport;
+    const widthDp = (fitted && fitted.width) || (view ? view.width * view.scale : window.innerWidth);
+    const content = z >= 1
+      ? 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no'
+      : `width=${Math.round(widthDp / z)}, initial-scale=${z}, minimum-scale=${z}, maximum-scale=${z}, user-scalable=no`;
+    if (meta.getAttribute('content') !== content) meta.setAttribute('content', content);
+    return true;
+  };
+  const checkWidePage = () => {
+    const now = WIDE_PAGES.test(document.title || '');
+    if (now === widePage) return;
+    widePage = now;
+    applyFit();
+  };
   // Each file dialog once, as it opens. A dialog not opened by a tap is left as it is.
   let seen = null;
   let checking = false;
@@ -243,6 +274,7 @@
     checking = true;
     requestAnimationFrame(() => {
       checking = false;
+      checkWidePage();
       const dialog = fileDialog();
       if (!dialog) {
         seen = null;
@@ -254,6 +286,44 @@
     });
   // `document` itself: the script may run before the page has any element (a document-start script).
   }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+  // VS Code's Download of a small file: a blob: address with the file's name, clicked as a link. The
+  // file behind it is kept from that click (VS Code takes the address back at once) until PocketIDE
+  // has read it, in pieces of base64; never longer than KEEP_MS.
+  const PIECE = 1024 * 1024;
+  const KEEP_MS = 5 * 60 * 1000;
+  const blobs = new Map();
+  const held = new Map();
+  const makeAddress = URL.createObjectURL;
+  const takeBack = URL.revokeObjectURL;
+  URL.createObjectURL = function (object) {
+    const address = makeAddress.call(URL, object);
+    if (object instanceof Blob) blobs.set(address, object);
+    return address;
+  };
+  URL.revokeObjectURL = function (address) {
+    blobs.delete(address);
+    return takeBack.call(URL, address);
+  };
+  window.addEventListener('click', (event) => {
+    const link = event.target instanceof Element ? event.target.closest('a[download][href^="blob:"]') : null;
+    const blob = link && blobs.get(link.href);
+    if (!blob) return;
+    const address = link.href;
+    held.set(address, { blob, name: link.download, pieces: new Map() });
+    setTimeout(() => held.delete(address), KEEP_MS);
+  }, true);
+  // Starts reading piece [index] of [file]: '' while it is read, then its base64 (null: it could not be).
+  const readPiece = (file, index) => {
+    if (file.pieces.has(index) || index * PIECE >= file.blob.size) return;
+    file.pieces.set(index, '');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result);
+      file.pieces.set(index, text.slice(text.indexOf(',') + 1));
+    };
+    reader.onerror = () => file.pieces.set(index, null);
+    reader.readAsDataURL(file.blob.slice(index * PIECE, (index + 1) * PIECE));
+  };
   window.__pocketide = {
     overlayOpen,
     run(name) {
@@ -273,23 +343,41 @@
         !wide('.monaco-workbench .part.sidebar') && !wide('.monaco-workbench .part.panel');
       return agentAlone ? 'none' : 'vscode';
     },
-    // Draws the page at [zoom] (0.5 to 1) of a WebView [widthDp] wide.
+    // Draws the page at [zoom] (0.5 to 1) of a WebView [widthDp] wide (smaller still under a page
+    // made for a computer's screen).
     fit(zoom, widthDp) {
-      const meta = document.querySelector('meta[name="viewport"]');
-      if (!meta) return false;
-      const z = Math.min(1, Math.max(0.5, Number(zoom) || 1));
-      const width = Math.round((Number(widthDp) || window.innerWidth) / z);
-      const content = z >= 1
-        ? 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no'
-        : `width=${width}, initial-scale=${z}, minimum-scale=${z}, maximum-scale=${z}, user-scalable=no`;
-      if (meta.getAttribute('content') !== content) meta.setAttribute('content', content);
-      return true;
+      fitted = { zoom: Number(zoom) || 1, width: Number(widthDp) || 0 };
+      return applyFit();
     },
     // Types [text] where the cursor is, as the keyboard would.
     type(text) {
       const at = focused();
       if (!at || !at.el || at.el === at.doc.body) return false;
       return at.doc.execCommand('insertText', false, String(text));
+    },
+    // The file VS Code's Download gave as [address] ({ name, size, type }), or null.
+    heldFile(address) {
+      const file = held.get(String(address));
+      if (!file) return null;
+      readPiece(file, 0);
+      return { name: file.name, size: file.blob.size, type: file.blob.type };
+    },
+    // Its piece [index] in base64, each given once: '' while it is still read, null after the last
+    // (or when it could not be read). The next piece is read meanwhile.
+    piece(address, index) {
+      const file = held.get(String(address));
+      const at = Number(index);
+      if (!file || !(at >= 0) || at * PIECE >= file.blob.size) return null;
+      readPiece(file, at);
+      const piece = file.pieces.get(at);
+      if (!piece) return piece === '' ? '' : null;
+      file.pieces.set(at, false);
+      readPiece(file, at + 1);
+      return piece;
+    },
+    // PocketIDE has it all (or stopped): the page forgets it.
+    letGo(address) {
+      return held.delete(String(address));
     },
   };
 })();

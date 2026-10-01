@@ -116,6 +116,36 @@ class CloudShellTest {
     }
 
     @Test
+    fun `agents give the owner files as links, and do the work in Cloud Shell first`() {
+        val text = script.readText()
+        val rules = text.substringAfter("cat >\"\$BASE/rules.py\" <<'RULES'\n").substringBefore("\nRULES\n")
+        val launcher = text.substringAfter("cat >\"\$BIN/pocketide\" <<'LAUNCHER'\n").substringBefore("\nLAUNCHER\n")
+        // Cloud Shell first (an APK too); GitHub Actions only when the agent finds it must.
+        assertTrue(rules.contains("Do the work here, in Cloud Shell, whenever it fits: builds (Android APKs too)"))
+        assertTrue(rules.contains("Use GitHub Actions only for what cannot run here"))
+        assertFalse("no rule sends builds away by default", rules.contains("belongs on GitHub Actions"))
+        // Files as named links to files.py, which PocketIDE's app opens with a preview and Download.
+        assertTrue(rules.contains("as a named link"))
+        assertTrue(rules.contains("http://localhost:6081/f/"))
+        assertTrue(rules.contains("~/.local/bin/pocketide link <file or"))
+        // The rules run at set-up, and again for each agent the owner adds.
+        assertTrue(text.contains("python3 \"\$BASE/rules.py\""))
+        assertTrue(launcher.contains("python3 \"\$BASE/rules.py\""))
+        assertTrue(rules.contains("files.append(\"~/projects/%s/AGENTS.md\" % match.group(1))"))
+        assertTrue("Claude Code runs the link command without asking", rules.contains("\"Bash(~/.local/bin/pocketide link *)\""))
+        // The command, each VS Code's own agent for it, and the outbox kept 30 days.
+        assertTrue(launcher.contains("link)\n    shift\n    link \"\$@\"\n    ;;"))
+        assertTrue(launcher.contains("export POCKETIDE_AGENT=\"\$key\""))
+        assertTrue(launcher.contains("for box in \"\$HOME/projects/outbox\" \"\$HOME\"/projects/*/outbox; do"))
+        // pdf.js comes from npm checked against its pinned SHA-256, and is served only from its own two files.
+        assertTrue(Regex("PDFJS_SHA256=[0-9a-f]{64}").containsMatchIn(launcher))
+        assertTrue(launcher.contains("sha256sum -c --quiet -"))
+        val files = text.substringAfter("cat >\"\$BASE/files.py\" <<'FILES'\n").substringBefore("\nFILES\n")
+        assertTrue(files.contains("if name not in (\"pdf.min.mjs\", \"pdf.worker.min.mjs\"):"))
+        assertTrue("files.py listens only inside Cloud Shell", files.contains("Server((\"127.0.0.1\", FILES_PORT), Drop)"))
+    }
+
+    @Test
     fun `an agent the owner adds gets its own VS Code and port, read the same way everywhere`() {
         val text = script.readText()
         val launcher = text.substringAfter("cat >\"\$BIN/pocketide\" <<'LAUNCHER'\n").substringBefore("\nLAUNCHER\n")

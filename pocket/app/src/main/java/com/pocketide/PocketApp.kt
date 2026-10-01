@@ -29,12 +29,15 @@ class PocketApp : Application() {
         AppStartup.onCreate(graph)
     }
 
-    /** The one notification channel: the ongoing "Connected to Cloud Shell" notice. */
+    /** The ongoing "Connected to Cloud Shell" notice, and each file's on its way to the phone's Downloads. */
     private fun createChannels() {
-        val channel = NotificationChannel(Channels.CONNECTION, getString(R.string.connection_channel_name), NotificationManager.IMPORTANCE_LOW)
-        channel.description = getString(R.string.connection_channel_description)
-        channel.setShowBadge(false)
-        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        val connection = NotificationChannel(Channels.CONNECTION, getString(R.string.connection_channel_name), NotificationManager.IMPORTANCE_LOW)
+        connection.description = getString(R.string.connection_channel_description)
+        connection.setShowBadge(false)
+        val downloads = NotificationChannel(Channels.DOWNLOADS, getString(R.string.downloads_channel_name), NotificationManager.IMPORTANCE_LOW)
+        downloads.description = getString(R.string.downloads_channel_description)
+        downloads.setShowBadge(false)
+        getSystemService(NotificationManager::class.java)?.createNotificationChannels(listOf(connection, downloads))
     }
 }
 

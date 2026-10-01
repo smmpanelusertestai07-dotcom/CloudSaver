@@ -7,7 +7,10 @@
 // no VS Code dialog. Asking for a folder must stay VS Code's dialog, with no picker. Any other
 // extension's VS Code file dialog (here File: Open File) must open the picker by itself and take the
 // file. PocketIDE's door, which passes /__pocketide/drop/ on a page's own address to Cloud Shell's
-// file drop, is played here by Playwright. Any miss is an error, and the screenshots show it.
+// file drop, is played here by Playwright. And the other way: VS Code's own Download of a small
+// file gives only a blob: address, which the page script must keep, whole, for the app to read in
+// pieces. Any miss is an error, and the screenshots show it.
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -69,6 +72,53 @@ async function cline(port) {
   console.log('Cline: its "add files" opened the phone\'s picker on the tap; a picture came back as data, a file from its uploads folder.');
   await page.screenshot({ path: path.join(out, 'files-5-cline.png') });
   await browser.close();
+}
+
+// VS Code's own Download (the explorer's Download...) of a file under 32 MB: the page script keeps
+// the file behind its blob: address, and the app reads it back in pieces of base64, as it does on
+// the phone (AgentPages.kt, PageHeldFile). Several pieces, every byte the same.
+async function toPhone(browser) {
+  const name = `to-phone-${process.pid}.bin`;
+  const file = path.join(process.env.CLOUD_SHELL_HOME || os.homedir(), 'projects', 'codex', name);
+  const bytes = crypto.randomBytes(2_500_000);
+  fs.writeFileSync(file, bytes);
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+  await page.addInitScript(script);
+  await page.goto(VS_CODE);
+  await page.waitForSelector('.monaco-workbench', { timeout: 90000 });
+  await page.waitForTimeout(5000);
+  await page.keyboard.press('Control+Shift+E');
+  const row = page.locator('.explorer-folders-view .monaco-list-row', { hasText: name }).first();
+  await row.waitFor({ timeout: 30000 }).catch(() => fail(`The explorer does not show ${name}.`));
+  await row.click({ button: 'right' });
+  const item = page.locator('.context-view .action-label', { hasText: /^Download/ }).first();
+  await item.waitFor({ timeout: 10000 }).catch(() => fail('The explorer\'s menu has no Download.'));
+  await page.waitForTimeout(800);
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), item.click()])
+    .catch(() => fail('VS Code\'s Download did not hand over the file.'));
+  const address = download.url();
+  if (!address.startsWith('blob:')) fail(`VS Code's Download gave ${address}, not a blob: address.`);
+  const about = await page.evaluate((url) => window.__pocketide.heldFile(url), address);
+  if (!about || about.name !== name || about.size !== bytes.length) fail(`The page keeps ${JSON.stringify(about)} for VS Code's Download.`);
+  const pieces = [];
+  for (let index = 0, waited = 0; ;) {
+    const piece = await page.evaluate(([url, at]) => window.__pocketide.piece(url, at), [address, index]);
+    if (piece === null) break;
+    if (piece === '') {
+      if ((waited += 20) > 30000) fail(`The page did not read piece ${index}.`);
+      await page.waitForTimeout(20);
+      continue;
+    }
+    pieces.push(Buffer.from(piece, 'base64'));
+    index += 1;
+  }
+  if (pieces.length < 3 || !Buffer.concat(pieces).equals(bytes)) fail(`What the page gave (${pieces.length} pieces) is not the file.`);
+  if (!await page.evaluate((url) => window.__pocketide.letGo(url), address) || await page.evaluate((url) => window.__pocketide.heldFile(url), address)) {
+    fail('The page still keeps the file after the app had it all.');
+  }
+  console.log(`To phone: VS Code's Download of ${name} (2.5 MB) came out of the page whole, in ${pieces.length} pieces.`);
+  await page.close();
+  fs.rmSync(file);
 }
 
 (async () => {
@@ -185,6 +235,7 @@ async function cline(port) {
   console.log(`From phone: ${name} arrived in ~/projects/codex/uploads and the dialog took it.`);
   await page.screenshot({ path: path.join(out, 'files-4-taken.png') });
 
+  await toPhone(browser);
   await browser.close();
 })().catch((error) => {
   console.log(`::error::${error.message.split('\n')[0]}`);

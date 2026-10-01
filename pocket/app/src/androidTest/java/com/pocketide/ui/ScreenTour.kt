@@ -137,6 +137,7 @@ class ScreenTour {
         keysAlways = false,
         onCommand = {},
         onBrowser = {},
+        onFiles = {},
         onKeys = {},
         onReload = {},
         onHome = {},

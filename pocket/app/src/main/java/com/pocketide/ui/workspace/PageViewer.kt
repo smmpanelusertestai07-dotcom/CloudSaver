@@ -9,7 +9,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -46,7 +45,8 @@ import androidx.compose.ui.viewinterop.AndroidView
  * A page from Cloud Shell's own address (a dev server an agent started, a preview, a link in an
  * agent's chat to localhost), over the agent's VS Code, through PocketIDE's door. Its own Back
  * goes to the page before, and closing it returns to the agent, never to PocketIDE's home.
- * Addresses outside Cloud Shell go to [onOpen], as from the agent's page.
+ * Addresses outside Cloud Shell go to [onOpen], as from the agent's page. A file it cannot show (an
+ * APK, a zip) goes to [onDownload]; when that was all it was asked to open, it closes for it.
  */
 // Lint flags every Kotlin WebViewClient object, even one that overrides onRenderProcessGone as this one does.
 @SuppressLint("SetJavaScriptEnabled", "MissingOnRenderProcessGone")
@@ -57,6 +57,7 @@ internal fun PageViewer(
     isDoor: (String) -> Boolean,
     toDoor: (String) -> String?,
     onOpen: (String, Boolean) -> Unit,
+    onDownload: (url: String, contentDisposition: String?, mimeType: String?, contentLength: Long) -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -124,8 +125,10 @@ internal fun PageViewer(
                     return true
                 }
             }
-            setDownloadListener { _, _, _, _, _ ->
-                Toast.makeText(context, "Downloads do not reach the phone; the file stays in Cloud Shell.", Toast.LENGTH_LONG).show()
+            setDownloadListener { next, _, disposition, mime, length ->
+                onDownload(next, disposition, mime, length)
+                // Nothing was shown before it (the link was the file itself): the agent, under the file's sheet.
+                if (copyBackForwardList().size == 0) onClose()
             }
             loadUrl(url)
         }

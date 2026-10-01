@@ -75,6 +75,8 @@ import com.pocketide.agents.AgentSlot
 import com.pocketide.cloudshell.CloudShell
 import com.pocketide.cloudshell.SignInCatcher
 import com.pocketide.docs.DocLinks
+import com.pocketide.downloads.FileOffer
+import com.pocketide.downloads.HeldFile
 import com.pocketide.graph
 import com.pocketide.link.BrowserStart
 import com.pocketide.link.LinkState
@@ -90,6 +92,7 @@ import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.web.Browser
 import com.pocketide.ui.web.WebPolicy
 import kotlinx.coroutines.launch
+import java.net.URLDecoder
 
 /**
  * The agent's VS Code with PocketIDE's own bar above it: Back (a menu or dialog first, then what
@@ -119,6 +122,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAg
     val account = settings.gcloudAccount.ifBlank { settings.cloudAccount }
     val page = { graph.pages.page(agent.key) }
     val toast = { text: String -> Toast.makeText(activity, text, Toast.LENGTH_LONG).show() }
+    val files = rememberFileFlow(graph.downloads, toast)
 
     val open: (String, Boolean) -> Unit = { url, fromTap ->
         when (val opening = Opening.of(url, graph.link::cloudShellPort)) {
@@ -162,9 +166,8 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAg
                 }
             }
 
-            override fun downloadRefused() {
-                toast("VS Code's downloads do not reach the phone; the file stays in Cloud Shell.")
-            }
+            override fun download(url: String, contentDisposition: String?, mimeType: String?, contentLength: Long, held: HeldFile?) =
+                files.take(url, contentDisposition, mimeType, contentLength, fromVsCode = true, held = held)
 
             override fun onPageState(key: String, state: PageState) {
                 pageStates = pageStates + (key to state)
@@ -322,6 +325,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAg
                         (Opening.of(next) { null } as? Opening.CloudShellPage)?.let { graph.link.pageUrl(it.port, it.path) }
                     },
                     onOpen = open,
+                    onDownload = { url, disposition, mime, length -> files.take(url, disposition, mime, length, fromVsCode = false) },
                     onClose = { viewer = null },
                 )
             }
@@ -357,6 +361,10 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAg
                 tools = false
                 graph.link.startBrowser()
             },
+            onFiles = {
+                tools = false
+                graph.link.pageUrl(FileOffer.FILES_PORT, "/f/" + Uri.encode(agent.key))?.let { viewer = it }
+            },
             onKeys = { always -> graph.settings.update { it.copy(keysAlways = always) } },
             onReload = {
                 tools = false
@@ -389,6 +397,8 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAg
         )
     }
 
+    FileFlowSheet(files, graph.downloads, toast)
+
     askOpen?.let { url ->
         AlertDialog(
             onDismissRequest = { askOpen = null },
@@ -409,6 +419,11 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: AgentSlot, onAg
 private fun shownAs(url: String, doorPort: (String) -> Int?): String {
     val port = doorPort(url) ?: return url
     if (port == CloudShell.BROWSER_PORT) return "Browser · Chrome in Cloud Shell"
+    if (port == FileOffer.FILES_PORT) {
+        val path = Opening.pathOf(url).substringBefore('?').substringBefore('#').removePrefix("/f").removePrefix("/r").trim('/')
+        return "Cloud Shell files" + (runCatching { URLDecoder.decode(path.replace("+", "%2B"), "UTF-8") }.getOrDefault(path))
+            .takeIf { it.isNotEmpty() }?.let { " · $it" }.orEmpty()
+    }
     return "localhost:$port" + Opening.pathOf(url).takeIf { it != "/" }.orEmpty()
 }
 

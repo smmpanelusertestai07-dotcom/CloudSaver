@@ -30,7 +30,11 @@ import androidx.webkit.WebViewFeature
 import com.pocketide.BuildConfig
 import com.pocketide.agents.Agent
 import com.pocketide.cloudshell.CloudShell
+import com.pocketide.downloads.FileKinds
+import com.pocketide.downloads.HeldFile
+import org.json.JSONException
 import org.json.JSONObject
+import org.json.JSONTokener
 
 /** What an agent's screen shows over or instead of its page. */
 sealed interface PageState {
@@ -53,7 +57,11 @@ interface PageHost {
     /** Opens the phone's picker for a file input; the callback must always be answered. */
     fun pickFiles(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams)
 
-    fun downloadRefused()
+    /**
+     * The page hands the phone a file (VS Code's own Download): PocketIDE saves it itself. [held]: a
+     * small one the page keeps in its memory (a blob: [url]), read from the page; null for any other.
+     */
+    fun download(url: String, contentDisposition: String?, mimeType: String?, contentLength: Long, held: HeldFile?)
 
     /** [key]: the agent's name in Cloud Shell ([com.pocketide.agents.AgentSlot.key]). */
     fun onPageState(key: String, state: PageState)
@@ -276,7 +284,16 @@ class AgentPage(private val app: Context, val key: String, val url: String) {
         view.webViewClient = PageClient()
         view.webChromeClient = ChromeClient()
         view.addOnLayoutChangeListener { changed, _, _, _, _, _, _, _, _ -> fit(changed as WebView) }
-        view.setDownloadListener { _, _, _, _, _ -> host?.downloadRefused() }
+        view.setDownloadListener { url, _, disposition, mime, length ->
+            if (!url.startsWith("blob:")) {
+                host?.download(url, disposition, mime, length, null)
+            } else {
+                // VS Code's Download of a small file: the page keeps it for PocketIDE (pagescript.js heldFile).
+                view.evaluateJavascript("window.__pocketide ? window.__pocketide.heldFile(${JSONObject.quote(url)}) : null") { about ->
+                    host?.download(url, disposition, mime, length, PageHeldFile.of(view, url, about))
+                }
+            }
+        }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(view, PageScript.source(app), setOf(origin))
         }
@@ -436,4 +453,50 @@ internal object PageScript {
 
     fun source(context: Context): String =
         source ?: context.assets.open(ASSET).use { it.readBytes().toString(Charsets.UTF_8) }.also { source = it }
+}
+
+/**
+ * A file VS Code's page keeps for PocketIDE (pagescript.js heldFile, piece and letGo): VS Code's own
+ * Download of a file under 32 MB, which the WebView sees only as a blob: address no one else can read.
+ */
+internal class PageHeldFile private constructor(
+    private val view: WebView,
+    private val url: String,
+    override val name: String,
+    override val mime: String,
+    override val size: Long,
+) : HeldFile {
+    override fun piece(index: Int, answer: (String?) -> Unit) {
+        // A page already closed never answers: the download then ends as the page's (Downloads waits only so long).
+        runCatching {
+            view.evaluateJavascript("window.__pocketide ? window.__pocketide.piece(${JSONObject.quote(url)}, $index) : null") { result ->
+                answer(textOf(result))
+            }
+        }
+    }
+
+    override fun letGo() {
+        view.post { runCatching { view.evaluateJavascript("window.__pocketide && window.__pocketide.letGo(${JSONObject.quote(url)})", null) } }
+    }
+
+    companion object {
+        /** The file the page holds for [url], from its heldFile answer [about]; null when it holds none. */
+        fun of(view: WebView, url: String, about: String?): PageHeldFile? {
+            val held = try {
+                JSONObject(about.orEmpty())
+            } catch (expected: JSONException) {
+                return null
+            }
+            val type = held.optString("type")
+            val name = FileKinds.plainName(held.optString("name"), type)
+            return PageHeldFile(view, url, name, FileKinds.mime(name, type), held.optLong("size", -1))
+        }
+
+        /** The text the page answered (as JSON); null for null, or for anything that is not text. */
+        private fun textOf(result: String?): String? = try {
+            JSONTokener(result.orEmpty()).nextValue() as? String
+        } catch (expected: JSONException) {
+            null
+        }
+    }
 }

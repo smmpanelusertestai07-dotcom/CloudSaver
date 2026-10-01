@@ -11,4 +11,8 @@
     <string name="connection_sign_in_title">Signing in to gcloud</string>
     <string name="connection_sign_in_text">Finish Google\'s page in Chrome, then come back.</string>
     <string name="connection_stop">Disconnect</string>
+    <string name="downloads_channel_name">Files from Cloud Shell</string>
+    <string name="downloads_channel_description">A file an agent gave you, on its way to the phone\'s Downloads (Download/PocketIDE), and when it is there.</string>
+    <string name="download_done">In Download/PocketIDE. Tap to open it.</string>
+    <string name="download_done_apk">In Download/PocketIDE. Tap to install it.</string>
 </resources>

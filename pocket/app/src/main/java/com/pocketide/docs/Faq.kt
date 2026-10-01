@@ -211,6 +211,30 @@ internal object Faq {
                 "stays in Cloud Shell's folders, where the agents work.",
         ),
         faq(
+            "agent-files",
+            DocsContent.IDE_ID,
+            "How does an agent give me a file, like an APK, a PDF or a zip?",
+            "As a named link in its chat (each agent's instructions from PocketIDE ask for it). Tap it: PocketIDE shows " +
+                "the file from Cloud Shell first, with a preview where a phone can show one (a picture, a video, sound, a " +
+                "PDF's pages, text and code, a table, what an archive holds, an APK's name, version and permissions, a " +
+                "folder's files), then Download, and Install for an APK (Android's own installer asks you first). A file a " +
+                "link leads to directly, which a page cannot show, opens the same sheet first: nothing is saved before you " +
+                "say so. Downloads go to Download/PocketIDE, with a notice; Open, Install and Share are on it.",
+            "The link works while the file is in Cloud Shell. A file in ~/projects stays until it is deleted; one the agent " +
+                "made elsewhere (in /tmp, which Cloud Shell empties when it restarts) is copied into ~/projects/<agent>/outbox " +
+                "first, and kept there 30 days. Tools > Files shows the agent's whole folder the same way. VS Code's own " +
+                "Download (a file's Download... in its Explorer) saves into Download/PocketIDE too.",
+        ),
+        faq(
+            "apk-builds",
+            "projects",
+            "Can an agent build my Android app in Cloud Shell?",
+            "Yes. Each agent's instructions say to work in Cloud Shell whenever it fits, an APK included, and to look first at " +
+                "what there is (the home folder's 5 GB, the memory). It uses GitHub Actions only for what cannot run here: " +
+                "an Android emulator (Cloud Shell has no KVM), macOS, iOS or Windows, more room or memory than there is, or " +
+                "a job longer than your session; it decides, and tells you why. The APK comes to you as a link: Install.",
+        ),
+        faq(
             "whole-ide",
             DocsContent.IDE_ID,
             "Can I see the whole VS Code, not only the agent?",

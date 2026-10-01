@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Language
@@ -72,6 +73,7 @@ internal fun ToolsSheet(
     keysAlways: Boolean,
     onCommand: (String) -> Unit,
     onBrowser: () -> Unit,
+    onFiles: () -> Unit,
     onKeys: (Boolean) -> Unit,
     onReload: () -> Unit,
     onHome: () -> Unit,
@@ -113,6 +115,13 @@ internal fun ToolsSheet(
                 TOOLS.forEach { tool ->
                     ToolRow(tool.title, tool.detail, tool.icon, enabled = enabled) { onCommand(tool.command) }
                 }
+                ToolRow(
+                    "Files",
+                    "This agent's files in Cloud Shell: see any of them, download it, or install an APK",
+                    Icons.Outlined.Folder,
+                    enabled = browserEnabled,
+                    onClick = onFiles,
+                )
                 ToolRow(
                     "Browser",
                     "Chrome in Cloud Shell, which the agents use: watch it live, or take over",

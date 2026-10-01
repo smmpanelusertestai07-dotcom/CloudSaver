@@ -74,16 +74,16 @@ internal object Guide {
         "PocketIDE's connection (gcloud)",
         "How PocketIDE reaches Cloud Shell without a Google Cloud project, what it keeps, and how to remove it.",
         p(
-            "PocketIDE runs Google's own gcloud, unchanged, on your phone in its private storage (a small Ubuntu under PRoot: " +
-                "no root, no virtual machine). gcloud signs in with Google, starts Cloud Shell when it is off, and opens one " +
-                "encrypted SSH connection to it through Google's servers.",
+            "PocketIDE runs Google's own gcloud, unchanged, in its private storage (a small Ubuntu under PRoot: no root, no " +
+                "virtual machine). gcloud signs in with Google, starts Cloud Shell, and opens one encrypted SSH connection " +
+                "through Google's servers.",
         ),
         table(
             listOf("Question", "Answer"),
             row(
                 "Does gcloud set up and run by itself?",
-                "Yes: downloaded when the set-up page opens (checked by its SHA-256), then updated once a week on Wi-Fi by " +
-                    "gcloud's own updater (never on mobile data; Computer > Update now runs it any time). You sign in once and type no command.",
+                "Yes: downloaded when the set-up page opens (checked by its SHA-256), then updated weekly on Wi-Fi by " +
+                    "gcloud's own updater (Computer > Update now runs it any time). You sign in once and type no command.",
             ),
             row(
                 "What if a gcloud update breaks the connection?",
@@ -100,14 +100,13 @@ internal object Guide {
             ),
         ),
         bullets(
-            "Ports stay private: VS Code, the agents and the browser listen only inside Cloud Shell; on the phone each is " +
-                "a socket file only PocketIDE can open (gcloud's tunnel too), reached through PocketIDE's private door, which " +
-                "answers only requests carrying its secret key.",
+            "Ports stay private: everything listens only inside Cloud Shell; on the phone each port is a socket file only " +
+                "PocketIDE can open, behind its private door, which answers only requests with its secret key.",
             "A sign-in's return to localhost on the phone goes to the agent in Cloud Shell, unchanged; PocketIDE listens " +
                 "only during that sign-in.",
             "Cloud Shell's public address answers only Google's SSH; agents never get your Google Cloud sign-in.",
-            "PocketIDE connects while you use the agents and disconnects 15 minutes after you leave them; Cloud Shell then " +
-                "stops by itself. Nothing keeps it awake; while connected, a notice with Disconnect says so.",
+            "PocketIDE connects while you use the agents and disconnects 15 minutes after you leave; Cloud Shell then " +
+                "stops by itself. Nothing keeps it awake; a notice with Disconnect shows while connected.",
             "Size: 130 MB to download, 500 MB set up; Computer > Remove the connection deletes it (your Cloud Shell stays).",
         ),
         link("Google Account: third-party connections", "https://myaccount.google.com/connections"),
@@ -151,7 +150,7 @@ internal object Guide {
             row("Back (←), and the phone's Back", "Closes a menu, dialog or notice; then what covers the agent; home only on a second Back"),
             row("The three logos", "Switch agents; each keeps its page, so nothing loads again"),
             row("IDE (the arrows)", "The whole IDE around the agent, drawn smaller; tap again for the agent alone"),
-            row("Tools (the wrench)", "The agent, open a file, terminal, install from a link, all commands, the browser, the keys bar"),
+            row("Tools (the wrench)", "The agent, open a file, terminal, files, install from a link, all commands, the browser, the keys bar"),
             row("⋮", "Reload this VS Code, PocketIDE's home, Disconnect, Stop everything"),
         ),
         bullets(
@@ -165,6 +164,7 @@ internal object Guide {
             "Claude Code and Codex send with their Send button; Enter makes a new line.",
             "Phone files: an agent's own add-files button opens Android's picker by itself; the file goes to " +
                 "~/projects/<agent>/uploads (git ignores it) and the agent takes it.",
+            "An agent's file comes as a link: tap it to see it, then Download (an APK: Install) into Download/PocketIDE.",
         ),
     )
 
@@ -173,8 +173,7 @@ internal object Guide {
         "The browser",
         "The Chrome the agents use in Cloud Shell: watch it live, or take over.",
         bullets(
-            "Tools > Browser starts Google's Chrome for Testing in Cloud Shell (the set-up installs it, updates keep it " +
-                "current) and shows it live, as an agent uses it.",
+            "Tools > Browser starts Google's Chrome for Testing in Cloud Shell and shows it live, as an agent uses it.",
             "Tap, scroll or type to take over; Watch only keeps your taps out, and Phone size shows a page as a phone would.",
             "Agents drive it through Chrome's DevTools on Cloud Shell's 127.0.0.1:${CloudShell.BROWSER_DEVTOOLS_PORT} " +
                 "(Playwright's connectOverCDP); their instructions say how.",
@@ -205,10 +204,11 @@ internal object Guide {
         "Where your work is, and how to put it on GitHub.",
         bullets(
             "Each agent opens its own folder: ${Agent.entries.joinToString(", ") { CloudShell.projects(it) }}.",
-            "To work on a project from GitHub, open the Terminal (Tools > Terminal) and run git clone with its address.",
+            "To work on a GitHub project, run git clone with its address in Tools > Terminal.",
             "Keep a copy elsewhere: run gh auth login once (GitHub's page opens in Chrome), then git push. Cloud Shell's home " +
                 "folder is deleted after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
-            "Android apps: build them on GitHub Actions (an agent can write the workflow); Cloud Shell cannot run an emulator.",
+            "Android apps: an agent builds the APK in Cloud Shell and links it (Install); GitHub Actions only for what " +
+                "Cloud Shell cannot run, such as an emulator.",
         ),
     )
 
@@ -238,8 +238,7 @@ internal object Guide {
         "What is where, who can see it, and how to delete it.",
         bullets(
             "In your Cloud Shell, which only your Google account opens: your projects, each agent's chats and sign-in, each " +
-                "agent's VS Code, and the browser's profile (~/.pocketide/browser). Google's privacy notice for Google Cloud " +
-                "applies. It is not in Drive or Photos.",
+                "agent's VS Code, and the browser's profile (~/.pocketide/browser). It is not in Drive or Photos.",
             "On this phone: PocketIDE's settings, and its connection in PocketIDE's private storage: Ubuntu with Google's " +
                 "gcloud and gcloud's sign-in, which no other app can read. Android's backup copies none of it.",
             "At the AI companies: what you ask an agent, and the code it reads, under your account there. Your data > " +
@@ -263,9 +262,11 @@ internal object Guide {
             row("FOREGROUND_SERVICE_SPECIAL_USE", "The kind of that service Android 14 asks apps to name: the owner's own connection"),
             row("POST_NOTIFICATIONS", "The notice that says PocketIDE is connected, with its Disconnect button (Android asks you)"),
             row("USE_BIOMETRIC", "App lock, with your phone's own screen lock"),
+            row("REQUEST_INSTALL_PACKAGES", "Install on an agent's APK: Android's own installer asks you first"),
         ),
         p(
-            "No storage, camera, microphone, location, contacts or accounts permission. The Google account comes from " +
+            "No storage, camera, microphone, location, contacts or accounts permission (downloads need none). The Google " +
+                "account comes from " +
                 "Android's own account chooser, which gives PocketIDE only the one you pick. Google's sign-in opens in Chrome, " +
                 "never inside PocketIDE.",
         ),

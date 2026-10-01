@@ -29,6 +29,16 @@ class Foreground(private val app: Context) : Application.ActivityLifecycleCallba
         main.post { Browser.open(resumed ?: app, url) }
     }
 
+    /**
+     * Starts [intent] over PocketIDE's screen in front (from any thread): false, and nothing starts,
+     * when none is in front (Android does not let an app in the background open a screen).
+     */
+    fun startInFront(intent: Intent): Boolean {
+        if (resumed == null) return false
+        main.post { resumed?.let { screen -> runCatching { screen.startActivity(intent) } } }
+        return true
+    }
+
     /** Brings the last screen back in front of Chrome, closing the sign-in tab above it (from any thread). */
     fun bringBack() {
         main.post {
