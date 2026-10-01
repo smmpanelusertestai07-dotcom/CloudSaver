@@ -64,16 +64,17 @@ fi
 
 # 2. PocketIDE's layout extension, which each agent's VS Code gets: on a phone's narrow screen it
 # shows one thing at a time, full screen: the agent (in the secondary side bar, maximized), or
-# what covers it (a file, a diff, settings, an extension's page, a terminal), and Back returns to
-# the agent. PocketIDE's own buttons (Back, Tools) reach it through keys only PocketIDE presses.
+# what covers it (a file, a diff, an extension's page, a terminal), and Back returns to the agent;
+# or, on PocketIDE's IDE button, the whole IDE around the agent. PocketIDE's own buttons (Back, IDE,
+# Tools) reach it through keys only PocketIDE presses.
 # Each VS Code installs it once for each version: raise the version when a file changes.
 mkdir -p "$BASE/layout"
 cat >"$BASE/layout/package.json" <<'JSON'
 {
   "name": "layout",
   "displayName": "PocketIDE layout",
-  "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it.",
-  "version": "8.0.0",
+  "description": "One thing at a time, full screen, for PocketIDE on a phone: the agent, or what covers it; or the whole IDE.",
+  "version": "9.0.0",
   "publisher": "pocketide",
   "license": "Apache-2.0",
   "engines": {
@@ -102,16 +103,16 @@ cat >"$BASE/layout/package.json" <<'JSON'
         "title": "PocketIDE: The agent, full screen"
       },
       {
+        "command": "pocketide.ide",
+        "title": "PocketIDE: The whole IDE around the agent"
+      },
+      {
         "command": "pocketide.back",
         "title": "PocketIDE: Back"
       },
       {
         "command": "pocketide.terminal",
         "title": "PocketIDE: Terminal, full screen"
-      },
-      {
-        "command": "pocketide.settings",
-        "title": "PocketIDE: Settings"
       },
       {
         "command": "pocketide.files",
@@ -144,10 +145,6 @@ cat >"$BASE/layout/package.json" <<'JSON'
         "key": "f15"
       },
       {
-        "command": "pocketide.settings",
-        "key": "f16"
-      },
-      {
         "command": "pocketide.commands",
         "key": "f17"
       },
@@ -162,6 +159,10 @@ cat >"$BASE/layout/package.json" <<'JSON'
       {
         "command": "pocketide.files",
         "key": "ctrl+f13"
+      },
+      {
+        "command": "pocketide.ide",
+        "key": "ctrl+f14"
       },
       {
         "command": "pocketide.tools",
@@ -208,9 +209,9 @@ cat >"$BASE/layout/agent.svg" <<'SVG'
 SVG
 cat >"$BASE/layout/extension.js" <<'JS'
 // PocketIDE layout: a phone's narrow screen shows one thing at a time, full screen: this VS Code's
-// agent, or what covers it (a file, a diff, settings, an extension's own page, a terminal). Back
-// returns to the agent. PocketIDE's bar reaches these commands through keys a phone's keyboard does
-// not have (F13 to F19, Ctrl+F13), which PocketIDE's page script presses.
+// agent, or what covers it (a file, a diff, an extension's own page, a terminal). Back returns to
+// the agent. PocketIDE's IDE button shows the whole IDE around the agent instead. PocketIDE's bar reaches these commands through keys a phone's keyboard does
+// not have (F13 to F19, Ctrl+F13, Ctrl+F14), which PocketIDE's page script presses.
 const vscode = require('vscode');
 
 const fs = require('fs');
@@ -305,6 +306,7 @@ let agentReady = false; // the agent's extension has started: its panel can open
 let covered = false; // an editor covers the agent, full screen
 let lastActive = ''; // the editor tab in front when the layout last changed
 let closing = false; // Back is closing what covers the agent
+let ide = false; // the whole IDE is on screen (PocketIDE's IDE button), not one thing at a time
 let queue = Promise.resolve();
 
 // Layout changes run one after another, never two at once.
@@ -326,6 +328,7 @@ function tabKey(tab) {
 // The agent, full screen at once; its own panel in front as soon as its extension has started (an
 // agent that is still starting, or downloading its parts, never holds the layout back).
 async function showAgent() {
+  ide = false;
   await run('workbench.action.closePanel');
   await run('workbench.action.maximizeAuxiliaryBar');
   covered = false;
@@ -337,6 +340,15 @@ async function showAgent() {
   // Antigravity's panel, for one, answers only once its backend is downloaded and started.
   for (const command of agent.open) await Promise.race([run(command), sleep(OPEN_MS)]);
   await run('workbench.action.maximizeAuxiliaryBar');
+}
+
+// The whole IDE around the agent (PocketIDE's IDE button): the project's files, the editors and the
+// agent beside them, as VS Code shows them; nothing is held full screen until the agent comes back.
+async function showIde() {
+  ide = true;
+  covered = false;
+  await run('workbench.action.restoreAuxiliaryBar');
+  await run('workbench.view.explorer');
 }
 
 // What covers the agent gets the whole screen: no side bars, no panel, its editor alone.
@@ -351,7 +363,7 @@ async function showEditor() {
 function watchEditors(context) {
   let timer;
   const check = () => {
-    if (closing) return;
+    if (closing || ide) return;
     const tab = activeTab();
     const key = tabKey(tab);
     const changed = key !== lastActive;
@@ -394,6 +406,7 @@ async function back() {
 }
 
 async function terminal() {
+  ide = false;
   const open = vscode.window.terminals.find((each) => each.exitStatus === undefined);
   const shown = open || vscode.window.createTerminal({ location: vscode.TerminalLocation.Editor });
   shown.show(false);
@@ -402,19 +415,12 @@ async function terminal() {
   await arrange(showEditor);
 }
 
-async function settings() {
-  await run('workbench.action.openSettings');
-  await sleep(SETTLE_MS * 2);
-  lastActive = tabKey(activeTab());
-  await arrange(showEditor);
-}
-
 // The same places from a list, for a keyboard (Ctrl+Alt+P) or a computer's browser.
 const TOOLS = [
   { label: '$(hubot) Agent', detail: 'Back to the agent, full screen', run: () => arrange(showAgent) },
+  { label: '$(layout) IDE', detail: 'The whole IDE around the agent', run: () => arrange(showIde) },
   { label: '$(terminal) Terminal', detail: 'A command line in this project', run: terminal },
   { label: '$(go-to-file) Open a file', detail: 'Find a file in this project by its name', run: () => run('workbench.action.quickOpen') },
-  { label: '$(gear) Settings', detail: 'This VS Code\'s settings', run: settings },
   { label: '$(cloud-download) Install from a link', detail: 'An extension (.vsix) Open VSX does not have, from its maker', run: installFromLink },
   { label: '$(list-flat) All commands', detail: 'Everything VS Code can do', run: () => run('workbench.action.showCommands') },
 ];
@@ -422,9 +428,9 @@ const TOOLS = [
 function commands(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('pocketide.agent', () => arrange(showAgent)),
+    vscode.commands.registerCommand('pocketide.ide', () => arrange(showIde)),
     vscode.commands.registerCommand('pocketide.back', back),
     vscode.commands.registerCommand('pocketide.terminal', terminal),
-    vscode.commands.registerCommand('pocketide.settings', settings),
     vscode.commands.registerCommand('pocketide.commands', () => run('workbench.action.showCommands')),
     vscode.commands.registerCommand('pocketide.files', () => run('workbench.action.quickOpen')),
     vscode.commands.registerCommand('pocketide.vsix', installFromLink),
@@ -444,7 +450,7 @@ async function activate(context) {
   if (agent) {
     ready(agent.open).then((found) => {
       agentReady = found;
-      if (found) arrange(() => (covered ? undefined : showAgent()));
+      if (found) arrange(() => (covered || ide ? undefined : showAgent()));
     });
   }
 }
@@ -899,6 +905,144 @@ if __name__ == "__main__":
     serve(Browser())
 RELAY
 
+# 2c. PocketIDE's file drop (files.py): what the owner picks on the phone (From phone in a VS Code
+# file dialog, or Tools > Upload from phone) arrives in that agent's ~/projects/<agent>/uploads,
+# which git ignores. It starts with the agents' VS Code and listens only on 127.0.0.1.
+cat >"$BASE/files.py" <<'FILES'
+"""PocketIDE's file drop in Cloud Shell: files the owner picks on the phone arrive in an agent's
+~/projects/<agent>/uploads, a folder git ignores, so they are never pushed by accident.
+
+PocketIDE's app sends them through its private door. This listens only on 127.0.0.1:FILES_PORT,
+writes only into those folders, never replaces a file (a second "photo.png" becomes
+"photo (2).png") and takes at most LIMIT bytes a file. Python's standard library only.
+"""
+import json
+import os
+import re
+import tempfile
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+FILES_PORT = int(os.environ.get("FILES_PORT", "6081"))
+PROJECTS = os.path.join(os.path.expanduser("~"), "projects")
+AGENTS = ("claude-code", "codex", "antigravity")
+LIMIT = 512 * 1024 * 1024
+UNSAFE = re.compile(r"[\x00-\x1f/\\]")
+IGNORE = "# Files sent from the phone (PocketIDE): kept out of git.\n*\n"
+
+
+def uploads(agent):
+    """The agent's uploads folder, made with its .gitignore the first time."""
+    folder = os.path.join(PROJECTS, agent, "uploads")
+    os.makedirs(folder, exist_ok=True)
+    ignore = os.path.join(folder, ".gitignore")
+    if not os.path.exists(ignore):
+        with open(ignore, "w", encoding="utf-8") as out:
+            out.write(IGNORE)
+    return folder
+
+
+def plain_name(raw):
+    name = UNSAFE.sub("_", os.path.basename(raw or "").strip())[:200]
+    if name in ("", ".", "..", ".gitignore") or name.startswith(".part-"):
+        raise ValueError("That is not a file name.")
+    return name
+
+
+def keep(temporary, folder, name):
+    """The upload under [name] in [folder], or a free name beside it: nothing is ever replaced."""
+    stem, ext = os.path.splitext(name)
+    number = 1
+    while True:
+        target = os.path.join(folder, name if number == 1 else "%s (%d)%s" % (stem, number, ext))
+        try:
+            os.link(temporary, target)
+            return target
+        except FileExistsError:
+            number += 1
+
+
+class Drop(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):
+        pass
+
+    def answer(self, status, body=None):
+        data = b"" if status == 204 else json.dumps(body or {}).encode()
+        self.send_response(status)
+        if data:
+            self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        # PocketIDE's own pages send from another of its door's addresses (an agent's VS Code).
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
+    def do_OPTIONS(self):
+        self.answer(204)
+
+    def do_GET(self):
+        if self.path == "/state":
+            self.answer(200, {"ok": True})
+        else:
+            self.answer(404, {"error": "Not here."})
+
+    def do_POST(self):
+        path, _, query = self.path.partition("?")
+        if path != "/upload":
+            return self.answer(404, {"error": "Not here."})
+        params = urllib.parse.parse_qs(query)
+        agent = (params.get("agent") or [""])[0]
+        if agent not in AGENTS:
+            return self.answer(400, {"error": "No agent is called that."})
+        try:
+            name = plain_name((params.get("name") or [""])[0])
+            size = int(self.headers.get("Content-Length") or "-1")
+        except ValueError as error:
+            return self.answer(400, {"error": str(error)})
+        if size < 0:
+            return self.answer(411, {"error": "The upload's size is missing."})
+        if size > LIMIT:
+            self.close_connection = True
+            return self.answer(413, {"error": "A file can be at most 512 MB."})
+        folder = uploads(agent)
+        handle, temporary = tempfile.mkstemp(dir=folder, prefix=".part-")
+        try:
+            with os.fdopen(handle, "wb") as out:
+                left = size
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        raise OSError("The upload stopped early.")
+                    out.write(chunk)
+                    left -= len(chunk)
+            target = keep(temporary, folder, name)
+        except OSError as error:
+            self.close_connection = True
+            return self.answer(500, {"error": str(error)})
+        finally:
+            os.unlink(temporary)
+        self.answer(200, {"path": target, "name": os.path.basename(target), "size": size})
+
+
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, address):
+        pass  # a phone that went away mid-upload
+
+
+if __name__ == "__main__":
+    Server(("127.0.0.1", FILES_PORT), Drop).serve_forever()
+FILES
+
 # 3. `pocketide`: starts or stops an agent's VS Code (`pocketide start|stop <agent>`), installs or
 # updates the agents (`pocketide update`), starts the browser (`pocketide browser start|stop`), and,
 # when Cloud Shell starts (`pocketide boot`), tidies and updates.
@@ -911,6 +1055,8 @@ BASE="$HOME/.pocketide"
 CODE="$BASE/code-server/current/bin/code-server"
 # Antigravity's extension starts Google's agy on this port (its own setting), for its panel.
 AGY_PORT=18083
+# PocketIDE's file drop (files.py): files from the phone arrive through it, for the agents.
+FILES_PORT=6081
 
 settings() { # $1: the agent; the settings its VS Code starts with: phone screen, no telemetry, its agent full screen
     python3 - "$1" "$AGY_PORT" <<'PY'
@@ -992,17 +1138,18 @@ PY
     rm -f "$vsix"
 }
 
-pick() { # namespace name target -> "version download-url sha256-url" of the newest release
-    python3 - "$1" "$2" "$3" <<'PY'
+pick() { # namespace name target [any] -> "version download-url sha256-url" of the newest release
+    # A verified publisher only, unless "any" (an extension the owner picked, knowing it is not verified).
+    python3 - "$1" "$2" "$3" "${4:-}" <<'PY'
 import json, sys, urllib.request
-ns, name, target = sys.argv[1:4]
+ns, name, target, publisher = sys.argv[1:5]
 for offset in range(0, 800, 50):
     url = ("https://open-vsx.org/api/-/query?namespaceName=%s&extensionName=%s&targetPlatform=%s"
            "&includeAllVersions=true&size=50&offset=%d" % (ns, name, target, offset))
     page = json.load(urllib.request.urlopen(url, timeout=60)).get("extensions", [])
     for v in page:
         files = v.get("files", {})
-        if (not v.get("preRelease") and v.get("verified") and v.get("downloadable", True)
+        if (not v.get("preRelease") and (v.get("verified") or publisher == "any") and v.get("downloadable", True)
                 and v.get("targetPlatform") == target and "download" in files and "sha256" in files):
             print(v["version"], files["download"], files["sha256"])
             sys.exit(0)
@@ -1136,13 +1283,22 @@ update() {
     date +%s >"$BASE/updated"
 }
 
+link_tool() { # $1: a program an agent's extension brings; $2: its name on the PATH (never over the owner's own)
+    [ -n "$1" ] || return 0
+    target="$HOME/.local/bin/$2"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        case "$(readlink "$target" 2>/dev/null)" in "$BASE"/* | "$HOME/.gemini"/*) ;; *) return 0 ;; esac
+    fi
+    ln -sfn "$1" "$target"
+}
+
 links() { # the agents' own command lines, where a terminal finds them
+    # Claude Code's comes with its extension: `claude` in a terminal, `claude auth logout` signs out.
+    link_tool "$(find "$BASE/vscode/claude-code/extensions" -path '*anthropic.claude-code*' -type f -name claude -perm -u+x 2>/dev/null | head -n 1)" claude
     # Codex's comes with its extension: `codex login --device-auth` signs in here.
-    codex=$(find "$BASE/vscode/codex/extensions" -path '*openai.chatgpt*' -type f -name codex -perm -u+x 2>/dev/null | head -n 1)
-    [ -n "$codex" ] && ln -sfn "$codex" "$HOME/.local/bin/codex"
+    link_tool "$(find "$BASE/vscode/codex/extensions" -path '*openai.chatgpt*' -type f -name codex -perm -u+x 2>/dev/null | head -n 1)" codex
     # Antigravity's (agy) comes with its extension, the first time its VS Code opens.
-    agy=$(find "$HOME/.gemini" -maxdepth 3 -type f -name agy -perm -u+x 2>/dev/null | head -n 1)
-    [ -n "$agy" ] && ln -sfn "$agy" "$HOME/.local/bin/agy"
+    link_tool "$(find "$HOME/.gemini" -maxdepth 3 -type f -name agy -perm -u+x 2>/dev/null | head -n 1)" agy
     return 0
 }
 
@@ -1184,6 +1340,21 @@ start() { # $@: the agents (every one when none) whose VS Code starts, if not ru
                 >"$data/code-server.log" 2>&1
         ) &
     done
+    files_start
+}
+
+files_up() { # true when the file drop (files.py) answers
+    curl -fs -m 2 --noproxy '*' "http://127.0.0.1:$FILES_PORT/state" >/dev/null
+}
+
+files_start() { # the file drop, for files from the phone, while an agent's VS Code runs
+    files_up && return 0
+    FILES_PORT=$FILES_PORT nohup python3 "$BASE/files.py" >"$BASE/files.log" 2>&1 &
+    for _ in $(seq 1 20); do
+        files_up && return 0
+        sleep 0.25
+    done
+    echo "PocketIDE's file drop did not start; its log: $BASE/files.log" >&2
 }
 
 stop() { # $@: the agents whose VS Code stops, to free memory (what the agent was doing ends)
@@ -1201,7 +1372,88 @@ stop() { # $@: the agents whose VS Code stops, to free memory (what the agent wa
             pkill -u "$(id -u)" -f "agy --hub --hub-port=$AGY_PORT " || true
         fi
     done
+    # The file drop goes with the last VS Code.
+    pgrep -u "$(id -u)" -f "$BASE/code-server/.* --bind-addr 127.0.0.1:" >/dev/null ||
+        pkill -u "$(id -u)" -f "$BASE/files.py" || true
     return 0
+}
+
+own_extension() { # $1: an agent -> its own extension's id, lower case (publisher.name)
+    local entry rest
+    for entry in $AGENTS; do
+        rest=${entry#*:}
+        [ "${entry%%:*}" = "$1" ] && { echo "${rest#*:}" | tr '/A-Z' '.a-z'; return 0; }
+    done
+    return 1
+}
+
+extension_name() { # $1 -> true for an Open VSX extension's id (publisher.name)
+    printf '%s' "$1" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
+}
+
+install_extension() { # $1: an agent; $2: publisher.name; $3: "any" when the owner accepted an unverified publisher
+    port_of "$1" >/dev/null || { echo "No agent is called $1." >&2; return 1; }
+    extension_name "$2" || { echo "That is not an extension's name (publisher.name)." >&2; return 1; }
+    data="$BASE/vscode/$1"
+    ns=${2%%.*} name=${2#*.}
+    if [ "$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')" -lt 300000 ]; then
+        echo "Less than 300 MB is free in your home folder: $2 was not installed." >&2
+        return 1
+    fi
+    choice=$(pick "$ns" "$name" linux-x64 "${3:-}" || pick "$ns" "$name" universal "${3:-}") || {
+        from=" from a verified publisher"
+        [ "${3:-}" = any ] && from=""
+        echo "Open VSX has no release of $2$from for Cloud Shell (Linux, x64)." >&2
+        return 1
+    }
+    read -r version download sha <<<"$choice"
+    echo "Downloading $2 $version..."
+    vsix="$BASE/$ns.$name-$version.vsix"
+    if ! curl -fsSL --retry 3 -o "$vsix" "$download" ||
+        ! echo "$(curl -fsSL "$sha" | awk '{ print $1 }')  $vsix" | sha256sum -c --quiet -; then
+        rm -f "$vsix"
+        echo "$2's download did not match the checksum Open VSX publishes; it was not installed." >&2
+        return 1
+    fi
+    echo "Installing $2 $version..."
+    "$CODE" --user-data-dir "$data" --extensions-dir "$data/extensions" --install-extension "$vsix" --force
+    installed=$?
+    rm -f "$vsix"
+    return $installed
+}
+
+uninstall_extension() { # $1: an agent; $2: publisher.name (never the agent itself, or PocketIDE's layout)
+    own=$(own_extension "$1") || { echo "No agent is called $1." >&2; return 1; }
+    extension_name "$2" || { echo "That is not an extension's name (publisher.name)." >&2; return 1; }
+    case "$(printf '%s' "$2" | tr 'A-Z' 'a-z')" in
+    "$own" | pocketide.layout)
+        echo "PocketIDE keeps $2: the agent's VS Code needs it." >&2
+        return 1
+        ;;
+    esac
+    "$CODE" --user-data-dir "$BASE/vscode/$1" --extensions-dir "$BASE/vscode/$1/extensions" --uninstall-extension "$2"
+}
+
+signout() { # $1: the agent whose sign-in in Cloud Shell ends, with its own command where it has one
+    case "$1" in
+    claude-code)
+        # Each agent's own sign-out command; without it, its sign-in file goes.
+        claude=$(find "$BASE/vscode/claude-code/extensions" -path '*anthropic.claude-code*' -type f -name claude -perm -u+x 2>/dev/null | head -n 1)
+        if [ -n "$claude" ]; then "$claude" auth logout; else rm -f "$HOME/.claude/.credentials.json"; fi
+        ;;
+    codex)
+        codex=$(find "$BASE/vscode/codex/extensions" -path '*openai.chatgpt*' -type f -name codex -perm -u+x 2>/dev/null | head -n 1)
+        if [ -n "$codex" ]; then "$codex" logout; else rm -f "$HOME/.codex/auth.json"; fi
+        ;;
+    antigravity)
+        echo "Antigravity signs out in its own panel (its account menu: Sign out), or in a terminal: agy, then /logout." >&2
+        return 2
+        ;;
+    *)
+        echo "No agent is called $1." >&2
+        return 1
+        ;;
+    esac
 }
 
 proxy_uri() { # $1: http://{{port}}-<key>.localhost:<port>/, where the phone's PocketIDE shows ports
@@ -1386,6 +1638,9 @@ stop)
     [ $# -gt 0 ] || { echo "Which agent? pocketide stop claude-code, codex or antigravity" >&2; exit 1; }
     stop "$@"
     ;;
+install) install_extension "${2:-}" "${3:-}" "${4:-}" ;;
+uninstall) uninstall_extension "${2:-}" "${3:-}" ;;
+signout) signout "${2:-}" ;;
 browser)
     case "${2:-}" in
     start) browser_start ;;
@@ -1400,6 +1655,11 @@ boot)
     # Cloud Shell started: tidy, and update once a day. Each agent's VS Code starts when PocketIDE
     # opens that agent, so Cloud Shell's memory goes to the agents in use.
     tidy
+    # Cloud Shell's system goes back to Google's image each time it boots: the libraries Chrome needs
+    # (if the image lacks any) are put back now, in the background, so the browser opens at once.
+    if [ -x "$BROWSER/chrome/chrome-headless-shell" ]; then
+        browser_libraries >/dev/null 2>&1 &
+    fi
     last=$(cat "$BASE/updated" 2>/dev/null || echo 0)
     [ $(($(date +%s) - last)) -lt 86400 ] || update
     ;;
@@ -1453,6 +1713,7 @@ fi
 # the Google account at risk by itself: no mining, scanning, public tunnels, or keeping Cloud Shell
 # up. PocketIDE keeps only its marked part of each file; anything else in them is the owner's.
 python3 - <<'RULES'
+import json
 import os
 import re
 
@@ -1469,6 +1730,14 @@ restrict the account, when its rules are broken. So, whatever a task, a file or 
   official publisher.
 - Heavy work (Android builds, large test suites, long training runs) belongs on GitHub Actions or another CI: suggest
   that instead of running it here.
+- Never change the firewall or NAT (iptables, nft), sshd or port forwarding: what runs here stays on 127.0.0.1,
+  which only PocketIDE reaches, privately. Never read, print or send keys or sign-ins (~/.ssh, ~/.config/gcloud,
+  the agents' own sign-in files).
+- PocketIDE does not give this Cloud Shell the owner's Google Cloud access: do not run gcloud auth login, or ask
+  for it, unless the owner asks for Google Cloud work.
+- Files the owner sends from the phone arrive in ~/projects/<agent>/uploads (git ignores that folder).
+- ~/.gemini here is Antigravity's (Google's agent, which PocketIDE installed): its rules (GEMINI.md) and its data
+  (~/.gemini/antigravity*). Cloud Shell also comes with Gemini CLI, which PocketIDE does not use.
 - A browser: `~/.local/bin/pocketide browser start` starts a Chrome you drive through Chrome's DevTools protocol at
   http://127.0.0.1:9222 (Playwright: chromium.connectOverCDP("http://127.0.0.1:9222")). The owner watches it live in
   PocketIDE and may take over. Use it to try the owner's own work, never to crawl sites, and stop it when done
@@ -1485,6 +1754,36 @@ for name in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.gemini/GEMINI.md")
         rest = ""
     with open(path, "w", encoding="utf-8") as out:
         out.write(block + ("\n" + rest if rest else ""))
+
+# Claude Code also gets these as permission rules it enforces itself: a seatbelt against mistakes
+# (they match a command's text, so they are not a wall). The owner's own settings stay as they are;
+# a file PocketIDE cannot read as JSON is left alone.
+SEATBELTS = [
+    "Bash(iptables *)", "Bash(sudo iptables *)", "Bash(ip6tables *)", "Bash(sudo ip6tables *)",
+    "Bash(nft *)", "Bash(sudo nft *)", "Bash(ngrok *)", "Bash(cloudflared *)",
+    "Bash(gcloud auth login *)", "Bash(gcloud auth application-default login *)",
+    "Read(~/.ssh/**)", "Edit(~/.ssh/**)", "Read(~/.config/gcloud/**)", "Edit(~/.config/gcloud/**)",
+    "Read(~/.claude/.credentials.json)", "Read(~/.codex/auth.json)",
+]
+path = os.path.expanduser("~/.claude/settings.json")
+try:
+    with open(path, encoding="utf-8") as current:
+        settings = json.load(current)
+except FileNotFoundError:
+    settings = {}
+except ValueError:
+    settings = None
+    print("~/.claude/settings.json is not plain JSON: PocketIDE left it as it is.")
+permissions = settings.setdefault("permissions", {}) if isinstance(settings, dict) else None
+deny = permissions.setdefault("deny", []) if isinstance(permissions, dict) else None
+if isinstance(deny, list):
+    missing = [rule for rule in SEATBELTS if rule not in deny]
+    if missing:
+        deny.extend(missing)
+        with open(path + ".new", "w", encoding="utf-8") as out:
+            json.dump(settings, out, indent=2)
+            out.write("\n")
+        os.replace(path + ".new", path)
 RULES
 
 # 6. Cloud Shell runs ~/.customize_environment as root each time it starts: PocketIDE's part tidies
@@ -1520,6 +1819,7 @@ cat <<'NEXT'
 PocketIDE opens each agent's own VS Code, the agent full screen. Sign in once, in the agent
 itself (Claude Code's Sign in, Codex's Sign in with ChatGPT, Antigravity's Continue with Google):
 only that sign-in page opens in the phone's browser, and it comes back to the agent by itself.
-Your files:    projects in ~/projects/claude-code, ~/projects/codex and ~/projects/antigravity;
-               chats and sign-ins in ~/.claude, ~/.codex and ~/.gemini.
+Your files:    projects in ~/projects/claude-code, ~/projects/codex and ~/projects/antigravity
+               (files sent from the phone in each one's uploads folder, which git ignores);
+               chats and sign-ins in ~/.claude, ~/.codex and ~/.gemini/antigravity.
 NEXT
