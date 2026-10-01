@@ -6,7 +6,7 @@ published tag is never replaced, so appVersion is the one number to raise for a 
 Android, however, installs an update only when its versionCode is higher, so versionCode must
 follow appVersion (major * 10000 + minor * 100 + patch) rather than be a number of its own: a
 release that raised only the version would be offered to every phone and refused by all of them.
-Any 7.x (70000 and up) installs over every 6.x (60000 and up), and so on down to 2.6.0 (260).
+Any 8.x (80000 and up) installs over every 7.x (70000 and up), and so on down to 2.6.0 (260).
 
 Usage: version.py            check the version
        version.py --print    print versionName (for the workflow)
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import common
 
-VERSION_SHAPE = re.compile(r"7\.(\d{1,2})\.(\d{1,2})")
+VERSION_SHAPE = re.compile(r"8\.(\d{1,2})\.(\d{1,2})")
 VERSION = re.compile(r'^\s*val appVersion = "([^"]*)"\s*$', re.M)
 VERSION_CODE = re.compile(r"^\s*versionCode\s*=\s*(.+?)\s*$", re.M)
 VERSION_NAME = re.compile(r"^\s*versionName\s*=\s*(.+?)\s*$", re.M)
@@ -40,9 +40,9 @@ def check(root: Path = common.POCKET) -> common.Report:
     codes = VERSION_CODE.findall(text)
     names = VERSION_NAME.findall(text)
     if len(versions) != 1:
-        report.fail(f'app/build.gradle.kts must set val appVersion = "7.x.y" exactly once (found {len(versions)})')
+        report.fail(f'app/build.gradle.kts must set val appVersion = "8.x.y" exactly once (found {len(versions)})')
     elif not VERSION_SHAPE.fullmatch(versions[0]):
-        report.fail(f"appVersion '{versions[0]}' is not 7.<minor>.<patch> with minor and patch below 100")
+        report.fail(f"appVersion '{versions[0]}' is not 8.<minor>.<patch> with minor and patch below 100")
     if codes != [DERIVED_CODE] or len(FORMULA_LINE.findall(text)) != 1:
         report.fail(f"versionCode must be set once as {DERIVED_CODE} ({FORMULA}), found {codes or 'none'}: "
                     "a versionCode of its own is not raised with the version, and every phone would refuse the update")

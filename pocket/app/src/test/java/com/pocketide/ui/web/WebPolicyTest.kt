@@ -2,7 +2,6 @@ package com.pocketide.ui.web
 
 import com.pocketide.agents.Agent
 import com.pocketide.cloudshell.CloudShell
-import com.pocketide.cloudshell.IdePlace
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,9 +10,8 @@ import org.junit.Test
 
 class WebPolicyTest {
     @Test
-    fun `Cloud Shell, the agents' VS Code and every company's page open in Chrome`() {
-        val account = "dev@example.com"
-        (IdePlace.entries.map { it.url(account) } + CloudShell.console(account) + CloudShell.SCRIPT_URL).forEach {
+    fun `Google's own Cloud Shell page and every company's page open in the browser`() {
+        listOf(CloudShell.googlePage("dev@example.com"), CloudShell.SCRIPT_URL).forEach {
             assertTrue(it, WebPolicy.isWebLink(it))
         }
         Agent.entries.flatMap { listOf(it.privacyUrl, it.termsUrl, it.docsUrl, it.openVsxUrl) }.forEach {

@@ -41,7 +41,7 @@ sealed interface SignInResult {
  * PocketIDE's connection to Google Cloud Shell, made by Google's own gcloud on this phone: no
  * Google Cloud project, no key of PocketIDE's own. gcloud signs in once (Google's page, in Chrome),
  * starts Cloud Shell when it is off and opens one SSH connection to it through Google's servers.
- * Through that connection PocketIDE sets Cloud Shell up (the same pinned script as the Chrome way),
+ * Through that connection PocketIDE sets Cloud Shell up (its pinned, checked script),
  * starts the agents' VS Code there and brings their ports to the phone as socket files only this
  * app can open. [PortProxy] shows them to PocketIDE's own screens, behind a secret key.
  *
@@ -236,7 +236,7 @@ class Link internal constructor(
             GcloudSays.tunnelChanged(check.lines) -> throw LinkFailure(
                 Problem.APP_UPDATE,
                 "Google's gcloud changed how it connects to Cloud Shell, so PocketIDE cannot keep the connection " +
-                    "private. Update PocketIDE; until then, open the agents in Chrome.",
+                    "private. Get the newest PocketIDE; your projects and chats wait in Cloud Shell.",
             )
             else -> throw LinkFailure(
                 Problem.OTHER,
@@ -324,7 +324,7 @@ class Link internal constructor(
         Agent.entries.forEach { forward(CloudShell.port(it)) }
     }
 
-    /** The same pinned, checked script as the Chrome way, run through the connection. */
+    /** The pinned, checked set-up script, run through the connection. */
     private suspend fun setUp() {
         step(SETTING_UP)
         val said = ArrayDeque<String>()

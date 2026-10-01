@@ -28,8 +28,8 @@ val emulatorLibs: String = (project.findProperty("pocketide.emulatorLibs") as St
 
 // The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
 // from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
-// before it, and 7.0.0 (70000) installs over 6.1.1 (60101). tools/gates/version.py checks both.
-val appVersion = "7.0.1"
+// before it, and 8.0.0 (80000) installs over 7.0.1 (70001). tools/gates/version.py checks both.
+val appVersion = "8.0.0"
 
 fun versionCodeOf(version: String): Int {
     val parts = version.split(".").map { it.toIntOrNull() ?: -1 }

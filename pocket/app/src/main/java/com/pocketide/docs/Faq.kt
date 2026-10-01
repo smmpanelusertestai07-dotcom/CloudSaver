@@ -39,10 +39,9 @@ internal object Faq {
             "in-app",
             DocsContent.IDE_ID,
             "Do the agents open inside the app, or in Chrome?",
-            "Inside PocketIDE: each agent's own VS Code, with PocketIDE's bar (Back, the agents, Reload, Tools) and the keys " +
-                "a phone keyboard lacks. It is drawn by Android's WebView, with no address bar and no Chrome menu. Google's " +
-                "own sign-in pages always open in Chrome, never inside the app, as Google requires. The Chrome way (⋮ > Open " +
-                "in Chrome instead) still works.",
+            "Only inside PocketIDE: each agent's own VS Code, one thing at a time, full screen, with PocketIDE's bar (Back, " +
+                "the agents, Reload, Tools) and the keys a phone keyboard lacks. Sign-in pages open in Chrome, never inside the " +
+                "app, as Google and the AI companies require, and return to the agent by themselves.",
         ),
         faq(
             "gcloud",
@@ -74,10 +73,9 @@ internal object Faq {
             "sign-in-localhost",
             "agents",
             "A sign-in ends at \"localhost refused to connect\".",
-            "Inside PocketIDE this should not happen: PocketIDE listens on that port during the sign-in and passes the return " +
-                "to the agent in Cloud Shell. If it does (another app held the port), start the sign-in again. The Chrome " +
-                "way: tap PocketIDE's tools button at the top of that page (in Chrome's own app: ⋮ > Share > PocketIDE " +
-                "(Finish sign-in)).",
+            "It should not: PocketIDE listens on that port during the sign-in and passes the return to the agent in Cloud " +
+                "Shell. If it does (another app held the port, or Android closed PocketIDE meanwhile), open the agent in " +
+                "PocketIDE and start the sign-in again.",
         ),
         faq(
             "more-extensions",
@@ -106,12 +104,30 @@ internal object Faq {
                 "development keeps your main one, mail and photos apart.",
         ),
         faq(
+            "which-account",
+            "start",
+            "Should I use my main Google account?",
+            "A separate Google account just for development is recommended: the agents run code and commands in that " +
+                "account's Cloud Shell, so a mistake, a leaked key or Google limiting Cloud Shell stays away from your main " +
+                "Gmail, Drive and Photos. Your main account works too, the same way: Google's own sign-in, no password given to " +
+                "PocketIDE. Either way, turn on 2-Step Verification.",
+        ),
+        faq(
+            "tools-back",
+            DocsContent.IDE_ID,
+            "How do Tools and Back work in an agent's VS Code?",
+            "Tools (the wrench) opens the agent, a file, the terminal, settings, install from a link or all commands, each " +
+                "full screen, one at a time. Back closes a menu, dialog or notice first, then what covers the agent, and leaves " +
+                "the agent only on a second Back. An extension's own page (Antigravity's settings, for example) opens full " +
+                "screen too, and Back returns to the agent.",
+        ),
+        faq(
             "connection-stays",
             DocsContent.CONNECTION_ID,
             "Does the connection delete itself after the set-up? Do the agents run on my phone?",
             "It stays, because gcloud on the phone opens every connection to Cloud Shell (about 500 MB, in PocketIDE's " +
                 "private storage). Only gcloud and ssh run on the phone; the agents, VS Code and your projects run in Cloud " +
-                "Shell. Computer > Remove the connection deletes it, and the agents then open in Chrome.",
+                "Shell. Computer > Remove the connection deletes it, and the set-up downloads it again when you next open PocketIDE.",
         ),
         faq(
             "gcloud-update",
@@ -119,7 +135,7 @@ internal object Faq {
             "What if Google changes gcloud?",
             "PocketIDE checks gcloud before it connects. If an update changed how it connects, PocketIDE undoes the update, " +
                 "or puts back the gcloud this version was tested with, and holds gcloud's updates until the next PocketIDE. " +
-                "Only if both fail does it ask you to update PocketIDE; the Chrome way works meanwhile.",
+                "Only if both fail does it ask you to update PocketIDE.",
         ),
         faq(
             "set-up-again",

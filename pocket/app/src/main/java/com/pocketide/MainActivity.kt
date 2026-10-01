@@ -20,9 +20,9 @@ import kotlinx.coroutines.launch
 
 /**
  * The app's screens. Screenshots are always allowed. With App lock on, Recents shows a cover
- * instead of the screen (see [PocketRoot]); the lock itself is part of [PocketRoot] too. The
- * Chrome tab an agent's VS Code opens in sits above it in the same task, so bringing this activity
- * back to the front (its launch mode, or the tools' CLEAR_TOP) closes that tab.
+ * instead of the screen (see [PocketRoot]); the lock itself is part of [PocketRoot] too. A sign-in
+ * page in Chrome may sit above it; bringing this activity back to the front (its launch mode, or
+ * CLEAR_TOP) closes that page.
  */
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

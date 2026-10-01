@@ -34,7 +34,7 @@ import com.pocketide.ui.screens.home.HomeScreen
 import com.pocketide.ui.screens.onboarding.WelcomeScreen
 import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.theme.PocketTheme
-import com.pocketide.ui.tools.ToolsSheet
+import com.pocketide.ui.workspace.ToolsSheet
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -75,10 +75,10 @@ class ScreenTour {
 
     @Test fun computerDark() = shoot("04-computer-dark", ThemeMode.DARK) { CloudShellScreen(onHelp = {}, onHelpPage = {}) }
 
-    // PocketIDE's tools, over an agent's Chrome tab.
-    @Test fun tools() = shoot("05-tools") { ToolsSheet(onPlace = {}, onHome = {}, onClose = {}) }
+    // PocketIDE's tools, over an agent's VS Code.
+    @Test fun tools() = shoot("05-tools") { Tools() }
 
-    @Test fun toolsDark() = shoot("05-tools-dark", ThemeMode.DARK) { ToolsSheet(onPlace = {}, onHome = {}, onClose = {}) }
+    @Test fun toolsDark() = shoot("05-tools-dark", ThemeMode.DARK) { Tools() }
 
     @Test fun settings() = shoot("06-settings") { Settings() }
 
@@ -110,6 +110,9 @@ class ScreenTour {
 
     @Composable
     private fun Home() = HomeScreen(onComputer = {}, onYourData = {}, onHelp = {})
+
+    @Composable
+    private fun Tools() = ToolsSheet(enabled = true, onCommand = {}, onReload = {}, onHome = {}, onClose = {})
 
     @Composable
     private fun Settings() = SettingsScreen(onYourData = {}, onHelp = {}, onHelpPage = {})

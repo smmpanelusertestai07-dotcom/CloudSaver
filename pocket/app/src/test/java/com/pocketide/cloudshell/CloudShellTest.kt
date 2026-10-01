@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.security.MessageDigest
-import java.util.Base64
 
 class CloudShellTest {
     private val script: File by lazy {
@@ -39,11 +38,11 @@ class CloudShellTest {
             assertEquals(agent.name, "~/projects/$key", CloudShell.projects(agent))
             assertTrue(extension.isNotBlank())
         }
-        val returns = Regex("PORT = int\\(sys.argv\\[1]\\) if len\\(sys.argv\\) > 1 else (\\d+)").find(text)
-        assertEquals(SignInReturn.PORT, checkNotNull(returns) { "the bridge's sign-in return port" }.groupValues[1].toInt())
-        assertTrue(text.contains("BRIDGE_PORT=${SignInReturn.PORT}"))
-        val ports = Agent.entries.map(CloudShell::port) + SignInReturn.PORT
+        val ports = Agent.entries.map(CloudShell::port)
         assertEquals("ports are each agent's own", ports.size, ports.distinct().size)
+        // PocketIDE 7's sign-in bridge (port 8090, for agents opened in Chrome) is gone, and the script removes it.
+        assertFalse(text.contains("BRIDGE_PORT"))
+        assertTrue(text.contains("rm -f \"\$BASE/bridge.py\" \"\$BASE/bridge.log\""))
     }
 
     @Test
@@ -68,6 +67,32 @@ class CloudShellTest {
         val keys = Regex("AGENTS=\"([^\"]+)\"").find(text)!!.groupValues[1].split(" ").map { it.substringBefore(":") }
         keys.forEach { key -> assertTrue(key, layout.contains("'$key':") || layout.contains("\n  $key:")) }
         assertTrue(text.contains("\"workbench.secondarySideBar.defaultVisibility\""))
+    }
+
+    @Test
+    fun `one thing at a time, and PocketIDE's keys reach the layout extension's commands`() {
+        val text = script.readText()
+        val manifest = text.substringAfter("cat >\"\$BASE/layout/package.json\" <<'JSON'\n").substringBefore("\nJSON\n")
+        val bindings = Regex("""\{\s*"command": "(pocketide\.[a-z]+)",\s*"key": "([a-z0-9+]+)"\s*}""").findAll(manifest)
+            .associate { it.groupValues[2] to it.groupValues[1] }
+        val page = listOf("src/main/assets", "app/src/main/assets").map { File(it, "workspace/pagescript.js") }.first { it.isFile }.readText()
+        val keys = Regex("""(\w+): \['(F\d+)'(?:, '(ctrl)')?]""").findAll(page.substringAfter("const KEYS = {").substringBefore("};")).toList()
+        val commands = listOf("back", "agent", "terminal", "settings", "commands", "vsix", "tools", "files")
+        assertEquals("the page's commands", commands, keys.map { it.groupValues[1] })
+        keys.forEach { key ->
+            val chord = listOfNotNull(key.groupValues[3].ifBlank { null }, key.groupValues[2].lowercase()).joinToString("+")
+            assertEquals("${key.groupValues[1]} presses $chord", "pocketide.${key.groupValues[1]}", bindings[chord])
+        }
+        val code = text.substringAfter("cat >\"\$BASE/layout/extension.js\" <<'JS'\n").substringBefore("\nJS\n")
+        bindings.values.toSet().forEach { assertTrue(it, code.contains("registerCommand('$it'")) }
+        // Editors and terminals open in the main editor area, which the extension shows full screen;
+        // no settings in a floating window wider than the phone.
+        assertTrue(text.contains("\"workbench.editor.useModal\": \"off\""))
+        assertTrue(text.contains("\"terminal.integrated.defaultLocation\": \"editor\""))
+        // PocketIDE's app decides where each link opens, so VS Code does not ask first as well.
+        assertTrue(text.contains("--link-protection-trusted-domains '*'"))
+        // A VS Code that was running keeps its old layout until it starts again: the set-up restarts them.
+        assertTrue(text.contains("\"\$BIN/pocketide\" restart"))
     }
 
     @Test
@@ -111,39 +136,10 @@ class CloudShellTest {
     }
 
     @Test
-    fun `every address opens with the picked account`() {
+    fun `Google's own page opens with the picked account`() {
         val account = "dev+pocket@example.com"
-        val encoded = "dev%2Bpocket%40example.com"
-        assertEquals("https://shell.cloud.google.com/?show=terminal&authuser=$encoded", CloudShell.terminal(account))
-        assertTrue(CloudShell.editor(account).endsWith("&authuser=$encoded"))
-        assertEquals("https://console.cloud.google.com/?authuser=$encoded", CloudShell.console(account))
-        Agent.entries.forEach { agent ->
-            val url = CloudShell.screen(agent, account)
-            assertTrue(url, url.startsWith("https://ssh.cloud.google.com/devshell/proxy?authuser=$encoded&port=${CloudShell.port(agent)}&"))
-        }
-        assertEquals("no account, no authuser", "https://shell.cloud.google.com/?show=terminal", CloudShell.terminal(""))
-    }
-
-    @Test
-    fun `each agent opens its own VS Code in Chrome too`() {
-        Agent.entries.forEach { agent ->
-            assertTrue(agent.name, CloudShell.screen(agent, "a@b.c").contains("&port=${CloudShell.port(agent)}&cloudshell_retry=true&devshellProxyPath=%2F&"))
-        }
-    }
-
-    @Test
-    fun `a sign-in page that ended at localhost goes back to Cloud Shell through the bridge`() {
-        val back = SignInReturn.address("http://localhost:1455/auth/callback?code=ac_1%2F2&state=xyz", "dev@example.com")
-        val path = "/auth/callback?code=ac_1%2F2&state=xyz"
-        val token = Base64.getUrlEncoder().withoutPadding().encodeToString(path.toByteArray())
-        assertEquals(
-            "https://ssh.cloud.google.com/devshell/proxy?authuser=dev%40example.com&port=8090&cloudshell_retry=true" +
-                "&devshellProxyPath=%2Fpocketide%2Fcallback%2F1455%2F$token&environment_name=default&environment_id=default",
-            back,
-        )
-        assertEquals(path, String(Base64.getUrlDecoder().decode(token)))
-        assertTrue(checkNotNull(SignInReturn.address("http://127.0.0.1:46831/", "a@b.c")).contains("%2Fcallback%2F46831%2F"))
-        assertTrue(checkNotNull(SignInReturn.address("http://localhost:46831", "a@b.c")).contains("%2Fcallback%2F46831%2F"))
+        assertEquals("https://shell.cloud.google.com/?show=terminal&authuser=dev%2Bpocket%40example.com", CloudShell.googlePage(account))
+        assertEquals("no account, no authuser", "https://shell.cloud.google.com/?show=terminal", CloudShell.googlePage(""))
     }
 
     @Test
@@ -154,27 +150,11 @@ class CloudShellTest {
         listOf(
             page.replace("https://", "http://"),
             page.replace("localhost%3A34321", "example.com%3A34321"),
-            page.replace("localhost%3A34321", "localhost%3A8090"),
+            page.replace("localhost%3A34321", "localhost%3A80"),
             page.replace("localhost%3A34321", "localhost"),
             "https://accounts.google.com/o/oauth2/auth?redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback",
             "https://example.com/",
             "",
         ).forEach { assertNull(it, SignInReturn.pagePort(it)) }
-    }
-
-    @Test
-    fun `nothing but a return to this phone's localhost goes to the bridge`() {
-        listOf(
-            "https://localhost:1455/auth/callback?code=1", // https: no agent's local sign-in server
-            "http://example.com:1455/auth/callback?code=1",
-            "http://localhost.example.com:1455/",
-            "http://localhost/auth/callback", // no port
-            "http://localhost:80/auth/callback",
-            "http://localhost:8090/pocketide/health", // the bridge itself
-            "http://localhost:70000/",
-            "intent://signin#Intent;end",
-            "not a link",
-            "",
-        ).forEach { assertNull(it, SignInReturn.address(it, "a@b.c")) }
     }
 }

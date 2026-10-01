@@ -36,8 +36,6 @@ data class Settings(
      */
     val proxyKey: String = "",
     val proxyPort: Int = 0,
-    /** The owner chose to open the agents in Chrome only, without PocketIDE's connection on this phone. */
-    val chromeOnly: Boolean = false,
 )
 
 /** The settings after "Delete everything": every choice back to its default. */

@@ -71,27 +71,27 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.Agent
 import com.pocketide.cloudshell.CloudShell
-import com.pocketide.cloudshell.IdePlace
 import com.pocketide.cloudshell.SignInCatcher
+import com.pocketide.docs.DocLinks
 import com.pocketide.graph
 import com.pocketide.link.LinkState
 import com.pocketide.link.Problem
 import com.pocketide.link.SignInResult
 import com.pocketide.ui.components.AgentLogo
 import com.pocketide.ui.components.Tone
-import com.pocketide.ui.screens.cloudshell.openCloudShell
+import com.pocketide.ui.screens.cloudshell.openGooglePage
 import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.web.Browser
-import com.pocketide.ui.web.IdeTab
 import com.pocketide.ui.web.WebPolicy
 import kotlinx.coroutines.launch
 
 /**
- * The agent's VS Code with PocketIDE's own bar above it: Back (a menu or file first, then the
- * agent, never straight home), the three agents, Reload, Tools (everything VS Code's hidden side
- * bar holds) and a few more in a small menu. The keys a phone keyboard lacks sit above the keyboard.
+ * The agent's VS Code with PocketIDE's own bar above it: Back (a menu or dialog first, then what
+ * covers the agent, never straight home), the three agents, Reload, Tools (the terminal, files,
+ * settings, all commands: each full screen, one at a time) and a small menu. The keys a phone
+ * keyboard lacks sit above the keyboard.
  */
 @Composable
 // One screen: each state of the connection, and each problem, has its own few lines.
@@ -110,6 +110,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     var generation by remember { mutableIntStateOf(0) }
     var backAt by remember { mutableLongStateOf(0L) }
     var signingIn by remember { mutableStateOf(false) }
+    var tools by remember { mutableStateOf(false) }
     val account = settings.gcloudAccount.ifBlank { settings.cloudAccount }
     val page = { graph.pages.page(agent) }
     val toast = { text: String -> Toast.makeText(activity, text, Toast.LENGTH_LONG).show() }
@@ -119,7 +120,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
             is Opening.CloudShellPage -> graph.link.pageUrl(opening.port, opening.path)?.let { viewer = it }
             is Opening.SignIn -> {
                 // The page returns to the agent waiting on that port in Cloud Shell: the phone passes it on.
-                SignInCatcher.catchOn(opening.port, account, relay = graph.link::open)
+                SignInCatcher.catchOn(opening.port, graph.link::open)
                 Browser.open(activity, opening.url)
             }
             is Opening.Web -> if (fromTap) Browser.open(activity, opening.url) else askOpen = opening.url
@@ -157,7 +158,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
             }
 
             override fun downloadRefused() {
-                toast("Downloads stay in Cloud Shell: use its Files page (in Chrome, from the menu) to download a file.")
+                toast("VS Code's downloads do not reach the phone; the file stays in Cloud Shell.")
             }
 
             override fun onPageState(agent: Agent, state: PageState) {
@@ -175,7 +176,7 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
         }
     }
 
-    // Back: a menu or dialog, then a file over the agent, then the agent itself; home only on a second Back.
+    // Back: a menu or dialog, then what covers the agent, then the agent itself; home only on a second Back.
     val leave = {
         val now = SystemClock.uptimeMillis()
         if (now - backAt < BACK_AGAIN_MS) {
@@ -187,13 +188,10 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
     }
     val back = {
         val current = page()
-        if (link == LinkState.On && current?.web != null) {
-            current.back(onEditor = { current.sendKey(KeyEvent.KEYCODE_A, CTRL_ALT) }, otherwise = leave)
-        } else {
-            onHome()
-        }
+        if (link == LinkState.On && current?.web != null) current.back(otherwise = leave) else onHome()
     }
-    BackHandler(enabled = viewer == null) { back() }
+    BackHandler(enabled = viewer == null && !tools) { back() }
+    BackHandler(enabled = tools) { tools = false }
 
     Column(
         Modifier
@@ -217,11 +215,8 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                     graph.link.connect()
                 }
             },
-            onTools = { page()?.sendKey(KeyEvent.KEYCODE_P, CTRL_ALT) },
+            onTools = { tools = true },
             menu = listOf(
-                "Open in Chrome instead" to { IdeTab.open(activity, IdePlace.of(agent)) },
-                "Cloud Shell's terminal (Chrome)" to { IdeTab.open(activity, IdePlace.TERMINAL) },
-                "Cloud Shell's files (Chrome)" to { IdeTab.open(activity, IdePlace.FILES) },
                 "PocketIDE home" to onHome,
                 "Disconnect" to {
                     graph.link.disconnect()
@@ -238,10 +233,10 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                         url == null -> Waiting("Connecting…", null)
                         notStarted == agent -> Problem(
                             "${agent.displayName}'s VS Code did not start in Cloud Shell.",
-                            "Try again. If it keeps failing, disconnect, connect again, or open it in Chrome instead.",
+                            "Try again. If it keeps failing, disconnect and connect again: PocketIDE starts every VS Code again.",
                         ) {
                             PrimaryAction("Try again", onClick = { notStarted = null })
-                            TextButton(onClick = { IdeTab.open(activity, IdePlace.of(agent)) }) { Text("Open in Chrome instead") }
+                            TextButton(onClick = { graph.link.disconnect() }) { Text("Disconnect") }
                         }
                         !ready -> {
                             Waiting("Starting ${agent.displayName}'s VS Code…", "The first start after a break takes a minute.")
@@ -283,15 +278,12 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
                             }
                         })
                         Problem.CLOUD_SHELL -> {
-                            PrimaryAction("Open Cloud Shell in Chrome", onClick = { openCloudShell(activity, CloudShell.terminal(account)) })
+                            PrimaryAction("Open Google's page (once)", onClick = { openGooglePage(activity, CloudShell.googlePage(account)) })
                             TextButton(onClick = { graph.link.connect() }) { Text("Try again") }
                         }
                         Problem.CONNECTOR -> PrimaryAction("Set up the connection", onClick = onHome)
-                        Problem.APP_UPDATE -> PrimaryAction("Open in Chrome instead", onClick = { IdeTab.open(activity, IdePlace.of(agent)) })
+                        Problem.APP_UPDATE -> PrimaryAction("Get the newest PocketIDE", onClick = { Browser.open(activity, DocLinks.RELEASES) })
                         Problem.NETWORK, Problem.OTHER -> PrimaryAction("Try again", onClick = { graph.link.connect() })
-                    }
-                    if (state.problem != Problem.APP_UPDATE) {
-                        TextButton(onClick = { IdeTab.open(activity, IdePlace.of(agent)) }) { Text("Open in Chrome instead") }
                     }
                 }
             }
@@ -324,11 +316,30 @@ internal fun WorkspaceScreen(activity: WorkspaceActivity, agent: Agent, onAgent:
         }
     }
 
+    if (tools) {
+        ToolsSheet(
+            enabled = link == LinkState.On && page()?.web != null,
+            onCommand = { command ->
+                tools = false
+                page()?.run(command)
+            },
+            onReload = {
+                tools = false
+                if (link == LinkState.On) page()?.reload() ?: run { generation++ } else graph.link.connect()
+            },
+            onHome = {
+                tools = false
+                onHome()
+            },
+            onClose = { tools = false },
+        )
+    }
+
     askOpen?.let { url ->
         AlertDialog(
             onDismissRequest = { askOpen = null },
-            title = { Text("Open in Chrome?") },
-            text = { Text("The page wants to open ${WebPolicy.hostOf(url) ?: "a web page"}.") },
+            title = { Text("Open this page?") },
+            text = { Text("The page wants to open ${WebPolicy.hostOf(url) ?: "a web page"} in your browser.") },
             confirmButton = {
                 TextButton(onClick = {
                     Browser.open(activity, url)
@@ -348,11 +359,11 @@ private fun shownAs(url: String, doorPort: (String) -> Int?): String {
 
 private fun fixOf(problem: Problem): String = when (problem) {
     Problem.SIGN_IN -> "Google's page opens in Chrome: pick your account and tap Allow. PocketIDE comes back by itself."
-    Problem.CLOUD_SHELL -> "Cloud Shell's own page, in Chrome, shows what Google needs."
+    Problem.CLOUD_SHELL -> "Google's own Cloud Shell page shows what Google needs, once (its terms, a verification); then try again."
     Problem.CONNECTOR -> "PocketIDE's home shows the set-up: about 130 MB, once."
-    Problem.APP_UPDATE -> "The agents still open in Chrome, as before."
+    Problem.APP_UPDATE -> "A newer PocketIDE knows how this gcloud connects."
     Problem.NETWORK -> "When the phone is online again, tap Try again."
-    Problem.OTHER -> "Tap Try again. If it keeps failing, open the agent in Chrome instead."
+    Problem.OTHER -> "Tap Try again. If it keeps failing, disconnect, connect again, or restart the phone."
 }
 
 @Composable
@@ -373,7 +384,7 @@ private fun TopBar(
                 Agent.entries.forEach { each -> AgentChip(each, selected = each == agent, onClick = { onAgent(each) }) }
             }
             IconButton(onClick = onReload) { Icon(Icons.Outlined.Refresh, contentDescription = "Reload this VS Code") }
-            IconButton(onClick = onTools) { Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, git, extensions, settings") }
+            IconButton(onClick = onTools) { Icon(Icons.Outlined.Handyman, contentDescription = "Tools: terminal, files, settings, all commands") }
             Box {
                 IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "More") }
                 DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -489,4 +500,3 @@ private fun PageOverlay(page: PageState?, onReload: () -> Unit) {
 
 private const val FULL = 100
 private const val BACK_AGAIN_MS = 2_000L
-private const val CTRL_ALT = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON or KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON

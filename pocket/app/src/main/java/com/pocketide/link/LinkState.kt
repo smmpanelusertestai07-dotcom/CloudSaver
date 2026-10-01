@@ -22,7 +22,7 @@ enum class Problem {
     /** gcloud is not signed in, or Google ended its sign-in: sign in again. */
     SIGN_IN,
 
-    /** Something only Cloud Shell's own page settles (its terms, a verification, the week's hours): open it in Chrome. */
+    /** Something only Google's own Cloud Shell page settles (its terms, a verification, the week's hours): open it once. */
     CLOUD_SHELL,
 
     /** Google could not be reached: try again. */
@@ -60,16 +60,16 @@ internal object GcloudSays {
         return when {
             text.contains(TUNNEL_CHANGED) -> LinkFailure(
                 Problem.APP_UPDATE,
-                "Google's gcloud changed how it connects to Cloud Shell. Update PocketIDE; until then, open the agents in Chrome.",
+                "Google's gcloud changed how it connects to Cloud Shell. Get the newest PocketIDE; your projects and chats wait in Cloud Shell.",
             )
             SIGN_IN.containsMatchIn(text) -> LinkFailure(Problem.SIGN_IN, "Google asks you to sign in to gcloud again on this phone.")
             text.contains("unverified", ignoreCase = true) -> LinkFailure(
                 Problem.CLOUD_SHELL,
-                "Google asks you to verify your account for Cloud Shell. Open Cloud Shell in Chrome once, then try again.",
+                "Google asks you to verify your account for Cloud Shell: do it once on Google's Cloud Shell page, then try again.",
             )
             TERMS.containsMatchIn(text) -> LinkFailure(
                 Problem.CLOUD_SHELL,
-                "Accept Google Cloud's terms once: open Cloud Shell in Chrome, then try again.",
+                "Accept Google Cloud's terms once on Google's Cloud Shell page, then try again.",
             )
             QUOTA.containsMatchIn(text) -> LinkFailure(
                 Problem.CLOUD_SHELL,
@@ -78,7 +78,7 @@ internal object GcloudSays {
             NETWORK.containsMatchIn(text) -> LinkFailure(Problem.NETWORK, "PocketIDE could not reach Google. Check the phone's connection and try again.")
             text.contains("did not start", ignoreCase = true) -> LinkFailure(
                 Problem.CLOUD_SHELL,
-                "Cloud Shell did not start. Open it in Chrome to see why, then try again.",
+                "Cloud Shell did not start. Google's Cloud Shell page says why; then try again.",
             )
             else -> LinkFailure(Problem.OTHER, lastWords(lines)?.let { "gcloud stopped: $it" } ?: "gcloud stopped without saying why.")
         }

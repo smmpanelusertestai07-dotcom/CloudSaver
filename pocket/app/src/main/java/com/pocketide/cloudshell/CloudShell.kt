@@ -9,16 +9,15 @@ import java.net.URLEncoder
  * Google Cloud Shell, PocketIDE's computer: Google's own Linux computer, free with a Google account.
  * The set-up is one command, from a script pinned by its SHA-256, that gives each agent its own
  * VS Code, which Cloud Shell then starts by itself whenever it starts. PocketIDE runs it through
- * its own connection (Google's gcloud on the phone), or the owner pastes it in Cloud Shell's page
- * in Chrome, where Google allows its sign-in.
+ * its own connection (Google's gcloud on the phone).
  */
 object CloudShell {
     /** The commit that holds the setup script this app version gives out. */
-    const val SCRIPT_COMMIT = "f228799b245f98ec6bd6e8ada3499b7edcee0b49"
+    const val SCRIPT_COMMIT = "37cb885c8db4aa9007f124a999db02c82320c998"
     const val SCRIPT_PATH = "pocket/cloudshell/pocketide-cloudshell.sh"
 
     /** The script's SHA-256: the command runs it only when the download matches. */
-    const val SCRIPT_SHA256 = "c07a2f6dab567dbc5df5c9c3a46850874721a8d69688a87512f6e486b8550a8c"
+    const val SCRIPT_SHA256 = "90a9620dd03ed94828452799098ef2c4de5f3405f098f6daec2b6d73846a35d8"
     val SCRIPT_URL = "https://raw.githubusercontent.com/${BuildConfig.RELEASES_REPO}/$SCRIPT_COMMIT/$SCRIPT_PATH"
 
     /** Google deletes Cloud Shell's home folder after this many days without use. */
@@ -29,14 +28,12 @@ object CloudShell {
     private const val DAY_MS = 24 * 60 * 60 * 1000L
 
     const val NEW_ACCOUNT = "https://accounts.google.com/signup"
-    const val MOBILE_APP = "https://play.google.com/store/apps/details?id=com.google.android.apps.cloudconsole"
     const val LIMITS = "https://docs.cloud.google.com/shell/docs/limitations"
-    const val FILES = "https://docs.cloud.google.com/shell/docs/uploading-and-downloading-files"
     const val RESET = "https://docs.cloud.google.com/shell/docs/resetting-cloud-shell"
     const val TERMS = "https://cloud.google.com/terms"
     const val PRIVACY = "https://cloud.google.com/terms/cloud-privacy-notice"
 
-    /** The one command to paste into Cloud Shell: download the script, check it, run it. */
+    /** The one command PocketIDE runs in Cloud Shell: download the script, check it, run it. */
     val setupCommand: String =
         "curl -fsSL -o ~/pocketide-cloudshell.sh $SCRIPT_URL && " +
             "echo \"$SCRIPT_SHA256  \$HOME/pocketide-cloudshell.sh\" | sha256sum -c - && " +
@@ -54,21 +51,11 @@ object CloudShell {
         Agent.ANTIGRAVITY -> "~/projects/antigravity"
     }
 
-    /** Cloud Shell's terminal, with [account]. Opening it starts Cloud Shell, and with it the agents' VS Code. */
-    fun terminal(account: String): String = "https://shell.cloud.google.com/?show=terminal" + authUser(account)
-
-    /** Cloud Shell's own editor, where the home folder's files show. */
-    fun editor(account: String): String = "https://shell.cloud.google.com/?show=ide%2Cterminal" + authUser(account)
-
-    fun console(account: String): String = "https://console.cloud.google.com/" + authUser(account, first = true)
-
-    /** [agent]'s own VS Code, full screen, through Cloud Shell's Web Preview, which only [account] can open. */
-    fun screen(agent: Agent, account: String): String = webPreview(port(agent), "/", account)
-
-    /** [path] on Cloud Shell's [port], through Web Preview, which only [account] can open. */
-    internal fun webPreview(port: Int, path: String, account: String): String =
-        "https://ssh.cloud.google.com/devshell/proxy?authuser=${encode(account)}&port=$port" +
-            "&cloudshell_retry=true&devshellProxyPath=${encode(path)}&environment_name=default&environment_id=default"
+    /**
+     * Google's own Cloud Shell page, with [account], in the browser: only for what that page alone
+     * settles, once (accepting Google Cloud's terms, verifying the account). The agents never open there.
+     */
+    fun googlePage(account: String): String = "https://shell.cloud.google.com/?show=terminal" + authUser(account)
 
     /**
      * True until the owner has picked an account and finished the set-up, and again when PocketIDE
@@ -87,8 +74,7 @@ object CloudShell {
         return if (last == 0L) 0 else ((now - last) / DAY_MS).coerceAtLeast(0)
     }
 
-    private fun authUser(account: String, first: Boolean = false): String =
-        if (account.isBlank()) "" else (if (first) "?" else "&") + "authuser=" + encode(account)
+    private fun authUser(account: String): String = if (account.isBlank()) "" else "&authuser=" + encode(account)
 
     private fun encode(text: String): String = URLEncoder.encode(text, "UTF-8")
 }

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PocketIDE</string>
-    <string name="finish_sign_in">Finish sign-in</string>
     <string name="connection_channel_name">Cloud Shell connection</string>
     <string name="connection_channel_description">Shown while PocketIDE is connected to your Cloud Shell, or setting up that connection. Has a Disconnect button.</string>
     <string name="connection_fgs_subtype">Keeps the user\'s own encrypted connection to their Google Cloud Shell open (Google\'s gcloud over SSH) while they use the agents in PocketIDE or finish a sign-in page in the browser, shows that it is open, and lets the user close it.</string>

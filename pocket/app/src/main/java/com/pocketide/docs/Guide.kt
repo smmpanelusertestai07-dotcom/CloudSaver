@@ -15,9 +15,10 @@ internal object Guide {
                 "inside PocketIDE. The phone only shows the page, so it stays cool.",
         ),
         steps(
-            "Pick your Google account in Android's own chooser. A separate Google account for development keeps your main " +
-                "one apart; your main one works too.",
-            "Set up PocketIDE's connection: one tap, about 130 MB, once.",
+            "Pick your Google account in Android's own chooser. A separate Google account for development is recommended: " +
+                "the agents run code in its Cloud Shell, so a mistake or a leaked key stays away from your main Gmail, Drive " +
+                "and Photos. Your main account works too, the same way.",
+            "PocketIDE's connection downloads by itself as soon as the set-up opens: about 130 MB, once.",
             "Sign in to gcloud: Google's page opens in Chrome; pick your account and tap Allow.",
             "Set up Cloud Shell: one tap. PocketIDE starts it and installs VS Code and the agents there (about 5 minutes, once).",
             "On Home, tap Claude Code, Codex or Antigravity: its own VS Code opens in PocketIDE. Sign in to the agent once.",
@@ -39,7 +40,7 @@ internal object Guide {
         "Google's free Linux computer: set-up, limits, starting, updates, and putting it right.",
         p(
             "Cloud Shell is a Linux computer (x86-64) that Google runs for each Google account, free. PocketIDE reaches it " +
-                "through Google's own gcloud on your phone (see PocketIDE's connection), or, the Chrome way, in Chrome.",
+                "through Google's own gcloud on your phone (see PocketIDE's connection), and the agents open only inside PocketIDE.",
         ),
         table(
             listOf("Free limit (Google, checked ${DocLinks.CHECKED_ON})", "Value"),
@@ -51,7 +52,7 @@ internal object Guide {
         bullets(
             "The set-up is one script, pinned in this app version and checked by its SHA-256 before it runs: code-server " +
                 "(VS Code for the web), checked against its pinned SHA-256, and each agent from Open VSX, checked against the " +
-                "SHA-256 Open VSX publishes. PocketIDE runs it through its connection; the Chrome way pastes it in Cloud Shell.",
+                "SHA-256 Open VSX publishes. PocketIDE runs it through its connection.",
             "Each agent gets its own VS Code, with its own port (Claude Code ${CloudShell.port(Agent.CLAUDE)}, Codex " +
                 "${CloudShell.port(Agent.CODEX)}, Antigravity ${CloudShell.port(Agent.ANTIGRAVITY)}), settings, extensions and " +
                 "projects folder. It listens only inside Cloud Shell.",
@@ -63,7 +64,7 @@ internal object Guide {
         ),
         warn(
             "Use Cloud Shell yourself, while you work, as Google intends: no coin mining, network scanning or tricks to keep " +
-                "it awake, and never share a Web Preview link. Google can turn Cloud Shell off for an account that breaks its rules.",
+                "it awake, and no public tunnels. Google can turn Cloud Shell off for an account that breaks its rules.",
         ),
         link("Open the Computer tab", "app:computer"),
         link("Google's limits", CloudShell.LIMITS),
@@ -89,12 +90,12 @@ internal object Guide {
                 "What if a gcloud update breaks the connection?",
                 "PocketIDE checks gcloud before it connects. When an update changed how gcloud connects, PocketIDE undoes it " +
                     "(gcloud's own restore) or puts back the version this PocketIDE was tested with, and gcloud's updates wait " +
-                    "for the next PocketIDE. Only if both fail does it ask you to update PocketIDE; the Chrome way still works.",
+                    "for the next PocketIDE. Only if both fail does it ask you to update PocketIDE.",
             ),
             row(
                 "Does the connection delete itself after the set-up?",
                 "No: gcloud on the phone opens every connection, so it stays (about 500 MB). Only gcloud and ssh run on the " +
-                    "phone, never the agents. Computer > Remove the connection deletes it; the agents then open in Chrome.",
+                    "phone, never the agents. Computer > Remove the connection deletes it; the set-up then downloads it again.",
             ),
             row(
                 "What do I do once?",
@@ -150,14 +151,14 @@ internal object Guide {
                 "copy the code the page shows and paste it where Claude Code asks).",
             "Codex: Sign in with ChatGPT, and sign in. The page returns to Codex by itself.",
             "Antigravity: Continue with Google, and sign in with Google in Chrome. The page returns to Antigravity by itself.",
-            "The Chrome way only: a sign-in page that ends at \"localhost refused to connect\": tap PocketIDE's tools button " +
-                "at the top of that page (in Chrome's own app: ⋮ > Share > PocketIDE (Finish sign-in)).",
+            "A sign-in page that ends at \"localhost refused to connect\" (another app held the port, or Android closed " +
+                "PocketIDE meanwhile): open the agent in PocketIDE and start the sign-in again.",
         ),
         p(
-            "More extensions: Tools (the wrench in PocketIDE's bar) > Extensions finds any extension on Open VSX, and Tools > " +
-                "Install from a link installs one Open VSX does not have, from its maker's .vsix link. Each VS Code keeps its " +
-                "own, and Open VSX's update by themselves. Microsoft's own extensions are not on Open VSX (Microsoft allows " +
-                "them only in its products).",
+            "More extensions: Tools (the wrench in PocketIDE's bar) > All commands > Install Extensions finds any extension " +
+                "on Open VSX, and Tools > Install from a link installs one Open VSX does not have, from its maker's .vsix link. " +
+                "Each VS Code keeps its own, and Open VSX's update by themselves. Microsoft's own extensions are not on Open " +
+                "VSX (Microsoft allows them only in its products).",
         ),
         link("Claude Code's guide", Agent.CLAUDE.docsUrl),
         link("Codex's guide", Agent.CODEX.docsUrl),
@@ -170,21 +171,24 @@ internal object Guide {
         "PocketIDE's bar and keys, links to localhost, and typing on a phone.",
         table(
             listOf("In PocketIDE's bar", "What it does"),
-            row("Back (←), and the phone's Back", "Closes a menu or dialog, then a file over the agent; home only on a second Back"),
+            row("Back (←), and the phone's Back", "Closes a menu, dialog or notice; then what covers the agent; home only on a second Back"),
             row("The three logos", "Switch agents; each keeps its page, so nothing loads again"),
             row("Reload", "Loads this VS Code again"),
-            row("Tools (the wrench)", "The agent, terminal, files, search, Git, extensions, install from a link, settings, all commands"),
-            row("⋮", "Open in Chrome instead, Cloud Shell's terminal and files, PocketIDE's home, Disconnect"),
+            row("Tools (the wrench)", "The agent, open a file, terminal, settings, install from a link, all commands"),
+            row("⋮", "PocketIDE's home, Disconnect"),
         ),
         bullets(
+            "One thing at a time, full screen: the agent, or what covers it (a file, a diff, settings, an extension's own page, " +
+                "a terminal). Back returns to the agent; a terminal keeps running behind it.",
+            "Dialogs, notices, menus and the command palette always fit the screen; a notice with many buttons scrolls sideways.",
             "Above the keyboard: Paste, Esc, Tab, Ctrl+C, the arrows and Enter, for the terminal and the editor.",
             "A link to localhost in an agent's chat or the terminal (a dev server, a preview) opens in PocketIDE's page " +
                 "viewer, through the private door: its Back goes to the page before, its ✕ back to the agent.",
-            "Other web pages and sign-ins open in Chrome; Chrome's back arrow returns to the agent.",
+            "Other web pages and sign-ins open in Chrome (a page that opens without your tap asks first); Chrome's back arrow " +
+                "returns to the agent.",
             "Claude Code and Codex send with their Send button: Enter makes a new line, as a phone keyboard expects. Turning " +
                 "the phone sideways gives VS Code more room.",
-            "Uploading: VS Code's Upload uses Android's own picker. Downloading: use Cloud Shell's Files page (⋮ > Cloud " +
-                "Shell's files), or git.",
+            "Uploading: VS Code's Upload uses Android's own picker. A file to keep: put it on GitHub (git push).",
         ),
     )
 
@@ -197,7 +201,6 @@ internal object Guide {
             "To work on a project from GitHub, open the Terminal (Tools > Terminal) and run git clone with its address.",
             "Keep a copy elsewhere: run gh auth login once (GitHub's page opens in Chrome), then git push. Cloud Shell's home " +
                 "folder is deleted after ${CloudShell.DELETED_AFTER_DAYS} days without use.",
-            "Cloud Shell's own page (⋮ > Cloud Shell's files) has Upload and Download for single files.",
             "Android apps: an emulator cannot run in Cloud Shell, and the Android tools take much of the 5 GB home folder. " +
                 "Build them on GitHub Actions (an agent can write the workflow).",
         ),
@@ -211,11 +214,11 @@ internal object Guide {
             listOf("What you see", "Try"),
             row("Connecting takes long", "After a break Cloud Shell starts again first: up to a minute or two."),
             row("\"Sign in to gcloud again\"", "Tap Sign in to gcloud; Google's page opens in Chrome. Allow, and it connects."),
-            row("\"Accept Google Cloud's terms\" or \"verify your account\"", "Tap Open Cloud Shell in Chrome, do what Google asks once, then Try again."),
+            row("\"Accept Google Cloud's terms\" or \"verify your account\"", "Tap Open Google's page (once), do what Google asks, then Try again."),
             row("The connection dropped", "It connects again by itself while an agent is open; else tap Try again."),
             row("VS Code says it cannot reconnect", "Tap Reload in PocketIDE's bar."),
             row("An agent is missing", "Tools > Terminal, run pocketide update."),
-            row("Nothing helps", "⋮ > Open in Chrome instead: the agents open in Chrome, as in PocketIDE 6."),
+            row("Nothing helps", "Disconnect, connect again; then Computer > Run the set-up again (your projects and chats stay)."),
             row("Cloud Shell says the weekly quota is used", "It comes back the next week; Cloud Shell's page shows the usage."),
             row("The home folder is full", "Delete old projects or files; the first set-up needs about 2 GB free."),
         ),

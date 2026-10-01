@@ -151,7 +151,11 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
         web?.reload()
     }
 
-    /** A key press as if from a keyboard: the page gets real (trusted) key events. */
+    /**
+     * A key press as if from a keyboard: the page gets real (trusted) key events. Android sends them
+     * without the key's code, which VS Code's shortcuts need: good for Esc, Tab, the arrows, Enter and
+     * Ctrl+C in a terminal; PocketIDE's own commands go through [run].
+     */
     fun sendKey(keyCode: Int, meta: Int = 0) {
         val view = web ?: return
         val now = SystemClock.uptimeMillis()
@@ -168,15 +172,26 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
     }
 
     /**
-     * Back: closes the page's open menu, palette or dialog first; [onEditor] runs when an editor
-     * covers the agent (a file, a terminal, settings), [otherwise] when neither is open.
+     * PocketIDE's own command in this VS Code (assets/workspace/pagescript.js): back, agent,
+     * terminal, settings, files, commands, vsix or tools; or escape, which closes a menu or dialog.
      */
-    fun back(onEditor: () -> Unit, otherwise: () -> Unit) {
+    fun run(command: String) {
+        val view = web ?: return
+        val call = if (command == ESCAPE) "escape()" else "run(${JSONObject.quote(command)})"
+        view.evaluateJavascript("window.__pocketide && window.__pocketide.$call", null)
+    }
+
+    /**
+     * Back: closes the page's open menu, dialog, palette or notice first; then what covers the agent
+     * (a file, a diff, settings, a terminal) steps aside and the agent is back; [otherwise] runs when
+     * the agent alone is on screen.
+     */
+    fun back(otherwise: () -> Unit) {
         val view = web ?: return otherwise()
         view.evaluateJavascript("window.__pocketide ? window.__pocketide.backTarget() : 'none'") { target ->
             when (target?.trim('"')) {
-                "overlay" -> sendKey(KeyEvent.KEYCODE_ESCAPE)
-                "editor" -> onEditor()
+                "overlay" -> run(ESCAPE)
+                "vscode" -> run(BACK)
                 else -> otherwise()
             }
         }
@@ -237,7 +252,7 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
         view.addOnLayoutChangeListener { changed, _, _, _, _, _, _, _, _ -> fit(changed as WebView) }
         view.setDownloadListener { _, _, _, _, _ -> host?.downloadRefused() }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(view, PageScript.SOURCE, setOf(origin))
+            WebViewCompat.addDocumentStartJavaScript(view, PageScript.source(app), setOf(origin))
         }
         web = view
         view.loadUrl(url)
@@ -264,7 +279,7 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
 
         override fun onPageFinished(view: WebView, url: String) {
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && isOwn(url)) {
-                view.evaluateJavascript(PageScript.SOURCE, null)
+                view.evaluateJavascript(PageScript.source(app), null)
             }
             if (zoom < 1f) applyZoom(view)
             host?.onPageState(agent, PageState.Ready)
@@ -313,8 +328,10 @@ class AgentPage(private val app: Context, val agent: Agent, val url: String) {
         }
     }
 
-    private companion object {
-        const val FULL = 100
+    companion object {
+        private const val FULL = 100
+        const val BACK = "back"
+        const val ESCAPE = "escape"
     }
 }
 
@@ -375,73 +392,16 @@ internal object PageText {
 }
 
 /**
- * The small script PocketIDE adds to the agents' VS Code pages (only there): phone-sized touch
- * targets, no tab bar over an agent's screen, and helpers the app calls: whether a menu or dialog
- * is open (so Back closes it), the zoom for a short screen, and typing what the Paste key pastes.
- * It changes nothing else on the page.
+ * The script PocketIDE adds to the agents' VS Code pages, and only there: assets/workspace/pagescript.js
+ * (phone-sized dialogs, notices and menus; Back, Tools and the Paste key's helpers). CI loads the
+ * same file into each agent's VS Code at a phone's size and checks it. Read once.
  */
 internal object PageScript {
-    private val STYLE = """
-        .monaco-workbench .sash-container > .monaco-sash { display: none !important; }
-        .monaco-workbench .part.auxiliarybar > .title .action-item { min-width: 44px !important; }
-        .monaco-workbench .editor-group-container:has(> .editor-container > .editor-instance > [id^="webview-editor-element-"]) > .title { display: none !important; }
-        .monaco-workbench .editor-group-container:has(> .editor-container > .editor-instance > [id^="webview-editor-element-"]) > .editor-container { height: 100% !important; }
-    """.trimIndent()
+    const val ASSET = "workspace/pagescript.js"
 
-    val SOURCE = """
-        (() => {
-          if (window.__pocketide || window.top !== window) return;
-          const style = ${JSONObject.quote(STYLE)};
-          const addStyle = () => {
-            if (document.getElementById('pocketide-style')) return;
-            const node = document.createElement('style');
-            node.id = 'pocketide-style';
-            node.textContent = style;
-            (document.head || document.documentElement).appendChild(node);
-          };
-          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addStyle, { once: true });
-          else addStyle();
-          const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
-          const overlayOpen = () => ['.quick-input-widget', '.monaco-dialog-box', '.context-view .monaco-menu']
-            .some((selector) => [...document.querySelectorAll(selector)].some(shown));
-          // The element with the cursor, inside frames of the same origin too (an agent's chat box).
-          const focused = () => {
-            let doc = document;
-            let el = doc.activeElement;
-            for (let depth = 0; el && el.tagName === 'IFRAME' && depth < 4; depth++) {
-              try { doc = el.contentDocument; el = doc && doc.activeElement; } catch (e) { return null; }
-            }
-            return el ? { el, doc } : null;
-          };
-          window.__pocketide = {
-            overlayOpen,
-            // What Back closes first: a menu or dialog, then an editor over the agent, else nothing.
-            backTarget() {
-              if (overlayOpen()) return 'overlay';
-              const editor = document.querySelector('.monaco-workbench .part.editor');
-              const open = editor && shown(editor) && editor.getBoundingClientRect().width > 40 &&
-                editor.querySelector('.editor-instance');
-              return open ? 'editor' : 'none';
-            },
-            // Draws the page at [zoom] (0.5 to 1) of a WebView [widthDp] wide.
-            fit(zoom, widthDp) {
-              const meta = document.querySelector('meta[name="viewport"]');
-              if (!meta) return false;
-              const z = Math.min(1, Math.max(0.5, Number(zoom) || 1));
-              const width = Math.round((Number(widthDp) || window.innerWidth) / z);
-              const content = z >= 1
-                ? 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no'
-                : `width=${'$'}{width}, initial-scale=${'$'}{z}, minimum-scale=${'$'}{z}, maximum-scale=${'$'}{z}, user-scalable=no`;
-              if (meta.getAttribute('content') !== content) meta.setAttribute('content', content);
-              return true;
-            },
-            // Types [text] where the cursor is, as the keyboard would.
-            type(text) {
-              const at = focused();
-              if (!at || !at.el || at.el === at.doc.body) return false;
-              return at.doc.execCommand('insertText', false, String(text));
-            },
-          };
-        })();
-    """.trimIndent()
+    @Volatile
+    private var source: String? = null
+
+    fun source(context: Context): String =
+        source ?: context.assets.open(ASSET).use { it.readBytes().toString(Charsets.UTF_8) }.also { source = it }
 }

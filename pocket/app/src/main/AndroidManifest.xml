@@ -48,8 +48,8 @@
         android:theme="@style/Theme.PocketIDE"
         tools:targetApi="36">
 
-        <!-- singleTask: the Chrome tab an agent's VS Code opens in sits above it in the same task,
-             and bringing PocketIDE to the front closes that tab. -->
+        <!-- singleTask: one PocketIDE home; coming back to it (from an agent's screen, a sign-in
+             page in Chrome) finds the one already open. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale"
@@ -59,39 +59,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <!-- PocketIDE's tools over the Chrome tab: the tab's tools button and menu open it. Not
-             exported: only the tab's own buttons, which PocketIDE made, can open it. -->
-        <activity
-            android:name=".ui.tools.IdeToolsActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:theme="@style/Theme.PocketIDE.Tools" />
-
-        <!-- A sign-in from outside PocketIDE (it shows nothing itself): the bar on Antigravity's
-             screen (pocketide://signin), or a sign-in page that ended at localhost, shared to
-             PocketIDE. Exported, so it acts only on what a sign-in looks like. -->
-        <activity
-            android:name=".ui.tools.SignInActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:noHistory="true"
-            android:theme="@style/Theme.PocketIDE.Tools">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:host="signin"
-                    android:scheme="pocketide" />
-            </intent-filter>
-            <intent-filter android:label="@string/finish_sign_in">
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 

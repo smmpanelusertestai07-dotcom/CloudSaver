@@ -22,7 +22,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -62,7 +61,6 @@ import com.pocketide.ui.screens.onboarding.Onboarding
 import com.pocketide.ui.screens.settings.SettingsScreen
 import com.pocketide.ui.shell.LocalBottomBarPadding
 import com.pocketide.ui.theme.PocketTheme
-import com.pocketide.ui.web.IdeTab
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -73,8 +71,7 @@ import dev.chrisbanes.haze.rememberHazeState
 /**
  * Theme, app lock, the welcome, the computer's set-up, then the app with its bottom bar. The app
  * does not open past the set-up until Cloud Shell is set up and PocketIDE's connection to it is
- * ready (unless the owner chose the Chrome way), and comes back to it when Google may have deleted
- * Cloud Shell's home folder. Everything sits on one [Surface], so text takes the
+ * ready, and comes back to it when Google may have deleted Cloud Shell's home folder. Everything sits on one [Surface], so text takes the
  * theme's colour on every screen. With App lock on, the app is covered whenever it is not in
  * front, so Recents keeps a picture of the cover, not the screen.
  */
@@ -95,7 +92,7 @@ fun PocketRoot(activity: MainActivity) {
                     settings.appLock && locked -> LockScreen(activity, onUnlocked = appLock::unlock)
                     // The welcome again when the terms change, so the owner sees what changed and agrees.
                     !settings.onboardingDone || settings.termsAccepted < DocsContent.TERMS_VERSION -> Onboarding(graph)
-                    CloudShell.needsSetUp(settings, graph.clock.now()) || (!settings.chromeOnly && !connectionReady) -> SetUpScreen()
+                    CloudShell.needsSetUp(settings, graph.clock.now()) || !connectionReady -> SetUpScreen()
                     else -> MainScreens()
                 }
             }
@@ -112,15 +109,11 @@ private enum class Tab(val label: String, val icon: ImageVector, val route: Any)
 
 @Composable
 private fun MainScreens() {
-    val context = LocalContext.current
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val destination = entry?.destination
     val showBar = Tab.entries.any { destination?.hasRoute(it.route::class) == true }
     val haze = rememberHazeState()
-    // A place picked in the Chrome tab's tools: that tab closed to bring PocketIDE here; open the new one.
-    val next by IdeTab.next.collectAsStateWithLifecycle()
-    LaunchedEffect(next) { IdeTab.takeNext()?.let { IdeTab.open(context, it) } }
     val openPlace: (String) -> Unit = { id ->
         when (AppPlace.of(id)) {
             AppPlace.SETTINGS -> nav.openTab(Tab.SETTINGS)

@@ -125,7 +125,7 @@ internal fun PageViewer(
                 }
             }
             setDownloadListener { _, _, _, _, _ ->
-                Toast.makeText(context, "Downloads stay in Cloud Shell: use its Files page in Chrome to download.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Downloads do not reach the phone; the file stays in Cloud Shell.", Toast.LENGTH_LONG).show()
             }
             loadUrl(url)
         }

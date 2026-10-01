@@ -57,8 +57,7 @@ import kotlinx.coroutines.launch
  * run by themselves: PocketIDE's connection on this phone (Ubuntu with Google's own gcloud, about
  * 130 MB, once) downloads as soon as this page opens; the owner picks the Google account; gcloud
  * signs in with Google's page (the owner taps Allow); and PocketIDE sets Cloud Shell up through
- * that connection. No Google Cloud project, billing or OAuth client is made. The Chrome way (paste
- * one command in Cloud Shell's page) stays below, for a phone that cannot use the connection.
+ * that connection. No Google Cloud project, billing or OAuth client is made.
  */
 @Composable
 // Four steps on one page, each showing where it is.
@@ -73,7 +72,6 @@ fun SetUpScreen() {
     var reading by remember { mutableStateOf<String?>(null) }
     var signingIn by remember { mutableStateOf(false) }
     var signInProblem by remember { mutableStateOf<String?>(null) }
-    var chromeWay by rememberSaveable { mutableStateOf(false) }
     // The connection's notice (with its Disconnect button) needs Android 13's notification permission; without it, it still works.
     // Android asks only after one of the owner's own taps (picking the account), never by itself when the page opens.
     val notices = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -174,8 +172,11 @@ fun SetUpScreen() {
             SectionCard("1. Google account") {
                 Text(
                     if (account.isBlank()) {
-                        "Pick the account Cloud Shell uses. A separate Google account just for development keeps your main " +
-                            "account, mail and photos apart; your main account works too. Turn on 2-Step Verification."
+                        "Pick the account Cloud Shell uses. Recommended: a separate Google account just for development. " +
+                            "The agents run code and commands in that account's Cloud Shell, so a mistake, a leaked key, or " +
+                            "Google limiting Cloud Shell stays away from your main Gmail, Drive and Photos. Your main account " +
+                            "works too, the same way: Google's own sign-in, and PocketIDE never sees your password. " +
+                            "Either way, turn on 2-Step Verification."
                     } else {
                         "Cloud Shell opens with $account."
                     },
@@ -244,12 +245,22 @@ fun SetUpScreen() {
                         onClick = { graph.link.connect() },
                     )
                     if (failed?.problem == Problem.CLOUD_SHELL) {
-                        OutlinedButton(onClick = { openCloudShell(context, CloudShell.terminal(account)) }) { Text("Open Cloud Shell in Chrome") }
+                        OutlinedButton(onClick = { openGooglePage(context, CloudShell.googlePage(account)) }) { Text("Open Google's page (once)") }
                     }
                     if (failed?.problem == Problem.SIGN_IN) {
                         OutlinedButton(onClick = { graph.settings.update { it.copy(gcloudAccount = "") } }) { Text("Sign in again") }
                     }
                 }
+            }
+            SectionCard("Where your data is") {
+                Text(
+                    "In that account's Cloud Shell home folder (5 GB, which only that account opens): each agent's projects, " +
+                        "its chats and its sign-in. Google deletes it after 120 days without use; PocketIDE reminds you before. " +
+                        "On this phone, in PocketIDE's private storage: its settings and its connection (Google's gcloud and its " +
+                        "sign-in); Android's backup copies none of it. What you ask an agent, and the code it reads, goes to its " +
+                        "maker (Anthropic, OpenAI or Google) under your account there.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
             FinePrint(
                 "Free: 50 hours a week, at most 12 in one session; Cloud Shell stops about 40 minutes after you stop using it, " +
@@ -259,9 +270,7 @@ fun SetUpScreen() {
             ActionRow {
                 TextButton(onClick = { Browser.open(context, CloudShell.TERMS) }) { Text("Google Cloud terms") }
                 TextButton(onClick = { reading = DocsContent.COMPUTER_ID }) { Text("How it works") }
-                TextButton(onClick = { chromeWay = !chromeWay }) { Text(if (chromeWay) "Hide the Chrome way" else "Set up in Chrome instead") }
             }
-            if (chromeWay) ChromeWay(account)
         }
     }
 }
@@ -305,38 +314,5 @@ private fun LinkProgress(state: LinkState) {
         is LinkState.Failed -> NoticeCard(state.why, tone = Tone.WARN)
         LinkState.On -> NoticeCard("Cloud Shell is set up and connected.", tone = Tone.OK)
         LinkState.Off -> Unit
-    }
-}
-
-/** The Chrome way: paste one command in Cloud Shell's own page, then say it is done. */
-@Composable
-private fun ChromeWay(account: String) {
-    val context = LocalContext.current
-    val graph = context.graph
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    var opened by rememberSaveable { mutableStateOf(false) }
-    SectionCard("The Chrome way") {
-        Text(
-            "The agents then open in Chrome, not in PocketIDE. Copy the command, open Cloud Shell, long-press in its terminal " +
-                "and tap Paste, then Enter. It installs the same as above. If Chrome offers to turn on sync, tap No thanks.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        CommandBox(CloudShell.setupCommand)
-        ActionRow {
-            OutlinedButton(onClick = { copyText(context, CloudShell.setupCommand, "Cloud Shell set-up") }, enabled = account.isNotBlank()) {
-                Text("Copy command")
-            }
-            OutlinedButton(onClick = {
-                opened = true
-                openCloudShell(context, CloudShell.terminal(account))
-            }, enabled = account.isNotBlank()) { Text("Open Cloud Shell") }
-        }
-        Text("When Cloud Shell says Done, come back and tap Set-up is done.", style = MaterialTheme.typography.bodyMedium)
-        PrimaryAction("Set-up is done", onClick = {
-            val now = graph.clock.now()
-            graph.settings.update {
-                it.copy(cloudSetUpAt = now, cloudOpenedAt = now, cloudScript = CloudShell.SCRIPT_COMMIT, chromeOnly = true)
-            }
-        }, enabled = account.isNotBlank() && (opened || settings.cloudSetUpAt != 0L))
     }
 }

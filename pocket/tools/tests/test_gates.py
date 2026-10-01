@@ -146,20 +146,20 @@ class ScriptSafetyGate(TreeTest):
 class VersionGate(TreeTest):
     def test_fixture_passes(self):
         self.assertPasses(version.check(self.root))
-        self.assertEqual("7.0.0", version.version_name(self.root))
+        self.assertEqual("8.0.0", version.version_name(self.root))
 
     def test_the_real_build_file_passes(self):
         self.assertPasses(version.check())
 
     def test_the_code_follows_the_version(self):
-        self.edit("app/build.gradle.kts", '"7.0.0"', '"7.12.4"')
+        self.edit("app/build.gradle.kts", '"8.0.0"', '"8.12.4"')
         report = version.check(self.root)
         self.assertPasses(report)
-        self.assertIn("versionName 7.12.4, versionCode 71204", report.notes)
+        self.assertIn("versionName 8.12.4, versionCode 81204", report.notes)
 
     def test_a_raised_version_with_its_own_unchanged_code_fails(self):
         # What the release job's own notice asks for: raise the version, and nothing else.
-        self.edit("app/build.gradle.kts", '"7.0.0"', '"7.0.1"')
+        self.edit("app/build.gradle.kts", '"8.0.0"', '"8.0.1"')
         self.edit("app/build.gradle.kts", "versionCode = versionCodeOf(appVersion)", "versionCode = 500")
         self.assertFailsWith(version.check(self.root), "versionCode must be set once as versionCodeOf(appVersion)")
 
@@ -168,15 +168,15 @@ class VersionGate(TreeTest):
         self.assertFailsWith(version.check(self.root), "versionCode must be set once")
 
     def test_a_version_name_of_its_own_fails(self):
-        self.edit("app/build.gradle.kts", "versionName = appVersion", 'versionName = "7.0.1"')
+        self.edit("app/build.gradle.kts", "versionName = appVersion", 'versionName = "8.0.1"')
         self.assertFailsWith(version.check(self.root), "versionName must be set once as appVersion")
 
     def test_wrong_version_fails(self):
-        for wrong in ("6.1.1", "7.100.0", "7.0", "7.0.0-beta"):
+        for wrong in ("7.0.1", "8.100.0", "8.0", "8.0.0-beta"):
             with self.subTest(version=wrong):
                 self.setUp()
-                self.edit("app/build.gradle.kts", '"7.0.0"', f'"{wrong}"')
-                self.assertFailsWith(version.check(self.root), "not 7.<minor>.<patch>")
+                self.edit("app/build.gradle.kts", '"8.0.0"', f'"{wrong}"')
+                self.assertFailsWith(version.check(self.root), "not 8.<minor>.<patch>")
 
 
 class ManifestGate(TreeTest):

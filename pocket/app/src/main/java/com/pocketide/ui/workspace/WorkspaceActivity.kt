@@ -135,6 +135,9 @@ class WorkspaceActivity : FragmentActivity() {
         @Volatile
         private var lastAgent = Agent.CLAUDE
 
+        /** The agent opened last (Claude Code at first): "Open the computer". */
+        fun openLast(context: Context) = open(context, lastAgent)
+
         fun open(context: Context, agent: Agent) {
             lastAgent = agent
             val intent = Intent(context, WorkspaceActivity::class.java).putExtra(EXTRA_AGENT, agent.name)

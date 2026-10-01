@@ -12,13 +12,10 @@ import kotlin.concurrent.thread
 /**
  * Catches a sign-in page's return on this phone. An agent in Cloud Shell that signs in with a
  * browser has the page return to http://localhost:PORT/..., which on a phone is the phone itself.
- * While PocketIDE listens on that port (only on this phone's own address, only for a few minutes):
- *  - connected to Cloud Shell (PocketIDE's own screens), each request goes on, unchanged, to the
- *    agent waiting on the same port in Cloud Shell, and its answer comes back: the agent is signed
- *    in as on a computer;
- *  - otherwise (the Chrome way), the return gets a redirect to the same address in Cloud Shell,
- *    through Web Preview (SignInReturn).
- * When PocketIDE is not listening (Android closed it, or another app has the port), the page says
+ * While PocketIDE listens on that port (only on this phone's own address, only for a few minutes),
+ * each request goes on, unchanged, through PocketIDE's connection to the agent waiting on the same
+ * port in Cloud Shell, and its answer comes back: the agent is signed in as on a computer. When
+ * PocketIDE is not listening (Android closed it, or another app has the port), the page says
  * "localhost refused to connect". Nothing it passes on is kept or logged.
  */
 object SignInCatcher {
@@ -29,32 +26,17 @@ object SignInCatcher {
     private const val AFTER_RETURN_MS = 60_000L
     private val listening = ConcurrentHashMap.newKeySet<Int>()
 
-    /**
-     * Listens on [port] for a sign-in's return, for [WAIT_MS]. With [relay] (a connection to
-     * Cloud Shell's port), requests go on to the agent there; without, to [account]'s Web Preview.
-     */
-    fun catchOn(port: Int, account: String, relay: ((Int) -> Duplex?)? = null) {
+    /** Listens on [port] for a sign-in's return, for [WAIT_MS]; [relay] connects to Cloud Shell's same port. */
+    fun catchOn(port: Int, relay: (Int) -> Duplex?) {
         if (!SignInReturn.isAgentPort(port) || !listening.add(port)) return
         val server = runCatching { ServerSocket(port, BACKLOG, InetAddress.getByName(PortProxy.LOOPBACK)) }.getOrNull()
         if (server == null) {
-            listening.remove(port) // another app has it: the page says "refused", and the tools button still finishes it
+            listening.remove(port) // another app has it: the page says "refused"; starting the sign-in again tries anew
             return
         }
         thread(name = "PocketIDE sign-in $port", isDaemon = true) {
-            server.use { if (relay != null) relayAll(it, port, relay) else serve(it, port, account) }
+            server.use { relayAll(it, port, relay) }
             listening.remove(port)
-        }
-    }
-
-    private fun serve(server: ServerSocket, port: Int, account: String) {
-        server.soTimeout = WAIT_MS
-        val until = System.currentTimeMillis() + WAIT_MS
-        var done = false
-        // Chrome may open a connection it never uses, or ask for the icon first: wait for the page itself.
-        while (!done && System.currentTimeMillis() < until) {
-            // accept() gives up after WAIT_MS (SocketTimeoutException): then nothing came.
-            val client = runCatching { server.accept() }.getOrNull() ?: break
-            done = client.use { runCatching { answer(it, port, account) }.getOrDefault(false) }
         }
     }
 
@@ -100,26 +82,6 @@ object SignInCatcher {
                 flush()
             }
         }
-    }
-
-    /** Answers one request; true when it was the sign-in's return. */
-    internal fun answer(client: Socket, port: Int, account: String): Boolean {
-        client.soTimeout = READ_MS
-        val request = client.getInputStream().bufferedReader(Charsets.ISO_8859_1).readLine() ?: return false
-        val target = request.split(' ').getOrNull(1).orEmpty()
-        val back = target.takeIf { it.startsWith("/") && !it.startsWith("/favicon") }
-            ?.let { SignInReturn.address("http://localhost:$port$it", account) }
-        val answer = if (back != null) {
-            "HTTP/1.1 302 Found\r\nLocation: $back\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\n" +
-                "Content-Length: 0\r\nConnection: close\r\n\r\n"
-        } else {
-            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        }
-        client.getOutputStream().apply {
-            write(answer.toByteArray(Charsets.ISO_8859_1))
-            flush()
-        }
-        return back != null
     }
 
     private const val BACKLOG = 8

@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.agents.Agent
 import com.pocketide.cloudshell.CloudShell
-import com.pocketide.cloudshell.IdePlace
 import com.pocketide.docs.DocsContent
 import com.pocketide.graph
 import com.pocketide.link.LinkState
@@ -50,7 +49,7 @@ import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.PrimaryAction
 import com.pocketide.ui.shell.ShellPage
 import com.pocketide.ui.web.Browser
-import com.pocketide.ui.web.IdeTab
+import com.pocketide.ui.workspace.WorkspaceActivity
 import kotlinx.coroutines.launch
 
 /**
@@ -90,13 +89,13 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 ActionRow {
-                    PrimaryAction("Start Cloud Shell", onClick = { IdeTab.open(context, IdePlace.TERMINAL) })
+                    PrimaryAction("Open the computer", onClick = { WorkspaceActivity.openLast(context) })
                     OutlinedButton(onClick = pick) { Text("Change account") }
                     OutlinedButton(onClick = { again = true }) { Text("Run the set-up again") }
                 }
             }
 
-            ConnectionCard(onChromeOnly = { graph.settings.update { it.copy(chromeOnly = true) } })
+            ConnectionCard()
 
             SectionCard("Each agent, its own VS Code") {
                 Text(
@@ -111,7 +110,7 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                 Text(
                     "50 hours a week (about 7 hours a day), at most 12 hours in one session. Cloud Shell stops about 40 minutes " +
                         "after you stop using it, so agents do not work on while you are away. 5 GB home folder; the set-up uses " +
-                        "about 1.6 GB. Your hours: in Cloud Shell, Session information > Usage quota.",
+                        "about 1.6 GB. The machine itself is small (2 GB of memory; Google's Boost mode gives 4 GB for a day).",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TextButton(onClick = { Browser.open(context, CloudShell.LIMITS) }) { Text("Google's limits") }
@@ -130,19 +129,13 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
                         "30 days (Claude Code deletes its own after 30 days). Projects are never deleted.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                ActionRow {
-                    OutlinedButton(onClick = { IdeTab.open(context, IdePlace.FILES) }) { Text("See the files") }
-                    OutlinedButton(onClick = { openCloudShell(context, CloudShell.console(account)) }) { Text("Cloud console") }
-                    OutlinedButton(onClick = { Browser.open(context, CloudShell.MOBILE_APP) }) { Text("Google Cloud app") }
-                }
-                TextButton(onClick = { Browser.open(context, CloudShell.FILES) }) { Text("Download or upload files") }
             }
 
             SectionCard("Delete") {
                 Text(
-                    "A file or project: delete it in VS Code. Everything: in Cloud Shell run sudo rm -rf \$HOME, then More > " +
-                        "Restart; Cloud Shell starts again empty and PocketIDE asks for the set-up again. Agent sign-ins: sign " +
-                        "out in each agent, then remove the access in your Claude, ChatGPT and Google account settings.",
+                    "A file or project: delete it in the agent's VS Code (Tools > Terminal, or ask the agent). Agent sign-ins: " +
+                        "sign out in each agent, then remove the access in your Claude, ChatGPT and Google account settings. " +
+                        "Everything in Cloud Shell: Google's reset steps.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TextButton(onClick = { Browser.open(context, CloudShell.RESET) }) { Text("Google's reset steps") }
@@ -150,7 +143,7 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
 
             NoticeCard(
                 "Use Cloud Shell yourself, while you work, as Google intends. No miners, scanners or tricks to keep it awake, " +
-                    "and never share a Web Preview link: breaking Google's rules can turn Cloud Shell off for your account.",
+                    "and no public tunnels: breaking Google's rules can turn Cloud Shell off for your account.",
                 tone = Tone.WARN,
                 title = "Keep your Google account safe",
             )
@@ -168,8 +161,8 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
             text = {
                 DialogBody {
                     Text(
-                        "For when Cloud Shell was reset or deleted, or an agent is missing. PocketIDE shows the set-up; paste its " +
-                            "command in Cloud Shell again. It only adds what is missing: your projects and chats stay.",
+                        "For when Cloud Shell was reset or deleted, or an agent is missing. PocketIDE runs Cloud Shell's set-up " +
+                            "again through its connection. It only adds what is missing: your projects and chats stay.",
                     )
                 }
             },
@@ -190,7 +183,7 @@ fun CloudShellScreen(onHelp: () -> Unit, onHelpPage: (String) -> Unit) {
  */
 @Composable
 @Suppress("CyclomaticComplexMethod") // One card: the connection's state and each of its buttons.
-private fun ConnectionCard(onChromeOnly: () -> Unit) {
+private fun ConnectionCard() {
     val context = LocalContext.current
     val graph = context.graph
     val scope = rememberCoroutineScope()
@@ -253,8 +246,8 @@ private fun ConnectionCard(onChromeOnly: () -> Unit) {
                 DialogBody {
                     Text(
                         "Deletes Ubuntu, Google's gcloud and its sign-in from this phone (about 500 MB). Your Cloud Shell, with " +
-                            "your projects and chats, stays. The agents then open in Chrome; set the connection up again from " +
-                            "Home whenever you like.",
+                            "your projects and chats, stays. The agents need the connection: PocketIDE shows its set-up again, and " +
+                            "it downloads again when you open PocketIDE.",
                     )
                 }
             },
@@ -265,7 +258,6 @@ private fun ConnectionCard(onChromeOnly: () -> Unit) {
                     scope.launch {
                         graph.link.signOut()
                         graph.computer.remove()
-                        onChromeOnly()
                         busy = null
                     }
                 }) { Text("Remove") }
