@@ -1,3 +1,25 @@
+/**
+ * prompt-progress: progress bars at the Claude Code prompt.
+ *
+ *   Context ████████░░░░░░░░░░░░░░░░░░░░░░░░ 25% · 250k/1M tokens
+ *   Tasks   ████████████████░░░░░░░░░░░░░░░░ 2/4 · Writing tests
+ *
+ * Context is the model's context window as of the last response (yellow from
+ * 60%, red from 80%). Tasks is the session's TaskCreate/TaskUpdate or TodoWrite
+ * list and what is running now; a list that is all done goes with the next
+ * prompt. The terminal and Claude Code Desktop draw the bars in the band above
+ * the prompt (the AbovePrompt site, theirs alone today); with neither attached
+ * they go out as this plugin's status line. `/progress` prints them anywhere;
+ * `/progress off` and `/progress on` hide and show them.
+ *
+ * Nothing loads .claude/mods by itself. For one session, copy this folder into
+ * ~/.claude/dev-mods/<session id>/ and enable hot reloading when Claude Code
+ * asks; locally, `claude --plugin-dir .claude/mods/prompt-progress`; in every
+ * session on this repository, move it to .claude/skills/prompt-progress, where
+ * it loads once the workspace is trusted. `claude plugin validate` and
+ * `claude plugin test` on the folder check it. Built against Claude Code
+ * 2.1.287; the mods API is early access and can change between releases.
+ */
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
