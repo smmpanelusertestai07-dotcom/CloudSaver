@@ -1,0 +1,6 @@
+{
+  "name": "prompt-progress",
+  "version": "0.1.0",
+  "description": "Progress bars at the prompt: how full the context window is, and how far the task list has got",
+  "types": "./types/index.d.ts"
+}
