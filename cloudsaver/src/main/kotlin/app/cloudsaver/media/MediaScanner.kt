@@ -420,32 +420,40 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
 
     /**
      * Every photo and video starred as a favourite in the gallery, as the
-     * same addresses the rows carry. Android 11 and later only - Android 10
-     * has no shared favourite - and on any failure simply none, which can
-     * only ever mean an original stays: Free up space skips favourites.
+     * same addresses the rows carry. Empty on Android 10, which has no shared
+     * favourite. Null when any volume could not be read: an incomplete list
+     * would make the missing favourites look like ordinary photos, and Free
+     * up space promises to leave favourites alone.
      */
-    fun favouriteUris(): Set<String> {
+    fun favouriteUris(): Set<String>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptySet()
-        val volumes = runCatching { MediaStore.getExternalVolumeNames(context) }.getOrDefault(emptySet())
+        val volumes = try {
+            MediaStore.getExternalVolumeNames(context)
+        } catch (e: Exception) {
+            return null
+        }
         val out = HashSet<String>()
         for (volume in volumes) {
             for (collection in listOf(
                 MediaStore.Images.Media.getContentUri(volume),
                 MediaStore.Video.Media.getContentUri(volume)
             )) {
-                runCatching {
-                    context.contentResolver.query(
+                try {
+                    val cursor = context.contentResolver.query(
                         collection,
                         arrayOf(MediaStore.MediaColumns._ID),
                         "${MediaStore.MediaColumns.IS_FAVORITE} = 1",
                         null,
                         null
-                    )?.use { c ->
+                    ) ?: return null
+                    cursor.use { c ->
                         val iId = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                         while (c.moveToNext()) {
                             out += ContentUris.withAppendedId(collection, c.getLong(iId)).toString()
                         }
                     }
+                } catch (e: Exception) {
+                    return null
                 }
             }
         }

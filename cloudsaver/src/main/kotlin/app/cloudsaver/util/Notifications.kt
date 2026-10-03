@@ -47,8 +47,15 @@ object Notifications {
     /** The same alert is worth saying once a day at most. */
     const val DEDUP_MS = 86_400_000L
 
-    /** After this long without being posted, an alert starts again from its first reminder. */
-    const val RESET_MS = 30 * 86_400_000L
+    /** The longest an ignored alert waits between reminders. */
+    const val MONTH_MS = 30 * 86_400_000L
+
+    /**
+     * Quiet for this long - longer than the longest wait, so a problem that
+     * is still there keeps its monthly pace rather than starting over -
+     * and an alert begins again from its first reminder.
+     */
+    const val RESET_MS = 2 * MONTH_MS
 
     /** How long "Mute for 7 days" lasts. */
     const val MUTE_MS = 7 * 86_400_000L
@@ -129,13 +136,13 @@ object Notifications {
      * in June - which is how an app gets its notifications switched off, the
      * one alert that matters going with them. Ignored, it waits longer each
      * time: a day, three days, a week, and from then on once a month. Fixed
-     * and quiet for a month, it starts again from a day.
+     * and quiet for two months, it starts again from a day.
      */
     fun waitAfter(times: Int): Long = when {
         times <= 1 -> DEDUP_MS
         times == 2 -> 3 * DEDUP_MS
         times == 3 -> 7 * DEDUP_MS
-        else -> RESET_MS
+        else -> MONTH_MS
     }
 
     /**
@@ -158,8 +165,8 @@ object Notifications {
     }
 
     /**
-     * The record on its way back to storage, with every entry quiet for a
-     * month left out: it can no longer hold an alert back, and keeping it
+     * The record on its way back to storage, with every entry quiet for two
+     * months left out: it can no longer hold an alert back, and keeping it
      * would let the record grow for as long as the app is installed.
      */
     fun encodeAlertTimes(times: Map<String, Posted>, now: Long): String = times.entries
@@ -188,7 +195,7 @@ object Notifications {
      * problems each one wiped the other's record and both were free to post
      * again immediately - the user got the same two warnings over and over
      * while the code plainly said once a day. Each kind now carries its own
-     * time and count, and a quiet month removes itself from the record.
+     * time and count, and two quiet months remove it from the record.
      */
     suspend fun alert(
         context: Context,
@@ -206,17 +213,16 @@ object Notifications {
         val posted = lastAlertTimes(options.lastAlerts)
         val last = posted[key]
         if (!due(last, now)) return false
-        // Recording the attempt before knowing it can be shown would spend the
-        // reminder on a notification nobody saw, so the permission check
-        // comes first.
+        // Recorded only once it has been shown: a reminder nobody saw must
+        // not push the next one further out.
         if (!canPost(context)) return false
+        if (!post(context, id, title, text, route)) return false
         val times = if (last == null || now - last.at >= RESET_MS) 1 else last.times + 1
-        val repo = OptionsRepo.get(context)
-        repo.setString(
+        OptionsRepo.get(context).setString(
             OptionsRepo.K.LAST_ALERTS,
             encodeAlertTimes(posted + (key to Posted(now, times)), now)
         )
-        return post(context, id, title, text, route)
+        return true
     }
 
     /** Takes down whatever alerts are showing, and only those. */

@@ -61,7 +61,10 @@ class AlbumAndFreeUpRulesTest {
         // A restore that finishes while setup is under way leaves the
         // person's own ticks alone - checked inside the write itself.
         assertTrue(repo.contains("if (onlyIfSetupUntouched && setupStarted) return@edit"))
-        assertTrue(src("engine/StartupRecovery.kt").contains("onlyIfSetupUntouched = true"))
+        val recovery = src("engine/StartupRecovery.kt")
+        assertTrue(recovery.contains("onlyIfSetupUntouched = true"))
+        // Nor is the person lifted out of a setup they started meanwhile.
+        assertTrue(recovery.contains("if (imported > 0 && untouched && stillUntouched)"))
     }
 
     @Test
@@ -87,7 +90,30 @@ class AlbumAndFreeUpRulesTest {
         val eligibility = src("engine/ReclaimEligibility.kt")
         assertFalse("a constant false skipped nothing", eligibility.contains("isFavourite = false"))
         assertTrue(eligibility.contains("MediaScanner(ctx, db).favouriteUris()"))
-        assertTrue(src("media/MediaScanner.kt").contains("\"\${MediaStore.MediaColumns.IS_FAVORITE} = 1\""))
+        val scanner = src("media/MediaScanner.kt")
+        assertTrue(scanner.contains("\"\${MediaStore.MediaColumns.IS_FAVORITE} = 1\""))
+        // A gallery that could not be asked is not a gallery with no
+        // favourites: the list fails closed and nothing is offered.
+        assertTrue(scanner.contains("fun favouriteUris(): Set<String>? {"))
+        assertTrue(eligibility.contains("favourites == null || (row.contentUri != null && row.contentUri in favourites)"))
+        // And the reason given for a handed-over file knows about the star.
+        assertTrue(src("ui/ReclaimViewModel.kt").contains("favourite = ReclaimEligibility.isFavourite(row, favourites)"))
+    }
+
+    @Test
+    fun `the hand-over note is precise and outlives a turn of the phone`() {
+        val vm = src("ui/ReclaimViewModel.kt")
+        val selectOnly = vm.substringAfter("fun selectOnly(id: Long) {").substringBefore("\n    }\n")
+        for (reset in listOf("suggestion.value = null", "videosOnly.value = false", "minSizeFilter.value = 0L")) {
+            assertTrue("$reset - a leftover narrowing hid the file", selectOnly.contains(reset))
+        }
+        // A date only when the wait is the last thing in the way, counted in
+        // the same calendar days as the rule.
+        assertTrue(vm.contains("refuse(candidate.copy(confirmedAgeDays = waited, addedDaysAgo = waited))"))
+        assertTrue(vm.contains("Formats.dayAfter("))
+        assertFalse("loading again must not drop the note", vm.substringAfter("fun load() {").substringBefore("\n    }\n").contains("handOver.value = null"))
+        val screen = src("ui/screens/ReclaimScreen.kt")
+        assertTrue(screen.contains("if (hostActivity?.isChangingConfigurations != true) rvm.clearHandOver()"))
     }
 
     @Test

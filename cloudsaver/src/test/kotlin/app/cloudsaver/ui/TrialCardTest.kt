@@ -58,7 +58,7 @@ class TrialCardTest {
         // In memory only, the card and its Remove button vanished whenever
         // the phone closed the app in the background, while the copies
         // stayed inside it with nothing left that could remove them.
-        assertTrue(vm.contains("private val trialIds = MutableStateFlow(TrialRecord.read(ctx))"))
+        assertTrue(vm.contains("viewModelScope.launch(Dispatchers.IO) { ids.value = TrialRecord.read(ctx) }"))
         val run = vm.substringAfter("fun startTestRun()").substringBefore("\n    }\n")
         assertTrue(run.contains("TrialRecord.write(ctx, ids)"))
         assertTrue(

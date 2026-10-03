@@ -89,12 +89,11 @@ data class Options(
     val lastConfirmCount: Int = -1,
     val lastRunAt: Long = 0,
     /**
-     * When Android last started the background work at all, whether or not
-     * it then chose to wait. Separate from [lastRunAt] because a pass that
-     * waits on purpose - Battery Saver on, no charger in charging-only mode -
-     * is the app keeping its word, not the phone stopping it; told apart by
-     * nothing, two days of Battery Saver became "the phone keeps stopping
-     * CloudSaver".
+     * When a pass Android started last chose to wait on purpose - Battery
+     * Saver on, no charger in charging-only mode, the day's allowance spent.
+     * Separate from [lastRunAt] because that is the app keeping its word,
+     * not the phone stopping it; told apart by nothing, two days of Battery
+     * Saver became "the phone keeps stopping CloudSaver".
      */
     val lastWakeAt: Long = 0,
     val lastRunNote: String = "",

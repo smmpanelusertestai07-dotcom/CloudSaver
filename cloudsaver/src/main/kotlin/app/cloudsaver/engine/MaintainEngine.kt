@@ -116,10 +116,10 @@ class MaintainEngine(private val context: Context) {
                 )
                 // One of the three reminders is spent only by a reminder
                 // somebody could see - not by one that was muted or blocked.
-                if (shown) {
-                    repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)
-                    repo.setLong(OptionsRepo.K.STALL_ALERT_AT, now)
-                }
+                // The week's wait starts either way, so a reminder that
+                // cannot be shown is tried weekly, not on every pass.
+                if (shown) repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)
+                repo.setLong(OptionsRepo.K.STALL_ALERT_AT, now)
                 activity.record(
                     ActivityLog.Kind.PROBLEM,
                     detail = context.getString(R.string.warn_stalled_title)

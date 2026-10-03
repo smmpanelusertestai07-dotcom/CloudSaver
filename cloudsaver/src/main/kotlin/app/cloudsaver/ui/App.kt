@@ -233,7 +233,9 @@ private fun MainNav(vm: AppViewModel) {
     //
     // And except, on Android 10, for the phone's own PIN pad: there it is an
     // activity of its own, so asking for the PIN stops this one. Treated as
-    // leaving, it re-armed the prompt it was in the middle of answering.
+    // leaving, it re-armed the prompt it was in the middle of answering. The
+    // price is small and safe: leaving Android 10 with the fingerprint sheet
+    // up, the app is still locked on return, and asks at a tap of Unlock.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (activity?.isChangingConfigurations == true) return@LifecycleEventEffect
         if (vm.lockPromptOpen && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@LifecycleEventEffect
@@ -244,6 +246,9 @@ private fun MainNav(vm: AppViewModel) {
         // set by one that never called back would leave the button dead.
         vm.lockPromptOpen = false
         if (Errand.returnedNeedsLock()) vm.relock()
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        Errand.resumed()
     }
     // The whole app, not a list of screens. Locking only the screens that
     // hold file lists left Home, Storage, the calculator and every Help page

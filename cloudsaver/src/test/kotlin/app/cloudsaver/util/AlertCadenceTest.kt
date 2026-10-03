@@ -39,15 +39,20 @@ class AlertCadenceTest {
     }
 
     @Test
-    fun `the record round-trips, reads old lines, and forgets a quiet month`() {
+    fun `the record round-trips, reads old lines, and forgets two quiet months`() {
         val record = mapOf(
             "safety" to Notifications.Posted(now - day, 3),
-            "stale" to Notifications.Posted(now - 31 * day, 2)
+            "monthly" to Notifications.Posted(now - 31 * day, 5),
+            "stale" to Notifications.Posted(now - 61 * day, 2)
         )
         val encoded = Notifications.encodeAlertTimes(record, now)
         val back = Notifications.lastAlertTimes(encoded)
         assertEquals(Notifications.Posted(now - day, 3), back["safety"])
-        assertFalse("a month of quiet starts the count again", back.containsKey("stale"))
+        // A problem still there keeps its monthly pace: the record outlives
+        // the longest wait, or the ladder would start again every month.
+        assertEquals(Notifications.Posted(now - 31 * day, 5), back["monthly"])
+        assertTrue(Notifications.RESET_MS > Notifications.waitAfter(Int.MAX_VALUE))
+        assertFalse("two months of quiet starts the count again", back.containsKey("stale"))
         // Written by the build before the count was kept: posted once.
         assertEquals(
             Notifications.Posted(12345L, 1),
@@ -62,8 +67,13 @@ class AlertCadenceTest {
         val main = File("src/main/kotlin/app/cloudsaver")
         val notifications = File(main, "util/Notifications.kt").readText()
         assertTrue(notifications.contains("): Boolean {\n        if (!options.warningsNotif) return false"))
+        val alert = notifications.substringAfter("suspend fun alert(").substringBefore("fun clearAlerts(")
+        assertTrue(
+            "recorded only after it was shown",
+            alert.indexOf("if (!post(context, id, title, text, route)) return false") in 0 until alert.indexOf("OptionsRepo.K.LAST_ALERTS")
+        )
         val engine = File(main, "engine/MaintainEngine.kt").readText()
-        assertTrue(engine.contains("if (shown) {\n                    repo.setInt(OptionsRepo.K.STALL_ALERTS"))
+        assertTrue(engine.contains("if (shown) repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)"))
         assertTrue(engine.contains("if (shown) repo.setBool(OptionsRepo.K.AGED_WARNED, true)"))
         // Two different problems sharing a slot replaced each other.
         assertEquals(

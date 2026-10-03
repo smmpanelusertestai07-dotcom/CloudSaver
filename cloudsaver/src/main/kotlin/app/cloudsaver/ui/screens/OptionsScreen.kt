@@ -239,7 +239,9 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             // folders and albums since deleted, so "3 albums excluded" could
             // sit above a picker with one box unticked.
             val phoneAlbums by vm.buckets.collectAsStateWithLifecycle()
-            LaunchedEffect(Unit) { vm.loadBuckets() }
+            // Listing albums reads the whole gallery, so once; opening the
+            // picker reads it again, and that keeps the count current.
+            LaunchedEffect(Unit) { if (!vm.bucketsLoaded.value) vm.loadBuckets() }
             val included = phoneAlbums.count { it !in o.excludedBuckets }
             OutlinedButton(onClick = { vm.loadBuckets(); showFolders = true }) {
                 Text(
@@ -502,9 +504,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     else vol.mediaVolumeName == o.storageVolume
                 }
                 if (chosen != null) {
-                    val used = (chosen.totalBytes - chosen.freeBytes).coerceAtLeast(0)
-                    val fraction = if (chosen.totalBytes > 0) {
-                        used.toFloat() / chosen.totalBytes
+                    // The same figures as the Storage screen and the phone's
+                    // own Settings, so no two screens disagree about one phone.
+                    val used = (chosen.shownTotalBytes - chosen.shownFreeBytes).coerceAtLeast(0)
+                    val fraction = if (chosen.shownTotalBytes > 0) {
+                        used.toFloat() / chosen.shownTotalBytes
                     } else {
                         0f
                     }
@@ -515,7 +519,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     Text(
                         stringResource(
-                            R.string.volume_free_line, Formats.bytes(chosen.freeBytes)
+                            R.string.volume_free_line, Formats.bytes(chosen.shownFreeBytes)
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

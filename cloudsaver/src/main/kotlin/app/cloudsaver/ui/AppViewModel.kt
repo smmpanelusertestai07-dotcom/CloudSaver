@@ -1745,7 +1745,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** The files the trial made copies of; on disk, so a restart keeps the card. */
-    private val trialIds = MutableStateFlow(TrialRecord.read(ctx))
+    private val trialIds = MutableStateFlow<Set<Long>>(emptySet()).also { ids ->
+        // Read off the main thread: this view model is built before the
+        // first frame, and a disk read there holds the frame up.
+        viewModelScope.launch(Dispatchers.IO) { ids.value = TrialRecord.read(ctx) }
+    }
 
     /**
      * The trial's results, for as long as its copies are still inside the app.

@@ -70,6 +70,14 @@ object ReclaimEligibility {
         capturedAtMs = row.captureAt
     )
 
+    /**
+     * Whether a row is a gallery favourite. When the gallery could not be
+     * asked ([favourites] null), every row counts as one: the screen then
+     * offers nothing this time rather than an original that may be starred.
+     */
+    fun isFavourite(row: ItemRow, favourites: Set<String>?): Boolean =
+        favourites == null || (row.contentUri != null && row.contentUri in favourites)
+
     /** True when the cloud app the user picked is installed and unflagged. */
     suspend fun cloudHealthy(ctx: Context, o: Options): Boolean {
         if (o.cloudProblem.isNotEmpty()) return false
@@ -96,7 +104,7 @@ object ReclaimEligibility {
         return db.items().reclaimCandidates().mapNotNull { row ->
             val candidate = candidateOf(
                 row, now, ledger.contains(row.outputSha256),
-                favourite = row.contentUri != null && row.contentUri in favourites
+                favourite = isFavourite(row, favourites)
             )
             if (ReclaimRules.isEligible(
                     candidate, healthy,

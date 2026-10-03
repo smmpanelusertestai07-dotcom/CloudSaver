@@ -26,6 +26,7 @@ import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.DuplicateScanner
 import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.engine.ReclaimEngine
+import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.TamperCheck
 import kotlinx.coroutines.Dispatchers
@@ -166,9 +167,6 @@ class ReclaimViewModel(
     // ---- loading -------------------------------------------------------------
 
     fun load() {
-        // A note about a file handed over on an earlier visit is not about
-        // this one.
-        if (handedOverId == null) handOver.value = null
         viewModelScope.launch(Dispatchers.IO) {
             loading.value = true
             val o = repo.current()
@@ -302,14 +300,18 @@ class ReclaimViewModel(
     /**
      * Opens this screen on one file, from "Remove from phone" elsewhere.
      *
-     * The list filters are cleared on the way in: they live as long as the
-     * app does, and an album filter left over from the last visit showed a
-     * different album's photos under a file from this one. And when the file
+     * Every narrowing is cleared on the way in - album, type, size and
+     * suggestion: they live as long as the app does, and one left over from
+     * the last visit hid the very file being handed over, or showed a
+     * different album's photos under it. And when the file
      * is not one this screen can offer, [load] says why rather than showing
      * "0 of 12 selected" and the rest of the phone.
      */
     fun selectOnly(id: Long) {
         listFilter.value = ListFilters.State()
+        suggestion.value = null
+        videosOnly.value = false
+        minSizeFilter.value = 0L
         selected.value = setOf(id)
         persistSelection()
         handedOverId = id
@@ -325,21 +327,39 @@ class ReclaimViewModel(
         val o = repo.current()
         val inLedger = row.outputSha256 != null &&
             db.ledger().all().any { it.outputSha256 == row.outputSha256 }
-        val candidate = ReclaimEligibility.candidateOf(row, now, inLedger)
-        val refusal = ReclaimRules.refuse(
-            candidate, ReclaimEligibility.cloudHealthy(ctx, o), o.freeUpAllowVerified30,
+        val favourites = if (skipFavourites.value) MediaScanner(ctx, db).favouriteUris() else emptySet()
+        val candidate = ReclaimEligibility.candidateOf(
+            row, now, inLedger, favourite = ReclaimEligibility.isFavourite(row, favourites)
+        )
+        val healthy = ReclaimEligibility.cloudHealthy(ctx, o)
+        fun refuse(c: ReclaimRules.Candidate) = ReclaimRules.refuse(
+            c, healthy, o.freeUpAllowVerified30,
             skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
-        ) ?: return
-        val day = 86_400_000L
-        val wait = ReclaimRules.MIN_CONFIRM_AGE_DAYS * day
-        val readyOn = if (refusal == ReclaimRules.Refusal.TOO_RECENT) {
-            maxOf((row.confirmedAt ?: row.releasedAt ?: now) + wait, row.dateAdded * 1000 + wait)
-        } else {
-            null
+        )
+        var refusal = refuse(candidate) ?: return
+        var readyOn: Long? = null
+        if (refusal == ReclaimRules.Refusal.TOO_RECENT) {
+            // A date only when the wait is all that stands in the way; if
+            // something else would refuse it afterwards, that is the answer.
+            val waited = ReclaimRules.MIN_CONFIRM_AGE_DAYS
+            val after = refuse(candidate.copy(confirmedAgeDays = waited, addedDaysAgo = waited))
+            if (after == null) {
+                readyOn = Formats.dayAfter(
+                    maxOf(row.confirmedAt ?: row.releasedAt ?: now, row.dateAdded * 1000),
+                    waited
+                )
+            } else {
+                refusal = after
+            }
         }
         selected.value = selected.value - id
         persistSelection()
         handOver.value = HandOver(row.displayName, refusal, readyOn)
+    }
+
+    /** The screen was left, not turned: a note about a handed-over file is done. */
+    fun clearHandOver() {
+        handOver.value = null
     }
 
     /** "Free 5 GB": pick largest-first until the number is met. */

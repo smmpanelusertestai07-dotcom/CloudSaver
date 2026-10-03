@@ -42,6 +42,16 @@ object Errand {
         expectingUntil = 0L
     }
 
+    /**
+     * The app is in front again without ever having left: the trip was a
+     * dialog over it (Android's battery question, a chooser) and is over.
+     * Left armed, the next time the person pressed Home on their own - within
+     * two minutes - the lock let them back in.
+     */
+    fun resumed() {
+        if (leftAt == 0L) expectingUntil = 0L
+    }
+
     /** True while a trip the app started is still the likely reason for leaving. */
     fun expecting(now: Long = SystemClock.elapsedRealtime()): Boolean = now < expectingUntil
 

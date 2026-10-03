@@ -62,6 +62,16 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         }
     }
 
+    /**
+     * Android started this pass and the app chose to wait - Battery Saver,
+     * no charger in charging-only mode, the day's allowance spent. Stamped
+     * only on these exits, never at the start of a pass: a run the phone
+     * kills halfway must still read as the phone stopping the work.
+     */
+    private suspend fun waitedOnPurpose(repo: OptionsRepo) {
+        repo.setLong(OptionsRepo.K.LAST_WAKE_AT, System.currentTimeMillis())
+    }
+
     private suspend fun runOnce(): Result {
         val app = applicationContext
         val repo = OptionsRepo.get(app)
@@ -69,9 +79,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val manual = inputData.getBoolean(KEY_MANUAL, false)
 
         if (!options.onboardingDone) return Result.success()
-        // Android started the work: whatever this pass decides next, the
-        // phone is not the one stopping it.
-        repo.setLong(OptionsRepo.K.LAST_WAKE_AT, System.currentTimeMillis())
         // These two exits consumed the FAST content trigger without arming
         // the next one, so a phone coming back from a pause - or a
         // half-granted permission becoming full - reacted to new photos
@@ -84,6 +91,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         // FULL only: under partial access the gallery MediaStore shows is a
         // lie, and a run would scan, queue and release against it (BB1.2).
         if (Permissions.mediaAccess(app) != Permissions.MediaAccess.FULL) {
+            waitedOnPurpose(repo)
             reschedule(app, repo)
             return Result.success()
         }
@@ -98,6 +106,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         var plan = plan(options, power, dayBudget.read(startAt), manual)
         repo.setString(OptionsRepo.K.WAIT_REASON, plan.wait.name)
         if (!plan.canRun) {
+            waitedOnPurpose(repo)
             reschedule(app, repo)
             return Result.success()
         }
@@ -109,6 +118,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val sessions = FgsBudget.decode(options.fgsSessions)
         val fgsLeft = FgsBudget.remaining(sessions, startAt)
         if (fgsLeft < 5 * 60_000L) {
+            waitedOnPurpose(repo)
             reschedule(app, repo)
             return Result.success()
         }

@@ -60,6 +60,23 @@ class ErrandTest {
     }
 
     @Test
+    fun `a dialog over the app ends the trip when the app is back in front`() {
+        // Android's battery question is a dialog: the app pauses and resumes
+        // without stopping, so nothing else ever closed the grace.
+        Errand.begin(now = 1_000)
+        Errand.resumed()
+        assertFalse(Errand.expecting(now = 2_000))
+        // A real trip is not cut short by it: it left, so only the return
+        // decides.
+        Errand.begin(now = 3_000)
+        Errand.left(now = 3_100)
+        Errand.resumed()
+        assertFalse(Errand.returnedNeedsLock(now = 4_000))
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        assertTrue(app.contains("LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {\n        Errand.resumed()"))
+    }
+
+    @Test
     fun `a return clears the trip, so the next leave is judged afresh`() {
         Errand.begin(now = 1_000)
         Errand.left(now = 2_000)

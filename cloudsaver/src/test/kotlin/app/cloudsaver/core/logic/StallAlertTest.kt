@@ -37,6 +37,12 @@ class StallAlertTest {
         assertTrue(StallAlert.stalled(now, idle, waiting = 5, rationed = false))
         // And a phone that has never finished a run is in setup, not stalled.
         assertFalse(StallAlert.stalled(now, StallAlert.lastSeen(0, now), waiting = 5, rationed = false))
+        // Stamped only where the pass chose to wait - never at its start, or
+        // a run the phone kills halfway would read as one let through.
+        val worker = java.io.File("src/main/kotlin/app/cloudsaver/work/CompressWorker.kt").readText()
+        val start = worker.substringAfter("private suspend fun runOnce(): Result {").substringBefore("val db = AppDb.get(app)")
+        assertFalse(start.substringBefore("if (options.pauseAll").contains("LAST_WAKE_AT"))
+        assertTrue(worker.contains("if (!plan.canRun) {\n            waitedOnPurpose(repo)"))
     }
 
     @Test

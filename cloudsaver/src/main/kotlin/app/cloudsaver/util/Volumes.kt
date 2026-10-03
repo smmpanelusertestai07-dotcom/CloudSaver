@@ -77,9 +77,9 @@ object Volumes {
     fun primary(context: Context): Vol? = list(context).firstOrNull { it.isPrimary }
 
     /**
-     * [list] with the figures a person is shown filled in. Separate because
-     * asking the system for them is slower than StatFs, and only the Storage
-     * screen needs them - the engine reads volumes on every run.
+     * [list] with the figures a person is shown filled in, for the screens.
+     * Separate because asking the system for them is slower than StatFs, and
+     * the engine, which reads volumes on every run, never shows a number.
      */
     fun listForDisplay(context: Context): List<Vol> = list(context).map { vol ->
         val shown = if (vol.isPrimary) deviceFigures(context) else null

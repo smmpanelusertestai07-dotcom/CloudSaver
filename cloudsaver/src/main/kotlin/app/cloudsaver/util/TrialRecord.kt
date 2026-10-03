@@ -1,6 +1,7 @@
 package app.cloudsaver.util
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * Which files the "try it on a few photos" card made copies of.
@@ -26,9 +27,9 @@ object TrialRecord {
 
     fun write(context: Context, ids: Set<Long>) {
         runCatching {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
                 if (ids.isEmpty()) remove(KEY_IDS) else putStringSet(KEY_IDS, ids.map { it.toString() }.toSet())
-            }.apply()
+            }
         }
     }
 }
