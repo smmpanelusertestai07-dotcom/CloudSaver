@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -40,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -59,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,6 +83,7 @@ import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.data.CloudApp
 import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AlbumGrid
@@ -96,16 +101,6 @@ import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
-
-/**
- * The most of the setup card the album list may take before it scrolls itself.
- *
- * The list is a lazy one, and a lazy list inside a page that already scrolls
- * has to be told how tall it may be - without a ceiling it has nothing to
- * measure against and will not draw at all. This is roughly the height of six
- * rows at an ordinary text size, so the choice above it, the running count and
- * the button below all stay on screen while the albums scroll between them.
- */
 
 /**
  * One-time setup.
@@ -353,7 +348,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     title = stringResource(R.string.onb1_title),
                     text = stringResource(R.string.onb1_text),
                     buttonLabel = when (access) {
-                        Permissions.MediaAccess.FULL -> stringResource(R.string.onb_done_next)
+                        Permissions.MediaAccess.FULL -> stringResource(R.string.onb_next)
                         Permissions.MediaAccess.PARTIAL ->
                             stringResource(R.string.partial_action)
                         Permissions.MediaAccess.NONE -> stringResource(R.string.onb1_grant)
@@ -490,10 +485,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                         albums = albums,
                         excluded = options.excludedBuckets,
                         onToggle = { name, include ->
-                            vm.setExcludedBuckets(
-                                if (include) options.excludedBuckets - name
-                                else options.excludedBuckets + name
-                            )
+                            vm.setAlbumIncluded(name, include)
                         },
                         testTag = ListTags.ROWS
                     )
@@ -526,29 +518,46 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
-            Step.NOTIFICATIONS -> StepCard(
-                title = stringResource(R.string.onb2_title),
-                text = stringResource(R.string.onb2_text),
-                buttonLabel = stringResource(R.string.onb2_grant),
-                onButton = {
-                    if (Build.VERSION.SDK_INT >= 33 && !Permissions.hasNotifications(context)) {
-                        notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        go(Step.BATTERY)
-                    }
-                },
-                onSkip = { go(Step.BATTERY) }
-            )
+            Step.NOTIFICATIONS -> {
+                // Asked again on every return, so coming back from the
+                // system's notification page shows what was chosen there.
+                var notifOn by remember { mutableStateOf(Permissions.hasNotifications(context)) }
+                LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                    notifOn = Permissions.hasNotifications(context)
+                }
+                // "Allow" only where there is something to allow. Already
+                // allowed, the button is plain "Next". Blocked below Android
+                // 13, where no app may ask, it opens the app's notification
+                // page - it used to say "Allow" and quietly move on, leaving
+                // every alert switched off behind a button that claimed to
+                // have switched them on.
+                StepCard(
+                    title = stringResource(R.string.onb2_title),
+                    text = stringResource(R.string.onb2_text),
+                    buttonLabel = stringResource(if (notifOn) R.string.onb_next else R.string.onb2_grant),
+                    onButton = {
+                        when {
+                            notifOn -> go(Step.BATTERY)
+                            Build.VERSION.SDK_INT >= 33 ->
+                                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            else -> OemPages.openNotificationSettings(context)
+                        }
+                    },
+                    onSkip = if (notifOn) null else ({ go(Step.BATTERY) })
+                )
+            }
 
             Step.BATTERY -> {
                 LaunchedEffect(Unit) { vm.refreshPowerRequirements() }
                 val requirements by vm.powerRequirements.collectAsStateWithLifecycle()
+                // One way on. "Done, next" and "Skip" sat side by side here
+                // and both did exactly the same thing; every row below is
+                // optional, and the button says only where it goes.
                 StepCard(
                     title = stringResource(R.string.onb3_title),
                     text = stringResource(R.string.onb3_text),
-                    buttonLabel = stringResource(R.string.onb_done_next),
-                    onButton = { go(Step.USAGE) },
-                    onSkip = { go(Step.USAGE) }
+                    buttonLabel = stringResource(R.string.onb_next),
+                    onButton = { go(Step.USAGE) }
                 ) {
                     // One row per thing this particular phone can break, each
                     // opening the page that holds that switch.
@@ -572,19 +581,16 @@ fun OnboardingScreen(vm: AppViewModel) {
 
             // The only step whose primary action leaves the app instead of
             // moving on, because usage access can only be granted on the
-            // system page. It used to carry three controls - the grant, a
-            // "Skip", and a second filled button that did exactly what Skip
-            // did - so two buttons of equal weight sat side by side and
-            // neither was obviously the way forward. One filled button for
-            // the thing to do, one text button for carrying on afterwards.
+            // system page. The same pair as every other optional step: one
+            // filled button for the thing to do, and "Skip" as a text button
+            // for carrying on without it. It used to be an outlined "Done,
+            // next" here and a text "Skip" everywhere else - one action in
+            // two costumes, and a "Done" on a step nobody had done.
             Step.USAGE -> {
                 // The step knows whether it has been done. It used to offer
                 // "Grant usage access" forever, even to someone who had just
-                // granted it on the system page and come back - and the way
-                // on was a text link that did not look like a button at all.
-                // Granted, the one filled button is "Done, next"; not yet,
-                // the grant is the filled button and carrying on without it
-                // is an outlined one, visible as a choice.
+                // granted it on the system page and come back. Granted, the
+                // one filled button is "Next".
                 var usageOn by remember {
                     mutableStateOf(UsageVerifier.hasUsageAccess(context))
                 }
@@ -595,7 +601,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     StepCard(
                         title = stringResource(R.string.onb4_title),
                         text = stringResource(R.string.onb4_granted),
-                        buttonLabel = stringResource(R.string.onb_done_next),
+                        buttonLabel = stringResource(R.string.onb_next),
                         onButton = { go(Step.CLOUD) }
                     )
                 } else {
@@ -603,15 +609,9 @@ fun OnboardingScreen(vm: AppViewModel) {
                         title = stringResource(R.string.onb4_title),
                         text = stringResource(R.string.onb4_text),
                         buttonLabel = stringResource(R.string.onb4_grant),
-                        onButton = { OemPages.openUsageAccess(context) }
-                    ) {
-                        OutlinedButton(
-                            onClick = { go(Step.CLOUD) },
-                            modifier = Modifier.padding(top = 6.dp)
-                        ) {
-                            Text(stringResource(R.string.onb_done_next))
-                        }
-                    }
+                        onButton = { OemPages.openUsageAccess(context) },
+                        onSkip = { go(Step.CLOUD) }
+                    )
                 }
             }
 
@@ -903,6 +903,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 CopyPathButton(options.outputMode)
 
                 Spacer(Modifier.height(12.dp))
+                var compare by remember { mutableStateOf<ItemRow?>(null) }
                 TrialCard(
                     size = trialSize,
                     running = testRunning,
@@ -920,8 +921,15 @@ fun OnboardingScreen(vm: AppViewModel) {
                     } else {
                         { choosingAlbums = true }
                     },
-                    accessFull = mediaAccess == Permissions.MediaAccess.FULL
+                    accessFull = mediaAccess == Permissions.MediaAccess.FULL,
+                    // The same as on Home: a result opens its before-and-after,
+                    // and the copies can be removed here, where they were made.
+                    onOpen = { item -> compare = item.row },
+                    onDiscard = { vm.discardTrial() }
                 )
+                compare?.let { row ->
+                    CompareSheet(row = row, onDismiss = { compare = null })
+                }
 
                 if (choosingAlbums) {
                     ModalBottomSheet(
@@ -988,11 +996,27 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
         PowerPages.ID_BACKGROUND_ACTIVITY -> stringResource(R.string.power_background)
         else -> requirement.id
     }
-    val state = when {
-        requirement.readable && requirement.satisfied -> stringResource(R.string.power_allowed)
-        requirement.readable -> stringResource(R.string.power_blocked)
+    // Each row in its own words. One "Allowed / Blocked - background work
+    // will be killed" pair for every row put "Blocked" under "Battery: no
+    // restrictions" on a phone in Android's default state, which works, and
+    // promised a killing the permission reset never does.
+    val state = when (requirement.id) {
+        PowerPages.ID_BATTERY_UNRESTRICTED -> stringResource(
+            if (requirement.satisfied) R.string.power_battery_on else R.string.power_battery_off
+        )
+        PowerPages.ID_BACKGROUND_RESTRICTION -> stringResource(
+            if (requirement.satisfied) R.string.perm_background_restriction_off
+            else R.string.perm_background_restriction_on
+        )
+        PowerPages.ID_KEEP_PERMISSIONS -> stringResource(
+            if (requirement.satisfied) R.string.power_keep_on else R.string.power_keep_off
+        )
         else -> stringResource(R.string.power_check)
     }
+    // Where the switch is, for the rows Android cannot read: if the phone
+    // refuses to open its own page directly, the button lands in app info,
+    // and this line is what says where to go from there.
+    val path = if (requirement.readable) null else PowerPages.pathHint(PowerPages.vendor(), requirement.id)
     // "Battery: no restrictions" and a button beside it is more than a
     // 320 dp phone at the largest accessibility font can fit on one line, and
     // the button carries no weight - a plain Row measured it first and left
@@ -1016,6 +1040,14 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
+            path?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
         if (!(requirement.readable && requirement.satisfied)) {
             OutlinedButton(onClick = onOpen) {
@@ -1237,25 +1269,36 @@ private fun CloudPickRowSimple(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         installed = CloudApps.isAppInstalled(context, app.id)
     }
-    TextButton(
-        onClick = { onPick(app.id) },
-        modifier = Modifier.fillMaxWidth()
+    // A radio row like the one in Settings: the whole row picks the app, the
+    // dot says which one is picked, and a screen reader hears "selected".
+    // It used to be a text button, which tinted every app name in the
+    // accent colour and said which app was in use only in words.
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Dimens.TouchTarget)
+            .selectable(
+                selected = app.id == current,
+                role = Role.RadioButton,
+                onClick = { onPick(app.id) }
+            )
+            .padding(vertical = 6.dp)
     ) {
-        // The app's own icon where the app is on the phone, its initial in
-        // a circle where it is not - so "installed" is legible before the
-        // words are read, every row still has a face, and no third-party
+        RadioButton(
+            selected = app.id == current,
+            onClick = null,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        // The app's own icon where the app is on the phone, its initial on
+        // its own colour where it is not - so "installed" is legible before
+        // the words are read, every row still has a face, and no third-party
         // logo is ever shipped inside this APK.
         CloudAppIcon(app = app, installed = installed)
         Spacer(Modifier.width(10.dp))
-        Column(Modifier.fillMaxWidth()) {
-            Text(
-                if (app.id == current) {
-                    stringResource(R.string.cloud_selected_mark, app.label)
-                } else {
-                    app.label
-                },
-                style = MaterialTheme.typography.bodyLarge
-            )
+        Column(Modifier.weight(1f)) {
+            Text(app.label, style = MaterialTheme.typography.bodyLarge)
             // Three different rows, three different truths. "Other app" is
             // not an app and can never be installed or missing, so it says
             // what it actually is; the rest say plainly whether they are on
@@ -1400,10 +1443,7 @@ private fun AlbumChooserSheetBody(vm: AppViewModel, modifier: Modifier = Modifie
         albums = albums,
         excluded = options.excludedBuckets,
         onToggle = { name, include ->
-            vm.setExcludedBuckets(
-                if (include) options.excludedBuckets - name
-                else options.excludedBuckets + name
-            )
+            vm.setAlbumIncluded(name, include)
         },
         modifier = modifier.padding(horizontal = Dimens.Screen),
         testTag = ListTags.ROWS,

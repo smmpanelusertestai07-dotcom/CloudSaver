@@ -105,16 +105,20 @@ class MaintainEngine(private val context: Context) {
         step {
             val waiting = db.items().newInScopeCount(o.excludedBuckets)
             val stalled = !o.pauseAll && StallAlert.stalled(
-                now, o.lastRunAt, waiting, Stops.isRationed(o.lastStopReason)
+                now, StallAlert.lastSeen(o.lastRunAt, o.lastWakeAt), waiting, Stops.isRationed(o.lastStopReason)
             )
             if (StallAlert.due(stalled, o.stallAlerts, o.stallAlertAt, now)) {
-                Notifications.alert(
+                val shown = Notifications.alert(
                     context, Notifications.ID_WARN_STALLED,
                     context.getString(R.string.warn_stalled_title),
                     context.getString(R.string.warn_stalled_text),
                     o, dedupKey = "stalled", route = "permissions"
                 )
-                repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)
+                // One of the three reminders is spent only by a reminder
+                // somebody could see - not by one that was muted or blocked.
+                // The week's wait starts either way, so a reminder that
+                // cannot be shown is tried weekly, not on every pass.
+                if (shown) repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)
                 repo.setLong(OptionsRepo.K.STALL_ALERT_AT, now)
                 activity.record(
                     ActivityLog.Kind.PROBLEM,
@@ -657,7 +661,7 @@ class MaintainEngine(private val context: Context) {
             )
         }
         Notifications.alert(
-            context, Notifications.ID_WARN_SAFETY,
+            context, Notifications.ID_WARN_CLOUD,
             context.getString(R.string.warn_cloud_title),
             verdict.message ?: context.getString(R.string.warn_safety_text),
             o, dedupKey = problem, route = "activity"
@@ -856,13 +860,14 @@ class MaintainEngine(private val context: Context) {
             }
         }
         if (plan.agedUsed && !o.agedWarned) {
-            Notifications.alert(
+            val shown = Notifications.alert(
                 context, Notifications.ID_WARN_AGED,
                 context.getString(R.string.warn_aged_title),
                 context.getString(R.string.warn_aged_text),
                 o, dedupKey = "aged", route = "files"
             )
-            repo.setBool(OptionsRepo.K.AGED_WARNED, true)
+            // Said once - so only once it has actually been said.
+            if (shown) repo.setBool(OptionsRepo.K.AGED_WARNED, true)
         }
     }
 

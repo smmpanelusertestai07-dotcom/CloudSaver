@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
 import app.cloudsaver.ui.theme.TabularFigures
 
-/**
+/*
  * The parts every "find space" list shares.
  *
  * Duplicates, biggest files and reclaim all answer the same question and used

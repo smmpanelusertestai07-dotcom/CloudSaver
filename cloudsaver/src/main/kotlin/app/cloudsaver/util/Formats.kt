@@ -118,6 +118,19 @@ object Formats {
     }
 
     /** Whole days between two instants, by local calendar date. */
+    /**
+     * The start of the local day [days] calendar days after [fromMs] - the
+     * first moment [daysBetween] from [fromMs] reaches [days].
+     */
+    fun dayAfter(fromMs: Long, days: Int): Long {
+        val zone = ZoneId.systemDefault()
+        return Instant.ofEpochMilli(fromMs).atZone(zone).toLocalDate()
+            .plusDays(days.toLong())
+            .atStartOfDay(zone)
+            .toInstant()
+            .toEpochMilli()
+    }
+
     fun daysBetween(fromMs: Long, toMs: Long): Int {
         val zone = ZoneId.systemDefault()
         val a = Instant.ofEpochMilli(fromMs).atZone(zone).toLocalDate()

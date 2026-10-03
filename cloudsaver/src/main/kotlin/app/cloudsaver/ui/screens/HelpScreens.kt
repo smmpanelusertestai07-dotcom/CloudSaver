@@ -184,7 +184,8 @@ private val FAQ = listOf(
     R.string.faq_q16 to R.string.faq_a16,
     R.string.faq_q17 to R.string.faq_a17,
     R.string.faq_q18 to R.string.faq_a18,
-    R.string.faq_q19 to R.string.faq_a19
+    R.string.faq_q19 to R.string.faq_a19,
+    R.string.faq_q20 to R.string.faq_a20
 )
 
 /**
@@ -903,6 +904,15 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
+        // Other apps are named in this one, and drawn in their own colours,
+        // so a person can find theirs. Saying whose names they are, and that
+        // this app is none of theirs, is the least that is owed.
+        Text(
+            stringResource(R.string.about_trademarks),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 14.dp)
+        )
     }
 }
 

@@ -3,6 +3,7 @@ package app.cloudsaver.ui.screens
 import android.Manifest
 import android.app.usage.UsageStatsManager
 import android.os.Build
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.navigation.NavHostController
@@ -92,6 +94,7 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
         vm.refreshHealth()
     }
     val access = remember(tick) { Permissions.mediaAccess(context) }
+    val mediaLocation = remember(tick) { Permissions.hasMediaLocation(context) }
     val notifications = remember(tick) { Permissions.hasNotifications(context) }
     val alertsChannelOff = remember(tick) { Permissions.alertsChannelOff(context) }
     val usage = remember(tick) { UsageVerifier.hasUsageAccess(context) }
@@ -111,13 +114,26 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
 
     // Asking is one tap; a refusal Android has stopped asking about goes to
     // the page where the switch lives instead of a button that does nothing.
+    // Only that refusal: a first "Don't allow", or Android 14's "Select
+    // photos", is an answer, and being thrown straight into app info for
+    // giving it felt like being argued with.
+    val activity = LocalActivity.current
     val mediaLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         tick++
-        if (Permissions.mediaAccess(context) != Permissions.MediaAccess.FULL) {
-            OemPages.openAppInfo(context)
-        }
+        val stillShort = Permissions.mediaAccess(context) != Permissions.MediaAccess.FULL
+        val androidStoppedAsking = activity != null &&
+            Permissions.mediaPermissionsToRequest().none {
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
+            }
+        if (stillShort && androidStoppedAsking) OemPages.openAppInfo(context)
+    }
+    val locationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { ok ->
+        tick++
+        if (!ok) OemPages.openAppInfo(context)
     }
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -174,6 +190,25 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                     mediaLauncher.launch(Permissions.mediaPermissionsToRequest())
                 }
             }
+            // Its own row, because it fails on its own: refused, everything
+            // else works and every copy quietly loses where it was taken.
+            // Shown only once there is media access for it to go with.
+            if (access != Permissions.MediaAccess.NONE) {
+                PermissionRow(
+                    title = stringResource(R.string.perm_name_media_location),
+                    status = stringResource(
+                        if (mediaLocation) R.string.perm_media_location_on else R.string.perm_media_location_off
+                    ),
+                    state = if (mediaLocation) State.OK else State.UNKNOWN,
+                    actionLabel = stringResource(if (mediaLocation) R.string.perm_change else R.string.perm_allow)
+                ) {
+                    if (mediaLocation) {
+                        OemPages.openAppInfo(context)
+                    } else {
+                        locationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                    }
+                }
+            }
             // Three states, not two: allowed, blocked, and allowed with the
             // one category that carries the warnings switched off on its own.
             PermissionRow(
@@ -205,15 +240,19 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
             ) { OemPages.openUsageAccess(context) }
 
             SectionHeader(stringResource(R.string.perm_group_battery))
+            // Optional, and said so. "Optimised" is Android's default and the
+            // work runs under it - a run may just wait for the charger - so
+            // it is an information mark, not a red one. Allowed, the button
+            // is "Change": the same page is where it is taken back.
             PermissionRow(
                 title = stringResource(R.string.perm_battery),
                 status = stringResource(
                     if (battery) R.string.perm_battery_on else R.string.perm_battery_off
                 ),
-                state = if (battery) State.OK else State.PROBLEM,
+                state = if (battery) State.OK else State.UNKNOWN,
                 detail = PowerPages.pathHint(vendor, PowerPages.ID_BATTERY_UNRESTRICTED),
                 actionLabel = stringResource(
-                    if (battery) R.string.perm_open else R.string.perm_allow
+                    if (battery) R.string.perm_change else R.string.perm_allow
                 )
             ) { PowerPages.open(context, PowerPages.ID_BATTERY_UNRESTRICTED) }
             PermissionRow(

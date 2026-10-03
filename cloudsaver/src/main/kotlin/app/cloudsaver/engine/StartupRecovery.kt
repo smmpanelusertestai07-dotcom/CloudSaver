@@ -109,12 +109,16 @@ class StartupRecovery(private val context: Context) {
         // Someone already walking through setup keeps their own answers.
         val untouched = !o.onboardingDone && o.onboardingStep == 0
         val imported = try {
-            store.merge(snapshot, importOptions = untouched)
+            store.merge(snapshot, importOptions = untouched, onlyIfSetupUntouched = true)
         } catch (e: Exception) {
             return 0
         }
         repo.setBool(OptionsRepo.K.RESTORE_DONE, true)
-        if (imported > 0) {
+        // Asked again now, not from before the merge: someone who started
+        // setup while it ran is left to finish it, rather than lifted out of
+        // it halfway onto a Home whose settings were never restored.
+        val stillUntouched = repo.current().let { !it.onboardingDone && it.onboardingStep == 0 }
+        if (imported > 0 && untouched && stillUntouched) {
             // Clear-data keeps runtime permissions, a reinstall does not. Only
             // skip setup when the app can actually see the gallery; otherwise
             // the restored install would land on Home unable to do anything,

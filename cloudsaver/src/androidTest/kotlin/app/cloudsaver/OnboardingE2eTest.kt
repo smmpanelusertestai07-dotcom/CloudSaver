@@ -28,6 +28,7 @@ import app.cloudsaver.core.logic.OnboardingSteps.Step
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.ui.AppViewModel
@@ -211,7 +212,7 @@ class OnboardingE2eTest {
                     Permissions.MediaAccess.FULL,
                     Permissions.mediaAccess(context)
                 )
-                tap(s(R.string.onb_done_next))
+                tap(s(R.string.onb_next))
             }
 
             Step.ALBUMS -> tap(s(R.string.onb_albums_confirm))
@@ -221,14 +222,19 @@ class OnboardingE2eTest {
                     "notifications must already be granted or this step opens a dialog",
                     Permissions.hasNotifications(context)
                 )
-                tap(s(R.string.onb2_grant))
+                // Already allowed, there is nothing to allow: the button is
+                // plain Next, and there is no Skip beside it.
+                tap(s(R.string.onb_next))
             }
 
-            Step.BATTERY -> tap(s(R.string.onb_done_next))
+            Step.BATTERY -> tap(s(R.string.onb_next))
 
-            // The primary button here opens the system usage-access page; the
-            // card's own "Done, next" is the one that stays in the app.
-            Step.USAGE -> tap(s(R.string.onb_done_next))
+            // Not granted, the filled button opens the system usage-access
+            // page and Skip is the one that stays in the app; granted, the
+            // only button is Next.
+            Step.USAGE -> tap(
+                if (UsageVerifier.hasUsageAccess(context)) s(R.string.onb_next) else s(R.string.skip)
+            )
 
             Step.CLOUD -> tap(s(R.string.onb_done_next))
 

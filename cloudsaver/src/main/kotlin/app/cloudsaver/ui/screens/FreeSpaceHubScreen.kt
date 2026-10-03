@@ -115,8 +115,8 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
                 val where = stringResource(
                     if (volume.isPrimary) R.string.volume_internal else R.string.volume_sd
                 )
-                val freeNow = Formats.bytes(volume.freeBytes)
-                val freeAfter = Formats.bytes(volume.freeBytes + total)
+                val freeNow = Formats.bytes(volume.shownFreeBytes)
+                val freeAfter = Formats.bytes(volume.shownFreeBytes + total)
                 Text(
                     // "5.85 GB free now, about 5.85 GB after" is what this
                     // printed whenever the saving was too small to move the

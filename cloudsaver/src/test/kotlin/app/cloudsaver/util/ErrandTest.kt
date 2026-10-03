@@ -43,6 +43,40 @@ class ErrandTest {
     }
 
     @Test
+    fun `a page that refused to open is no excuse for the next leave`() {
+        // The grace was armed before a start that then threw, and stayed
+        // armed: leaving by the home button within two minutes came back
+        // unlocked. A failed start takes the trip back.
+        Errand.begin(now = 1_000)
+        Errand.cancel()
+        assertFalse(Errand.expecting(now = 2_000))
+        val main = File("src/main/kotlin/app/cloudsaver")
+        val oem = File(main, "util/OemPages.kt").readText()
+        assertTrue(oem.contains("} catch (e: Exception) {\n            Errand.cancel()\n            false"))
+        val power = File(main, "util/PowerPages.kt").readText()
+        assertTrue(power.contains("// Try the next component; skins rename these between versions.\n                Errand.cancel()"))
+        assertTrue(File(main, "data/CloudApps.kt").readText().contains("Errand.cancel()"))
+        assertTrue(File(main, "ui/AppViewModel.kt").readText().contains("Errand.cancel()"))
+    }
+
+    @Test
+    fun `a dialog over the app ends the trip when the app is back in front`() {
+        // Android's battery question is a dialog: the app pauses and resumes
+        // without stopping, so nothing else ever closed the grace.
+        Errand.begin(now = 1_000)
+        Errand.resumed()
+        assertFalse(Errand.expecting(now = 2_000))
+        // A real trip is not cut short by it: it left, so only the return
+        // decides.
+        Errand.begin(now = 3_000)
+        Errand.left(now = 3_100)
+        Errand.resumed()
+        assertFalse(Errand.returnedNeedsLock(now = 4_000))
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        assertTrue(app.contains("LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {\n        Errand.resumed()"))
+    }
+
+    @Test
     fun `a return clears the trip, so the next leave is judged afresh`() {
         Errand.begin(now = 1_000)
         Errand.left(now = 2_000)
@@ -90,8 +124,8 @@ class ErrandTest {
             )
         }
         val app = File(main, "ui/App.kt").readText()
-        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else vm.unlocked.value = false"))
-        assertTrue(app.contains("if (Errand.returnedNeedsLock()) vm.unlocked.value = false"))
+        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else vm.relock()"))
+        assertTrue(app.contains("if (Errand.returnedNeedsLock()) vm.relock()"))
         // And a bounded grace: an open-ended one is a lock anyone walks past.
         val errand = File(main, "util/Errand.kt").readText()
         assertTrue(errand.contains("const val GRACE_MS = 120_000L"))

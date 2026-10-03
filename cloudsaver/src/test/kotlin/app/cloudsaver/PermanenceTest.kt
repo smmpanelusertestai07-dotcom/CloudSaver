@@ -138,7 +138,10 @@ class PermanenceTest {
                 body.contains("dataStore.edit")
             )
         }
-        assertTrue("the import is one transaction too", repo.contains("importMap(map: Map<String, String>) = withContext(NonCancellable)"))
+        assertTrue(
+            "the import is one transaction too",
+            Regex("""suspend fun importMap\([^)]*\) = withContext\(NonCancellable\)""").containsMatchIn(repo)
+        )
     }
 
     @Test

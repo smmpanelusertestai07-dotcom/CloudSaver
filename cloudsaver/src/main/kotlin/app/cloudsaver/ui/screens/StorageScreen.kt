@@ -119,8 +119,8 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             }
             volumes.forEachIndexed { index, vol ->
                 if (index > 0) Spacer(Modifier.height(20.dp))
-                val used = (vol.totalBytes - vol.freeBytes).coerceAtLeast(0)
-                val fraction = if (vol.totalBytes > 0) used.toFloat() / vol.totalBytes else 0f
+                val used = (vol.shownTotalBytes - vol.shownFreeBytes).coerceAtLeast(0)
+                val fraction = if (vol.shownTotalBytes > 0) used.toFloat() / vol.shownTotalBytes else 0f
                 val active = (options.storageVolume.isEmpty() && vol.isPrimary) ||
                     options.storageVolume == vol.mediaVolumeName
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -168,13 +168,13 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     stringResource(
                         R.string.volume_used_line,
                         Formats.bytes(used),
-                        Formats.bytes(vol.totalBytes)
+                        Formats.bytes(vol.shownTotalBytes)
                     ),
                     style = MaterialTheme.typography.bodyMedium.merge(TabularFigures),
                     modifier = Modifier.padding(top = 8.dp)
                 )
                 Text(
-                    stringResource(R.string.volume_free_line, Formats.bytes(vol.freeBytes)),
+                    stringResource(R.string.volume_free_line, Formats.bytes(vol.shownFreeBytes)),
                     style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
                     color = scheme.onSurfaceVariant
                 )

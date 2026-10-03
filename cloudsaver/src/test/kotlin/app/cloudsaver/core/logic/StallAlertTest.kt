@@ -26,6 +26,26 @@ class StallAlertTest {
     }
 
     @Test
+    fun `a pass that chose to wait is the app keeping its word, not a stall`() {
+        // Battery Saver on for three days: the worker was started every
+        // time and waited on purpose. Counting only finished runs called
+        // that "the phone keeps stopping CloudSaver".
+        val seen = StallAlert.lastSeen(lastRunAt = now - 3 * day, lastWakeAt = now - 1 * day)
+        assertFalse(StallAlert.stalled(now, seen, waiting = 5, rationed = false))
+        // Nothing started at all for three days is still a stall.
+        val idle = StallAlert.lastSeen(lastRunAt = now - 3 * day, lastWakeAt = now - 3 * day)
+        assertTrue(StallAlert.stalled(now, idle, waiting = 5, rationed = false))
+        // And a phone that has never finished a run is in setup, not stalled.
+        assertFalse(StallAlert.stalled(now, StallAlert.lastSeen(0, now), waiting = 5, rationed = false))
+        // Stamped only where the pass chose to wait - never at its start, or
+        // a run the phone kills halfway would read as one let through.
+        val worker = java.io.File("src/main/kotlin/app/cloudsaver/work/CompressWorker.kt").readText()
+        val start = worker.substringAfter("private suspend fun runOnce(): Result {").substringBefore("val db = AppDb.get(app)")
+        assertFalse(start.substringBefore("if (options.pauseAll").contains("LAST_WAKE_AT"))
+        assertTrue(worker.contains("if (!plan.canRun) {\n            waitedOnPurpose(repo)"))
+    }
+
+    @Test
     fun `the first alert goes at once and the next waits a week`() {
         assertTrue(StallAlert.due(stalled = true, sentCount = 0, lastSentAt = 0, now = now))
         assertFalse(StallAlert.due(stalled = true, sentCount = 1, lastSentAt = now - 6 * day, now = now))

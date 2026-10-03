@@ -1,6 +1,7 @@
 package app.cloudsaver.ui.screens
 
 import android.app.Activity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -192,6 +193,34 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
 
         if (loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+
+        // Arrived from "Remove from phone" with a file this screen cannot
+        // offer: say which and why, instead of a list of other files. Kept
+        // through a turn of the phone, gone once the screen is left.
+        val handOver by rvm.handOver.collectAsStateWithLifecycle()
+        val hostActivity = LocalActivity.current
+        DisposableEffect(Unit) {
+            onDispose { if (hostActivity?.isChangingConfigurations != true) rvm.clearHandOver() }
+        }
+        handOver?.let { note ->
+            AppCard(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                tonal = true
+            ) {
+                Text(
+                    stringResource(R.string.freeup_handover_refused, note.name, refusalLabel(note.refusal)),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                note.readyOn?.let { day ->
+                    Text(
+                        stringResource(R.string.freeup_handover_ready_on, Formats.date(day)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
         }
 
         if (entries.isEmpty() && !loading) {

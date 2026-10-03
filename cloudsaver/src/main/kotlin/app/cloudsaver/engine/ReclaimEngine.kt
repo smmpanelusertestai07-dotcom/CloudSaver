@@ -92,6 +92,9 @@ class ReclaimEngine(private val context: Context) {
         return if (file.exists()) file else null
     }
 
+    /** Where a pinned copy landed: its uri, and whether it sits in the original's own album. */
+    data class Pinned(val uri: Uri, val inPlace: Boolean)
+
     /**
      * Puts a verified light copy into the user's own album before the
      * original is touched, remaking it when nothing usable is left locally.
@@ -114,9 +117,6 @@ class ReclaimEngine(private val context: Context) {
      * as an image or video. The original's removal is requested only after
      * this returns - a copy that cannot be proved keeps its original.
      */
-    /** Where a pinned copy landed: its uri, and whether it sits in the original's own album. */
-    data class Pinned(val uri: Uri, val inPlace: Boolean)
-
     suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Pinned? {
         val src = pinSource(row, options) ?: return null
         return try {
@@ -296,11 +296,6 @@ class ReclaimEngine(private val context: Context) {
     }
 
     /**
-     * The copy's own type, from the name it will carry. The row's MIME is the
-     * original's: after a HEIC-to-JPEG conversion the two disagree, and a
-     * gallery that trusts the declared type over the extension shows nothing.
-     */
-    /**
      * The album the original actually lives in, as MediaStore spells it.
      *
      * Read from the original itself rather than assembled from its bucket
@@ -340,6 +335,11 @@ class ReclaimEngine(private val context: Context) {
         return "$base.$ext"
     }
 
+    /**
+     * The copy's own type, from the name it will carry. The row's MIME is the
+     * original's: after a HEIC-to-JPEG conversion the two disagree, and a
+     * gallery that trusts the declared type over the extension shows nothing.
+     */
     private fun mimeForName(name: String, fallback: String): String =
         when (name.substringAfterLast('.', "").lowercase()) {
             "jpg", "jpeg" -> "image/jpeg"

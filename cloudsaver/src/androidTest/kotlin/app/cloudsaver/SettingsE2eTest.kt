@@ -2,10 +2,12 @@ package app.cloudsaver
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.Build
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -18,6 +20,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -44,6 +47,7 @@ import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.ui.Lock
 import app.cloudsaver.util.Formats
@@ -206,25 +210,23 @@ class SettingsE2eTest {
         compose.onAllNodes(isCheckbox)[0].assertIsOff()
         val excluded = options().excludedBuckets.single()
 
+        // The button counts albums on the phone - "2 of 3 albums" - not the
+        // stored list, which also holds folders the picker never shows.
+        val total = MediaScanner(context, AppDb.get(context)).albums().size
+        val oneOut = context.resources.getQuantityString(R.plurals.folders_included, total, total - 1, total)
         compose.onNodeWithText(s(R.string.ok)).performClick()
         compose.waitForIdle()
-        compose.onNodeWithText(
-            context.resources.getQuantityString(R.plurals.folders_excluded, 1, 1)
-        ).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(oneOut).performScrollTo().assertIsDisplayed()
 
         recreateAndOpenSettings()
         assertEquals(PHOTOS_SHOULD_SURVIVE, BackupScope.PHOTOS, options().scope)
         assertEquals("the excluded album was lost", setOf(excluded), options().excludedBuckets)
         assertCardValue(hint, s(R.string.scope_photos))
-        compose.onNodeWithText(
-            context.resources.getQuantityString(R.plurals.folders_excluded, 1, 1)
-        ).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(oneOut).performScrollTo().assertIsDisplayed()
 
         // Put it back through the same dialog, so the control is proven in
         // both directions.
-        compose.onNodeWithText(
-            context.resources.getQuantityString(R.plurals.folders_excluded, 1, 1)
-        ).performScrollTo().performClick()
+        compose.onNodeWithText(oneOut).performScrollTo().performClick()
         awaitNode(isCheckbox, "the album picker never listed a single album")
         compose.onAllNodes(isCheckbox)[0].performClick()
         awaitOption("excluded albums") { it.excludedBuckets.isEmpty() }
@@ -545,6 +547,15 @@ class SettingsE2eTest {
         awaitOption("theme") { it.theme == ThemeMode.DARK }
 
         val dynamicLabel = s(R.string.theme_dynamic)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            // No wallpaper colours before Android 12, so no switch there that
+            // would flip and change nothing.
+            compose.onAllNodesWithText(dynamicLabel).assertCountEquals(0)
+            recreateAndOpenSettings()
+            assertEquals(ThemeMode.DARK, options().theme)
+            assertCardValue(hint, s(R.string.theme_dark))
+            return
+        }
         switchNear(dynamicLabel).assertIsOff()
         tap(switchNear(dynamicLabel))
         awaitOption("wallpaper colours") { it.dynamicColor }

@@ -1,5 +1,6 @@
 package app.cloudsaver.ui
 
+import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -225,11 +226,29 @@ private fun MainNav(vm: AppViewModel) {
     // for a fingerprint on the way back from an errand the app asked for is
     // how a lock gets turned off. Those say so first (Errand), and the lock
     // lets that one return through unless it took longer than an errand does.
+    //
+    // And except for turning the phone. The app turns with it, which stops
+    // this activity and starts a new one; locking on that stop asked for a
+    // fingerprint every time the phone went sideways. Nobody left the app.
+    //
+    // And except, on Android 10, for the phone's own PIN pad: there it is an
+    // activity of its own, so asking for the PIN stops this one. Treated as
+    // leaving, it re-armed the prompt it was in the middle of answering. The
+    // price is small and safe: leaving Android 10 with the fingerprint sheet
+    // up, the app is still locked on return, and asks at a tap of Unlock.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        if (Errand.expecting()) Errand.left() else vm.unlocked.value = false
+        if (activity?.isChangingConfigurations == true) return@LifecycleEventEffect
+        if (vm.lockPromptOpen && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@LifecycleEventEffect
+        if (Errand.expecting()) Errand.left() else vm.relock()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        if (Errand.returnedNeedsLock()) vm.unlocked.value = false
+        // Whatever prompt was up is gone or answering by now; a flag left
+        // set by one that never called back would leave the button dead.
+        vm.lockPromptOpen = false
+        if (Errand.returnedNeedsLock()) vm.relock()
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        Errand.resumed()
     }
     // The whole app, not a list of screens. Locking only the screens that
     // hold file lists left Home, Storage, the calculator and every Help page
@@ -307,6 +326,29 @@ private fun MainNav(vm: AppViewModel) {
         )
         if (needsLock) {
             var lockNote by remember { mutableStateOf<Lock.Outcome?>(null) }
+            val unlockPrompt: () -> Unit = prompt@{
+                val act = activity ?: return@prompt
+                if (vm.lockPromptOpen) return@prompt
+                vm.lockPromptOpen = true
+                Lock.authenticate(
+                    act,
+                    act.getString(R.string.lock_title),
+                    act.getString(R.string.lock_subtitle)
+                ) { outcome ->
+                    vm.lockPromptOpen = false
+                    lockNote = outcome
+                    when (outcome) {
+                        Lock.Outcome.Unlocked -> vm.unlocked.value = true
+                        // The phone's own lock was removed - Android has
+                        // already wiped biometric enrolment with it, and
+                        // removing it required knowing it. The app lock
+                        // turns itself off visibly instead of becoming a
+                        // door with no key.
+                        Lock.Outcome.NoMethod -> vm.disableLockNoCredential()
+                        else -> Unit
+                    }
+                }
+            }
             LockedScreen(
                 modifier = Modifier
                     .padding(padding)
@@ -315,26 +357,13 @@ private fun MainNav(vm: AppViewModel) {
                     .wrapContentWidth()
                     .widthIn(max = Dimens.ContentMaxWidth),
                 outcome = lockNote,
-                onUnlock = {
-                    val act = activity ?: return@LockedScreen
-                    Lock.authenticate(
-                        act,
-                        act.getString(R.string.lock_title),
-                        act.getString(R.string.lock_subtitle)
-                    ) { outcome ->
-                        lockNote = outcome
-                        when (outcome) {
-                            Lock.Outcome.Unlocked -> vm.unlocked.value = true
-                            // The phone's own lock was removed - Android has
-                            // already wiped biometric enrolment with it, and
-                            // removing it required knowing it. The app lock
-                            // turns itself off visibly instead of becoming a
-                            // door with no key.
-                            Lock.Outcome.NoMethod -> vm.disableLockNoCredential()
-                            else -> Unit
-                        }
+                onOpened = {
+                    if (!vm.lockAutoPrompted) {
+                        vm.lockAutoPrompted = true
+                        unlockPrompt()
                     }
-                }
+                },
+                onUnlock = unlockPrompt
             )
         } else {
             NavHost(

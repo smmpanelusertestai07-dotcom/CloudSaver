@@ -291,7 +291,7 @@ class UiWalkthroughTest {
             shoot("11-onboarding-permission")
             // Media access is already granted by the rule, so the permission
             // step is satisfied and its continue button must be there.
-            compose.onNodeWithText(s(R.string.onb_done_next)).performClick()
+            compose.onNodeWithText(s(R.string.onb_next)).performClick()
             compose.waitForIdle()
             shoot("12-onboarding-step")
         }

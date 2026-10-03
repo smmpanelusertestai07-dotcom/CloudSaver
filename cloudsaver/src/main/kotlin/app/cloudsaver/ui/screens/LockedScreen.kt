@@ -29,6 +29,8 @@ import app.cloudsaver.ui.components.BrandMark
 fun LockedScreen(
     modifier: Modifier = Modifier,
     outcome: Lock.Outcome? = null,
+    /** The screen is in front; the caller decides whether to ask by itself. */
+    onOpened: () -> Unit,
     onUnlock: () -> Unit
 ) {
     // The prompt appears by itself, the way every locked app behaves - and
@@ -40,7 +42,7 @@ fun LockedScreen(
     // window is in front and the prompt can attach to it. The button stays
     // for a refused or cancelled prompt.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        onUnlock()
+        onOpened()
     }
     Column(
         modifier = modifier

@@ -186,12 +186,6 @@ class SnapshotStore(
     }
 
     /**
-     * Reads back the newest snapshot that passes its integrity check, trying
-     * the targets in order. A corrupted or hand-edited copy is skipped rather
-     * than trusted - it could otherwise promote evidence and put an original
-     * in front of the user for deletion.
-     */
-    /**
      * Whether both shared snapshot files are where they should be (CC9.3).
      *
      * A user tidying Download can delete one; the next maintenance pass sees
@@ -202,9 +196,15 @@ class SnapshotStore(
         findSnapshot(dir, name) != null
     }
 
+    /**
+     * Reads back the newest snapshot that passes its integrity check, trying
+     * the targets in order. A corrupted or hand-edited copy is skipped rather
+     * than trusted - it could otherwise promote evidence and put an original
+     * in front of the user for deletion.
+     */
     suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
         var best: SnapshotCodec.Snapshot? = null
-        fun consider(label: String, json: String?) {
+        fun consider(json: String?) {
             if (json == null) return
             val snapshot = try {
                 SnapshotCodec.decode(json)
@@ -217,15 +217,14 @@ class SnapshotStore(
             if (best == null || snapshot.exportedAt > best!!.exportedAt) best = snapshot
         }
         for ((dir, name) in Defaults.SNAPSHOT_TARGETS + Defaults.LEGACY_SNAPSHOT_TARGETS) {
-            consider("$dir/$name", readFrom(dir, name))
+            consider(readFrom(dir, name))
         }
-        consider("app storage", readPrivate())
+        consider(readPrivate())
         return best
     }
 
-    /** Locates an app-owned snapshot file, or null. */
     /**
-     * The snapshot file, by where it lives and what it is called.
+     * The snapshot file, by where it lives and what it is called, or null.
      *
      * NOT by owner. Android clears `OWNER_PACKAGE_NAME` on the rows of a file
      * whose creating app is uninstalled - the file survives in shared storage,
@@ -376,15 +375,22 @@ class SnapshotStore(
      * untouched install wants after a reinstall - but it must be off wherever
      * this install already holds choices of its own, because importing then
      * silently overwrites them.
+     *
+     * [onlyIfSetupUntouched] asks again at the moment of writing. The row
+     * merge can take a while on a large history, and the person may have
+     * started setup in the meantime - ticking albums the import would then
+     * have put back the way the old phone had them.
      */
     suspend fun merge(
         snapshot: SnapshotCodec.Snapshot,
-        importOptions: Boolean = true
-    ): Int = Locks.ledger.withLock { mergeLocked(snapshot, importOptions) }
+        importOptions: Boolean = true,
+        onlyIfSetupUntouched: Boolean = false
+    ): Int = Locks.ledger.withLock { mergeLocked(snapshot, importOptions, onlyIfSetupUntouched) }
 
     private suspend fun mergeLocked(
         snapshot: SnapshotCodec.Snapshot,
-        importOptions: Boolean
+        importOptions: Boolean,
+        onlyIfSetupUntouched: Boolean
     ): Int {
         // BB1.5: a snapshot exported under partial access is a fragment, not
         // an inventory. Merging stays safe because it only ever adds rows or
@@ -405,7 +411,7 @@ class SnapshotStore(
         // which has no part in a Room transaction.
         val imported = db.withTransaction { mergeRows(snapshot) }
         if (importOptions && snapshot.options.isNotEmpty()) {
-            optionsRepo.importMap(snapshot.options)
+            optionsRepo.importMap(snapshot.options, onlyIfSetupUntouched)
         }
         return imported
     }

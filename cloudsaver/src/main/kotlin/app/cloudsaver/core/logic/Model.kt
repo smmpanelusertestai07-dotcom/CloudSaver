@@ -141,19 +141,6 @@ object Defaults {
     const val OUTPUT_DIR_PHOTOS = "Pictures/CloudSaver/Photos"
     const val OUTPUT_DIR_VIDEOS = "Pictures/CloudSaver/Videos"
     /**
-     * Where automatic safety snapshots go, best first. All hidden: the app
-     * never puts a visible file anywhere the user browses unless they tap
-     * Export. Each entry is a relative directory; the last one is the
-     * visible last resort, used only if every hidden option is refused.
-     *
-     *  1. beside the output copies, so the state travels with the folder,
-     *  2. a hidden dot-folder in Documents, so it survives the output folder
-     *     being deleted,
-     *  3. a hidden dot-FILE, for MediaProvider builds that reject
-     *     dot-directories,
-     *  4. a visible file, explained in the FAQ, if nothing hidden works.
-     */
-    /**
      * Where the automatic snapshot lives.
      *
      * Documents and Download only. Android refuses a non-media file under

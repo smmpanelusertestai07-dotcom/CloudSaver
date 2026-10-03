@@ -80,7 +80,7 @@ import app.cloudsaver.ui.theme.MetricTextStyle
 import app.cloudsaver.ui.theme.OnBrand
 import kotlinx.coroutines.launch
 
-/**
+/*
  * The shared design system: one card style, one tile style, one selector.
  * Everything animates with the same spring so the app feels like one piece.
  */
@@ -278,9 +278,8 @@ fun AnimatedNumber(
     )
 }
 
-/** One dashboard metric: big number, small caption. */
 /**
- * One count in the progress grid.
+ * One count in the progress grid: big number, small caption.
  *
  * Fixed height and a fixed-width figure style, because these tiles sit in a
  * 2x2 grid and a count going from 9 to 10 used to make its tile - and then

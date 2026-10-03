@@ -52,6 +52,7 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.SdCard
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,6 +71,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -116,20 +118,6 @@ import app.cloudsaver.ui.goTo
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.Permissions
-
-/**
- * The most of the Folders dialog the album list may take before it scrolls.
- *
- * The list is a lazy one, and a lazy list has to be told how tall it may be
- * before it can measure itself - left open-ended it draws nothing at all. This
- * is about the height a dialog gets on an ordinary phone, so on that phone the
- * ceiling never comes into it: it is the dialog's own edges that stop the list,
- * exactly as they did before, and on a very tall screen the buttons underneath
- * stay in view instead of being pushed down by a gallery's worth of albums.
- */
-// Shorter than the setup step's cap on purpose: this grid shares a dialog
-// with the size line and the auto-excluded folders, and the dialog body does
-// not scroll - the grid does. What the ceiling leaves over is theirs.
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -246,14 +234,33 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             stringResource(R.string.opt_folders_hint),
             icon = IconAlbums
         ) {
+            // Counted from the albums on the phone, not from the stored list
+            // of exclusions: that list also holds the app's own output
+            // folders and albums since deleted, so "3 albums excluded" could
+            // sit above a picker with one box unticked.
+            val phoneAlbums by vm.buckets.collectAsStateWithLifecycle()
+            // Listing albums reads the whole gallery, so once; opening the
+            // picker reads it again, and that keeps the count current.
+            LaunchedEffect(Unit) { if (!vm.bucketsLoaded.value) vm.loadBuckets() }
+            val included = phoneAlbums.count { it !in o.excludedBuckets }
             OutlinedButton(onClick = { vm.loadBuckets(); showFolders = true }) {
                 Text(
-                    if (o.excludedBuckets.isEmpty()) stringResource(R.string.folders_all)
-                    else pluralStringResource(
-                        R.plurals.folders_excluded,
-                        o.excludedBuckets.size,
-                        o.excludedBuckets.size
-                    )
+                    when {
+                        phoneAlbums.isNotEmpty() && included == phoneAlbums.size ->
+                            stringResource(R.string.folders_all)
+                        phoneAlbums.isNotEmpty() -> pluralStringResource(
+                            R.plurals.folders_included,
+                            phoneAlbums.size,
+                            included,
+                            phoneAlbums.size
+                        )
+                        o.excludedBuckets.isEmpty() -> stringResource(R.string.folders_all)
+                        else -> pluralStringResource(
+                            R.plurals.folders_excluded,
+                            o.excludedBuckets.size,
+                            o.excludedBuckets.size
+                        )
+                    }
                 )
             }
         }
@@ -497,9 +504,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     else vol.mediaVolumeName == o.storageVolume
                 }
                 if (chosen != null) {
-                    val used = (chosen.totalBytes - chosen.freeBytes).coerceAtLeast(0)
-                    val fraction = if (chosen.totalBytes > 0) {
-                        used.toFloat() / chosen.totalBytes
+                    // The same figures as the Storage screen and the phone's
+                    // own Settings, so no two screens disagree about one phone.
+                    val used = (chosen.shownTotalBytes - chosen.shownFreeBytes).coerceAtLeast(0)
+                    val fraction = if (chosen.shownTotalBytes > 0) {
+                        used.toFloat() / chosen.shownTotalBytes
                     } else {
                         0f
                     }
@@ -510,7 +519,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     Text(
                         stringResource(
-                            R.string.volume_free_line, Formats.bytes(chosen.freeBytes)
+                            R.string.volume_free_line, Formats.bytes(chosen.shownFreeBytes)
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -594,12 +603,15 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ),
                 o.theme.name
             ) { vm.setTheme(ThemeMode.valueOf(it)) }
-            SwitchRow(
-                stringResource(R.string.theme_dynamic),
-                o.dynamicColor
-            ) { vm.setDynamicColor(it) }
+            // Wallpaper colours exist from Android 12. Below that the switch
+            // flipped and nothing changed, which reads as a broken setting.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                SwitchRow(
+                    stringResource(R.string.theme_dynamic),
+                    o.dynamicColor
+                ) { vm.setDynamicColor(it) }
+            }
         }
-
 
         SectionHeader(stringResource(R.string.opt_group_privacy))
         // Every permission and battery switch this app depends on, with its
@@ -661,6 +673,25 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             checked = o.warningsNotif
         ) { vm.setWarningsNotif(it) }
         AlertsPermissionRow(wanted = o.warningsNotif)
+        // "Mute for 7 days" is a button on the alert itself, and it used to
+        // leave no trace anywhere: alerts simply stopped, with this switch
+        // still on. While a mute runs it says so here, and how to end it.
+        if (o.warningsNotif && o.alertsMutedUntil > System.currentTimeMillis()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            ) {
+                Text(
+                    stringResource(R.string.alerts_muted_until, Formats.date(o.alertsMutedUntil)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { vm.unmuteAlerts() }) {
+                    Text(stringResource(R.string.alerts_unmute))
+                }
+            }
+        }
         // The rule this switch turns on has always been written down - a
         // day's byte total says a day's photographs went out, not that this
         // photograph did, so it counts "only behind an explicit opt-in". The
@@ -671,7 +702,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         SwitchCard(
             title = stringResource(R.string.opt_verified30),
             hint = stringResource(R.string.opt_verified30_hint),
-            icon = IconExcluded,
+            icon = IconProof,
             checked = o.freeUpAllowVerified30
         ) { vm.setFreeUpVerified30(it) }
         SwitchCard(
@@ -964,10 +995,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                         albums = albums,
                         excluded = o.excludedBuckets,
                         onToggle = { name, include ->
-                            vm.setExcludedBuckets(
-                                if (include) o.excludedBuckets - name
-                                else o.excludedBuckets + name
-                            )
+                            vm.setAlbumIncluded(name, include)
                         },
                         testTag = ListTags.ROWS,
                         header = {
@@ -1082,8 +1110,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(
                         stringResource(R.string.cloud_section_e2ee),
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 8.dp)
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 10.dp)
                     )
                     for (app in CloudApps.SELECTABLE.filter { it.e2ee }) {
                         CloudPickRow(app, current, onPick)
@@ -1091,25 +1119,40 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(
                         stringResource(R.string.cloud_section_also),
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 8.dp)
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 10.dp)
                     )
                     for (app in CloudApps.SELECTABLE.filter { !it.e2ee }) {
                         CloudPickRow(app, current, onPick)
                     }
+                    Text(
+                        stringResource(R.string.cloud_section_unsupported),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
                     for (app in CloudApps.ALL.filter { !it.supported }) {
-                        Column(Modifier.padding(top = 8.dp)) {
-                            Text(
-                                app.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            app.unsupportedReasonRes?.let { res ->
-                                Text(
-                                    stringResource(res),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
+                        // Lined up with the rows above - the empty space is
+                        // where their dot sits - and faded as a whole, tile
+                        // included, because none of these can be chosen.
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .alpha(0.6f)
+                        ) {
+                            Spacer(Modifier.width(34.dp))
+                            CloudAppIcon(app = app, installed = false)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(app.label, style = MaterialTheme.typography.bodyLarge)
+                                app.unsupportedReasonRes?.let { res ->
+                                    Text(
+                                        stringResource(res),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -1128,14 +1171,20 @@ private fun CloudPickRow(
 ) {
     val context = LocalContext.current
     // Asking the package manager whether an app is installed is a call out to
-    // another process. Unremembered it ran again for every row on every frame
-    // of the picker's scroll, which is a dozen binder round trips per frame
-    // for an answer that cannot change while the dialog is open.
-    val installed = remember(app.id, context) {
-        app.packages.isNotEmpty() && CloudApps.installedPackage(context, app) != null
+    // another process, so it is remembered rather than asked on every frame
+    // of the picker's scroll - and asked again whenever the app comes back to
+    // the front, because the one thing this list invites is leaving to
+    // install an app and returning to a dialog that was never closed.
+    var installed by remember(app.id) {
+        mutableStateOf(app.packages.isNotEmpty() && CloudApps.installedPackage(context, app) != null)
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        installed = app.packages.isNotEmpty() && CloudApps.installedPackage(context, app) != null
     }
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        // Level with the app's name, not centred on a block that can run to
+        // eight lines and leave the dot and the icon floating beside nothing.
+        verticalAlignment = Alignment.Top,
         // The whole row picks the app, and says which one is picked. Before,
         // only the dot was tappable and it carried no label, so the name -
         // the one thing identifying the choice - was not part of the control.
@@ -1147,7 +1196,12 @@ private fun CloudPickRow(
                 onClick = { onPick(app.id) }
             )
     ) {
-        RadioButton(selected = app.id == current, onClick = null)
+        RadioButton(
+            selected = app.id == current,
+            onClick = null,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Spacer(Modifier.width(10.dp))
         // The same face the setup picker shows, so the two lists cannot
         // disagree about which app is on the phone.
         CloudAppIcon(app = app, installed = installed)
@@ -1166,11 +1220,19 @@ private fun CloudPickRow(
                     RecommendedTag()
                 }
             }
-            if (installed) {
+            // Said in words for every real app, installed or not, so a tile
+            // without the phone's own icon is never left to explain itself.
+            if (app.packages.isNotEmpty()) {
                 Text(
-                    stringResource(R.string.cloud_installed_mark),
+                    stringResource(
+                        if (installed) R.string.cloud_installed_mark else R.string.cloud_not_installed_mark
+                    ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = if (installed) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
             if (app.recommended) {
@@ -1203,8 +1265,6 @@ private fun CloudPickRow(
     }
 }
 
-/** A device-aware suggestion the user can take with one tap, or ignore. */
-/** A live figure under a control, so the setting is not an abstraction. */
 /**
  * The Alerts switch says whether alerts are wanted; on Android 13 and later
  * the notification permission says whether they can be shown. Setup asks for
@@ -1380,6 +1440,7 @@ private val IconLock = Icons.Outlined.Lock
 private val IconAlerts = Icons.Outlined.Notifications
 private val IconPause = Icons.Outlined.PauseCircle
 private val IconExcluded = Icons.Outlined.Block
+private val IconProof = Icons.Outlined.VerifiedUser
 private val IconTransfer = Icons.Outlined.Backup
 private val IconHelp = Icons.AutoMirrored.Outlined.HelpOutline
 private val IconActivity = Icons.Outlined.History

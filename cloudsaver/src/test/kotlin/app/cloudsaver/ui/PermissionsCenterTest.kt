@@ -70,9 +70,31 @@ class PermissionsCenterTest {
         assertTrue(makerRows.contains("state = State.UNKNOWN"))
         assertTrue(makerRows.contains("status = stringResource(R.string.perm_unknown)"))
         assertTrue(makerRows.contains("detail = PowerPages.pathHint(vendor, requirement.id)"))
-        // And the readable ones are judged, not hedged.
-        assertTrue(screen.contains("state = if (battery) State.OK else State.PROBLEM"))
+        // And the readable ones are judged, not hedged - with battery
+        // optimisation judged for what it is: Android's default, under which
+        // the work runs, so an information mark rather than a red one.
+        assertTrue(screen.contains("state = if (battery) State.OK else State.UNKNOWN"))
         assertTrue(screen.contains("state = if (usage) State.OK else State.PROBLEM"))
+        assertTrue(screen.contains("state = if (backgroundRestricted) State.PROBLEM else State.OK"))
+        // Allowed, the button says it can be taken back.
+        assertTrue(screen.contains("if (battery) R.string.perm_change else R.string.perm_allow"))
+    }
+
+    @Test
+    fun `Android's default battery setting is not a standing warning`() {
+        // "Battery restricted" in red on every Home visit, for the state the
+        // phone ships in and the work runs under. Only once the phone has
+        // actually been stopping the work is it worth a chip.
+        val home = File(main, "ui/screens/HomeScreen.kt").readText()
+        val chip = home.substringAfter("PowerPages.ID_BATTERY_UNRESTRICTED ->").substringBefore("PowerPages.ID_BACKGROUND_RESTRICTION ->")
+        assertTrue(chip.contains("if (health.backgroundWorkStopped) {"))
+        // Setup names each row's own state: "Blocked" under a battery row in
+        // its default state, or a killing the permission reset never does,
+        // was the generic pair saying something untrue.
+        val setup = File(main, "ui/screens/OnboardingScreen.kt").readText()
+        assertTrue(!setup.contains("R.string.power_blocked"))
+        assertTrue(setup.contains("if (requirement.satisfied) R.string.power_battery_on else R.string.power_battery_off"))
+        assertTrue("and where an unreadable switch lives", setup.contains("PowerPages.pathHint(PowerPages.vendor(), requirement.id)"))
     }
 
     @Test

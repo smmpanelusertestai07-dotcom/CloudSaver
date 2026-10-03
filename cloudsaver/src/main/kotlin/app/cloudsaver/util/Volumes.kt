@@ -1,11 +1,13 @@
 package app.cloudsaver.util
 
+import android.app.usage.StorageStatsManager
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.os.storage.StorageManager
 import android.provider.MediaStore
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -22,7 +24,17 @@ object Volumes {
         val isPrimary: Boolean,
         val totalBytes: Long,
         val freeBytes: Long,
-        val appDir: File?
+        val appDir: File?,
+        /**
+         * The figures to show a person, which are the ones Android's own
+         * Settings shows. For the phone's storage that is the size on the
+         * box - 128 GB - where [totalBytes] is the data partition alone,
+         * about 119 GB on the same phone, so "of 119 GB used" read as a
+         * phone smaller than the one bought. Display only: every decision
+         * about space still uses [freeBytes], the stricter of the two.
+         */
+        val shownTotalBytes: Long = totalBytes,
+        val shownFreeBytes: Long = freeBytes
     )
 
     fun list(context: Context): List<Vol> {
@@ -64,6 +76,22 @@ object Volumes {
 
     fun primary(context: Context): Vol? = list(context).firstOrNull { it.isPrimary }
 
+    /**
+     * [list] with the figures a person is shown filled in, for the screens.
+     * Separate because asking the system for them is slower than StatFs, and
+     * the engine, which reads volumes on every run, never shows a number.
+     */
+    fun listForDisplay(context: Context): List<Vol> = list(context).map { vol ->
+        val shown = if (vol.isPrimary) deviceFigures(context) else null
+        if (shown == null) vol else vol.copy(shownTotalBytes = shown.first, shownFreeBytes = shown.second)
+    }
+
+    /** The phone's storage as Settings reports it: rounded size, and free including clearable cache. */
+    private fun deviceFigures(context: Context): Pair<Long, Long>? = runCatching {
+        val stats = context.getSystemService(StorageStatsManager::class.java)
+        stats.getTotalBytes(StorageManager.UUID_DEFAULT) to stats.getFreeBytes(StorageManager.UUID_DEFAULT)
+    }.getOrNull()?.takeIf { (total, free) -> total > 0 && free in 0..total }
+
     fun byName(context: Context, name: String): Vol? =
         list(context).firstOrNull { it.mediaVolumeName == name }
 
@@ -75,7 +103,6 @@ object Volumes {
         if (storageVolume.isEmpty()) return primary(context)
         return byName(context, storageVolume)
     }
-
 
     // ---- writability probe (BB2) -------------------------------------------
 

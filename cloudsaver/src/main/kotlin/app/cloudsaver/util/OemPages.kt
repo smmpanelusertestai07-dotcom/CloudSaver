@@ -1,7 +1,6 @@
 package app.cloudsaver.util
 
 import android.annotation.SuppressLint
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -9,46 +8,26 @@ import android.os.Build
 import android.provider.Settings
 
 /**
- * Battery-killer onboarding: system ignore-optimizations dialog plus known OEM
- * auto-start/background pages (MIUI/HyperOS, ColorOS, Vivo, One UI, ...), with
- * app-info as the always-working fallback.
+ * The system pages the app sends the person to: app info, notifications,
+ * usage access, Battery Saver and Android's own battery-optimisation question,
+ * each with the page that holds the same switch as its fallback. The phone
+ * makers' own pages are in [PowerPages].
  */
 object OemPages {
 
-    private val AUTO_START_COMPONENTS = listOf(
-        ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
-        ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
-        ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
-        ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"),
-        ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
-        ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"),
-        ComponentName("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
-        ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
-        ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity")
-    )
-
     /**
-     * Opens the OEM auto-start/background page if one exists on this device.
-     *
-     * The start is simply attempted rather than resolved first. From Android
-     * 11 on, package visibility hides every one of these security-centre
-     * packages from `resolveActivity`, which answered null on the very phones
-     * that have the page - so the whole table was dead and every user was sent
-     * to app info instead. Launching an explicit component is not filtered the
-     * same way, and a phone without the page throws, which is the same answer
-     * the check used to give.
+     * Starts one outside page as a trip the app sent the person on, and takes
+     * the trip back if the page refuses to open.
      */
-    fun openAutoStart(context: Context): Boolean {
-        for (component in AUTO_START_COMPONENTS) {
-            try {
-                val intent = Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                Errand.begin(); context.startActivity(intent)
-                return true
-            } catch (e: Exception) {
-                // try next
-            }
+    private fun go(context: Context, intent: Intent): Boolean {
+        Errand.begin()
+        return try {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            Errand.cancel()
+            false
         }
-        return false
     }
 
     /**
@@ -56,50 +35,34 @@ object OemPages {
      * that is the accepted use case for this dialog.
      */
     @SuppressLint("BatteryLife")
-    fun requestIgnoreBatteryOptimizations(context: Context): Boolean = try {
-        val intent = Intent(
-            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-            Uri.parse("package:${context.packageName}")
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        Errand.begin(); context.startActivity(intent)
-        true
-    } catch (e: Exception) {
-        // Some skins strip the per-app dialog; the system's own list of
-        // optimised apps still exists everywhere and is one tap from the
-        // switch, which app info is not.
-        try {
-            Errand.begin(); context.startActivity(
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    fun requestIgnoreBatteryOptimizations(context: Context): Boolean =
+        go(
+            context,
+            Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:${context.packageName}")
             )
-            true
-        } catch (e2: Exception) {
+        ) ||
+            // Some skins strip the per-app dialog; the system's own list of
+            // optimised apps still exists everywhere and is one tap from the
+            // switch, which app info is not.
+            go(context, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) ||
             openAppInfo(context)
-        }
-    }
 
-    fun openAppInfo(context: Context): Boolean = try {
-        val intent = Intent(
+    fun openAppInfo(context: Context): Boolean = go(
+        context,
+        Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.parse("package:${context.packageName}")
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        Errand.begin(); context.startActivity(intent)
-        true
-    } catch (e: Exception) {
-        false
-    }
+        )
+    )
 
     /** The system page that holds this app's notification switch. */
-    fun openNotificationSettings(context: Context): Boolean = try {
-        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+    fun openNotificationSettings(context: Context): Boolean = go(
+        context,
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        Errand.begin(); context.startActivity(intent)
-        true
-    } catch (e: Exception) {
-        openAppInfo(context)
-    }
-
+    ) || openAppInfo(context)
 
     /**
      * The switch that lets Android take this app's permissions away for not
@@ -107,57 +70,30 @@ object OemPages {
      * 12 and later: "Pause app activity if unused"). Android has a page for
      * exactly this one, and app info as the fallback.
      */
-    fun openAutoRevokeSettings(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= 30) {
-            try {
-                val intent = Intent(
-                    Intent.ACTION_AUTO_REVOKE_PERMISSIONS,
-                    Uri.parse("package:${context.packageName}")
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                Errand.begin(); context.startActivity(intent)
-                return true
-            } catch (e: Exception) {
-                // Some skins do not carry the page; app info holds the same switch.
-            }
-        }
-        return openAppInfo(context)
-    }
+    fun openAutoRevokeSettings(context: Context): Boolean =
+        // Some skins do not carry the page; app info holds the same switch.
+        (
+            Build.VERSION.SDK_INT >= 30 &&
+                go(
+                    context,
+                    Intent(Intent.ACTION_AUTO_REVOKE_PERMISSIONS, Uri.parse("package:${context.packageName}"))
+                )
+            ) ||
+            openAppInfo(context)
 
     /** The phone-wide Battery Saver page. */
-    fun openBatterySaverSettings(context: Context): Boolean = try {
-        Errand.begin(); context.startActivity(
-            Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        true
-    } catch (e: Exception) {
-        try {
-            Errand.begin(); context.startActivity(
-                Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-            true
-        } catch (e2: Exception) {
-            false
-        }
-    }
+    fun openBatterySaverSettings(context: Context): Boolean =
+        go(context, Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)) ||
+            go(context, Intent(Settings.ACTION_SETTINGS))
 
     /** The system page for one notification category - the Alerts one. */
-    fun openAlertsChannelSettings(context: Context): Boolean = try {
-        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+    fun openAlertsChannelSettings(context: Context): Boolean = go(
+        context,
+        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CH_ALERTS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        Errand.begin(); context.startActivity(intent)
-        true
-    } catch (e: Exception) {
-        openNotificationSettings(context)
-    }
+    ) || openNotificationSettings(context)
 
-    fun openUsageAccess(context: Context): Boolean = try {
-        Errand.begin(); context.startActivity(
-            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        true
-    } catch (e: Exception) {
-        false
-    }
+    fun openUsageAccess(context: Context): Boolean =
+        go(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
 }

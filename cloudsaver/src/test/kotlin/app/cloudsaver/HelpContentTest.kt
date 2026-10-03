@@ -37,7 +37,7 @@ class HelpContentTest {
             .toList()
 
     @Test
-    fun `the FAQ is exactly nineteen questions, each with an answer`() {
+    fun `the FAQ is exactly twenty questions, each with an answer`() {
         assertTrue("strings.xml not found", strings() != null)
         val body = text()
         val questions = Regex("""<string name="faq_q(\d+)"""").findAll(body)
@@ -50,7 +50,9 @@ class HelpContentTest {
         // is not, and how to tell a genuine build from a copy of one - the
         // last of those is what the repository's front page used to answer,
         // to nobody, since the people who install this app read the app.
-        assertEquals("the FAQ must hold nineteen questions", (1..19).toList(), questions)
+        // Twenty: why nothing is happening - Battery Saver, the maker's
+        // auto-launch switch, charging-only mode - in one answer.
+        assertEquals("the FAQ must hold twenty questions", (1..20).toList(), questions)
         assertEquals("every question needs its answer", questions, answers)
     }
 
