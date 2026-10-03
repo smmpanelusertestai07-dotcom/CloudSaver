@@ -1057,8 +1057,15 @@ class HomeFilesE2eTest {
 
     @Test
     fun storageShowsEveryGroupWithARealTotal() {
-        val primary = Volumes.list(context).firstOrNull { it.isPrimary }
+        // The figures the screen shows are the phone's own - the size on the
+        // box, as Android's Settings reports it - never smaller than the
+        // data partition StatFs measures.
+        val primary = Volumes.listForDisplay(context).firstOrNull { it.isPrimary }
         assertNotNull("the device must report a primary volume", primary)
+        assertTrue(
+            "the shown size cannot be smaller than the partition",
+            primary!!.shownTotalBytes >= primary.totalBytes
+        )
         val outputBytes = runBlocking { db.items().releasedBytes() }
         assertTrue("the upload folder must be holding something", outputBytes > 0)
 
@@ -1071,7 +1078,7 @@ class HomeFilesE2eTest {
         // Free space moves while the test runs, so the half that cannot -
         // the size of the volume - is what is asserted.
         assertShownContaining(
-            Formats.bytes(primary!!.totalBytes),
+            Formats.bytes(primary.shownTotalBytes),
             "the used-of-total line"
         )
 
