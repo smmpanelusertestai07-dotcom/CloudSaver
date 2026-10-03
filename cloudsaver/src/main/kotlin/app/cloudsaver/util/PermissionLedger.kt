@@ -16,8 +16,7 @@ import app.cloudsaver.engine.UsageVerifier
  * permission the person can see is safer than one they cannot.
  *
  * Nothing here changes anything. The only place a permission is granted or
- * taken back is the phone's own settings page. The sister project in this
- * repository keeps the same ledger, and the idea is borrowed from it.
+ * taken back is the phone's own settings page.
  */
 object PermissionLedger {
 

@@ -97,7 +97,7 @@ object Permissions {
         // on an Android 11 phone whose owner had switched this app's notifications off, and a
         // permissions screen has no business contradicting the system settings. The switch is
         // read here; the permission check stays because on 13 and up it is the thing the
-        // one-tap prompt grants. The same mistake was found and fixed in the sister project.
+        // one-tap prompt grants.
         val switchedOn = runCatching {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
         }.getOrDefault(true)

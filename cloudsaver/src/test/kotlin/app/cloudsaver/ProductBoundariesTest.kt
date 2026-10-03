@@ -408,12 +408,11 @@ class ProductBoundariesTest {
      *
      * So what a person needs is in the app - Help, the FAQ, Privacy and
      * Terms, About - and what a release needs is written by the release
-     * workflow at the moment it publishes. The licence stays: it is the file
-     * that gives everyone else the right to use this, and it is not a
-     * document about the app.
+     * workflow at the moment it publishes. The repository is CloudSaver's
+     * source and what builds and checks it, and nothing else.
      */
     @Test
-    fun `the repository carries source, a licence, and no documents`() {
+    fun `the repository carries source and no documents`() {
         val root = generateSequence(File(".").absoluteFile) { it.parentFile }
             .first { File(it, ".github/workflows").isDirectory }
         // What the repository carries is what git carries, not what happens

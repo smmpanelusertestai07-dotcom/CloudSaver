@@ -198,9 +198,7 @@ jobs:
               echo 'base64 -w0 cloudsaver-release.jks   # this string is KEYSTORE_B64'
               echo '```'
               echo ""
-              echo "Then either run \`scripts/set-signing-secrets.sh cloudsaver-release.jks\` (needs the"
-              echo "GitHub CLI signed in as the owner - it asks for the password and sets all four),"
-              echo "or in Settings -> Secrets and variables -> Actions add by hand:"
+              echo "Then in Settings -> Secrets and variables -> Actions add:"
               echo "   - \`KEYSTORE_B64\` - the base64 string printed above"
               echo "   - \`KEYSTORE_PASSWORD\` - the store password you chose"
               echo "   - \`KEY_ALIAS\` - cloudsaver"
@@ -351,10 +349,7 @@ jobs:
               -dname "CN=CloudSaver Release, OU=CloudSaver, O=CloudSaver"
             base64 -w0 cloudsaver-release.jks
 
-          One command, with the GitHub CLI signed in as the owner:
-            scripts/set-signing-secrets.sh cloudsaver-release.jks
-
-          Or by hand, Settings -> Secrets and variables -> Actions:
+          Then add them in Settings -> Secrets and variables -> Actions:
             KEYSTORE_B64        the base64 string
             KEYSTORE_PASSWORD   the store password
             KEY_ALIAS           cloudsaver
@@ -387,9 +382,9 @@ jobs:
           # phone then refuses to install it over what they have, and the
           # hash they were told to check no longer matches the file they got.
           #
-          # This is not hypothetical: a second project shares this repository,
-          # and each of its pushes to main re-ran this job and silently
-          # re-signed the last CloudSaver release.
+          # This is not hypothetical: when another project shared this
+          # repository, each of its pushes to main re-ran this job and
+          # silently re-signed the last CloudSaver release.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::notice::$TAG is already published - leaving it exactly as it is."
             echo "To publish a new build, raise versionName in cloudsaver/build.gradle.kts."

@@ -1,9 +1,0 @@
-{
-  // No "image": GitHub then uses its default Linux image, which is already on
-  // the host, and whose storage does not count against the free quota.
-  "name": "Antigravity Remote Control",
-  // The editor opens once agy is installed, so the first terminal has it.
-  "waitFor": "postCreateCommand",
-  "postCreateCommand": "bash .devcontainer/antigravity.sh install",
-  "postStartCommand": "bash .devcontainer/antigravity.sh start"
-}

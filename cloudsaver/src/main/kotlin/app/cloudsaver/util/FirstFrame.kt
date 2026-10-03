@@ -18,8 +18,6 @@ import app.cloudsaver.core.logic.ThemeMode
  * changes and read back at process start, before any window exists. The
  * night mode is set only then: set while a screen is up it would recreate
  * the activity, and Compose already repaints the theme live.
- *
- * The sister project in this repository fixed the same flash the same way.
  */
 object FirstFrame {
 

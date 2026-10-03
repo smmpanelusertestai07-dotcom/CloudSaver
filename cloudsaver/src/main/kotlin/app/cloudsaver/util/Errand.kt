@@ -18,7 +18,7 @@ import android.os.SystemClock
  * a lock with an open-ended grace period is a lock anyone can walk past.
  *
  * Times are the monotonic clock, so a changed wall clock cannot stretch the
- * window. The sister project in this repository shipped this pattern first.
+ * window.
  */
 object Errand {
 

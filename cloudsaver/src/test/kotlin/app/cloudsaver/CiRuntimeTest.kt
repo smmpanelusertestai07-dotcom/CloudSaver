@@ -36,7 +36,6 @@ class CiRuntimeTest {
         "actions/upload-artifact" to 6,
         "actions/download-artifact" to 7,
         "gradle/actions/setup-gradle" to 5,
-        "android-actions/setup-android" to 4,
         "reactivecircus/android-emulator-runner" to 2
     )
 

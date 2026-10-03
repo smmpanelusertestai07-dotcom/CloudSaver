@@ -102,8 +102,7 @@ class PermissionsCenterTest {
     fun `notifications are judged by the system switch, not only the permission`() {
         // Android 13 added a runtime permission; the switch in system settings that silences
         // an app is on every version. Reading the permission alone said "Allowed" on an
-        // Android 11 phone whose owner had switched this app off. The sister project in this
-        // repository shipped the identical mistake, which is how it was found here.
+        // Android 11 phone whose owner had switched this app off.
         val fn = File(main, "util/Permissions.kt").readText()
             .substringAfter("fun hasNotifications(").substringBefore("\n    }\n")
         assertTrue("the system switch must be read", fn.contains("areNotificationsEnabled()"))
