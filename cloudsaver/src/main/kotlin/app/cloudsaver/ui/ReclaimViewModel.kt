@@ -166,6 +166,9 @@ class ReclaimViewModel(
     // ---- loading -------------------------------------------------------------
 
     fun load() {
+        // A note about a file handed over on an earlier visit is not about
+        // this one.
+        if (handedOverId == null) handOver.value = null
         viewModelScope.launch(Dispatchers.IO) {
             loading.value = true
             val o = repo.current()
@@ -188,6 +191,7 @@ class ReclaimViewModel(
                 }
                 .toMap()
             entries.value = judged.map { Entry(it.row, it.candidate) }
+            explainHandOver(judged, now)
             loading.value = false
         }
     }
@@ -195,14 +199,13 @@ class ReclaimViewModel(
     private suspend fun cloudHealthy(): Boolean =
         ReclaimEligibility.cloudHealthy(ctx, repo.current())
 
-
-    /** The list after filters, sorting and any active suggestion. */
     /**
      * The shared list filters, so Reclaim narrows the same way as every other
      * list rather than through its own private set of chips.
      */
     val listFilter = MutableStateFlow(ListFilters.State())
 
+    /** The list after filters, sorting and any active suggestion. */
     fun visible(): List<Entry> {
         val now = System.currentTimeMillis()
         var list = entries.value
@@ -286,9 +289,57 @@ class ReclaimViewModel(
      * gate, the mode choice and the trash-first rule live, and a second path
      * that skipped any of them would be the one that eventually loses a photo.
      */
+    /**
+     * A file another list handed over, that this screen cannot offer, and
+     * why - with the day it can be, when the only thing in the way is the
+     * 30-day wait.
+     */
+    data class HandOver(val name: String, val refusal: ReclaimRules.Refusal, val readyOn: Long?)
+
+    val handOver = MutableStateFlow<HandOver?>(null)
+    private var handedOverId: Long? = null
+
+    /**
+     * Opens this screen on one file, from "Remove from phone" elsewhere.
+     *
+     * The list filters are cleared on the way in: they live as long as the
+     * app does, and an album filter left over from the last visit showed a
+     * different album's photos under a file from this one. And when the file
+     * is not one this screen can offer, [load] says why rather than showing
+     * "0 of 12 selected" and the rest of the phone.
+     */
     fun selectOnly(id: Long) {
+        listFilter.value = ListFilters.State()
         selected.value = setOf(id)
         persistSelection()
+        handedOverId = id
+        handOver.value = null
+    }
+
+    /** Why a handed-over file is not in [entries], or null when it is. */
+    private suspend fun explainHandOver(judged: List<ReclaimEligibility.Judged>, now: Long) {
+        val id = handedOverId ?: return
+        handedOverId = null
+        if (judged.any { it.row.id == id }) return
+        val row = db.items().byId(id) ?: return
+        val o = repo.current()
+        val inLedger = row.outputSha256 != null &&
+            db.ledger().all().any { it.outputSha256 == row.outputSha256 }
+        val candidate = ReclaimEligibility.candidateOf(row, now, inLedger)
+        val refusal = ReclaimRules.refuse(
+            candidate, ReclaimEligibility.cloudHealthy(ctx, o), o.freeUpAllowVerified30,
+            skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
+        ) ?: return
+        val day = 86_400_000L
+        val wait = ReclaimRules.MIN_CONFIRM_AGE_DAYS * day
+        val readyOn = if (refusal == ReclaimRules.Refusal.TOO_RECENT) {
+            maxOf((row.confirmedAt ?: row.releasedAt ?: now) + wait, row.dateAdded * 1000 + wait)
+        } else {
+            null
+        }
+        selected.value = selected.value - id
+        persistSelection()
+        handOver.value = HandOver(row.displayName, refusal, readyOn)
     }
 
     /** "Free 5 GB": pick largest-first until the number is met. */

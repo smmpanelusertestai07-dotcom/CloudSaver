@@ -322,6 +322,9 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE id IN (:ids)")
     suspend fun byIds(ids: List<Long>): List<ItemRow>
 
+    @Query("SELECT * FROM items WHERE id IN (:ids)")
+    fun byIdsFlow(ids: List<Long>): Flow<List<ItemRow>>
+
     @Query("SELECT * FROM items WHERE state = :state")
     suspend fun byState(state: String): List<ItemRow>
 

@@ -19,8 +19,8 @@ import app.cloudsaver.data.prefs.OptionsRepo
 /**
  * Two channels. "Working" is silent, ongoing-only, and never survives the run
  * that posted it. "Alerts" is for the rare case where something the app cannot
- * fix needs a person - and even then, the same alert is posted at most once a
- * day, and one tap silences the lot for a week.
+ * fix needs a person - and even then the same alert is posted at most once a
+ * day, backs off when it is ignored, and one tap silences the lot for a week.
  *
  * Everything posted here is also written to the Activity log, so a swipe never
  * loses information.
@@ -38,9 +38,17 @@ object Notifications {
     const val ID_WARN_SAFETY = 21
     const val ID_WARN_SPACE = 22
     const val ID_WARN_STALLED = 23
+    /** Its own slot: sharing one with the safety pause, each replaced the other. */
+    const val ID_WARN_CLOUD = 24
+
+    /** Every slot an alert can use - what "Mute" takes down, and nothing else. */
+    val ALERT_IDS = listOf(ID_WARN_AGED, ID_WARN_SAFETY, ID_WARN_SPACE, ID_WARN_STALLED, ID_WARN_CLOUD)
 
     /** The same alert is worth saying once a day at most. */
     const val DEDUP_MS = 86_400_000L
+
+    /** After this long without being posted, an alert starts again from its first reminder. */
+    const val RESET_MS = 30 * 86_400_000L
 
     /** How long "Mute for 7 days" lasts. */
     const val MUTE_MS = 7 * 86_400_000L
@@ -110,37 +118,65 @@ object Notifications {
         runCatching { NotificationManagerCompat.from(context).cancel(ID_WORKING) }
     }
 
+    /** When one kind of alert was last posted, and how many times in a row. */
+    data class Posted(val at: Long, val times: Int)
+
     /**
-     * When each kind of alert was last posted, read back from the stored
-     * record. A line that has been damaged, or written by a build that stored
-     * something else, is dropped rather than trusted.
+     * How long an ignored alert waits before it is posted again.
+     *
+     * The same problem used to come back every day for as long as it lasted -
+     * a cloud app that stopped uploading in March was a notification a day
+     * in June - which is how an app gets its notifications switched off, the
+     * one alert that matters going with them. Ignored, it waits longer each
+     * time: a day, three days, a week, and from then on once a month. Fixed
+     * and quiet for a month, it starts again from a day.
      */
-    fun lastAlertTimes(encoded: String): Map<String, Long> {
+    fun waitAfter(times: Int): Long = when {
+        times <= 1 -> DEDUP_MS
+        times == 2 -> 3 * DEDUP_MS
+        times == 3 -> 7 * DEDUP_MS
+        else -> RESET_MS
+    }
+
+    /**
+     * Each kind of alert's record, read back from storage. A line that has
+     * been damaged, or written by a build that stored something else, is
+     * dropped rather than trusted; a line from before the count was kept
+     * reads as posted once.
+     */
+    fun lastAlertTimes(encoded: String): Map<String, Posted> {
         if (encoded.isEmpty()) return emptyMap()
-        val out = HashMap<String, Long>()
+        val out = HashMap<String, Posted>()
         for (line in encoded.split('\n')) {
-            val at = line.substringBefore(' ', "").toLongOrNull() ?: continue
+            val stamp = line.substringBefore(' ', "")
+            val at = stamp.substringBefore('x').toLongOrNull() ?: continue
+            val times = stamp.substringAfter('x', "1").toIntOrNull()?.coerceAtLeast(1) ?: 1
             val key = line.substringAfter(' ', "")
-            if (key.isNotEmpty()) out[key] = at
+            if (key.isNotEmpty()) out[key] = Posted(at, times)
         }
         return out
     }
 
     /**
-     * The record on its way back to storage, with everything older than a day
-     * left out: a day-old entry can no longer hold an alert back, and keeping
-     * it would let the record grow for as long as the app is installed.
+     * The record on its way back to storage, with every entry quiet for a
+     * month left out: it can no longer hold an alert back, and keeping it
+     * would let the record grow for as long as the app is installed.
      */
-    fun encodeAlertTimes(times: Map<String, Long>, now: Long): String = times.entries
-        .filter { now - it.value < DEDUP_MS }
-        .joinToString("\n") { "${it.value} ${it.key}" }
+    fun encodeAlertTimes(times: Map<String, Posted>, now: Long): String = times.entries
+        .filter { now - it.value.at < RESET_MS }
+        .joinToString("\n") { "${it.value.at}x${it.value.times} ${it.key}" }
+
+    /** Whether an alert with this record may be posted [now]. */
+    fun due(posted: Posted?, now: Long): Boolean =
+        posted == null || now - posted.at >= waitAfter(posted.times)
 
     /** A key as it is stored: one line, so the record stays readable back. */
     private fun alertKey(key: String): String = key.replace('\n', ' ')
 
     /**
-     * Posts an alert, unless the user has muted alerts or this same alert was
-     * already posted today.
+     * Posts an alert, unless the user has muted alerts or this same alert is
+     * still inside its wait ([waitAfter]). True when it was actually shown,
+     * so a caller counting reminders never counts one nobody saw.
      *
      * [dedupKey] identifies the alert rather than the notification slot, so a
      * cloud that is still not uploading tomorrow gets one reminder rather than
@@ -152,7 +188,7 @@ object Notifications {
      * problems each one wiped the other's record and both were free to post
      * again immediately - the user got the same two warnings over and over
      * while the code plainly said once a day. Each kind now carries its own
-     * time, and a quiet day removes itself from the record.
+     * time and count, and a quiet month removes itself from the record.
      */
     suspend fun alert(
         context: Context,
@@ -163,27 +199,34 @@ object Notifications {
         dedupKey: String = title,
         route: String? = null,
         now: Long = System.currentTimeMillis()
-    ) {
-        if (!options.warningsNotif) return
-        if (now < options.alertsMutedUntil) return
+    ): Boolean {
+        if (!options.warningsNotif) return false
+        if (now < options.alertsMutedUntil) return false
         val key = alertKey(dedupKey)
         val posted = lastAlertTimes(options.lastAlerts)
-        val lastAt = posted[key]
-        if (lastAt != null && now - lastAt < DEDUP_MS) return
+        val last = posted[key]
+        if (!due(last, now)) return false
         // Recording the attempt before knowing it can be shown would spend the
-        // day's one slot on a notification nobody saw, so the permission check
+        // reminder on a notification nobody saw, so the permission check
         // comes first.
-        if (!canPost(context)) return
+        if (!canPost(context)) return false
+        val times = if (last == null || now - last.at >= RESET_MS) 1 else last.times + 1
         val repo = OptionsRepo.get(context)
         repo.setString(
             OptionsRepo.K.LAST_ALERTS,
-            encodeAlertTimes(posted + (key to now), now)
+            encodeAlertTimes(posted + (key to Posted(now, times)), now)
         )
-        post(context, id, title, text, route)
+        return post(context, id, title, text, route)
     }
 
-    private fun post(context: Context, id: Int, title: String, text: String, route: String?) {
-        if (!canPost(context)) return
+    /** Takes down whatever alerts are showing, and only those. */
+    fun clearAlerts(context: Context) {
+        val manager = NotificationManagerCompat.from(context)
+        for (id in ALERT_IDS) runCatching { manager.cancel(id) }
+    }
+
+    private fun post(context: Context, id: Int, title: String, text: String, route: String?): Boolean {
+        if (!canPost(context)) return false
         val mute = PendingIntent.getBroadcast(
             context, 1,
             Intent(context, AlertActions::class.java).setAction(ACTION_MUTE),
@@ -198,10 +241,12 @@ object Notifications {
             .addAction(0, context.getString(R.string.notif_mute_7_days), mute)
             .setAutoCancel(true)
             .build()
-        try {
+        return try {
             NotificationManagerCompat.from(context).notify(id, n)
+            true
         } catch (e: SecurityException) {
             // Permission revoked between check and notify - fine, work continues.
+            false
         }
     }
 

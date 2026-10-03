@@ -96,8 +96,7 @@ object CapacityMath {
      * Byte-weighted ratios from this phone's processed items (last 500 per type,
      * the caller limits). Types with fewer than [MIN_SAMPLES] items fall back to
      * the defaults for the given codec.
-     */
-    /**
+     *
      * @param source MEASURED uses this phone's own results where the sample
      *   passes both guards; TYPICAL always answers with the published-style
      *   defaults, so the user can compare the two.

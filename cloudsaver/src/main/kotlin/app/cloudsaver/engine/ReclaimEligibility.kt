@@ -8,6 +8,7 @@ import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.util.Formats
 
 /**
@@ -41,7 +42,12 @@ object ReclaimEligibility {
     /** A row and the candidate the rules judged, kept together. */
     data class Judged(val row: ItemRow, val candidate: ReclaimRules.Candidate)
 
-    fun candidateOf(row: ItemRow, now: Long, inLedger: Boolean) = ReclaimRules.Candidate(
+    fun candidateOf(
+        row: ItemRow,
+        now: Long,
+        inLedger: Boolean,
+        favourite: Boolean = false
+    ) = ReclaimRules.Candidate(
         id = row.id,
         fingerprint = row.fingerprint,
         sizeBytes = row.sizeBytes,
@@ -55,7 +61,9 @@ object ReclaimEligibility {
         ledgerHashMatches = inLedger,
         originalPresent = !row.originalMissing,
         inExcludedAlbum = false,
-        isFavourite = false,
+        // Read from the gallery's own star. It was a constant false, so the
+        // rule that skips favourites - on by default - skipped nothing.
+        isFavourite = favourite,
         addedDaysAgo = Formats.daysBetween(row.dateAdded * 1000, now),
         isVideo = row.isVideo,
         album = row.bucket,
@@ -84,8 +92,12 @@ object ReclaimEligibility {
     ): List<Judged> {
         val healthy = cloudHealthy(ctx, o)
         val ledger = db.ledger().all().mapTo(HashSet()) { it.outputSha256 }
+        val favourites = if (skipFavourites) MediaScanner(ctx, db).favouriteUris() else emptySet()
         return db.items().reclaimCandidates().mapNotNull { row ->
-            val candidate = candidateOf(row, now, ledger.contains(row.outputSha256))
+            val candidate = candidateOf(
+                row, now, ledger.contains(row.outputSha256),
+                favourite = row.contentUri != null && row.contentUri in favourites
+            )
             if (ReclaimRules.isEligible(
                     candidate, healthy,
                     // The user's answer, not a constant. A day's byte total

@@ -13,9 +13,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,17 +30,28 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,17 +78,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * The album picker, drawn the way a gallery draws it: a grid of covers with
- * the tick over the photo, not a column of checkboxes beside bare words.
- * "Camera" is a name; the photo taken this morning is the album. Both the
- * setup step and the Settings dialog use this one grid, so the two pickers
- * cannot drift apart.
- *
- * Every tile is one toggle - the whole tile takes the tap and announces
- * itself as a checkbox with the album's name, so a screen reader hears
- * "Camera, checkbox, ticked" rather than an unnamed box.
- */
-/**
  * The grid's ceiling, from the space it is actually given.
  *
  * A fixed 300 dp was one row of covers plus the header on any phone: a
@@ -89,6 +94,17 @@ private fun gridCeiling(boxMaxHeight: Dp): Dp = when {
     else -> 440.dp
 }
 
+/**
+ * The album picker, drawn the way a gallery draws it: a grid of covers with
+ * the tick over the photo, not a column of checkboxes beside bare words.
+ * "Camera" is a name; the photo taken this morning is the album. Both the
+ * setup step and the Settings dialog use this one grid, so the two pickers
+ * cannot drift apart.
+ *
+ * Every tile is one toggle - the whole tile takes the tap and announces
+ * itself as a checkbox with the album's name, so a screen reader hears
+ * "Camera, checkbox, ticked" rather than an unnamed box.
+ */
 @Composable
 fun AlbumGrid(
     albums: List<MediaScanner.Album>,
@@ -104,15 +120,19 @@ fun AlbumGrid(
     footer: (@Composable () -> Unit)? = null,
     state: LazyGridState = rememberLazyGridState()
 ) {
+    // The album held down, shown in a sheet over the picker.
+    var peeking by remember { mutableStateOf<MediaScanner.Album?>(null) }
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val maxHeight = gridCeiling(this.maxHeight)
+        // Three across on any phone, more on a wider screen. "Adaptive at
+        // 100 dp" was written for a 360 dp screen, but the grid never gets
+        // the whole screen - a card's padding or a dialog's leaves it about
+        // 270-290 dp - so a phone drew two columns, and a third album sat
+        // alone on a second row below the fold, looking like it was missing.
+        val columns = (this.maxWidth / 110.dp).toInt().coerceIn(3, 6)
         Column(Modifier.fillMaxWidth()) {
         LazyVerticalGrid(
-            // Adaptive rather than a fixed count: three tiles on an ordinary
-            // phone, more as the screen widens, without anyone writing the
-            // number down. 100 dp is what puts three across a 360 dp screen -
-            // the size the backup pickers people already know draw their covers.
-            columns = GridCells.Adaptive(minSize = 100.dp),
+            columns = GridCells.Fixed(columns),
             state = state,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -144,7 +164,8 @@ fun AlbumGrid(
                 AlbumTile(
                     album = album,
                     checked = album.name !in excluded,
-                    onToggle = { include -> onToggle(album.name, include) }
+                    onToggle = { include -> onToggle(album.name, include) },
+                    onPeek = { peeking = album }
                 )
             }
             footer?.let {
@@ -164,6 +185,14 @@ fun AlbumGrid(
         }
         }
     }
+    peeking?.let { album ->
+        AlbumPeekSheet(
+            album = album,
+            included = album.name !in excluded,
+            onToggle = { include -> onToggle(album.name, include) },
+            onDismiss = { peeking = null }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -171,24 +200,25 @@ fun AlbumGrid(
 private fun AlbumTile(
     album: MediaScanner.Album,
     checked: Boolean,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onPeek: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
-    val context = LocalContext.current
     Column(
         Modifier
             .heightIn(min = Dimens.TouchTarget)
             .clip(RoundedCornerShape(14.dp))
-            // A tap ticks, exactly as before. A long press opens the cover in
-            // whatever this phone views photos with - the peek the gallery
-            // grid promises without leaving the choice it is here to make.
-            // The semantics stay a checkbox with a state: a screen reader
-            // still hears "Camera, checkbox, ticked", and the tests still
-            // find a toggleable carrying the album's name.
+            // A tap ticks, exactly as before. A long press shows the album's
+            // newest photos in a sheet over the picker. It used to hand the
+            // cover to another app, which put the phone's whole "open with"
+            // list - every gallery, WhatsApp - in front of a choice that only
+            // needed a look. The semantics stay a checkbox with a state: a
+            // screen reader still hears "Camera, checkbox, ticked", and the
+            // tests still find a toggleable carrying the album's name.
             .combinedClickable(
                 role = Role.Checkbox,
                 onClick = { onToggle(!checked) },
-                onLongClick = album.coverUri?.let { uri -> { peekAlbum(context, uri) } }
+                onLongClick = onPeek
             )
             .semantics {
                 toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
@@ -198,11 +228,10 @@ private fun AlbumTile(
         Box(
             Modifier
                 .fillMaxWidth()
-                // Portrait, not square: photos are mostly portrait on a
-                // phone, and the taller crop is what makes the grid read as
-                // the gallery pickers people already use rather than as an
-                // icon sheet.
-                .aspectRatio(0.8f)
+                // Square, as a gallery's album grid draws them: a portrait
+                // crop made each row so tall that one row and a sliver of
+                // the next was all a dialog could show.
+                .aspectRatio(1f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(scheme.surfaceVariant)
         ) {
@@ -266,7 +295,104 @@ private fun AlbumTile(
 }
 
 /**
- * Opens the album's newest photo in the phone's own viewer.
+ * A look inside one album, from a long press in any album picker.
+ *
+ * The newest photos, the tick, and - for anyone who wants the full gallery -
+ * one button out to it. Answering "which album is this?" never needs another
+ * app, so it never starts one by itself.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AlbumPeekSheet(
+    album: MediaScanner.Album,
+    included: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Dimens.Screen)
+                .padding(bottom = 24.dp)
+        ) {
+            Text(album.name, style = MaterialTheme.typography.titleLarge)
+            Text(
+                pluralStringResource(R.plurals.album_item_count, album.count, album.count),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            if (album.recentUris.isEmpty()) {
+                Text(
+                    stringResource(R.string.album_peek_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            // Rows of three, drawn plainly: twelve thumbnails at most, inside
+            // a sheet that scrolls, so a lazy grid would only add a second
+            // scroller to fight the first.
+            for (row in album.recentUris.chunked(3)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                ) {
+                    for (uri in row) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            albumCover(uri)?.let {
+                                Image(
+                                    bitmap = it,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (included) {
+                    OutlinedButton(onClick = { onToggle(false); onDismiss() }) {
+                        Text(stringResource(R.string.album_peek_exclude))
+                    }
+                } else {
+                    Button(onClick = { onToggle(true); onDismiss() }) {
+                        Text(stringResource(R.string.album_peek_include))
+                    }
+                }
+                album.coverUri?.let { cover ->
+                    TextButton(onClick = { peekAlbum(context, cover) }) {
+                        Text(stringResource(R.string.album_peek_open))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Opens the album's newest photo in the phone's own viewer, from the peek
+ * sheet's "Open in gallery".
  *
  * A plain view intent, not a chooser. A chooser forced the full "open with"
  * sheet - every gallery, WhatsApp, the lot - on every single press, with no
@@ -291,7 +417,7 @@ private fun peekAlbum(context: Context, coverUri: String) {
         } catch (e: ActivityNotFoundException) {
             context.startActivity(Intent.createChooser(view, null))
         }
-    }
+    }.onFailure { Errand.cancel() }
 }
 
 /**

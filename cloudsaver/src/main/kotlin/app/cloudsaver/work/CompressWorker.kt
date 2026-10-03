@@ -69,6 +69,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val manual = inputData.getBoolean(KEY_MANUAL, false)
 
         if (!options.onboardingDone) return Result.success()
+        // Android started the work: whatever this pass decides next, the
+        // phone is not the one stopping it.
+        repo.setLong(OptionsRepo.K.LAST_WAKE_AT, System.currentTimeMillis())
         // These two exits consumed the FAST content trigger without arming
         // the next one, so a phone coming back from a pause - or a
         // half-granted permission becoming full - reacted to new photos

@@ -119,7 +119,10 @@ fun TrialCard(
                     Text(stringResource(R.string.trial_choose_albums))
                 }
             }
-        } else {
+        } else if (results.isNullOrEmpty()) {
+            // Gone once there are results: a second trial picked three more
+            // photos and left the first three copies with no way to remove
+            // them. Remove the copies below to try again.
             OutlinedButton(
                 enabled = !running,
                 onClick = onRun,

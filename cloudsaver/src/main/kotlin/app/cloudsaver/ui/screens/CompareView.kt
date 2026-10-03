@@ -228,11 +228,6 @@ fun CompareSheet(
     )
 }
 
-/**
- * MediaStore's own cached thumbnail, not a full decode: this runs while the
- * user is scrolling a list of things they are about to delete, and a 60 MP
- * decode there would stutter or run out of heap.
- */
 /** A staged copy, decoded from the app's own file at roughly thumbnail size. */
 private suspend fun loadFileThumb(path: String?): Bitmap? {
     if (path == null) return null
@@ -251,6 +246,11 @@ private suspend fun loadFileThumb(path: String?): Bitmap? {
     }
 }
 
+/**
+ * MediaStore's own cached thumbnail, not a full decode: this runs while the
+ * user is scrolling a list of things they are about to delete, and a 60 MP
+ * decode there would stutter or run out of heap.
+ */
 private suspend fun loadThumb(
     context: Context,
     uriString: String?

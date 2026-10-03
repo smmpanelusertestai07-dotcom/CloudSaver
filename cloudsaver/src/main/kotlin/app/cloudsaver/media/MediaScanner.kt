@@ -3,6 +3,7 @@ package app.cloudsaver.media
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
@@ -417,7 +418,44 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         return keys
     }
 
+    /**
+     * Every photo and video starred as a favourite in the gallery, as the
+     * same addresses the rows carry. Android 11 and later only - Android 10
+     * has no shared favourite - and on any failure simply none, which can
+     * only ever mean an original stays: Free up space skips favourites.
+     */
+    fun favouriteUris(): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptySet()
+        val volumes = runCatching { MediaStore.getExternalVolumeNames(context) }.getOrDefault(emptySet())
+        val out = HashSet<String>()
+        for (volume in volumes) {
+            for (collection in listOf(
+                MediaStore.Images.Media.getContentUri(volume),
+                MediaStore.Video.Media.getContentUri(volume)
+            )) {
+                runCatching {
+                    context.contentResolver.query(
+                        collection,
+                        arrayOf(MediaStore.MediaColumns._ID),
+                        "${MediaStore.MediaColumns.IS_FAVORITE} = 1",
+                        null,
+                        null
+                    )?.use { c ->
+                        val iId = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                        while (c.moveToNext()) {
+                            out += ContentUris.withAppendedId(collection, c.getLong(iId)).toString()
+                        }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     companion object {
+        /** How many of an album's newest files its peek shows. */
+        const val PEEK_SIZE = 12
+
         /** skipReason for a copy that came back from the cloud (Z4.1). */
         const val SKIP_RETURNED_COPY = "returned_copy"
 
@@ -581,17 +619,25 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
      * recognises - "Camera" is a name, the photo taken this morning is the
      * album.
      */
-    data class Album(val name: String, val coverUri: String?, val count: Int)
+    data class Album(
+        val name: String,
+        val coverUri: String?,
+        val count: Int,
+        /** The newest few, newest first, for a look inside without leaving the picker. */
+        val recentUris: List<String> = emptyList()
+    )
 
     fun albums(): List<Album> =
         excludeOutputFolders(queryAll())
             .filter { it.bucket != null }
             .groupBy { it.bucket!! }
             .map { (name, files) ->
+                val newest = files.sortedByDescending { it.dateModified }
                 Album(
                     name = name,
-                    coverUri = files.maxByOrNull { it.dateModified }?.uri,
-                    count = files.size
+                    coverUri = newest.firstOrNull()?.uri,
+                    count = files.size,
+                    recentUris = newest.take(PEEK_SIZE).map { it.uri }
                 )
             }
             .sortedBy { it.name.lowercase() }

@@ -109,7 +109,7 @@ class StartupRecovery(private val context: Context) {
         // Someone already walking through setup keeps their own answers.
         val untouched = !o.onboardingDone && o.onboardingStep == 0
         val imported = try {
-            store.merge(snapshot, importOptions = untouched)
+            store.merge(snapshot, importOptions = untouched, onlyIfSetupUntouched = true)
         } catch (e: Exception) {
             return 0
         }

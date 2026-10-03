@@ -194,6 +194,29 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
 
+        // Arrived from "Remove from phone" with a file this screen cannot
+        // offer: say which and why, instead of a list of other files.
+        val handOver by rvm.handOver.collectAsStateWithLifecycle()
+        handOver?.let { note ->
+            AppCard(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                tonal = true
+            ) {
+                Text(
+                    stringResource(R.string.freeup_handover_refused, note.name, refusalLabel(note.refusal)),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                note.readyOn?.let { day ->
+                    Text(
+                        stringResource(R.string.freeup_handover_ready_on, Formats.date(day)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+
         if (entries.isEmpty() && !loading) {
             // Nothing to remove is still a screen, and it is the one state
             // here that draws no list at all. Sideways on a phone at a large

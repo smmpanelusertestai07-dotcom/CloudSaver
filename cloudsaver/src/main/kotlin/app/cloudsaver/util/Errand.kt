@@ -33,6 +33,15 @@ object Errand {
         expectingUntil = now + GRACE_MS
     }
 
+    /**
+     * The trip never started: the page refused to open. Without this a
+     * failed start left the grace armed, and the next time the person left
+     * the app by themselves - within two minutes - the lock let them back in.
+     */
+    fun cancel() {
+        expectingUntil = 0L
+    }
+
     /** True while a trip the app started is still the likely reason for leaving. */
     fun expecting(now: Long = SystemClock.elapsedRealtime()): Boolean = now < expectingUntil
 

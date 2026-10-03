@@ -3,7 +3,6 @@ package app.cloudsaver.util
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationManagerCompat
 import app.cloudsaver.data.prefs.OptionsRepo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,9 +35,9 @@ class AlertActions : BroadcastReceiver() {
                 val muted = runCatching {
                     OptionsRepo.get(app).setLong(OptionsRepo.K.ALERTS_MUTED_UNTIL, until)
                 }.isSuccess
-                if (muted) {
-                    runCatching { NotificationManagerCompat.from(app).cancelAll() }
-                }
+                // Only the alerts: the "working" note belongs to a run in
+                // progress, and muting warnings is not stopping the work.
+                if (muted) Notifications.clearAlerts(app)
             } finally {
                 pending.finish()
             }

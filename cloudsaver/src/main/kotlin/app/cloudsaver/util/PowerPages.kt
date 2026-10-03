@@ -153,10 +153,21 @@ object PowerPages {
 
     /** Auto-launch / auto-start list, by skin. */
     private val AUTO_LAUNCH: Map<Vendor, List<ComponentName>> = mapOf(
+        // Newest naming first: realme UI 3 and later moved the security centre
+        // to "oplus"; an Android 11 realme still carries "coloros", under one
+        // of three class names depending on the build.
         Vendor.COLOR_OS to listOf(
+            ComponentName(
+                "com.oplus.safecenter",
+                "com.oplus.safecenter.permission.startup.StartupAppListActivity"
+            ),
             ComponentName(
                 "com.coloros.safecenter",
                 "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+            ),
+            ComponentName(
+                "com.coloros.safecenter",
+                "com.coloros.safecenter.permission.startupapp.StartupAppListActivity"
             ),
             ComponentName(
                 "com.coloros.safecenter",
@@ -230,10 +241,6 @@ object PowerPages {
                 ComponentName(
                     "com.coloros.oppoguardelf",
                     "com.coloros.powermanager.fuelgaue.PowerConsumptionActivity"
-                ),
-                ComponentName(
-                    "com.coloros.oppoguardelf",
-                    "com.coloros.powermanager.fuelgaue.PowerSaverModeActivity"
                 )
             )
             Vendor.ONE_UI -> listOf(
@@ -254,11 +261,13 @@ object PowerPages {
         return OemPages.openAppInfo(context)
     }
 
-    fun openAutoLaunch(context: Context): Boolean {
-        if (start(context, AUTO_LAUNCH[vendor()].orEmpty())) return true
-        if (OemPages.openAutoStart(context)) return true
-        return OemPages.openAppInfo(context)
-    }
+    /**
+     * Only this maker's own pages, then app info. Every other maker's list was
+     * tried after this one as well, so a Realme also knocked on Xiaomi's and
+     * Samsung's doors - and ColorOS's own twice - before landing anywhere.
+     */
+    fun openAutoLaunch(context: Context): Boolean =
+        start(context, AUTO_LAUNCH[vendor()].orEmpty()) || OemPages.openAppInfo(context)
 
     fun open(context: Context, requirementId: String): Boolean = when (requirementId) {
         // Android finishes the "ignore optimisations" dialog silently when
@@ -307,6 +316,7 @@ object PowerPages {
                 return true
             } catch (e: Exception) {
                 // Try the next component; skins rename these between versions.
+                Errand.cancel()
             }
         }
         return false

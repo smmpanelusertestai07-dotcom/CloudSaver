@@ -28,6 +28,16 @@ object StallAlert {
     /** After this many, the chip on Home is the only notice. */
     const val MAX_ALERTS = 3
 
+    /**
+     * The last time the work is known to have been let run: a finished run,
+     * or a pass Android started that then chose to wait (Battery Saver, no
+     * charger in charging-only mode). Only a run that was "done" used to
+     * count, so the app waiting on purpose for two days was reported as the
+     * phone stopping it. A run must have finished once for either to count.
+     */
+    fun lastSeen(lastRunAt: Long, lastWakeAt: Long): Long =
+        if (lastRunAt <= 0L) 0L else maxOf(lastRunAt, lastWakeAt)
+
     /** The same evidence Home's "stopped" chip uses, in one place. */
     fun stalled(now: Long, lastRunAt: Long, waiting: Int, rationed: Boolean): Boolean =
         waiting > 0 && lastRunAt > 0 && (now - lastRunAt > STALL_MS || rationed)

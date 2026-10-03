@@ -578,12 +578,20 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     // right one: "battery restricted" for all of them sent
                     // people to a dialog Android closes on its own when the
                     // switch that is actually off is a different one.
+                    //
+                    // Battery optimisation is Android's default, and runs work
+                    // under it - they may simply wait for the charger. So it
+                    // is a chip only once the phone has actually been
+                    // stopping the work; before that a red "restricted" on
+                    // every visit was a warning about a setting that was fine.
                     for (requirement in power) {
                         if (!requirement.readable || requirement.satisfied) continue
                         when (requirement.id) {
                             PowerPages.ID_BATTERY_UNRESTRICTED ->
-                                StatusChip(stringResource(R.string.chip_battery)) {
-                                    vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
+                                if (health.backgroundWorkStopped) {
+                                    StatusChip(stringResource(R.string.chip_battery)) {
+                                        vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
+                                    }
                                 }
                             PowerPages.ID_BACKGROUND_RESTRICTION ->
                                 StatusChip(stringResource(R.string.chip_background_restricted)) {

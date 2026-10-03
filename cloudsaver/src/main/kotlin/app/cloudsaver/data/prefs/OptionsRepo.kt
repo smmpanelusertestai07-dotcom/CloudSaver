@@ -88,6 +88,15 @@ data class Options(
     val confirmFlowStartedAt: Long = 0,
     val lastConfirmCount: Int = -1,
     val lastRunAt: Long = 0,
+    /**
+     * When Android last started the background work at all, whether or not
+     * it then chose to wait. Separate from [lastRunAt] because a pass that
+     * waits on purpose - Battery Saver on, no charger in charging-only mode -
+     * is the app keeping its word, not the phone stopping it; told apart by
+     * nothing, two days of Battery Saver became "the phone keeps stopping
+     * CloudSaver".
+     */
+    val lastWakeAt: Long = 0,
     val lastRunNote: String = "",
     /**
      * Why Android ended the last run, when Android ended it.
@@ -211,6 +220,7 @@ class OptionsRepo(private val context: Context) {
         val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
         val LAST_CONFIRM_COUNT = intPreferencesKey("lastConfirmCount")
         val LAST_RUN_AT = longPreferencesKey("lastRunAt")
+        val LAST_WAKE_AT = longPreferencesKey("lastWakeAt")
         val LAST_RUN_NOTE = stringPreferencesKey("lastRunNote")
         val LAST_STOP_REASON = stringPreferencesKey("lastStopReason")
         val LAST_SNAPSHOT_DAY = stringPreferencesKey("lastSnapshotDay")
@@ -285,6 +295,7 @@ class OptionsRepo(private val context: Context) {
             confirmFlowStartedAt = p[K.CONFIRM_STARTED_AT] ?: 0,
             lastConfirmCount = p[K.LAST_CONFIRM_COUNT] ?: -1,
             lastRunAt = p[K.LAST_RUN_AT] ?: 0,
+            lastWakeAt = p[K.LAST_WAKE_AT] ?: 0,
             lastRunNote = p[K.LAST_RUN_NOTE] ?: "",
             lastStopReason = p[K.LAST_STOP_REASON] ?: "",
             lastSnapshotDay = p[K.LAST_SNAPSHOT_DAY] ?: "",
@@ -355,6 +366,22 @@ class OptionsRepo(private val context: Context) {
         write { it[key] = value }
     }
 
+    /**
+     * One album in or out, read and written in a single step.
+     *
+     * The pickers used to send the whole set, worked out from what the
+     * screen last showed. Two quick taps on a slow phone both started from
+     * the same set, so the second write put back the album the first had
+     * just taken out - which is how an album unticked in setup turned up
+     * ticked in Settings.
+     */
+    suspend fun setBucketIncluded(name: String, include: Boolean) {
+        write { p ->
+            val excluded = p[K.EXCLUDED_BUCKETS] ?: emptySet()
+            p[K.EXCLUDED_BUCKETS] = if (include) excluded - name else excluded + name
+        }
+    }
+
     /** Remembers copies Android would not let the app delete on its own. */
     suspend fun addCopiesNeedingConsent(ids: Collection<Long>) {
         if (ids.isEmpty()) return
@@ -393,8 +420,15 @@ class OptionsRepo(private val context: Context) {
     }
 
     /** Restores options from a snapshot map (import). Never touches files. */
-    suspend fun importMap(map: Map<String, String>) = withContext(NonCancellable) {
+    suspend fun importMap(
+        map: Map<String, String>,
+        onlyIfSetupUntouched: Boolean = false
+    ) = withContext(NonCancellable) {
         context.dataStore.edit { p ->
+            // Checked inside the same edit as the writes, so nothing the
+            // person chooses can land between the check and the import.
+            val setupStarted = (p[K.ONBOARDING_DONE] ?: false) || (p[K.ONBOARDING_STEP] ?: 0) != 0
+            if (onlyIfSetupUntouched && setupStarted) return@edit
             map["scope"]?.let { p[K.SCOPE] = it }
             map["excludedBuckets"]?.let { s ->
                 p[K.EXCLUDED_BUCKETS] = s.split('|').filter { it.isNotEmpty() }.toSet()

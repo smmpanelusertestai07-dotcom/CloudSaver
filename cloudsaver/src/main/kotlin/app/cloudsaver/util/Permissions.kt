@@ -64,7 +64,6 @@ object Permissions {
         else -> MediaAccess.NONE
     }
 
-
     fun mediaPermissionsToRequest(): Array<String> = if (Build.VERSION.SDK_INT >= 33) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
@@ -86,6 +85,10 @@ object Permissions {
             Manifest.permission.ACCESS_MEDIA_LOCATION
         )
     }
+
+    /** Whether copies may keep where each photo was taken (see [mediaPermissionsToRequest]). */
+    fun hasMediaLocation(context: Context): Boolean =
+        granted(context, Manifest.permission.ACCESS_MEDIA_LOCATION)
 
     fun hasNotifications(context: Context): Boolean {
         // Android 13 added a runtime permission, but the switch in system settings is older

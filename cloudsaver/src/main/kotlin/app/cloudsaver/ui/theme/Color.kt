@@ -4,7 +4,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-/**
+/*
  * CloudSaver palette: indigo primary (the brand), a cyan-blue secondary
  * and amber tertiary (attention). Full Material 3 role set so every component
  * gets correct contrast in both themes without per-widget alpha hacks.
@@ -21,6 +21,16 @@ import androidx.compose.ui.graphics.Color
 val OnBrand = Color(0xFFFFFFFF)
 val OnBrandMuted = Color(0xE6FFFFFF)
 val OnBrandFaint = Color(0xBFFFFFFF)
+
+/**
+ * Another app's tile, drawn while that app is not on the phone.
+ *
+ * Like the banner, a brand looks the same in both themes, so these do not
+ * come from the scheme. The brand colour itself travels with the app's entry
+ * in CloudApps; these are the two it is paired with.
+ */
+val OtherAppPlainTile = Color(0xFFFFFFFF)
+val OnOtherAppPlainTile = Color(0xFF1B1B1F)
 
 // Brand tones used by gradients and the logo.
 //

@@ -26,7 +26,13 @@ data class CloudApp(
     /** Why this app cannot work with CloudSaver (shown greyed out). */
     val unsupportedReasonRes: Int? = null,
     /** Typical free-plan GB for the calculator prefill - editable, never a fact. */
-    val prefillGb: Int? = null
+    val prefillGb: Int? = null,
+    /**
+     * The app's own brand colour (ARGB), behind its initial while the app is
+     * not on the phone. Null for apps whose icon is mostly white: they get a
+     * white tile with a border instead of a colour the brand never uses.
+     */
+    val brandColor: Long? = null
 )
 
 object CloudApps {
@@ -41,7 +47,8 @@ object CloudApps {
         CloudApp(
             "mega", "MEGA", listOf("mega.privacy.android.app"),
             e2ee = true, supported = true,
-            checklistRes = R.string.cl_mega, prefillGb = 20
+            checklistRes = R.string.cl_mega, prefillGb = 20,
+            brandColor = 0xFFD9272E
         ),
         CloudApp(
             "filen", "Filen", listOf("io.filen.app"),
@@ -51,12 +58,14 @@ object CloudApps {
         CloudApp(
             "proton", "Proton Drive", listOf("me.proton.android.drive"),
             e2ee = true, supported = true,
-            checklistRes = R.string.cl_proton, prefillGb = 5
+            checklistRes = R.string.cl_proton, prefillGb = 5,
+            brandColor = 0xFF6D4AFF
         ),
         CloudApp(
             "nextcloud", "Nextcloud", listOf("com.nextcloud.client"),
             e2ee = false, supported = true,
-            checklistRes = R.string.cl_nextcloud
+            checklistRes = R.string.cl_nextcloud,
+            brandColor = 0xFF0082C9
         ),
         CloudApp(
             "immich", "Immich", listOf("app.alextran.immich"),
@@ -66,7 +75,8 @@ object CloudApps {
         CloudApp(
             "onedrive", "OneDrive", listOf("com.microsoft.skydrive"),
             e2ee = false, supported = true,
-            checklistRes = R.string.cl_onedrive, prefillGb = 5
+            checklistRes = R.string.cl_onedrive, prefillGb = 5,
+            brandColor = 0xFF0078D4
         ),
         CloudApp(
             "other", "Other app", emptyList(),
@@ -81,7 +91,8 @@ object CloudApps {
         CloudApp(
             "dropbox", "Dropbox", listOf("com.dropbox.android"),
             e2ee = false, supported = false,
-            unsupportedReasonRes = R.string.cl_dropbox_no
+            unsupportedReasonRes = R.string.cl_dropbox_no,
+            brandColor = 0xFF0061FF
         )
     )
 
@@ -133,7 +144,7 @@ object CloudApps {
      * travelling inside a sideloaded file. Reading the installed app's icon
      * has none of those problems, is always the current one, and answers
      * "have I got this app?" by simply being there - null means not
-     * installed, and the row falls back to a neutral glyph.
+     * installed, and the row falls back to the app's initial on its colour.
      */
     fun iconFor(context: Context, app: CloudApp): Drawable? {
         val pkg = installedPackage(context, app) ?: return null
@@ -161,6 +172,7 @@ object CloudApps {
             context.startActivity(intent)
             true
         } catch (e: Exception) {
+            Errand.cancel()
             false
         }
     }

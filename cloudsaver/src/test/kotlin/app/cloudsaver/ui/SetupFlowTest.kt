@@ -114,13 +114,26 @@ class SetupFlowTest {
             0,
             Regex("""\bButton\(onClick""").findAll(usage).count()
         )
-        // Carrying on without it is an outlined button - a visible choice,
-        // not a text link - and once access is granted the step says so and
-        // offers only the way on.
-        assertTrue("and an outlined button to carry on", usage.contains("OutlinedButton("))
+        // Carrying on without it is Skip, as on every optional step - not an
+        // outlined "Done, next" on a step nobody has done. Once access is
+        // granted the step says so and offers only the way on.
+        assertFalse("one way to carry on, styled like every other step's", usage.contains("OutlinedButton("))
+        assertEquals("Skip only while there is something to skip", 1, Regex("""onSkip = """).findAll(usage).count())
         assertTrue("granted, the step says so", usage.contains("R.string.onb4_granted"))
         assertTrue("re-checked on return from the system page", usage.contains("Lifecycle.Event.ON_RESUME"))
-        assertFalse("Skip and Continue must not both mean the same thing", usage.contains("onSkip"))
+        // The battery step had "Done, next" and "Skip" side by side, doing
+        // exactly the same thing.
+        val battery = onb.substringAfter("Step.BATTERY ->").substringBefore("Step.USAGE ->")
+        assertFalse("the battery step has one way on", battery.contains("onSkip"))
+        val notify = onb.substringAfter("Step.NOTIFICATIONS ->").substringBefore("Step.BATTERY ->")
+        assertTrue(
+            "the button says Allow only when there is something to allow",
+            notify.contains("if (notifOn) R.string.onb_next else R.string.onb2_grant")
+        )
+        assertTrue(
+            "below Android 13 a blocked phone is sent to the switch, not past it",
+            notify.contains("else -> OemPages.openNotificationSettings(context)")
+        )
     }
 
     @Test
@@ -211,16 +224,36 @@ class SetupFlowTest {
         // Still re-armed every time the app leaves the foreground - except
         // for a trip the app itself sent the person on, which comes back
         // through within a bounded grace (Errand) and re-locks past it.
-        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else vm.unlocked.value = false"))
-        assertTrue(app.contains("if (Errand.returnedNeedsLock()) vm.unlocked.value = false"))
+        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else vm.relock()"))
+        assertTrue(app.contains("if (Errand.returnedNeedsLock()) vm.relock()"))
         val locked = src("ui/screens/LockedScreen.kt")
         // On RESUME, not on first composition: the screen composes while the
         // activity is only started, and a prompt asked for then can be
         // dropped by the system, leaving a button that looks like the app
         // forgot to ask.
         assertTrue("the prompt opens itself", locked.contains("Lifecycle.Event.ON_RESUME"))
-        assertTrue(locked.substringAfter("Lifecycle.Event.ON_RESUME").take(80).contains("onUnlock()"))
+        assertTrue(locked.substringAfter("Lifecycle.Event.ON_RESUME").take(80).contains("onOpened()"))
         assertFalse("not from a one-shot effect", locked.contains("LaunchedEffect(Unit) { onUnlock() }"))
+        // By itself once per locking. Every resume used to ask, and on
+        // Android 10 cancelling the PIN pad is itself a resume - a prompt
+        // that could only be escaped by being answered.
+        assertTrue(
+            "the automatic prompt is spent once per locking",
+            Regex("""if \(!vm\.lockAutoPrompted\) \{\s+vm\.lockAutoPrompted = true\s+unlockPrompt\(\)""").containsMatchIn(app)
+        )
+        val vm = src("ui/AppViewModel.kt")
+        assertTrue(
+            "and given back when the lock closes again",
+            Regex("""fun relock\(\) \{\s+unlocked\.value = false\s+lockAutoPrompted = false""").containsMatchIn(vm)
+        )
+        assertTrue("never two prompts stacked", app.contains("if (vm.lockPromptOpen) return@prompt"))
+        // The app turns with the phone, which stops and restarts the
+        // activity. That is not leaving the app, and must not lock it.
+        val stop = app.substringAfter("LifecycleEventEffect(Lifecycle.Event.ON_STOP) {").substringBefore("\n    }")
+        assertTrue(
+            "turning the phone must not lock the app",
+            stop.indexOf("isChangingConfigurations == true) return") in 0 until stop.indexOf("vm.relock()")
+        )
         assertTrue("and it shows the app's own mark", locked.contains("BrandMark(size = 72.dp)"))
     }
 
@@ -291,16 +324,28 @@ class SetupFlowTest {
     fun `every cloud app in the picker has a face, installed or not`() {
         // A row with an icon next to a row with nothing reads as broken,
         // not as "not installed". The one component draws the phone's own
-        // icon for an installed app, a lettered circle for one that is not,
+        // icon for an installed app, a lettered tile for one that is not,
         // and the plain cloud glyph for "no cloud app" - and both pickers
         // use it, so setup and Settings cannot drift apart.
         val icon = File("src/main/kotlin/app/cloudsaver/ui/components/CloudAppIcon.kt").readText()
         assertTrue(icon.contains("if (installed) CloudApps.iconFor(context, app) else null"))
         assertTrue(icon.contains("app.packages.isEmpty() -> Icon("))
-        assertTrue("a lettered avatar for the rest", icon.contains("app.label.firstOrNull()?.uppercaseChar()"))
+        assertTrue("a lettered tile for the rest", icon.contains("app.label.firstOrNull()?.uppercaseChar()"))
+        // The tile is the app's own colour: one grey circle for every app
+        // sat on a dialog of nearly the same grey in the light theme and
+        // vanished. A white brand gets a border instead of disappearing.
+        assertTrue("on the app's own colour", icon.contains(".background(brand ?: OtherAppPlainTile)"))
+        assertTrue("a white tile is outlined", icon.contains("it.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)"))
         for (screen in listOf("OnboardingScreen.kt", "OptionsScreen.kt")) {
             val text = File("src/main/kotlin/app/cloudsaver/ui/screens/$screen").readText()
             assertTrue("$screen must use the shared icon", text.contains("CloudAppIcon(app = app, installed = installed)"))
+            // Both lists invite leaving to install an app; both must notice
+            // it on the way back rather than show the answer from before.
+            assertTrue(
+                "$screen must ask again whether the app is installed on return",
+                Regex("""LifecycleEventEffect\(Lifecycle\.Event\.ON_RESUME\) \{\s+installed =""").containsMatchIn(text)
+            )
+            assertTrue("$screen picks with a radio row", text.contains("role = Role.RadioButton"))
         }
     }
 }

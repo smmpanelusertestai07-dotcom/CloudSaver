@@ -169,7 +169,7 @@
     <string name="state_unknown">Unverified (restored)</string>
     <string name="evidence_confirmed_exact">Confirmed - your cloud collected it</string>
     <string name="evidence_confirmed_paced">Confirmed - sent and accounted for</string>
-    <string name="evidence_verified">Counted in a day\'s upload total</string>
+    <string name="evidence_verified">Covered by how much your cloud app uploaded</string>
     <string name="evidence_aged">Assumed after 10 days</string>
     <string name="evidence_none">Not verified yet</string>
     <string name="detail_open">Open</string>
@@ -270,7 +270,7 @@
     <!-- free-up -->
     <string name="freeup_title">Backed-up originals</string>
     <string name="freeup_empty_title">Nothing to free up yet</string>
-    <string name="freeup_empty">Originals appear here once CloudSaver can prove their copies reached your cloud. That happens on its own as your cloud app uploads.</string>
+    <string name="freeup_empty">Originals appear here once CloudSaver can prove their copies reached your cloud, and a 30-day safety wait has passed since then. Both happen on their own as your cloud app uploads.</string>
 
     <!-- reclaim -->
     <string name="reclaim_target_label">Free a set amount</string>
@@ -364,6 +364,8 @@
     <string name="refuse_album">in an excluded album</string>
     <string name="refuse_favourite">a favourite</string>
     <string name="refuse_small">too small to bother</string>
+    <string name="freeup_handover_refused">\u201c%1$s\u201d can\u2019t be freed up yet: %2$s.</string>
+    <string name="freeup_handover_ready_on">It can be from %1$s, once the 30-day safety wait is over.</string>
 
     <!-- find space -->
     <string name="find_space_title">Find space</string>
@@ -372,7 +374,7 @@
     <string name="hub_could_free">You could free about %1$s.</string>
     <string name="hub_nothing">Nothing to free up yet</string>
     <string name="hub_checking">Checking your photos and videos\u2026</string>
-    <string name="hub_journey">Space appears here after an optimised copy of a photo is safely in your cloud. New photos and videos are picked up automatically.</string>
+    <string name="hub_journey">Space appears here 30 days after an optimised copy of a photo is safely in your cloud \u2014 the wait is there so a mistake can still be caught. New photos and videos are picked up automatically.</string>
     <plurals name="hub_next_optimise">
         <item quantity="one">%1$d file is waiting to be optimised</item>
         <item quantity="other">%1$d files are waiting to be optimised</item>
@@ -477,6 +479,10 @@
     <string name="opt_folders_hint">Choose which gallery albums are included.</string>
     <string name="opt_folders_title_count">Albums (%1$d)</string>
     <string name="folders_all">All albums</string>
+    <plurals name="folders_included">
+        <item quantity="one">%1$d of %2$d album</item>
+        <item quantity="other">%1$d of %2$d albums</item>
+    </plurals>
     <plurals name="folders_excluded">
         <item quantity="one">%1$d album excluded</item>
         <item quantity="other">%1$d albums excluded</item>
@@ -509,6 +515,7 @@
     <string name="cloud_other_note">For a cloud app not listed here. Set it to back up the CloudSaver folder yourself.</string>
     <string name="cloud_section_e2ee">Best fit (E2EE)</string>
     <string name="cloud_section_also">Also works</string>
+    <string name="cloud_section_unsupported">Can\u2019t be used with CloudSaver</string>
     <string name="opt_speed">Speed</string>
     <string name="opt_speed_hint">When the app is allowed to optimise.</string>
     <string name="speed_smart">Smart</string>
@@ -529,7 +536,7 @@
     <string name="wait_space_full">Waiting: the copies folder has reached the space you allowed - it clears as copies are collected or removed</string>
     <string name="wait_low_space">Waiting: the phone is below the free space you asked CloudSaver to keep</string>
     <string name="wait_volume_missing">Waiting: the storage location you chose is not available right now</string>
-    <string name="opt_daily_cap">Daily upload limit</string>
+    <string name="opt_daily_cap">Daily limit for new copies</string>
     <string name="opt_daily_cap_hint">How much CloudSaver adds to the upload folder each day.</string>
     <string name="unlimited">Unlimited</string>
     <string name="unlimited_warning">Note: unlimited can use much more data and battery.</string>
@@ -548,7 +555,7 @@
     <string name="preset_storage">Storage saver</string>
     <string name="preset_balanced">Balanced</string>
     <string name="preset_max">Max saver</string>
-    <string name="preset_storage_detail" formatted="false">1080p video, 16 MP photos. The largest space saving, with quality you would have to look for. Recommended.</string>
+    <string name="preset_storage_detail" formatted="false">1080p video, 16 MP photos. A big space saving, with quality you would have to look for. Recommended.</string>
     <string name="preset_balanced_detail">1440p video, 24 MP photos. Better quality, less saving.</string>
     <string name="preset_max_detail">720p video, 8 MP photos. The most saving, with quality loss you can see.</string>
     <string name="codec_h264_detail">Plays everywhere. Recommended.</string>
@@ -563,12 +570,12 @@
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="theme_dynamic">Use wallpaper colours instead (Android 12+)</string>
+    <string name="theme_dynamic">Use wallpaper colours instead</string>
     <string name="opt_lock">App lock</string>
     <string name="opt_lock_hint">Locks the whole app behind your screen lock \u2014 every tab, every screen, every time you come back to it.</string>
     <string name="opt_warnings">Alerts</string>
-    <string name="opt_verified30">Accept a day\'s upload total as proof</string>
-    <string name="opt_verified30_hint">Normally Free up space offers an original only when CloudSaver saw your cloud app collect that exact copy. With this on, a copy also counts as collected when the amount your cloud app uploaded that day covers it, after a month\u0027s wait. More to free up, on weaker proof.</string>
+    <string name="opt_verified30">Count upload amounts as proof</string>
+    <string name="opt_verified30_hint">Free up space normally offers an original only when CloudSaver saw your cloud app take that exact copy. Turn this on to also offer files whose group of copies was covered by how much your cloud app uploaded right after them. More to free up, on weaker proof. Needs Usage access; off is safer.</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_permissions">Permissions and battery</string>
     <string name="opt_permissions_hint">What the app is allowed to do on this phone, with its current state and where to change it.</string>
@@ -581,6 +588,10 @@
     <string name="perm_media_full">Allowed for all photos and videos</string>
     <string name="perm_media_partial">Only some photos are allowed \u2014 the rest are invisible to the app</string>
     <string name="perm_media_none">Not allowed \u2014 nothing can be optimised</string>
+    <string name="alerts_muted_until">Muted until %1$s, from an alert.</string>
+    <string name="alerts_unmute">Unmute</string>
+    <string name="perm_media_location_on">Allowed \u2014 copies keep where each photo was taken</string>
+    <string name="perm_media_location_off">Not allowed \u2014 everything works, but copies lose where each photo was taken</string>
     <string name="perm_notifications">Notifications</string>
     <string name="perm_on">Allowed</string>
     <string name="perm_notifications_off">Blocked \u2014 alerts cannot be shown</string>
@@ -588,15 +599,15 @@
     <string name="perm_usage_on">On \u2014 uploads can be confirmed by the amount your cloud app sends</string>
     <string name="perm_usage_off">Off \u2014 an upload is confirmed only when its copy disappears from the folder</string>
     <string name="perm_battery">Battery optimisation</string>
-    <string name="perm_battery_on">No restrictions</string>
-    <string name="perm_battery_off">Restricted \u2014 Android may delay background runs for hours and stop them on battery</string>
+    <string name="perm_battery_on">No restrictions \u2014 runs are not held back on battery. Optional; change it back here any time.</string>
+    <string name="perm_battery_off">Optimised \u2014 Android\u2019s default. CloudSaver still works; a run may wait until the phone is charging. Allow \u201cNo restrictions\u201d only if runs keep stalling.</string>
     <string name="perm_auto_launch">Auto-launch</string>
     <string name="perm_background">Background activity</string>
     <string name="perm_unknown">Android cannot report this one. Open the page and check the switch is on.</string>
     <string name="perm_change">Change</string>
     <string name="perm_open">Open</string>
     <string name="perm_allow">Allow</string>
-    <string name="perm_why">Battery optimisation, the Restricted choice, the permission reset and Battery Saver are all read from Android itself, so their states above are real. Restricted stops every background run outright; the permission reset takes the photos permission away from an app that is not opened for a few months, which is exactly what a set-and-forget app is; Battery Saver pauses runs until it is off or the phone is charging. Auto-launch and background activity are the phone maker\u2019s own switches. Android gives apps no way to read them, which is why they cannot say On or Off \u2014 and on Realme, Oppo, Xiaomi and Vivo phones, one of them being off is the usual reason work stops a day after setup. Two more of the maker\u2019s modes cannot be read either and do the same: Super power saving (or Ultra battery saver) ends every background app while it is on, and Realme\u2019s Sleep standby optimisation freezes apps overnight \u2014 both are under Settings › Battery. If the phone keeps stopping the work, CloudSaver says so in a notification at most once a week and three times in all, then leaves it to the chip on Home.</string>
+    <string name="perm_why">Battery optimisation, the Restricted choice, the permission reset and Battery Saver are all read from Android itself, so their states above are real. Restricted stops every background run outright; the permission reset takes the photos permission away from an app that is not opened for a few months, which is exactly what a set-and-forget app is; Battery Saver pauses runs until it is turned off, which most phones do by themselves while charging. Auto-launch and background activity are the phone maker\u2019s own switches. Android gives apps no way to read them, which is why they cannot say On or Off \u2014 and on Realme, Oppo, Xiaomi and Vivo phones, one of them being off is the usual reason work stops a day after setup. Two more of the maker\u2019s modes cannot be read either and do the same: Super power saving (or Ultra battery saver) ends every background app while it is on, and Realme\u2019s Sleep standby optimisation freezes apps overnight \u2014 both are under Settings › Battery. If the phone keeps stopping the work, CloudSaver says so in a notification at most once a week and three times in all, then leaves it to the chip on Home. Waiting on purpose \u2014 for Battery Saver, or for the charger in charging-only mode \u2014 never counts as being stopped.</string>
     <string name="perm_app_info">Open app info</string>
     <string name="perm_alerts_channel_off">Allowed, but the Alerts category is switched off \u2014 nothing can warn you</string>
     <string name="perm_background_restriction">Background restriction</string>
@@ -607,7 +618,7 @@
     <string name="perm_keep_permissions_armed">Off \u2014 Android will remove the photos permission if the app is not opened for a few months, and everything stops</string>
     <string name="perm_saver">Battery Saver (whole phone)</string>
     <string name="perm_saver_off">Off</string>
-    <string name="perm_saver_on">On \u2014 CloudSaver pauses until it is off or the phone is charging</string>
+    <string name="perm_saver_on">On \u2014 CloudSaver waits until it is turned off. Most phones switch it off by themselves while charging.</string>
     <string name="perm_saver_detail">Also under Settings › Battery: Super power saving ends every background app while it is on, and Sleep standby optimisation (Realme) freezes apps overnight. Android cannot report either.</string>
     <string name="perm_bucket">How often Android lets it run</string>
     <string name="perm_bucket_active">Freely \u2014 the app was used recently</string>
@@ -637,13 +648,13 @@
     <string name="perm_name_media_location">Location inside photos</string>
     <string name="perm_purpose_media_location">So a copy keeps the place a photo was taken. Nothing reads where you are now; refused, copies simply lose their place.</string>
     <string name="perm_name_notifications">Notifications</string>
-    <string name="perm_purpose_notifications">A quiet note while files are being optimised, and a rare alert when something needs you \u2014 once a day at most, and one tap mutes them for a week.</string>
+    <string name="perm_purpose_notifications">A quiet note while files are being optimised, and a rare alert when something needs you \u2014 once a day at most, less often each time it is left, and one tap mutes them for a week.</string>
     <string name="perm_name_foreground">Run while the screen is off</string>
     <string name="perm_purpose_foreground">So a run that started is allowed to finish rather than being cut off mid-file.</string>
     <string name="perm_name_foreground_type">What that run is for</string>
     <string name="perm_purpose_foreground_type">Android 14 asks apps to declare it: processing your media and syncing a folder. It grants nothing extra.</string>
     <string name="perm_name_battery">Ask to skip battery optimisation</string>
-    <string name="perm_purpose_battery">Only to show you Android\u2019s own one-tap question once, during setup. The answer is yours and is shown above.</string>
+    <string name="perm_purpose_battery">Only to show Android\u2019s own one-tap question when you choose to allow it, in setup or on this screen. The answer is yours and is shown above.</string>
     <string name="perm_name_usage">Usage access</string>
     <string name="perm_purpose_usage">To read how much data your cloud app sent, so an upload can be confirmed by the amount. Read-only, on the phone. Off, uploads are confirmed only when a copy disappears from the folder.</string>
     <string name="perm_name_biometric">App lock (the phone\u2019s own unlock)</string>
@@ -672,12 +683,12 @@
     <string name="never_other_apps_why">Android\u2019s own sandbox stops it, and so does this app. The cloud app is only ever asked whether it is installed and how much it uploaded.</string>
     <string name="chip_background_restricted">Background restricted by the phone</string>
     <string name="chip_keep_permissions">Permissions will be removed if unused</string>
-    <string name="power_background_restriction">Background: not restricted</string>
+    <string name="power_background_restriction">Background restriction</string>
     <string name="power_keep_permissions">Keep permissions when unused</string>
     <string name="warn_stalled_title">The phone keeps stopping CloudSaver</string>
     <string name="warn_stalled_text">Files have waited for days because the phone is not letting background runs happen. Open Permissions and battery to see which switch is off.</string>
     <string name="privacy_b7_title">What the phone\u2019s own settings do to it</string>
-    <string name="privacy_b7">Battery Saver pauses the work until it is off or the phone is charging. \"Restricted\" under the app\u2019s battery entry stops every background run. The unused-app permission reset takes the photos permission away after a few months without opening the app. Super power saving and, on Realme, Sleep standby optimisation end or freeze background apps and cannot be read by any app. Settings › Permissions and battery shows each one that Android can report, live, with the path to the rest.</string>
+    <string name="privacy_b7">Battery Saver pauses the work until it is turned off, which most phones do by themselves while charging. \"Restricted\" under the app\u2019s battery entry stops every background run. The unused-app permission reset takes the photos permission away after a few months without opening the app. Super power saving and, on Realme, Sleep standby optimisation end or freeze background apps and cannot be read by any app. Settings › Permissions and battery shows each one that Android can report, live, with the path to the rest.</string>
     <string name="alerts_need_permission">Alerts are on, but notifications are turned off for CloudSaver, so none can be shown.</string>
     <string name="alerts_allow">Allow notifications</string>
     <string name="alerts_open_settings">Open notification settings</string>
@@ -710,7 +721,7 @@
     <string name="transfer_export_ok">Backup saved</string>
     <string name="transfer_import_ok">Settings restored</string>
     <string name="transfer_failed">That is not a CloudSaver backup file, so nothing was changed. Pick the file you saved from Settings, Backup and restore \u2014 its name ends in .json or .csb.</string>
-    <string name="options_footer">Changing settings never deletes anything. Quality and format apply to new files only.</string>
+    <string name="options_footer">No setting ever touches your originals. Quality and format apply to new copies only, and lowering the space CloudSaver may use only clears its own copies sooner.</string>
 
     <!-- cloud calculator (13.C) -->
     <string name="calc_title">Cloud calculator</string>
@@ -742,8 +753,8 @@
     <string name="cl_immich">In Immich: backup album = CloudSaver only.</string>
     <string name="cl_onedrive">In OneDrive: back up the CloudSaver folder and no other. Note: not end-to-end encrypted - OneDrive can see your files.</string>
     <string name="cl_other">In your app: pick the CloudSaver folder yourself and back up only that folder.</string>
-    <string name="cl_gphotos_no">Not supported: the Camera folder cannot be excluded, so originals would upload too. Google Photos also has its own Storage saver.</string>
-    <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>
+    <string name="cl_gphotos_no">Its backup cannot leave out the Camera folder, so originals would upload too. Google Photos also has its own Storage saver.</string>
+    <string name="cl_dropbox_no">Its phone app backs up the camera roll only, never a folder you choose.</string>
 
     <!-- onboarding -->
     <string name="app_tagline">Save your cloud space \u2014 light copies, untouched originals.</string>
@@ -754,7 +765,7 @@
     <string name="onb_albums_none">Deselect all</string>
     <string name="onb_albums_changeable">You can change this any time in Settings.</string>
     <string name="onb_ready_title">Ready to start</string>
-    <string name="onb_ready_text">Nothing has been copied yet. Here is what will happen when you start.</string>
+    <string name="onb_ready_text">Nothing goes into your upload folder until you start. Here is what will happen then.</string>
     <string name="onb_ready_start">Start backing up</string>
     <string name="onb_ready_what">Backing up</string>
     <string name="onb_ready_no_albums">No albums are selected, so nothing would be backed up.</string>
@@ -774,7 +785,11 @@
         <item quantity="one">%1$d item</item>
         <item quantity="other">%1$d items</item>
     </plurals>
-    <string name="album_peek_hint">Tap to tick an album. Press and hold one to peek at its newest photo.</string>
+    <string name="album_peek_hint">Tap to tick an album. Press and hold one to see what is in it.</string>
+    <string name="album_peek_include">Include this album</string>
+    <string name="album_peek_exclude">Leave this album out</string>
+    <string name="album_peek_open">Open in gallery</string>
+    <string name="album_peek_empty">Nothing in this album can be shown here.</string>
     <plurals name="album_scroll_hint">
         <item quantity="one">Scroll to see all of the %1$d album</item>
         <item quantity="other">Scroll to see all %1$d albums</item>
@@ -782,6 +797,7 @@
     <string name="albums_sheet_done">Done</string>
     <string name="onb_start">Get started</string>
     <string name="onb_done_next">Done, next</string>
+    <string name="onb_next">Next</string>
     <string name="onb0_title">Welcome!</string>
     <string name="onb0_text">CloudSaver makes smaller copies of your photos and videos in Pictures/CloudSaver. Point your cloud app at that one folder - your originals stay exactly where they are.</string>
     <string name="onb0_import">Restore from a backup file</string>
@@ -790,10 +806,10 @@
     <string name="onb1_grant">Grant permission</string>
     <string name="onb1_appinfo">Not asking? Open app info</string>
     <string name="onb2_title">Notifications</string>
-    <string name="onb2_text">A quiet notification shows while CloudSaver is working. It still works if you decline.</string>
+    <string name="onb2_text">A quiet notification shows while CloudSaver is working, and a rare alert when something needs you \u2014 at most once a day, and less often if you leave it. Everything still works if you decline.</string>
     <string name="onb2_grant">Allow</string>
     <string name="onb3_title">Keep it running in the background</string>
-    <string name="onb3_text">Each row is one way this phone can stop background work. Android reports the first ones itself; the phone maker\u2019s own switches it cannot read, so those open the page for you to check. On Realme, Oppo, Xiaomi and Vivo the maker\u2019s switches are the usual reason work stops a day after setup.</string>
+    <string name="onb3_text">Each row is one way this phone can stop background work. Android reports the first ones itself; the phone maker\u2019s own switches it cannot read, so those open the page for you to check. On Realme, Oppo, Xiaomi and Vivo, auto-launch is the one that matters most: without it the phone stops CloudSaver a day or so after setup. Battery optimisation is optional.</string>
     <string name="onb3_later">You can change any of these later in Settings › Permissions and battery, where each one shows its current state.</string>
     <string name="onb4_title">Usage access (recommended)</string>
     <string name="onb4_text">Lets CloudSaver see how much the cloud app uploaded - used to verify uploads.</string>
@@ -812,13 +828,14 @@
     <string name="onb5_several">More than one cloud app is installed, so nothing was chosen for you. Pick the one you want to use.</string>
     <string name="onb5_check">Check the connection</string>
     <string name="cloud_use_different">Use a different app</string>
-    <string name="cloud_selected_mark">%1$s (in use)</string>
-    <string name="power_battery">Battery: no restrictions</string>
+    <string name="power_battery">Battery optimisation (optional)</string>
     <string name="power_auto_launch">Allow auto-launch</string>
     <string name="power_background">Allow background activity</string>
-    <string name="power_allowed">Allowed</string>
-    <string name="power_blocked">Blocked - background work will be killed</string>
-    <string name="power_check">Android cannot report this one. Please check it yourself.</string>
+    <string name="power_battery_on">No restrictions</string>
+    <string name="power_battery_off">Optimised \u2014 Android\u2019s default. It works; a run may wait for the charger.</string>
+    <string name="power_keep_on">Kept, however long the app goes unopened</string>
+    <string name="power_keep_off">Android may take them away after a few unused months</string>
+    <string name="power_check">Android cannot report this one \u2014 open it and make sure it is on.</string>
     <string name="power_open">Open</string>
     <string name="folder_pick_one">In your cloud app, back up only this folder:</string>
     <string name="folder_pick_two">In your cloud app, back up only these folders:</string>
@@ -857,6 +874,7 @@
     <string name="cloud_none_title">No cloud app found on this phone</string>
     <string name="cloud_none_body">CloudSaver will still optimise your photos and videos on its usual schedule, and the smaller copies will wait in the Pictures/CloudSaver folder. Nothing is uploaded until you install a cloud app and point it at that folder, and until something collects them the copies use the space you allowed and no original can be offered for removal. You can finish setup now and install a cloud app whenever you like.</string>
     <string name="onb_ready_cloud_none">None installed yet</string>
+    <string name="about_trademarks">Ente, MEGA, Filen, Proton Drive, Nextcloud, Immich, OneDrive, Google Photos and Dropbox belong to their owners and are named here only to say which apps work with CloudSaver. CloudSaver is independent, and is not made by or connected with any of them.</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_mission_title">Why CloudSaver exists</string>
     <string name="about_mission_body">End-to-end encrypted cloud apps keep your photos private, but they upload exactly what you hand them \u2014 almost none of them make a file smaller first. So a library of 4K video fills a paid plan quickly, and the only answer usually on offer is to buy more storage every year.\n\nCloudSaver is the step in between. It optimises your photos and videos on the phone itself, into one folder your cloud app already knows how to back up, so the same library reaches your cloud in a fraction of the space \u2014 a free or small plan goes a great deal further, and you keep the encrypted app you chose rather than the one with the best price.\n\nIt looks after the phone as well as the plan: it saves the heavy work for when the phone is charging, cool and idle, keeps the free space you asked it to keep, finds duplicate files and your largest ones, and never removes an original unless you confirm it yourself.</string>
@@ -1114,6 +1132,8 @@
     <string name="faq_a17">CloudSaver still works, and still runs on its usual schedule: it optimises your photos and videos and puts the smaller copies in the Pictures/CloudSaver folder. What it cannot do is finish the journey, because nothing is there to collect them. So the copies stay in that folder, they count against the space you allowed the app to use, and once that space is full the app stops making more and says so on Home. No original is ever offered for removal either, because removal needs proof that a copy reached your cloud and there is no cloud to reach. Install a cloud app whenever you like and point it at that one folder \u2014 the waiting copies are picked up on its next backup, and nothing has to be redone.</string>
     <string name="faq_q18">Why does the Files list look empty when Free up space still finds things?</string>
     <string name="faq_a18">They answer different questions. Files is the work list: it shows what CloudSaver is going to optimise and what it already has, so it only ever covers the albums you ticked. Free up space is a cleaning tool for the phone as a whole \u2014 duplicates and your largest files are found in every album, ticked or not, because a duplicate wastes space wherever it sits. If Files looks empty, the usual reason is that no album is ticked yet; the list says so, and Settings has the album picker.</string>
+    <string name="faq_q20">Why is nothing happening, or why did it stop?</string>
+    <string name="faq_a20">CloudSaver works in the background and waits for good moments on purpose, so a quiet hour is normal. When it waits longer, one of these is the reason, and Home says which. Battery Saver pauses it until Battery Saver is off (most phones switch it off while charging); Super power saving or Ultra battery saver stops every background app while it is on. Charging-only mode waits for the charger. On Realme, Oppo, Xiaomi and Vivo phones, auto-launch switched off is the usual reason it stops a day after setup \u2014 Settings \u203a Permissions and battery opens that page, with the path to it. Android also runs an app less often when it is rarely opened; opening CloudSaver now and then helps. Optimise now on Home runs it straight away, within the safety limits.</string>
     <string name="faq_q19">How do I know this copy of CloudSaver is the real one?</string>
     <string name="faq_a19">Every official build is published at github.com/smmpanelusertestai07-dotcom/CloudSaver, and each release prints two long codes: one for the file itself and one for the key it was signed with. The file\u2019s code changes with every build; the key\u2019s code is the same for every genuine CloudSaver there will ever be. Android checks that key for you: a build signed with a different one cannot install over this app at all. Installed on its own, after this one is removed, it would open and say so on Home, and it would keep deletion switched off. Installing from a file rather than a store is also why the phone shows a Play Protect warning the first time: \u201cMore details\u201d, then \u201cInstall anyway\u201d.</string>
     <string name="about_running_full">Android %1$s \u2014 everything works.</string>
@@ -1161,10 +1181,10 @@
     </plurals>
     <string name="trial_done">Trial finished</string>
     <string name="trial_activity">Trial run on a few photos</string>
-    <string name="trial_kept">Saved %1$s \u2014 %2$s smaller.</string>
+    <string name="trial_kept">Together the copies are %1$s smaller \u2014 %2$s less than the originals.</string>
     <string name="trial_kept_detail">Detail kept: %1$d%% of the original pixels.</string>
-    <string name="trial_next">The copies are kept inside the app for now, so no CloudSaver album appears in your gallery yet. The first real run adds them to your upload folder — that is when the album appears.</string>
-    <string name="trial_goes_away">This card stays until the first real run has optimised photos; after that, every before-and-after is in Files. The copies are kept inside the app and reused by that run.</string>
+    <string name="trial_next">These copies are kept inside the app for now, so no CloudSaver album appears in your gallery yet. When you start, they go into your upload folder with everything else.</string>
+    <string name="trial_goes_away">This card goes once they have moved there, and every before-and-after is then in Files. Rather not keep them? Remove them now: the photos go back in the queue and are optimised again later.</string>
     <string name="trial_discard">Remove trial copies</string>
     <string name="trial_tap_compare">Tap to compare before and after</string>
     <string name="quality_current_title">Your setting</string>
@@ -1223,7 +1243,7 @@
     <string name="onb0_import_hint">Only if you saved a CloudSaver backup before, on this phone or an old one. It brings back your settings and the record of what already reached your cloud, so nothing is optimised or sent twice. It never touches your photos. New here? Skip it and tap Get started.</string>
     <string name="trial_needs_access">CloudSaver can only see the photos you picked, so the trial cannot run. Choose \"Allow all\" in app permissions to use it.</string>
     <string name="trial_needs_albums">Tick at least one album first \u2014 the trial uses the albums you chose.</string>
-    <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. Nothing is uploaded, and your originals stay untouched.</string>
+    <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. The copies stay inside the app until you start, and your originals are never touched.</string>
     <string name="trial_choose_albums">Choose albums</string>
     <string name="trial_run">Try it on a few photos</string>
 

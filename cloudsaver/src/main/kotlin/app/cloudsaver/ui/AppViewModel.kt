@@ -59,10 +59,12 @@ import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.Locks
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
+import app.cloudsaver.util.TrialRecord
 import app.cloudsaver.util.Volumes
 import app.cloudsaver.work.Gates
 import app.cloudsaver.work.Scheduler
@@ -82,8 +84,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -467,15 +471,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val filesSort = MutableStateFlow(FilesSort.NEWEST)
 
     /**
-     * Search results, one query behind the keyboard rather than one per key.
-     *
-     * Typing "beach" used to start five database queries and throw four of
-     * them away, which on a large library is five scans of the items table
-     * while the finger is still moving. The debounce is short enough that a
-     * pause between words already shows results, and distinctUntilChanged
-     * stops a re-emitted identical term from re-querying at all.
-     */
-    /**
      * The states one chip stands for.
      *
      * "Backed up" is a story rather than one state: an item can be finished,
@@ -491,15 +486,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         else -> listOf(chip)
     }
 
-    /**
-     * The list the Files screen shows.
-     *
-     * Every part of the question - the typed name, the chip, the album scope
-     * and the sort - goes into the statement, because the statement is what
-     * carries the LIMIT. A NEW row in an un-ticked album is inventory, not
-     * work: no run will touch it, so it is excluded there too, while history
-     * stays whatever the ticks say now.
-     */
     /** Everything the Files list is currently asking for, as one value. */
     private data class FilesQuery(
         val typed: String,
@@ -508,6 +494,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val excluded: Set<String>
     )
 
+    /**
+     * The list the Files screen shows.
+     *
+     * Every part of the question - the typed name, the chip, the album scope
+     * and the sort - goes into the statement, because the statement is what
+     * carries the LIMIT. A NEW row in an un-ticked album is inventory, not
+     * work: no run will touch it, so it is excluded there too, while history
+     * stays whatever the ticks say now.
+     *
+     * Search runs one query behind the keyboard rather than one per key.
+     * Typing "beach" used to start five database queries and throw four of
+     * them away, which on a large library is five scans of the items table
+     * while the finger is still moving. The debounce is short enough that a
+     * pause between words already shows results, and distinctUntilChanged
+     * stops a re-emitted identical term from re-querying at all.
+     */
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     val items: StateFlow<List<ItemRow>?> = combine(
         search.debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }.distinctUntilChanged(),
@@ -607,6 +609,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val unlocked = MutableStateFlow(false)
 
     /**
+     * Shuts the lock again, and lets the next lock screen ask by itself once.
+     *
+     * The prompt comes up on its own when the app opens, the way every locked
+     * app behaves - but only once per locking. It used to come up on every
+     * resume, and on Android 10 the PIN pad is an activity of its own:
+     * cancelling it resumes this one, which asked again, which the person
+     * cancelled, which resumed this one. After the first prompt the button
+     * on the lock screen asks.
+     */
+    fun relock() {
+        unlocked.value = false
+        lockAutoPrompted = false
+    }
+
+    /** Whether this locking has already put up its prompt by itself. */
+    var lockAutoPrompted = false
+
+    /**
+     * A prompt is on screen and has not answered yet. A second authenticate
+     * call while one is showing stacks another sheet behind it.
+     */
+    var lockPromptOpen = false
+
+    /**
      * The password for the backup being saved right now.
      *
      * Here rather than in the composition because the file picker is another
@@ -704,7 +730,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // One rule, shared with the notification the engine posts,
                 // so the chip and the alert can never disagree (StallAlert).
                 backgroundWorkStopped = !o.pauseAll && StallAlert.stalled(
-                    System.currentTimeMillis(), o.lastRunAt, waiting,
+                    System.currentTimeMillis(), StallAlert.lastSeen(o.lastRunAt, o.lastWakeAt), waiting,
                     Stops.isRationed(o.lastStopReason)
                 )
             )
@@ -791,7 +817,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshVolumes() {
         viewModelScope.launch(Dispatchers.IO) {
-            val found = Volumes.list(ctx)
+            val found = Volumes.listForDisplay(ctx)
             volumes.value = found
             writableVolumes.value = found
                 .filter { it.isPrimary || Volumes.probeWritable(ctx, it.mediaVolumeName) }
@@ -1365,6 +1391,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAppLock(v: Boolean) = setBool(OptionsRepo.K.APP_LOCK, v)
     fun setWarningsNotif(v: Boolean) = setBool(OptionsRepo.K.WARNINGS_NOTIF, v)
     fun setFreeUpVerified30(v: Boolean) = setBool(OptionsRepo.K.FREE_UP_VERIFIED30, v)
+
+    /** Ends a "Mute for 7 days" early, from Settings, where it is shown. */
+    fun unmuteAlerts() {
+        viewModelScope.launch { repo.setLong(OptionsRepo.K.ALERTS_MUTED_UNTIL, 0L) }
+    }
     fun setReclaimUnderstood(v: Boolean) = setBool(OptionsRepo.K.RECLAIM_UNDERSTOOD, v)
 
     fun setPauseAll(v: Boolean) {
@@ -1395,6 +1426,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setStorageVolume(v: String) = setStr(OptionsRepo.K.STORAGE_VOLUME, v)
+
+    fun setAlbumIncluded(name: String, include: Boolean) {
+        viewModelScope.launch { repo.setBucketIncluded(name, include) }
+    }
 
     fun setExcludedBuckets(v: Set<String>) {
         viewModelScope.launch { repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, v) }
@@ -1709,11 +1744,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (files <= 0) null else DetailKept(percent.toInt().coerceIn(1, 100), files)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val testRun = MutableStateFlow<List<TestItem>?>(null)
+    /** The files the trial made copies of; on disk, so a restart keeps the card. */
+    private val trialIds = MutableStateFlow(TrialRecord.read(ctx))
+
+    /**
+     * The trial's results, for as long as its copies are still inside the app.
+     *
+     * Read from the rows themselves rather than remembered from the run: the
+     * first real run moves these copies to the upload folder, and from then
+     * on they are ordinary results in Files - the card has nothing left to
+     * show, so it goes. A tap always opens the row as it is now.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val testRun: StateFlow<List<TestItem>?> = trialIds
+        .flatMapLatest { ids ->
+            if (ids.isEmpty()) {
+                flowOf(null)
+            } else {
+                db.items().byIdsFlow(ids.toList()).map { rows ->
+                    rows.filter { it.state == ItemState.STAGED.name && it.stagePath != null }
+                        .sortedByDescending { it.captureAt }
+                        .map { row ->
+                            TestItem(
+                                name = row.displayName,
+                                before = row.sizeBytes,
+                                after = row.outputBytes ?: row.sizeBytes,
+                                keptPercent = QualityKept.measuredDetailKeptPercent(row.srcPixels, row.outPixels),
+                                row = row
+                            )
+                        }
+                        .ifEmpty { null }
+                }
+            }
+        }
+        .onEach { live ->
+            // A copy that has moved on is forgotten here for good, so that if
+            // a lost copy is ever made again later it is not mistaken for the
+            // trial's and brought back onto the card.
+            val kept = live?.mapNotNull { it.row?.id }?.toSet().orEmpty()
+            if (kept != trialIds.value) {
+                TrialRecord.write(ctx, kept)
+                trialIds.value = kept
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val testRunning = MutableStateFlow(false)
 
     fun startTestRun() {
-        if (testRunning.value) return
+        // One trial at a time: a second run would pick three more photos and
+        // leave the first three copies with nothing that could remove them.
+        if (testRunning.value || trialIds.value.isNotEmpty()) return
         if (mediaAccess.value != Permissions.MediaAccess.FULL) return
         testRunning.value = true
         viewModelScope.launch(Dispatchers.Default) {
@@ -1725,28 +1805,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // scan above just inventoried the whole phone, so the pick
                 // must not read from beyond the ticked albums.
                 val picked = db.items().newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)
-                val results = mutableListOf<TestItem>()
-                for (row in picked) {
-                    if (stager.stageOne(row, o)) {
-                        val updated = db.items().byId(row.id)
-                        results += TestItem(
-                            name = row.displayName,
-                            before = row.sizeBytes,
-                            after = updated?.outputBytes ?: row.sizeBytes,
-                            keptPercent = updated?.let {
-                                QualityKept.measuredDetailKeptPercent(it.srcPixels, it.outPixels)
-                            },
-                            row = updated ?: row
-                        )
-                    }
-                }
-                testRun.value = results
-                if (results.isNotEmpty()) {
+                val staged = picked.filter { stager.stageOne(it, o) }
+                val ids = staged.map { it.id }.toSet()
+                TrialRecord.write(ctx, ids)
+                trialIds.value = ids
+                if (staged.isNotEmpty()) {
+                    val rows = db.items().byIds(ids.toList())
                     activityLog.record(
                         ActivityLog.Kind.OPTIMISED,
                         detail = ctx.getString(R.string.trial_activity),
-                        count = results.size,
-                        bytes = results.sumOf { (it.before - it.after).coerceAtLeast(0) }
+                        count = rows.size,
+                        bytes = rows.sumOf { (it.sizeBytes - (it.outputBytes ?: it.sizeBytes)).coerceAtLeast(0) }
                     )
                 }
             } finally {
@@ -1762,37 +1831,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * rather than remaking them - so keeping them costs nothing but a little
      * space and is the default. This is for the person who would rather not
      * keep them at all. Only a row that is still exactly the trial's staged
-     * copy is touched: one a real run has released since is that run's now.
+     * copy is touched, and under the release lock, so a run publishing it at
+     * this moment cannot have the file taken from under it. Everything the
+     * staging wrote goes, the pixel counts included - left behind they kept
+     * counting in "detail kept" for copies that no longer exist.
      */
     fun discardTrial() {
-        val items = testRun.value ?: return
+        val ids = trialIds.value
+        if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            for (item in items) {
-                val id = item.row?.id ?: continue
-                val current = db.items().byId(id) ?: continue
-                val path = current.stagePath
-                if (current.state != ItemState.STAGED.name || path == null) continue
-                runCatching { File(path).delete() }
-                db.items().update(
-                    current.copy(
-                        state = ItemState.NEW.name,
-                        stagePath = null,
-                        outputName = null,
-                        outputBytes = null,
-                        outputSha256 = null,
-                        updatedAt = now
+            Locks.release.withLock {
+                val now = System.currentTimeMillis()
+                for (current in db.items().byIds(ids.toList())) {
+                    val path = current.stagePath
+                    if (current.state != ItemState.STAGED.name || path == null) continue
+                    runCatching { File(path).delete() }
+                    db.items().update(
+                        current.copy(
+                            state = ItemState.NEW.name,
+                            stagePath = null,
+                            outputName = null,
+                            outputBytes = null,
+                            outputSha256 = null,
+                            outputFolder = null,
+                            srcPixels = 0,
+                            outPixels = 0,
+                            presetUsed = null,
+                            codecUsed = null,
+                            predictedBytes = 0,
+                            lastError = null,
+                            updatedAt = now
+                        )
                     )
-                )
+                }
             }
-            testRun.value = null
+            TrialRecord.write(ctx, emptySet())
+            trialIds.value = emptySet()
         }
     }
-
-    // ---- Free-up originals tool --------------------------------------------
-
-
-
 
     /**
      * Opens an item in whatever viewer the phone uses for it.
@@ -1826,8 +1902,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val chooser = Intent.createChooser(view, null).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            runCatching { ctx.startActivity(chooser) }.isSuccess
+            runCatching { ctx.startActivity(chooser) }.isSuccess.also { if (!it) Errand.cancel() }
         } catch (e: Exception) {
+            Errand.cancel()
             false
         }
     }
