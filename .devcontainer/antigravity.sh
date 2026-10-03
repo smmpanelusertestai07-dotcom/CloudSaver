@@ -12,6 +12,20 @@ set -uo pipefail
 
 AGY="$HOME/.local/bin/agy"
 
+# The image's systemctl is a stub that prints a note and exits 0, so agy takes
+# it for a working systemd and waits for a service that never starts. One that
+# fails sends agy to its fallback, a plain background process. Terminals get it
+# too, so a hand-typed agy remote-control start works the same way.
+NOSYSD="$HOME/.nosysd"
+mkdir -p "$NOSYSD"
+printf '#!/bin/sh\nexit 1\n' > "$NOSYSD/systemctl"
+chmod +x "$NOSYSD/systemctl"
+export PATH="$NOSYSD:$PATH"
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  # shellcheck disable=SC2016 # expands when the shell starts, not now
+  [ -f "$rc" ] && ! grep -q '/.nosysd:' "$rc" && echo 'export PATH="$HOME/.nosysd:$PATH"' >> "$rc"
+done
+
 case "${1:-}" in
 install)
   [ -x "$AGY" ] || curl -fsSL https://antigravity.google/cli/install.sh | bash
