@@ -30,7 +30,6 @@
     <string name="status_no_albums">No albums are ticked, so nothing is being optimised yet.</string>
     <string name="files_no_albums_title">No albums are ticked</string>
     <string name="files_no_albums_body">This list shows the files CloudSaver works on, and right now no album has been handed to it. Tick an album to fill it.</string>
-    <string name="files_choose_albums">Choose albums</string>
     <string name="chip_paused">Paused</string>
     <string name="chip_battery">Battery restricted</string>
     <string name="chip_stopped">The system stopped background work</string>
@@ -444,10 +443,6 @@
     </plurals>
 
     <!-- prepare for uninstall -->
-    <plurals name="uninstall_move_done">
-        <item quantity="one">Copied %1$d file.</item>
-        <item quantity="other">Copied %1$d files.</item>
-    </plurals>
 
     <!-- lock -->
     <string name="lock_title">CloudSaver is locked</string>
@@ -487,9 +482,6 @@
         <item quantity="other">%1$d albums excluded</item>
     </plurals>
     <string name="folders_auto_excluded">Excluded automatically</string>
-    <string name="folders_reason_ours">CloudSaver\&apos;s own upload folder</string>
-    <string name="folders_reason_hidden">Hidden folder</string>
-    <string name="folders_reason_compressed">Old optimised copies (excluded)</string>
     <string name="folders_loading">Loading albums…</string>
     <!-- Shown once the gallery really has been read and there was
          nothing in it. Distinct from folders_loading, which is a wait:

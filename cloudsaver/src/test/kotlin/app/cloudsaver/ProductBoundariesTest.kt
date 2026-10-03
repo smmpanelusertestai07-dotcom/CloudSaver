@@ -474,7 +474,7 @@ class ProductBoundariesTest {
         // another pass has just released - back to NEW, staged file forgotten -
         // and the cloud receives it a second time.
         val engine = File("src/main/kotlin/app/cloudsaver/engine/MaintainEngine.kt").readText()
-        val entries = listOf("run()", "confirmPass()", "snapshotNow()")
+        val entries = listOf("run()", "confirmPass()")
         val ungated = entries.filterNot { entry ->
             Regex(
                 """suspend fun ${Regex.escape(entry.dropLast(2))}\([^)]*\)[^\n]*""" +

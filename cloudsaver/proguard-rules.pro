@@ -9,8 +9,5 @@
 }
 
 # Snapshot codec reads/writes org.json (framework classes, always present).
--dontwarn org.json.**
 
 # Media3 uses reflection for some codec paths.
--dontwarn org.checkerframework.**
--dontwarn com.google.errorprone.annotations.**

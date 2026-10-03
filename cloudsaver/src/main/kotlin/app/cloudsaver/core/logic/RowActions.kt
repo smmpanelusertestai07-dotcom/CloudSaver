@@ -34,11 +34,7 @@ object RowActions {
         ALLOW_AGAIN,
 
         /** Delete the original, through the one reclaim path. */
-        REMOVE_FROM_PHONE,
-
-        /** Duplicates only. */
-        REMOVE_EXTRA,
-        KEEP_THIS_INSTEAD
+        REMOVE_FROM_PHONE
     }
 
     /** A row as the rule needs to see it, whatever table it came from. */

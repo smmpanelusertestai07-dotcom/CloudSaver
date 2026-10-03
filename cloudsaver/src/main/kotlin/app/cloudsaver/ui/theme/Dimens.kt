@@ -20,17 +20,10 @@ object Dimens {
     /** Between one group of cards and the next. */
     val GroupGap = 24.dp
 
-    /** Inside a card, edge to content. */
-    val CardPadding = 16.dp
-
     /**
-     * The floor for a list row, and separately for anything tappable.
-     *
-     * They differ on purpose: a row may be taller than the minimum and often
-     * is, but nothing interactive may be smaller than the touch target, which
-     * is a physical constraint about fingers rather than a visual one.
+     * The floor for anything tappable: a physical constraint about fingers,
+     * not a visual one, so nothing interactive may be smaller.
      */
-    val RowMin = 56.dp
     val TouchTarget = 48.dp
 
     /** Corner radii: cards, and the smaller controls inside them. */

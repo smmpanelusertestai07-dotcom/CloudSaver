@@ -22,8 +22,7 @@ object Permissions {
      * the calculator and the queue all reported a gallery of nine photos as
      * fact. A grant for photos but not videos - which Android 13 and later
      * ask for separately - hides just as much and counts as PARTIAL too.
-     * Anything that scans, counts or projects must ask for this level;
-     * [hasMediaRead] stays only for "can we read anything at all".
+     * Anything that scans, counts or projects must ask for this level.
      */
     enum class MediaAccess { FULL, PARTIAL, NONE }
 
@@ -65,9 +64,6 @@ object Permissions {
         else -> MediaAccess.NONE
     }
 
-    /** Can the app read any media at all - full or the user-selected few. */
-    fun hasMediaRead(context: Context): Boolean =
-        mediaAccess(context) != MediaAccess.NONE
 
     fun mediaPermissionsToRequest(): Array<String> = if (Build.VERSION.SDK_INT >= 33) {
         arrayOf(

@@ -23,18 +23,15 @@ import java.io.File
  */
 class ReattachEngine(private val context: Context) {
 
-    data class Result(val adopted: Int, val scanned: Int)
-
-    suspend fun run(): Result {
+    suspend fun run() {
         val db = AppDb.get(context)
         val repo = OptionsRepo.get(context)
-        if (repo.current().copiesReattached) return Result(0, 0)
+        if (repo.current().copiesReattached) return
 
         // A failed query looks identical to an empty folder, so a null answer
         // is left alone rather than recorded as "nothing to adopt".
-        val entries = OutputInventory(context).query() ?: return Result(0, 0)
+        val entries = OutputInventory(context).query() ?: return
 
-        var adopted = 0
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
             val row = db.items().byFingerprint(fp) ?: continue
@@ -56,10 +53,8 @@ class ReattachEngine(private val context: Context) {
                     releasedAt = row.releasedAt ?: System.currentTimeMillis()
                 )
             )
-            adopted++
         }
 
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
-        return Result(adopted, entries.size)
     }
 }

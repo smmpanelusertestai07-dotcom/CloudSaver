@@ -35,7 +35,6 @@ object MediaProfile {
         /** Mean absolute percentage error of recent predictions. */
         val errorPercent: Double = 0.0
     ) {
-        val meanBytes: Long get() = if (count > 0) totalBytes / count else 0L
 
         /**
          * How much smaller this phone's files really came out, or null when

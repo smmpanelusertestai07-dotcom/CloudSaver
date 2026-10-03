@@ -9,7 +9,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.R
@@ -18,7 +17,6 @@ import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeviceDefaults
-import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.GoneReason
@@ -116,8 +114,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          */
         const val FILES_PAGE = 500
 
-        /** Nothing run for this long, with work waiting, means the OS killed us. */
-        const val BACKGROUND_STALL_MS = StallAlert.STALL_MS
     }
 
     private val ctx get() = getApplication<Application>()
@@ -293,7 +289,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val videoCount: Int = 0
     ) {
         val totalBytes: Long get() = photoBytes + videoBytes
-        val totalCount: Int get() = photoCount + videoCount
     }
 
     val savings: StateFlow<Savings> = combine(
@@ -819,10 +814,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     val calcSource = MutableStateFlow<CapacityMath.Source?>(null)
 
-    fun setCalcSource(source: CapacityMath.Source?) {
-        calcSource.value = source
-        refreshCalculator()
-    }
 
     fun refreshCalculator() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -884,13 +875,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Rebuild on demand, for the screens that must not show a stale figure. */
-    fun rebuildProfile() {
-        viewModelScope.launch(Dispatchers.IO) {
-            ProfileBuilder(ctx).rebuild(repo.current())
-            profile.value = ProfileBuilder(ctx).current(repo.current())
-        }
-    }
 
     /**
      * What finishing the queue would save.
@@ -1083,34 +1067,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return if (KeptCopies.belongsTo(name, row.displayName, row.fingerprint)) uri else null
     }
 
-    /**
-     * Copies the light copies into a folder the user picked, for anyone who
-     * wants them outside any app-created location entirely.
-     */
-    fun copyKeptCopiesTo(treeUri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val tree = DocumentFile.fromTreeUri(ctx, treeUri)
-            if (tree == null) {
-                transferMessage.value = ctx.getString(R.string.transfer_failed)
-                return@launch
-            }
-            var copied = 0
-            for (row in db.items().keptCopies()) {
-                val source = keptCopyUri(row) ?: continue
-                val name = row.outputName ?: row.displayName
-                val target = tree.createFile(row.mimeType, name) ?: continue
-                val ok = runCatching {
-                    ctx.contentResolver.openInputStream(source)?.use { input ->
-                        ctx.contentResolver.openOutputStream(target.uri)?.use { output ->
-                            input.copyTo(output, 128 * 1024)
-                        } ?: error("no output")
-                    } ?: error("no input")
-                }.isSuccess
-                if (ok) copied++ else target.delete()
-            }
-            transferMessage.value = ctx.resources.getQuantityString(R.plurals.uninstall_move_done, copied, copied)
-        }
-    }
 
     // ---- device-aware recommendations (F4) ----------------------------------
 
@@ -1408,24 +1364,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setMaxExtra(v: Int) = setInt(OptionsRepo.K.MAX_EXTRA_MB, v)
     fun setAppLock(v: Boolean) = setBool(OptionsRepo.K.APP_LOCK, v)
     fun setWarningsNotif(v: Boolean) = setBool(OptionsRepo.K.WARNINGS_NOTIF, v)
-    fun setShowFreeUp(v: Boolean) = setBool(OptionsRepo.K.SHOW_FREE_UP, v)
     fun setFreeUpVerified30(v: Boolean) = setBool(OptionsRepo.K.FREE_UP_VERIFIED30, v)
-    fun setKeptInPlace(v: Boolean) = setBool(OptionsRepo.K.KEPT_IN_PLACE, v)
     fun setReclaimUnderstood(v: Boolean) = setBool(OptionsRepo.K.RECLAIM_UNDERSTOOD, v)
-    fun setReclaimReminderGb(v: Int) = setInt(OptionsRepo.K.RECLAIM_REMINDER_GB, v)
-    fun setReprocessUnknown(v: Boolean) {
-        setBool(OptionsRepo.K.REPROCESS_UNKNOWN, v)
-        if (v) {
-            viewModelScope.launch(Dispatchers.Default) {
-                val now = System.currentTimeMillis()
-                for (row in db.items().byState(ItemState.UNKNOWN.name)) {
-                    db.items().update(
-                        row.copy(state = ItemState.NEW.name, evidence = Evidence.NONE.name, updatedAt = now)
-                    )
-                }
-            }
-        }
-    }
 
     fun setPauseAll(v: Boolean) {
         setBool(OptionsRepo.K.PAUSE_ALL, v)
@@ -1723,15 +1663,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun restartOnboarding() {
-        viewModelScope.launch {
-            repo.setBool(OptionsRepo.K.ONBOARDING_DONE, false)
-            repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
-            // Setup is unfinished again, so nothing should be scheduled until
-            // it is finished again.
-            Scheduler.cancelAll(ctx)
-        }
-    }
 
     // ---- test run (onboarding step 6) ---------------------------------------
 
@@ -1860,33 +1791,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Free-up originals tool --------------------------------------------
 
-    val freeUpItems = MutableStateFlow<List<ItemRow>>(emptyList())
 
-    fun loadFreeUp() {
-        viewModelScope.launch(Dispatchers.Default) {
-            val o = repo.current()
-            val settled = System.currentTimeMillis() -
-                EvidenceRules.RECLAIM_MIN_DAYS * 86_400_000L
-            // Three grades, three different waiting periods. Seeing the cloud
-            // take a copy is an observation and needs no delay; a byte count
-            // that merely matched, and a batch total that covered the day, are
-            // inferences, so those settle for a month first.
-            val confirmed = db.items().freeableConfirmed()
-            val paced = db.items().freeablePaced(settled)
-            val verified = if (o.freeUpAllowVerified30) {
-                db.items().freeableVerified(settled)
-            } else {
-                emptyList()
-            }
-            freeUpItems.value = (confirmed + paced + verified)
-                .filter { it.state != ItemState.FREED.name && it.contentUri != null }
-                .distinctBy { it.id }
-                .sortedByDescending { it.sizeBytes }
-        }
-    }
 
-    fun urisFor(rows: List<ItemRow>): List<Uri> =
-        rows.mapNotNull { it.contentUri?.let(Uri::parse) }
 
     /**
      * Opens an item in whatever viewer the phone uses for it.
@@ -1933,28 +1839,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun onFreedConfirmed(rows: List<ItemRow>) {
-        if (rows.isEmpty()) return
-        viewModelScope.launch(Dispatchers.Default) {
-            val now = System.currentTimeMillis()
-            for (row in rows) {
-                db.items().update(
-                    row.copy(state = ItemState.FREED.name, originalMissing = true, updatedAt = now)
-                )
-            }
-            activityLog.record(
-                ActivityLog.Kind.RECLAIMED,
-                count = rows.size,
-                bytes = rows.sumOf { it.sizeBytes },
-                filterState = ItemState.FREED.name
-            )
-            loadFreeUp()
-            // Snapshot right away rather than waiting for the daily pass: the
-            // originals this just recorded as freed no longer exist, so this
-            // state cannot be rebuilt by rescanning.
-            runCatching { MaintainEngine(ctx).snapshotNow() }
-        }
-    }
 
     // ---- delete flows -------------------------------------------------------
     // API 30+: one system batch dialog (MediaStore.createDeleteRequest).
@@ -2094,12 +1978,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { callback?.invoke(deleted) }
     }
 
-    /** Marks the FreeUp rows whose originals were actually deleted as FREED. */
-    fun onFreedByUris(deleted: List<Uri>) {
-        if (deleted.isEmpty()) return
-        val set = deleted.map { it.toString() }.toHashSet()
-        onFreedConfirmed(freeUpItems.value.filter { it.contentUri in set })
-    }
 
     // ---- old-install cleanup ------------------------------------------------
 

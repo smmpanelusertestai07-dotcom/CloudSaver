@@ -879,21 +879,7 @@ class MaintainEngine(private val context: Context) {
         }
     }
 
-    /**
-     * Snapshot immediately, outside the daily rhythm. Called after Free-up,
-     * where the state just changed in a way that cannot be reconstructed:
-     * the originals it recorded are gone.
-     */
-    suspend fun snapshotNow() = Locks.maintain.withLock { snapshotNowLocked() }
 
-    private suspend fun snapshotNowLocked() {
-        if (snapshots.writeSafetySnapshot()) {
-            repo.setString(
-                OptionsRepo.K.LAST_SNAPSHOT_DAY,
-                Formats.dayKey(System.currentTimeMillis())
-            )
-        }
-    }
 
     // ---- helpers -----------------------------------------------------------------
 

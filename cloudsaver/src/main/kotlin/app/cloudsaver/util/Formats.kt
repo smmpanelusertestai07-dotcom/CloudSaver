@@ -42,8 +42,6 @@ object Formats {
         }
     }
 
-    /** Always GB, two decimals - for the calculator, where units must match. */
-    fun gb(value: Double): String = String.format(Locale.US, "%.2f GB", value)
 
     /** Counts with thousands separators, in the phone's locale. */
     fun count(n: Int): String = NumberFormat.getIntegerInstance().format(n)
@@ -137,6 +135,4 @@ object Formats {
     fun yearKey(ms: Long): String =
         SimpleDateFormat("yyyy", Locale.getDefault()).format(Date(ms))
 
-    fun localDate(ms: Long): LocalDate =
-        Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
 }

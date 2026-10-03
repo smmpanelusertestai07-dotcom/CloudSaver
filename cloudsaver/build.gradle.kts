@@ -20,7 +20,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "10.1.0"
+        versionName = "10.1.1"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }
@@ -101,10 +101,8 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.documentfile)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.datastore.preferences)
@@ -112,7 +110,6 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.media3.transformer)
     implementation(libs.media3.effect)
-    implementation(libs.media3.muxer)
     implementation(libs.media3.common)
 
     testImplementation(libs.junit)

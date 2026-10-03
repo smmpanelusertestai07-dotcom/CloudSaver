@@ -323,8 +323,6 @@ class ReclaimViewModel(
 
     fun selectedEntries(): List<Entry> = visible().filter { it.id in selected.value }
 
-    fun savedBytesForMode(m: ReclaimRules.Mode = mode.value): Long =
-        ReclaimRules.savedBytes(selectedEntries().map { it.candidate }, m)
 
     fun needsSecondConfirmation(permanent: Boolean): Boolean =
         ReclaimRules.needsSecondConfirmation(

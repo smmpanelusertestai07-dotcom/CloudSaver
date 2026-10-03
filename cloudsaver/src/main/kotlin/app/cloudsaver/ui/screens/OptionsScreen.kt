@@ -1482,8 +1482,7 @@ private fun SwitchCard(
     onChange: (Boolean) -> Unit
 ) {
     // Once the text is large enough, the switch goes under the words instead
-    // of beside them - the same threshold, and the same arrangement, that
-    // SettingRow uses, so a screen of settings still reads as one screen.
+    // of beside them.
     //
     // A Switch is a fixed 52 dp whatever the reader's text size, and the icon
     // and its gap take another 38. On a 320 dp phone at 200% that leaves the

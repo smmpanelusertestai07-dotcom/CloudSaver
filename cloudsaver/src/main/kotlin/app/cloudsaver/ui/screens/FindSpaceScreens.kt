@@ -810,7 +810,7 @@ private fun BiggestRow(
     }
     // The same rule Files obeys, so "never optimise" cannot appear here on a
     // file that has already been optimised while Files correctly hides it.
-    val actions = RowActions.forItem(row.toActionRow()).mapNotNull { action ->
+    val actions = RowActions.forItem(row.toActionRow()).map { action ->
         when (action) {
             RowActions.Action.OPEN -> openLabel to open
             RowActions.Action.OPTIMISE_FIRST -> optimiseLabel to onOptimise
@@ -818,7 +818,6 @@ private fun BiggestRow(
             RowActions.Action.NEVER_OPTIMISE -> neverLabel to onNever
             RowActions.Action.ALLOW_AGAIN -> allowLabel to onAllowAgain
             RowActions.Action.REMOVE_FROM_PHONE -> removeLabel to onRemove
-            else -> null
         }
     }
     FileRow(

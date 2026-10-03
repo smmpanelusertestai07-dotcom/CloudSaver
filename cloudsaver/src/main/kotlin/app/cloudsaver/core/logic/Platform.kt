@@ -21,11 +21,7 @@ object Platform {
     /** Below this there is no media trash, so removal cannot be undone. */
     const val TRASH_SDK = 30
 
-    /** Wallpaper-based colours arrived here. */
-    const val DYNAMIC_COLOUR_SDK = 31
 
-    /** Runtime notification permission, and themed icons. */
-    const val NOTIFICATION_PERMISSION_SDK = 33
 
     /** How completely the app works on a given version. */
     enum class Support {

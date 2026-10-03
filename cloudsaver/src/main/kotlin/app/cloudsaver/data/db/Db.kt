@@ -605,13 +605,6 @@ interface ItemDao {
     )
     suspend fun predictionSamples(video: Boolean): List<PredictionSample>
 
-    /** Items added per month over the last half year, for the growth figure. */
-    @Query(
-        "SELECT strftime('%Y-%m', dateAdded, 'unixepoch') AS state, " +
-            "COUNT(*) AS cnt FROM items WHERE dateAdded > :sinceSeconds " +
-            "GROUP BY state ORDER BY state DESC"
-    )
-    suspend fun monthlyCounts(sinceSeconds: Long): List<StateCount>
 
     @Query(
         "SELECT COALESCE(SUM(sizeBytes), 0) FROM items WHERE dateAdded > :sinceSeconds"
@@ -711,36 +704,8 @@ interface ItemDao {
         limit: Int
     ): Flow<List<ItemRow>>
 
-    /**
-     * Originals whose copy the cloud itself collected. The copy vanished from
-     * the upload folder while the cloud app was transmitting its bytes, which
-     * is as direct as the evidence gets, so no waiting period applies.
-     *
-     * 'CONFIRMED' is the name older rows used for exactly this finding.
-     */
-    @Query(
-        "SELECT * FROM items WHERE evidence IN ('CONFIRMED_EXACT', 'CONFIRMED') " +
-            "AND originalMissing = 0 AND state IN ('RELEASED', 'GONE', 'DONE')"
-    )
-    suspend fun freeableConfirmed(): List<ItemRow>
 
-    /**
-     * Originals whose copy went out alone and matched the bytes sent. That is
-     * an inference rather than an observation, so it has to settle first.
-     */
-    @Query(
-        "SELECT * FROM items WHERE evidence = 'CONFIRMED_PACED' AND originalMissing = 0 " +
-            "AND state IN ('RELEASED', 'GONE', 'DONE') " +
-            "AND releasedAt IS NOT NULL AND releasedAt <= :maxReleasedAt"
-    )
-    suspend fun freeablePaced(maxReleasedAt: Long): List<ItemRow>
 
-    @Query(
-        "SELECT * FROM items WHERE evidence = 'VERIFIED' AND originalMissing = 0 " +
-            "AND state IN ('RELEASED', 'GONE', 'DONE') " +
-            "AND releasedAt IS NOT NULL AND releasedAt <= :maxReleasedAt"
-    )
-    suspend fun freeableVerified(maxReleasedAt: Long): List<ItemRow>
 
     @Query("SELECT * FROM items")
     suspend fun all(): List<ItemRow>
@@ -835,8 +800,6 @@ interface BatchDao {
     @Query("SELECT COALESCE(SUM(totalBytes), 0) FROM batches WHERE releasedAt >= :fromMs")
     suspend fun bytesSince(fromMs: Long): Long
 
-    @Query("SELECT MAX(releasedAt) FROM batches")
-    suspend fun lastReleaseAt(): Long?
 
     @Query("SELECT * FROM batches")
     suspend fun all(): List<BatchRow>
@@ -874,11 +837,7 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger WHERE outputSha256 = :sha LIMIT 1")
     suspend fun bySha(sha: String): LedgerRow?
 
-    @Query("SELECT * FROM ledger WHERE fingerprint = :fp LIMIT 1")
-    suspend fun byFingerprint(fp: String): LedgerRow?
 
-    @Query("SELECT COUNT(*) FROM ledger WHERE outputSha256 = :sha OR fingerprint = :fp")
-    suspend fun countFor(sha: String, fp: String): Int
 
     @Query("SELECT * FROM ledger")
     suspend fun all(): List<LedgerRow>
@@ -934,8 +893,6 @@ interface ReclaimDao {
     @Query("SELECT * FROM reclaim_items WHERE batchId = :batchId ORDER BY originalBytes DESC")
     suspend fun itemsOf(batchId: Long): List<ReclaimItemRow>
 
-    @Query("SELECT * FROM reclaim_items WHERE batchId = :batchId ORDER BY originalBytes DESC")
-    fun itemsOfFlow(batchId: Long): Flow<List<ReclaimItemRow>>
 
     @Query("UPDATE reclaim_items SET restoredAt = :at WHERE id = :id")
     suspend fun markRestored(id: Long, at: Long)

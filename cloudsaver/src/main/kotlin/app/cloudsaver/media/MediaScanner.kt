@@ -218,8 +218,6 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
          */
         var complete: Boolean = true
     ) {
-        /** True once there is something real to show. */
-        val measured: Boolean get() = complete && (photoCount > 0 || videoCount > 0)
     }
 
     /**

@@ -25,9 +25,7 @@ class StartupRecovery(private val context: Context) {
 
     data class Result(
         val restoredItems: Int,
-        val removedPlaceholders: Int,
-        val removedLegacyFiles: Int,
-        val purgedFromOutputFolders: Int
+        val removedPlaceholders: Int
     )
 
     suspend fun run(): Result {
@@ -35,9 +33,9 @@ class StartupRecovery(private val context: Context) {
         // may be the only state left.
         val restored = restoreIfEmpty()
         val placeholders = removeLegacyPlaceholders()
-        val legacy = removeLegacyVisibleSnapshot()
-        val purged = purgeOutputFolderItems()
-        return Result(restored, placeholders, legacy, purged)
+        removeLegacyVisibleSnapshot()
+        purgeOutputFolderItems()
+        return Result(restored, placeholders)
     }
 
     /**

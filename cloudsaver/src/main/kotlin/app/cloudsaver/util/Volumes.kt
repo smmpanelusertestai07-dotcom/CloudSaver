@@ -76,7 +76,6 @@ object Volumes {
         return byName(context, storageVolume)
     }
 
-    fun hasRemovable(context: Context): Boolean = list(context).any { !it.isPrimary }
 
     // ---- writability probe (BB2) -------------------------------------------
 

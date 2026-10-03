@@ -35,8 +35,6 @@ class CloudWatchdog(private val context: Context) {
 
     data class Verdict(
         val problem: Problem?,
-        /** Deletions - of copies and of originals - are held while true. */
-        val pauseDeletions: Boolean,
         val message: String?
     ) {
         val healthy: Boolean get() = problem == null
@@ -61,11 +59,11 @@ class CloudWatchdog(private val context: Context) {
 
         // "Other app" has no package to inspect; nothing here can be checked,
         // and holding deletions forever on that basis would jam the pipeline.
-        if (app.packages.isEmpty()) return Verdict(null, false, null)
+        if (app.packages.isEmpty()) return Verdict(null, null)
 
         if (pkg == null) {
             return Verdict(
-                Problem.NOT_INSTALLED, true,
+                Problem.NOT_INSTALLED,
                 context.getString(R.string.cloud_problem_missing)
             )
         }
@@ -90,17 +88,17 @@ class CloudWatchdog(private val context: Context) {
 
         if (updated) {
             return Verdict(
-                Problem.APP_UPDATED, true,
+                Problem.APP_UPDATED,
                 context.getString(R.string.cloud_problem_updated)
             )
         }
 
         // Nothing waiting means there is nothing to be silent about.
-        if (waitingCopies <= 0) return Verdict(null, false, null)
+        if (waitingCopies <= 0) return Verdict(null, null)
 
         if (txLastWindow != null && txLastWindow < SILENCE_BYTES) {
             return Verdict(
-                Problem.NO_TRAFFIC, true,
+                Problem.NO_TRAFFIC,
                 context.getString(R.string.cloud_problem_silent)
             )
         }
@@ -114,12 +112,12 @@ class CloudWatchdog(private val context: Context) {
         }
         if (!folderShrank && movedShare < 0.01) {
             return Verdict(
-                Problem.CLOUD_FULL, true,
+                Problem.CLOUD_FULL,
                 context.getString(R.string.cloud_problem_full)
             )
         }
 
-        return Verdict(null, false, null)
+        return Verdict(null, null)
     }
 
     /**
