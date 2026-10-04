@@ -99,4 +99,17 @@ class BitrateCalcTest {
         assertTrue(s > 0 && (s and (s - 1)) == 0)
         assertTrue((16000L / s) * (12000L / s) <= 8_000_000L * 4)
     }
+
+    @Test
+    fun `a copy that overshot every target is kept only when it is a real saving`() {
+        // Half the size of the original, the right length: kept.
+        assertTrue(BitrateCalc.worthKeeping(2_659_080, 1_260_989, 2_000, 1_966))
+        // A tenth or less saved is not worth a re-encoded copy.
+        assertFalse(BitrateCalc.worthKeeping(1_000_000, 950_000, 2_000, 2_000))
+        // Never larger, never empty.
+        assertFalse(BitrateCalc.worthKeeping(1_000_000, 1_200_000, 2_000, 2_000))
+        assertFalse(BitrateCalc.worthKeeping(1_000_000, 0, 2_000, 2_000))
+        // A clip that came out the wrong length is broken, however small.
+        assertFalse(BitrateCalc.worthKeeping(10_000_000, 2_000_000, 60_000, 50_000))
+    }
 }

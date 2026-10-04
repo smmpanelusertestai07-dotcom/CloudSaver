@@ -31,6 +31,12 @@ object BitrateCalc {
 
     const val DURATION_TOLERANCE_MS = 2_000L
 
+    /**
+     * The most a copy may weigh, as a share of the original, to be kept when
+     * no encoder on the phone kept to its target bitrate.
+     */
+    const val FALLBACK_MAX_RATIO = 0.9
+
     fun bppFor(codec: VideoCodec, quality: VideoQuality = VideoQuality.STANDARD): Double =
         when (codec) {
             VideoCodec.H264 -> when (quality) {
@@ -94,6 +100,19 @@ object BitrateCalc {
     ): Boolean {
         if (outBytes <= 0 || outBytes >= srcBytes) return false
         if (outBps > (targetBps * RESULT_BITRATE_FACTOR).toLong()) return false
+        if (srcDurationMs > 0 && abs(srcDurationMs - outDurationMs) > DURATION_TOLERANCE_MS) return false
+        return true
+    }
+
+    /**
+     * A copy every rung overshot its target with, but that is still a real
+     * saving of the whole clip. Some encoders - an emulator's, a budget
+     * chip's on detailed footage - will not come down to the bitrate asked
+     * for at all; a copy at half the size is still half the space, and
+     * throwing it away for an untouched original saves nothing.
+     */
+    fun worthKeeping(srcBytes: Long, outBytes: Long, srcDurationMs: Long, outDurationMs: Long): Boolean {
+        if (outBytes <= 0 || outBytes > (srcBytes * FALLBACK_MAX_RATIO).toLong()) return false
         if (srcDurationMs > 0 && abs(srcDurationMs - outDurationMs) > DURATION_TOLERANCE_MS) return false
         return true
     }

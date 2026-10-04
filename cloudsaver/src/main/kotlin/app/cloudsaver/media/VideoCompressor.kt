@@ -206,6 +206,9 @@ object VideoCompressor {
         var outOfTime = false
         var notSmaller = false
         var detail = ""
+        // The smallest copy that only missed its bitrate target, kept in case
+        // no rung meets it (BitrateCalc.worthKeeping).
+        var fallback: CompressResult? = null
         val attempts = attemptsFor(codec)
         var rung = 0
         while (rung < attempts.size) {
@@ -237,6 +240,7 @@ object VideoCompressor {
                 )
             } catch (ce: CancellationException) {
                 outFile.delete()
+                fallback?.file?.delete()
                 throw ce
             } catch (e: Exception) {
                 detail = "${attempt.label}: ${e.javaClass.simpleName}"
@@ -273,6 +277,24 @@ object VideoCompressor {
                 }
                 detail = "${attempt.label}: $outBytes of $srcBytes bytes, $outBps of $rungTarget bps, " +
                     "$outDur of ${probe.durationMs} ms"
+                if (BitrateCalc.worthKeeping(srcBytes, outBytes, probe.durationMs, outDur) &&
+                    outBytes < (fallback?.bytes ?: Long.MAX_VALUE)
+                ) {
+                    fallback?.file?.delete()
+                    fallback = CompressResult(
+                        outFile,
+                        outBytes,
+                        asIs = false,
+                        reason = "compressed_${attempt.label}$hdrTag",
+                        ext = "mp4",
+                        srcPixels = upright.first.toLong() * upright.second.toLong(),
+                        outPixels = outW.toLong() * outH.toLong(),
+                        codec = attempt.codec,
+                        detail = detail
+                    )
+                    rung++
+                    continue
+                }
                 if (outBytes >= srcBytes && outBps <= rungTarget * BitrateCalc.RESULT_BITRATE_FACTOR) {
                     // The encoder kept to its target and the copy is still no
                     // smaller: the original is already leaner than the setting,
@@ -286,6 +308,7 @@ object VideoCompressor {
             outFile.delete()
             rung++
         }
+        fallback?.let { return it }
         val failReason = when {
             outOfTime -> "out_of_time"
             notSmaller -> "not_smaller"
