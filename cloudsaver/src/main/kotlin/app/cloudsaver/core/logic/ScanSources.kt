@@ -1,6 +1,5 @@
 package app.cloudsaver.core.logic
 
-import app.cloudsaver.data.CloudApps
 
 /**
  * Decides which gallery folders the scanner and the album picker may touch.
@@ -19,7 +18,7 @@ object ScanSources {
 
     /** Folder names earlier versions of this app, and Ente, write copies to. */
     val LEGACY_OUTPUT_NAMES: Set<String> = setOf(
-        "EnteUpload", "GlassSaver", "LiteSaver", "CloudShrink", "CloudSaver"
+        "EnteUpload", "GlassSaver", "LiteSaver", "CloudShrink", "CloudSaver", "EnteSaver"
     )
 
     /**
@@ -85,7 +84,7 @@ object ScanSources {
         relativePath: String?,
         bucketName: String?,
         looksLikeOutput: Boolean = false,
-        cloudPackages: Collection<String> = CloudApps.ALL_PACKAGES
+        cloudPackages: Collection<String> = KnownClouds.ALL_PACKAGES
     ): Reason? = when {
         Defaults.isAppOwnedPath(relativePath) -> Reason.OUR_OUTPUT
         isHiddenPath(relativePath) -> Reason.HIDDEN

@@ -62,11 +62,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.ProofLine
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Suggestions
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.ReclaimViewModel
 import app.cloudsaver.ui.Routes
@@ -489,7 +490,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                             )
                         }
                         OutlinedButton(
-                            onClick = { exportLauncher.launch("cloudsaver-reclaim.csv") },
+                            onClick = { exportLauncher.launch("entesaver-free-up.csv") },
                             enabled = actionable > 0
                         ) {
                             Text(
@@ -669,7 +670,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     val holders = selectedEntries
                         .mapNotNull { it.row.batchId?.let { id -> holdingApps[id] } }
                         .distinct()
-                        .map { pkg -> CloudApps.ALL.firstOrNull { pkg in it.packages }?.label ?: pkg }
+                        .map { pkg -> KnownClouds.labelOf(pkg) }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         if (holders.isNotEmpty()) {
@@ -688,8 +689,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     // cloud app. The one direct check - opening the cloud
                     // app and looking - only the user can do, so the sheet
                     // asks for it and hands over the door.
-                    val cloudApp = CloudApps.byId(options.cloudSingle)
-                    val cloudPkg = CloudApps.installedPackage(context, cloudApp)
+                    val cloudPkg = EnteApp.installedPackage(context)
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(
@@ -701,7 +701,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (cloudPkg != null) {
-                                stringResource(R.string.reclaim_blindspot, cloudApp.label)
+                                stringResource(R.string.reclaim_blindspot, EnteApp.LABEL)
                             } else {
                                 stringResource(R.string.reclaim_blindspot_generic)
                             },
@@ -711,13 +711,13 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     }
                     if (cloudPkg != null) {
                         TextButton(
-                            onClick = { CloudApps.launch(context, options.cloudSingle) }
+                            onClick = { EnteApp.launch(context) }
                         ) {
                             // The label carries an app name someone else
                             // chose, so it is as long as it is - two lines
                             // rather than a cut through the middle of it.
                             Text(
-                                stringResource(R.string.reclaim_open_cloud, cloudApp.label),
+                                stringResource(R.string.reclaim_open_cloud, EnteApp.LABEL),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )

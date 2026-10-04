@@ -40,9 +40,13 @@ object Notifications {
     const val ID_WARN_STALLED = 23
     /** Its own slot: sharing one with the safety pause, each replaced the other. */
     const val ID_WARN_CLOUD = 24
+    /** An old folder ran empty: Ente can stop backing it up. */
+    const val ID_NOTE_FOLDER = 25
 
     /** Every slot an alert can use - what "Mute" takes down, and nothing else. */
-    val ALERT_IDS = listOf(ID_WARN_AGED, ID_WARN_SAFETY, ID_WARN_SPACE, ID_WARN_STALLED, ID_WARN_CLOUD)
+    val ALERT_IDS = listOf(
+        ID_WARN_AGED, ID_WARN_SAFETY, ID_WARN_SPACE, ID_WARN_STALLED, ID_WARN_CLOUD, ID_NOTE_FOLDER
+    )
 
     /** The same alert is worth saying once a day at most. */
     const val DEDUP_MS = 86_400_000L
@@ -102,7 +106,7 @@ object Notifications {
     fun working(context: Context, text: String): Notification {
         val pi = contentIntent(context, null)
         return NotificationCompat.Builder(context, CH_WORKING)
-            .setSmallIcon(R.drawable.ic_stat_cloud)
+            .setSmallIcon(R.drawable.ic_stat_saver)
             .setContentTitle(context.getString(R.string.notif_working_title))
             .setContentText(text)
             .setOngoing(true)
@@ -239,7 +243,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val n = NotificationCompat.Builder(context, CH_ALERTS)
-            .setSmallIcon(R.drawable.ic_stat_cloud)
+            .setSmallIcon(R.drawable.ic_stat_saver)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

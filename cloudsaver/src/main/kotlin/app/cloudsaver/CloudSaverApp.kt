@@ -4,6 +4,7 @@ import android.app.Application
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.StartupRecovery
+import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.work.Scheduler
@@ -45,6 +46,19 @@ class CloudSaverApp : Application() {
                 }
             val options = OptionsRepo.get(this@CloudSaverApp).current()
             Scheduler.ensure(this@CloudSaverApp, options)
+        }
+    }
+
+    /**
+     * Android says memory is about to run out while the app is working:
+     * photos are decoded smaller for the rest of this process (DeviceTier),
+     * rather than the system ending the app halfway through one.
+     */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_CRITICAL && level < TRIM_MEMORY_UI_HIDDEN) {
+            DeviceTier.memoryCritical = true
         }
     }
 }

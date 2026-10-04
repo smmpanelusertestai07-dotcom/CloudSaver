@@ -55,7 +55,7 @@ class ErrandTest {
         assertTrue(oem.contains("} catch (e: Exception) {\n            Errand.cancel()\n            false"))
         val power = File(main, "util/PowerPages.kt").readText()
         assertTrue(power.contains("// Try the next component; skins rename these between versions.\n                Errand.cancel()"))
-        assertTrue(File(main, "data/CloudApps.kt").readText().contains("Errand.cancel()"))
+        assertTrue(File(main, "data/EnteApp.kt").readText().contains("Errand.cancel()"))
         assertTrue(File(main, "ui/AppViewModel.kt").readText().contains("Errand.cancel()"))
     }
 
@@ -101,7 +101,7 @@ class ErrandTest {
         // the absence rather than by a number that happens to still hold.
         val names = launchers.map { it.name }.toSet()
         for (expected in listOf(
-            "OemPages.kt", "PowerPages.kt", "AlbumPicker.kt", "AppViewModel.kt", "CloudApps.kt"
+            "OemPages.kt", "PowerPages.kt", "AlbumPicker.kt", "AppViewModel.kt", "EnteApp.kt"
         )) {
             assertTrue("$expected no longer appears to launch anything", expected in names)
         }
@@ -129,6 +129,17 @@ class ErrandTest {
         // And a bounded grace: an open-ended one is a lock anyone walks past.
         val errand = File(main, "util/Errand.kt").readText()
         assertTrue(errand.contains("const val GRACE_MS = 120_000L"))
+    }
+
+    @Test
+    fun `the Photos shortcut never opens a grace window`() {
+        // Anything on the phone can start it, so it must not leave an
+        // unlocked Ente Saver open behind it.
+        val shortcut = File("src/main/kotlin/app/cloudsaver/OpenEnteActivity.kt").readText()
+        assertTrue(shortcut.contains("EnteApp.launch(this, errand = false)"))
+        assertTrue(shortcut.contains("EnteApp.openInstallPage(this, EnteApp.Source.PLAY, errand = false)"))
+        val ente = File("src/main/kotlin/app/cloudsaver/data/EnteApp.kt").readText()
+        assertTrue(ente.contains("if (errand) Errand.begin()"))
     }
 
     @Test

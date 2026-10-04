@@ -105,48 +105,48 @@ object PowerPages {
     fun pathHint(vendor: Vendor, requirementId: String): String? = when (requirementId) {
         ID_AUTO_LAUNCH -> when (vendor) {
             Vendor.COLOR_OS ->
-                "Settings › Battery › App battery management › CloudSaver › Allow auto-launch " +
-                    "(some phones: Settings › App management › App list › CloudSaver › " +
+                "Settings › Battery › App battery management › Ente Saver › Allow auto-launch " +
+                    "(some phones: Settings › App management › App list › Ente Saver › " +
                     "Allow auto-launch, or Settings › Privacy › Startup manager)"
-            Vendor.MIUI -> "Settings › Apps › Manage apps › CloudSaver › Autostart"
-            Vendor.VIVO -> "i Manager › App manager › Autostart manager › CloudSaver"
+            Vendor.MIUI -> "Settings › Apps › Manage apps › Ente Saver › Autostart"
+            Vendor.VIVO -> "i Manager › App manager › Autostart manager › Ente Saver"
             Vendor.HUAWEI ->
-                "Settings › Apps › App launch › CloudSaver › Manage manually: " +
+                "Settings › Apps › App launch › Ente Saver › Manage manually: " +
                     "Auto-launch, Secondary launch, Run in background"
             else -> null
         }
         ID_BACKGROUND_ACTIVITY -> when (vendor) {
             Vendor.COLOR_OS ->
-                "Settings › Battery › App battery management › CloudSaver › " +
+                "Settings › Battery › App battery management › Ente Saver › " +
                     "Allow background activity, and Don't optimise " +
                     "(some phones: App info › Battery usage)"
-            Vendor.ONE_UI -> "Settings › Apps › CloudSaver › Battery › Unrestricted"
+            Vendor.ONE_UI -> "Settings › Apps › Ente Saver › Battery › Unrestricted"
             else -> null
         }
         ID_BATTERY_UNRESTRICTED -> when (vendor) {
             Vendor.COLOR_OS ->
-                "Settings › Battery › App battery management › CloudSaver › Don't optimise"
-            Vendor.MIUI -> "Settings › Apps › Manage apps › CloudSaver › Battery saver › No restrictions"
-            Vendor.ONE_UI -> "Settings › Apps › CloudSaver › Battery › Unrestricted"
-            else -> "Settings › Apps › CloudSaver › Battery › Unrestricted (or Don't optimise)"
+                "Settings › Battery › App battery management › Ente Saver › Don't optimise"
+            Vendor.MIUI -> "Settings › Apps › Manage apps › Ente Saver › Battery saver › No restrictions"
+            Vendor.ONE_UI -> "Settings › Apps › Ente Saver › Battery › Unrestricted"
+            else -> "Settings › Apps › Ente Saver › Battery › Unrestricted (or Don't optimise)"
         }
         // The same page on every skin: the "Restricted" choice under the
         // app's battery entry, which must not be the one selected.
         ID_BACKGROUND_RESTRICTION -> when (vendor) {
             Vendor.COLOR_OS ->
-                "Settings › Battery › App battery management › CloudSaver - not \"Restricted\" " +
+                "Settings › Battery › App battery management › Ente Saver - not \"Restricted\" " +
                     "(some phones: App info › Battery usage)"
-            else -> "Settings › Apps › CloudSaver › Battery (App battery usage) - Unrestricted or Optimised, not Restricted"
+            else -> "Settings › Apps › Ente Saver › Battery (App battery usage) - Unrestricted or Optimised, not Restricted"
         }
         // Android's own words for the switch changed with each version.
         ID_KEEP_PERMISSIONS -> when {
             Build.VERSION.SDK_INT >= 33 ->
-                "Settings › Apps › CloudSaver › Pause app activity if unused - off " +
+                "Settings › Apps › Ente Saver › Pause app activity if unused - off " +
                     "(Android 13 and later: under \"Unused app settings\")"
             Build.VERSION.SDK_INT >= 31 ->
-                "Settings › Apps › CloudSaver › Pause app activity if unused - off"
+                "Settings › Apps › Ente Saver › Pause app activity if unused - off"
             else ->
-                "Settings › Apps › CloudSaver › Permissions › Remove permissions if app isn't used - off"
+                "Settings › Apps › Ente Saver › Permissions › Remove permissions if app isn't used - off"
         }
         else -> null
     }

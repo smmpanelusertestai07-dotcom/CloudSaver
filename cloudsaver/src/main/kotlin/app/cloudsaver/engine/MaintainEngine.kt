@@ -14,13 +14,14 @@ import app.cloudsaver.core.logic.FirstChain
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
-import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputLayout
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.StateMachine
 import app.cloudsaver.core.logic.Stops
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
@@ -132,7 +133,7 @@ class MaintainEngine(private val context: Context) {
         val volumeMissing = o.storageVolume.isNotEmpty() &&
             Volumes.byName(context, o.storageVolume) == null
         if (volumeMissing) {
-            step { verifyBatches(o, now) }
+            step { verifyBatches(now) }
             step { ageEvidence(now) }
             step { dailySnapshot(o, now) }
             if (now - o.volumeWarnedAt > 86_400_000L) {
@@ -154,7 +155,7 @@ class MaintainEngine(private val context: Context) {
         // A null listing means MediaStore could not be read. Absence is
         // evidence here, so a failed read must not be mistaken for an empty
         // folder; skip the passes that interpret it and retry next hour.
-        val entries = inventory.query()
+        val entries = listOutputs(o)
         if (entries == null) {
             return summary
         }
@@ -162,9 +163,10 @@ class MaintainEngine(private val context: Context) {
         step { repairStalePending(now) }
         step { detectGone(o, now, entries, summary) }
         step { promoteGone(now) }
+        step { pruneRoots(o) }
         step { foreignFiles(o, entries) }
-        step { pacedEvidence(o, now) }
-        step { verifyBatches(o, now) }
+        step { pacedEvidence(now) }
+        step { verifyBatches(now) }
         step { ageEvidence(now) }
         step { selfHealStage(now) }
         step { originalsPresence(now) }
@@ -214,11 +216,11 @@ class MaintainEngine(private val context: Context) {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
-        val entries = inventory.query() ?: return 0
+        val entries = listOutputs(o) ?: return 0
         step { repairStalePending(now) }
         step { detectGone(o, now, entries, summary) }
         step { promoteGone(now) }
-        step { pacedEvidence(o, now) }
+        step { pacedEvidence(now) }
         activity.recordIfAny(ActivityLog.Kind.BACKED_UP, summary.confirmed)
         return summary.confirmed
     }
@@ -237,11 +239,10 @@ class MaintainEngine(private val context: Context) {
         entries: List<OutputInventory.Entry>,
         summary: Summary
     ) {
-        val presentNames = entries.groupBy { normalizeRel(it.relPath) }
-            .mapValues { (_, v) -> v.map { it.name }.toHashSet() }
+        val presentNames = namesByFolder(entries)
         val confirmActive = o.confirmFlowStartedAt > 0 &&
             now - o.confirmFlowStartedAt <= Defaults.CONFIRM_WINDOW_MS
-        val caps = watchdog.capsFor(o.cloudSingle)
+        val caps = watchdog.caps()
         val quietMs = CloudCapability.resendQuietPeriodMs(caps)
         // A whole folder can vanish at once, and rows released together share
         // a window; querying network stats per row would then mean hundreds of
@@ -249,15 +250,28 @@ class MaintainEngine(private val context: Context) {
         val txCache = HashMap<Long, Long>()
 
         for (row in db.items().released()) {
-            val folder = folderOf(row)
-            val names = presentNames[Defaults.outFolderRelPath(folder)] ?: emptySet<String>()
+            val names = presentNames[folderKey(pathOf(row))] ?: emptySet<String>()
             val outputName = row.outputName ?: continue
             if (outputName in names) continue
+
+            // Not in its folder is not the same as gone. A folder renamed or
+            // moved in a file manager takes the copy with it, and the copy
+            // still exists - so it is followed to where it is now and keeps
+            // waiting there, never counted as collected. Only a copy the
+            // gallery no longer has at all is judged below.
+            when (val place = whereNow(row)) {
+                is Whereabouts.Moved -> {
+                    db.items().update(row.copy(outputRelPath = place.relPath, outputName = place.name, updatedAt = now))
+                    continue
+                }
+                Whereabouts.Unknown -> continue
+                Whereabouts.Gone -> Unit
+            }
 
             val evidence = evidenceOf(row)
             val releasedAt = row.releasedAt ?: now
             val fileBytes = row.outputBytes ?: 0L
-            val tx = txCache.getOrPut(releasedAt) { txSinceRelease(o, releasedAt, now) ?: 0L }
+            val tx = txCache.getOrPut(releasedAt) { txSinceRelease(releasedAt, now) ?: 0L }
 
             // A copy that already carried evidence and then vanished is simply
             // finished. Re-sending it would say the app trusts its own earlier
@@ -315,7 +329,7 @@ class MaintainEngine(private val context: Context) {
                     // Only a cloud that removes its own uploads behaves this
                     // way, so this is also how the app learns what it is
                     // talking to - without ever asking the user.
-                    watchdog.learnFreeUp(o.cloudSingle, now)
+                    watchdog.learnFreeUp(now)
                     summary.confirmed++
                 }
 
@@ -443,6 +457,42 @@ class MaintainEngine(private val context: Context) {
     }
 
     /**
+     * Lets go of a folder the person moved away from, once no copy waits
+     * there any more.
+     *
+     * Until then it is listed on every pass like a current folder: a copy
+     * still waiting in it must be seen to leave, not be read as gone. Once
+     * the last one has gone the folder is no longer the app's business, and
+     * the person is told once that Ente can stop backing it up - leaving it
+     * on costs nothing, but it is one more folder in Ente's list to wonder
+     * about.
+     */
+    private suspend fun pruneRoots(o: Options) {
+        if (o.pastOutputRoots.isEmpty()) return
+        val inUse = o.layout.current + o.layout.otherMode
+        val perFolder = db.items().releasedPerFolder().associate { it.outputRelPath to it.cnt }
+        val emptied = o.pastOutputRoots.filter { root ->
+            val path = OutputRoots.normalize(root)
+            inUse.none { OutputRoots.same(it, path) } && OutputRoots.waitingIn(path, perFolder, inUse) == 0
+        }
+        if (emptied.isEmpty()) return
+        repo.removePastOutputRoots(emptied)
+        for (root in emptied) {
+            val path = OutputRoots.normalize(root)
+            activity.record(
+                ActivityLog.Kind.SETTINGS_CHANGED,
+                detail = context.getString(R.string.old_folder_empty_text, path)
+            )
+            Notifications.alert(
+                context, Notifications.ID_NOTE_FOLDER,
+                context.getString(R.string.old_folder_empty_title),
+                context.getString(R.string.old_folder_empty_text, path),
+                o, dedupKey = "oldfolder $path", route = "options"
+            )
+        }
+    }
+
+    /**
      * Files in the upload folder that CloudSaver did not create.
      *
      * Someone drops a screenshot into Pictures/CloudSaver believing that is
@@ -477,7 +527,7 @@ class MaintainEngine(private val context: Context) {
      * a byte total says something about the pair and nothing about either, and
      * a claim about the wrong file is worse than no claim at all.
      */
-    private suspend fun pacedEvidence(o: Options, now: Long) {
+    private suspend fun pacedEvidence(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         val released = db.items().awaitingEvidence()
             .mapNotNull { row -> row.releasedAt?.let { row to it } }
@@ -493,7 +543,7 @@ class MaintainEngine(private val context: Context) {
         val row = waiting.first()
         val fileBytes = row.outputBytes ?: return
         val releasedAt = row.releasedAt ?: return
-        val tx = txSinceRelease(o, releasedAt, now) ?: return
+        val tx = txSinceRelease(releasedAt, now) ?: return
         if (!EvidenceRules.confirmedPaced(tx, fileBytes)) return
         db.items().update(
             row.copy(
@@ -520,7 +570,7 @@ class MaintainEngine(private val context: Context) {
      * deletion. So the batches are settled oldest first against one cumulative
      * total: a transmitted byte can only pay for one batch.
      */
-    private suspend fun verifyBatches(o: Options, now: Long) {
+    private suspend fun verifyBatches(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         val pending = db.batches().unverified()
             .filter { it.totalBytes > 0 && it.cloudPackage != null }
@@ -538,7 +588,7 @@ class MaintainEngine(private val context: Context) {
         // make an entry of this map stale.
         val releasedByBatch = db.items().released().groupBy { it.batchId }
         for ((pkg, batches) in pending.groupBy { it.cloudPackage!! }) {
-            val uid = CloudApps.uidOf(context, pkg) ?: continue
+            val uid = EnteApp.uidOf(context, pkg) ?: continue
             val since = batches.first().releasedAt
             val tx = UsageVerifier.txBytesForUid(context, uid, since, now) ?: continue
             var required = 0L
@@ -628,12 +678,11 @@ class MaintainEngine(private val context: Context) {
     ): Boolean {
         val waiting = db.items().awaitingEvidence()
         val waitingBytes = waiting.sumOf { it.outputBytes ?: 0L }
-        val tx = txSinceRelease(o, now - CloudWatchdog.SILENCE_MS, now)
+        val tx = txSinceRelease(now - CloudWatchdog.SILENCE_MS, now)
         val shrank = o.lastOutputCount > 0 && entries.size < o.lastOutputCount
         repo.setInt(OptionsRepo.K.LAST_OUTPUT_COUNT, entries.size)
 
         val verdict = watchdog.check(
-            cloudId = o.cloudSingle,
             waitingCopies = waiting.size,
             waitingBytes = waitingBytes,
             txLastWindow = tx,
@@ -703,7 +752,7 @@ class MaintainEngine(private val context: Context) {
      * count into evidence about a specific file.
      */
     private suspend fun pacedRelease(o: Options, now: Long, summary: Summary) {
-        val caps = watchdog.capsFor(o.cloudSingle)
+        val caps = watchdog.caps()
         val oracle = CloudCapability.hasDisappearanceOracle(caps)
         val inFlight = db.items().awaitingEvidence().mapNotNull { it.releasedAt }
         val slots = Pacing.slotsFree(inFlight, now, oracle, o.cleanConfirmStreak)
@@ -725,15 +774,10 @@ class MaintainEngine(private val context: Context) {
 
         // Anchor rule / never-empty: if an active output folder has no files but
         // staged content exists for it, restore content immediately (no dummies).
-        val entries = inventory.query() ?: return
-        val byFolder = entries.groupBy { normalizeRel(it.relPath) }
-        val activeFolders = if (o.outputMode == OutputMode.SEPARATE) {
-            listOf(OutFolder.PHOTOS, OutFolder.VIDEOS)
-        } else {
-            listOf(OutFolder.SINGLE)
-        }
-        for (folder in activeFolders) {
-            val has = byFolder[Defaults.outFolderRelPath(folder)]?.isNotEmpty() == true
+        val entries = listOutputs(o) ?: return
+        val byFolder = namesByFolder(entries)
+        for (folder in OutputLayout.folders(o.outputMode)) {
+            val has = byFolder[folderKey(o.layout.path(folder))]?.isNotEmpty() == true
             if (!has) {
                 // Exactly one file, so the folder stops being empty without
                 // shipping the whole staging backlog past the daily cap the
@@ -773,16 +817,14 @@ class MaintainEngine(private val context: Context) {
 
         val released = db.items().released()
         val waiting = released.count { evidenceOf(it).ordinal < Evidence.VERIFIED.ordinal }
-        val cloudPkg = CloudApps.installedPackage(context, CloudApps.byId(o.cloudSingle))
-        // "Other app" has no package to detect, so installedPackage() is null
-        // for it. Treating that as "no cloud app" pauses deletion forever: the
-        // copies pile up, hit the extra-space limit, and compression stops for
-        // good. Availability follows the same rule the health check uses; with
-        // no package there is simply no traffic to measure, so deletion falls
-        // back to the age rule in DeletePlanner.
-        val cloudAvailable = CloudApps.isAppInstalled(context, o.cloudSingle)
+        val cloudPkg = EnteApp.installedPackage(context)
+        // Availability follows the same rule the health check uses. Where
+        // Ente's traffic cannot be measured (no Usage Access), deletion falls
+        // back to the age rule in DeletePlanner rather than stopping for good
+        // - copies piling up past the space limit would stop compression too.
+        val cloudAvailable = EnteApp.isInstalled(context)
         val tx3d = cloudPkg?.let { pkg ->
-            CloudApps.uidOf(context, pkg)?.let { uid ->
+            EnteApp.uidOf(context, pkg)?.let { uid ->
                 UsageVerifier.txBytesForUid(
                     context, uid, now - Defaults.SAFETY_TX_DAYS * 86_400_000L, now
                 )
@@ -801,13 +843,14 @@ class MaintainEngine(private val context: Context) {
             return
         }
 
-        val entries = inventory.query() ?: return
-        val presentNames = entries.groupBy { normalizeRel(it.relPath) }
-            .mapValues { (_, v) -> v.map { it.name }.toHashSet() }
+        val entries = listOutputs(o) ?: return
+        val presentNames = namesByFolder(entries)
+        val current = o.layout.current.map { folderKey(it) }.toSet()
         val copies = released.mapNotNull { row ->
             val name = row.outputName ?: return@mapNotNull null
             val folder = folderOf(row)
-            if (name !in (presentNames[Defaults.outFolderRelPath(folder)] ?: emptySet<String>())) {
+            val place = folderKey(pathOf(row))
+            if (name !in (presentNames[place] ?: emptySet<String>())) {
                 return@mapNotNull null
             }
             DeletePlanner.Copy(
@@ -816,7 +859,9 @@ class MaintainEngine(private val context: Context) {
                 evidence = evidenceOf(row),
                 ageDays = ((now - (row.releasedAt ?: now)) / 86_400_000L).toInt(),
                 folder = folder,
-                captureAt = row.captureAt
+                captureAt = row.captureAt,
+                place = place,
+                anchorable = place in current
             )
         }
         val plan = DeletePlanner.plan(copies, bytesToFree)
@@ -910,10 +955,9 @@ class MaintainEngine(private val context: Context) {
         return carried
     }
 
-    /** Bytes the chosen cloud app transmitted since [from]; null if unmeasurable. */
-    private fun txSinceRelease(o: Options, from: Long, now: Long): Long? {
-        val pkg = CloudApps.installedPackage(context, CloudApps.byId(o.cloudSingle)) ?: return null
-        val uid = CloudApps.uidOf(context, pkg) ?: return null
+    /** Bytes Ente transmitted since [from]; null if unmeasurable. */
+    private fun txSinceRelease(from: Long, now: Long): Long? {
+        val uid = EnteApp.uid(context) ?: return null
         return UsageVerifier.txBytesForUid(context, uid, from, now)
     }
 
@@ -926,7 +970,53 @@ class MaintainEngine(private val context: Context) {
         row.outputFolder?.let { runCatching { OutFolder.valueOf(it) }.getOrNull() }
             ?: OutFolder.SINGLE
 
-    private fun evidenceOf(row: ItemRow): Evidence = Evidence.parse(row.evidence)
+    /**
+     * The folder this row's copy was released into. Every released row
+     * records it; one restored from a snapshot written before rows did went
+     * to the folder its layout named under the old name.
+     */
+    private fun pathOf(row: ItemRow): String =
+        row.outputRelPath ?: Defaults.legacyRelPath(folderOf(row))
 
-    private fun normalizeRel(rel: String): String = rel.trimEnd('/')
+    /**
+     * Every folder a copy may wait in, listed in one go - or null when any
+     * part of it could not be read, which callers treat as "learn nothing",
+     * never as "everything left".
+     */
+    private suspend fun listOutputs(o: Options): List<OutputInventory.Entry>? =
+        inventory.query(OutputRoots.watched(o.layout, o.pastOutputRoots, db.items().releasedRoots()))
+
+    private fun namesByFolder(entries: List<OutputInventory.Entry>): Map<String, Set<String>> =
+        entries.groupBy { folderKey(it.relPath) }.mapValues { (_, v) -> v.map { it.name }.toHashSet() }
+
+    /** One spelling per folder: MediaStore's paths end in a slash and FAT ignores case. */
+    private fun folderKey(rel: String): String = OutputRoots.normalize(rel).lowercase()
+
+    private sealed interface Whereabouts {
+        data class Moved(val relPath: String, val name: String) : Whereabouts
+        data object Gone : Whereabouts
+        /** The gallery could not be asked: learn nothing this pass. */
+        data object Unknown : Whereabouts
+    }
+
+    /** Where a copy missing from its folder is now, asked by its own address. */
+    private fun whereNow(row: ItemRow): Whereabouts {
+        val uri = row.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return Whereabouts.Gone
+        return try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME),
+                null, null, null
+            )?.use { c ->
+                if (!c.moveToFirst()) return Whereabouts.Gone
+                val rel = c.getString(0)
+                val name = c.getString(1)
+                if (rel.isNullOrEmpty() || name.isNullOrEmpty()) Whereabouts.Gone else Whereabouts.Moved(rel, name)
+            } ?: Whereabouts.Unknown
+        } catch (e: Exception) {
+            Whereabouts.Unknown
+        }
+    }
+
+    private fun evidenceOf(row: ItemRow): Evidence = Evidence.parse(row.evidence)
 }

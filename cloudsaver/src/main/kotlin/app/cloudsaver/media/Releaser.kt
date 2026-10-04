@@ -5,14 +5,14 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import android.provider.MediaStore
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputPaths
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.ReleasePlanner
 import app.cloudsaver.core.logic.ReleaseVerdict
 import app.cloudsaver.core.logic.VolumeRules
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
@@ -103,11 +103,13 @@ class Releaser(private val context: Context, private val db: AppDb) {
                         releasedAt = now,
                         totalBytes = 0,
                         folder = folder.name,
-                        cloudPackage = cloudPackageFor(options, folder)
+                        // The Ente build on this phone, whose traffic will
+                        // later account for this batch.
+                        cloudPackage = EnteApp.installedPackage(context)
                     )
                 )
             }
-            if (releaseOne(row, batchId, now, volumeName)) {
+            if (releaseOne(row, batchId, now, volumeName, options.layout.path(folder))) {
                 released++
                 batchBytes[folder] = (batchBytes[folder] ?: 0L) + (row.outputBytes ?: 0L)
             }
@@ -144,7 +146,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
      * whenever the cloud app next happens to look.
      */
     private fun notifyGallery(options: Options) {
-        val paths = OutputPaths.forMode(options.outputMode)
+        val paths = OutputPaths.current(options.layout)
             .map { "${android.os.Environment.getExternalStorageDirectory()}/$it" }
         // A rescan the phone refuses is not a failure worth a word: the copy
         // is written and the cloud app finds it on its own next look.
@@ -202,21 +204,17 @@ class Releaser(private val context: Context, private val db: AppDb) {
         )
     }
 
-    private fun cloudPackageFor(options: Options, folder: OutFolder): String? {
-        val id = when (folder) {
-            OutFolder.SINGLE -> options.cloudSingle
-            OutFolder.PHOTOS -> options.cloudPhotos
-            OutFolder.VIDEOS -> options.cloudVideos
-        }
-        return CloudApps.installedPackage(context, CloudApps.byId(id))
-    }
-
-    /** Moves one staged file into its public output folder on [volumeName]. */
+    /**
+     * Moves one staged file into [folderPath] on [volumeName], and records
+     * the folder MediaStore actually put it in - the row checks that folder,
+     * and only that folder, for as long as the copy waits there.
+     */
     suspend fun releaseOne(
         row: ItemRow,
         batchId: Long,
         now: Long,
-        volumeName: String = MediaStore.VOLUME_EXTERNAL_PRIMARY
+        volumeName: String,
+        folderPath: String
     ): Boolean {
         val stagePath = row.stagePath ?: return false
         val stageFile = File(stagePath)
@@ -233,9 +231,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
         } else {
             volumeName
         }
-        val folder = row.outputFolder?.let { runCatching { OutFolder.valueOf(it) }.getOrNull() }
-            ?: OutFolder.SINGLE
-        val relPath = Defaults.outFolderRelPath(folder) + "/"
+        val relPath = OutputRoots.normalize(folderPath) + "/"
         val outName = row.outputName ?: stageFile.name
         val resolver = context.contentResolver
         val collection = if (row.isVideo) {
@@ -309,6 +305,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
             // item RELEASED anyway. Nothing could notice, because nothing
             // looked again. Now it looks.
             var actualName = outName
+            var actualPath = relPath
             var verdict: ReleaseVerdict.Failure? = ReleaseVerdict.Failure.MISSING
             try {
                 @Suppress("DEPRECATION")
@@ -322,6 +319,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 resolver.query(itemUri, projection, null, null, null)?.use { c ->
                     if (c.moveToFirst()) {
                         c.getString(0)?.let { actualName = it }
+                        c.getString(4)?.takeIf { it.isNotBlank() }?.let { actualPath = it }
                         val data = c.getString(1)
                         if (!data.isNullOrEmpty()) {
                             runCatching { File(data).setLastModified(row.captureAt) }
@@ -354,6 +352,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
                     state = ItemState.RELEASED.name,
                     outputUri = itemUri.toString(),
                     outputName = actualName,
+                    outputRelPath = OutputRoots.normalize(actualPath),
                     releasedAt = now,
                     batchId = batchId,
                     stagePath = null,

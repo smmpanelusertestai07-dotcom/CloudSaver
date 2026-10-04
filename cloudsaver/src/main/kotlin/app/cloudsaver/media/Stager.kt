@@ -7,10 +7,12 @@ import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
-import app.cloudsaver.core.logic.Presets
+import app.cloudsaver.core.logic.PhotoFormat
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.engine.InFlight
+import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
@@ -49,8 +51,15 @@ class Stager(private val context: Context, private val db: AppDb) {
             return false
         }
         val uri = Uri.parse(uriString)
-        val spec = Presets.spec(options.preset)
         val tempDir = Storage.tempDir(context, options.storageVolume)
+        // Held to what this phone can decode without running out of memory.
+        val photoSpec = DeviceTier.fit(context, options.photo.spec())
+        val videoSpec = options.video.spec()
+        // HEIC only once this phone has passed its own test; the test runs
+        // here, in background work, the first time a photo would want it.
+        val heicWorks = !row.isVideo &&
+            (photoSpec.format == PhotoFormat.AUTO || photoSpec.format == PhotoFormat.HEIC) &&
+            HeicSupport.probeIfNeeded(context, tempDir) == HeicSupport.State.OK
         // Compression must never make the phone feel slow, even with the
         // screen on while charging. The thread doing it belongs to a shared
         // coroutine pool, though, so the priority has to be handed back
@@ -62,15 +71,19 @@ class Stager(private val context: Context, private val db: AppDb) {
         runCatching {
             Process.setThreadPriority(tid, Process.THREAD_PRIORITY_BACKGROUND)
         }
+        // Written down first: an encode that takes the whole app down throws
+        // nothing, and the next run must still know which file it was.
+        InFlight.begin(context, row.id)
         val result = try {
             if (row.isVideo) {
                 VideoCompressor.compress(
-                    context, uri, row.displayName, row.mimeType, row.sizeBytes, spec,
-                    options.codec, tempDir,
+                    context, uri, row.displayName, row.mimeType, row.sizeBytes, videoSpec, tempDir,
                     maxTotalMs = VideoCompressor.budgetFor(runRemainingMs)
                 )
             } else {
-                PhotoCompressor.compress(context, uri, row.displayName, row.sizeBytes, spec, tempDir)
+                PhotoCompressor.compress(
+                    context, uri, row.displayName, row.sizeBytes, photoSpec, heicWorks, tempDir
+                )
             }
         } catch (ce: CancellationException) {
             throw ce
@@ -86,6 +99,7 @@ class Stager(private val context: Context, private val db: AppDb) {
             fail(row, "out_of_memory")
             return false
         } finally {
+            InFlight.end(context)
             priorPriority?.let { runCatching { Process.setThreadPriority(tid, it) } }
         }
 
@@ -110,8 +124,14 @@ class Stager(private val context: Context, private val db: AppDb) {
                     outPixels = result.outPixels,
                     outputSha256 = sha,
                     outputFolder = folder.name,
-                    presetUsed = options.preset.name,
-                    codecUsed = options.codec.name,
+                    // Grouped under what the settings stand for on this
+                    // phone, the key estimates are read back by.
+                    presetUsed = if (row.isVideo) {
+                        PlannedEncode.videoKey(options)
+                    } else {
+                        PlannedEncode.photoKey(context, options)
+                    },
+                    codecUsed = result.codec?.name,
                     predictedBytes = predictedBytes,
                     skipReason = null,
                     lastError = if (result.asIs) result.reason else null,

@@ -19,13 +19,19 @@ import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeviceDefaults
 import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.Fingerprint
+import app.cloudsaver.core.logic.FolderName
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.KeptCopies
+import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.MediaProfile
+import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputPaths
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Pacing
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.PhotoFormat
+import app.cloudsaver.core.logic.PhotoSettings
 import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.core.logic.ReclaimRules
@@ -35,8 +41,8 @@ import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
-import app.cloudsaver.data.CloudApp
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.core.logic.VideoSettings
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
@@ -45,17 +51,20 @@ import app.cloudsaver.data.db.Search
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
-import app.cloudsaver.engine.CloudWatchdog
 import app.cloudsaver.engine.DuplicateScanner
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.engine.SnapshotStore
 import app.cloudsaver.engine.UsageVerifier
+import app.cloudsaver.media.EncoderCaps
+import app.cloudsaver.media.HeicSupport
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
+import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
+import app.cloudsaver.util.AppLooks
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Formats
@@ -324,8 +333,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshMeasuredQuality() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
-            val photos = db.items().photoRatioSamples(o.preset.name)
-            val videos = db.items().videoRatioSamples(o.preset.name, o.codec.name)
+            val photos = db.items().photoRatioSamples(PlannedEncode.photoKey(ctx, o))
+            val videos = db.items().videoRatioSamples(PlannedEncode.videoKey(o))
             fun shrink(rows: List<RatioSample>): Int {
                 val original = rows.sumOf { it.sizeBytes }
                 if (original <= 0) return 0
@@ -437,10 +446,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     @OptIn(ExperimentalCoroutinesApi::class)
     val reclaimableBytes: StateFlow<Long> = options
         .flatMapLatest { o ->
-            // The one refusal SQL cannot make. With no cloud app installed,
-            // or one the app has flagged, nothing at all is offered - so a
-            // mark on the tab would send someone to an empty screen.
-            if (o.cloudProblem.isNotEmpty() || !CloudApps.isAppInstalled(ctx, o.cloudSingle)) {
+            // The one refusal SQL cannot make. Without Ente, or with Ente
+            // flagged, nothing at all is offered - so a mark on the tab
+            // would send someone to an empty screen.
+            if (o.cloudProblem.isNotEmpty() || !EnteApp.isInstalled(ctx)) {
                 flowOf(0L)
             } else {
                 val now = System.currentTimeMillis()
@@ -558,7 +567,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * copies are made on schedule - but nothing will ever collect them,
          * so this is worth saying rather than leaving the folder to fill.
          */
-        val cloudNone: Boolean = false,
         val spaceLow: Boolean = false,
         val paused: Boolean = false,
         /**
@@ -645,12 +653,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var backupPassword: String? = null
 
     /**
-     * Which cloud app holds this item's copy (Z10.1): the app recorded on the
-     * batch the file went out with, never the one selected today.
+     * Which app holds this item's copy (Z10.1): the app recorded on the batch
+     * the file went out with. Before 11 that could be another cloud app, and
+     * a copy sent there is still there.
      */
     suspend fun holdingAppLabel(row: ItemRow): String? {
         val pkg = row.batchId?.let { db.batches().byId(it)?.cloudPackage } ?: return null
-        return CloudApps.ALL.firstOrNull { pkg in it.packages }?.label ?: pkg
+        return KnownClouds.labelOf(pkg)
     }
 
     /**
@@ -718,8 +727,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 permissionsAutoReset = Permissions.permissionsAutoResetOn(ctx) == true,
                 batterySaverOn = power.saverOn,
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
-                cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),
-                cloudNone = !CloudApps.anyInstalled(ctx),
+                cloudMissing = !EnteApp.isInstalled(ctx),
                 spaceLow = free < o.minFreeBytes,
                 thermalThrottled = power.thermalThrottled ||
                     power.batteryTempTenthsC >= Defaults.BATTERY_MAX_TEMP_TENTHS_C,
@@ -863,10 +871,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 monthlyVideoBytes = totals.monthlyVideoBytes,
                 videoCount = totals.videoCount
             )
-            val photoSamples = db.items().photoRatioSamples(o.preset.name).map {
+            val photoSamples = db.items().photoRatioSamples(PlannedEncode.photoKey(ctx, o)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes)
             }
-            val videoSamples = db.items().videoRatioSamples(o.preset.name, o.codec.name).map {
+            val videoSamples = db.items().videoRatioSamples(PlannedEncode.videoKey(o)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes, it.durationMs / 60_000.0)
             }
             // The gallery's own median is what the sample is judged against:
@@ -875,7 +883,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             calcRatios.value = CapacityMath.ratios(
                 photo = photoSamples,
                 video = videoSamples,
-                codec = o.codec,
+                codec = PlannedEncode.videoCodec(o.video.spec()),
                 source = calcSource.value ?: CapacityMath.Source.MEASURED,
                 galleryPhotoMedian = if (totals.photoCount > 0) {
                     totals.photoBytes / totals.photoCount
@@ -1219,23 +1227,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- confirm-uploads flow ----------------------------------------------
 
-    /**
-     * Whether the chosen cloud app removes its own uploads.
-     *
-     * "Verify backup" works by watching copies leave the upload folder, which
-     * only a cloud with a free-up feature ever does. On the others the button
-     * can only ever report nothing, so it is not offered - a control that
-     * always fails is worse than no control.
-     */
-    val cloudHasFreeUp = MutableStateFlow(false)
-
-    fun refreshCloudCaps() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val o = repo.current()
-            cloudHasFreeUp.value = CloudWatchdog(ctx).capsFor(o.cloudSingle).hasFreeUpSpace
-        }
-    }
-
     val confirmResult = MutableStateFlow<Int?>(null)
     private var confirmPending = false
 
@@ -1243,7 +1234,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
             confirmPending = true
-            CloudApps.launch(ctx, repo.current().cloudSingle)
+            EnteApp.launch(ctx)
         }
     }
 
@@ -1316,38 +1307,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setOutputMode(v: OutputMode) {
-        setStr(OptionsRepo.K.OUTPUT_MODE, v.name)
+        viewModelScope.launch { repo.setOutputMode(v) }
         noteSettingChange(
             detail = ActivityWording.encode(ActivityWording.Setting.LAYOUT, v.name)
         )
     }
-    fun setCloudSingle(v: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val previous = repo.current().cloudSingle
-            repo.setString(OptionsRepo.K.CLOUD_SINGLE, v)
-            // Z10.1: proof belongs to the app that was selected when a file
-            // was sent, so a switch resets everything learned about the OLD
-            // app - capability, pacing confidence, the watchdog's memory -
-            // and queues the one-time sheet explaining where old files live.
-            if (previous.isNotEmpty() && previous != v) {
-                repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, previous)
-                repo.setInt(OptionsRepo.K.CLEAN_STREAK, 0)
-                repo.setBool(OptionsRepo.K.RECENT_PACING_FAILURE, false)
-                repo.setString(OptionsRepo.K.CLOUD_PROBLEM, "")
-                // The whole 24 h alert record goes with it: every entry in it
-                // was about the app that has just been replaced, and a
-                // problem with the new one should be able to say so today.
-                repo.setString(OptionsRepo.K.LAST_ALERTS, "")
-            }
-        }
-        noteSettingChange(
-            detail = ActivityWording.encode(
-                ActivityWording.Setting.CLOUD_APP, CloudApps.byId(v).label
-            )
-        )
-        refreshCloudCaps()
-    }
-
     /** Z10.6: the first-chain card was read, either way. */
     fun dismissFirstChainNotice() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1355,25 +1319,188 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** The switch sheet was read; do not show it again. */
-    fun dismissCloudSwitchNotice() {
+    /**
+     * The "Ente Photos only" card was read. The old choice is replaced by
+     * Ente's id, which is what stops the card coming back.
+     */
+    fun dismissEnteOnlyNotice() {
         viewModelScope.launch(Dispatchers.IO) {
-            repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, "")
+            repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
         }
     }
-    fun setCloudPhotos(v: String) = setStr(OptionsRepo.K.CLOUD_PHOTOS, v)
-    fun setCloudVideos(v: String) = setStr(OptionsRepo.K.CLOUD_VIDEOS, v)
-    fun setPreset(v: Preset) {
-        setStr(OptionsRepo.K.PRESET, v.name)
-        noteSettingChange(
-            detail = ActivityWording.encode(ActivityWording.Setting.QUALITY, v.name)
-        )
+
+    // ---- Ente Saver's own name and icon -----------------------------------------
+
+    val look = MutableStateFlow(AppLooks.DEFAULT)
+
+    fun refreshLook() {
+        viewModelScope.launch(Dispatchers.IO) { look.value = AppLooks.chosen(ctx) }
     }
-    fun setCodec(v: VideoCodec) {
-        setStr(OptionsRepo.K.CODEC, v.name)
-        noteSettingChange(
-            detail = ActivityWording.encode(ActivityWording.Setting.CODEC, v.name)
-        )
+
+    fun chooseLook(choice: AppLooks.Look) {
+        viewModelScope.launch(Dispatchers.IO) {
+            AppLooks.choose(ctx, choice)
+            look.value = AppLooks.chosen(ctx)
+        }
+    }
+
+    // ---- where copies go ------------------------------------------------------
+
+    /**
+     * An old folder that still holds copies waiting for Ente, and how many.
+     * Shown on Home until it runs empty, so the person knows to keep it on in
+     * Ente until then.
+     */
+    data class OldFolder(val path: String, val waiting: Int)
+
+    val oldFolders = MutableStateFlow<List<OldFolder>>(emptyList())
+
+    fun refreshOldFolders() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val perFolder = db.items().releasedPerFolder().associate { it.outputRelPath to it.cnt }
+            val inUse = o.layout.current + o.layout.otherMode
+            oldFolders.value = OutputRoots.outermost(o.pastOutputRoots).mapNotNull { root ->
+                val n = OutputRoots.waitingIn(root, perFolder, inUse)
+                if (n > 0) OldFolder(root, n) else null
+            }
+        }
+    }
+
+    /**
+     * The person tapped Move: new copies go to the default folder from now on.
+     * Copies already waiting in the old one stay where they are and are
+     * watched there until Ente has them - nothing is moved, nothing is lost.
+     */
+    fun moveToDefaultFolders() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setFolders(mapOf(OutFolder.SINGLE to "", OutFolder.PHOTOS to "", OutFolder.VIDEOS to ""))
+            noteSettingChange(
+                detail = ActivityWording.encode(
+                    ActivityWording.Setting.FOLDER, OutputPaths.joined(repo.current().layout)
+                )
+            )
+            refreshOldFolders()
+        }
+    }
+
+    /** "Done" on the card that asks for the new folder to be turned on in Ente. */
+    fun dismissNewFolderCard() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setBool(OptionsRepo.K.NEW_FOLDER_PENDING, false)
+        }
+    }
+
+    fun dismissMoveCard() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setBool(OptionsRepo.K.MOVE_CARD_DISMISSED, true)
+        }
+    }
+
+    /** Why a typed folder name cannot be used, or null; [taken] counts the person's own files in it. */
+    data class FolderCheck(
+        val problem: FolderName.Problem? = null,
+        val taken: Int = 0,
+        /** The gallery could not be asked; a name is never passed unasked. */
+        val unchecked: Boolean = false
+    ) {
+        val ok: Boolean get() = problem == null && taken == 0 && !unchecked
+    }
+
+    /**
+     * Checks a name typed for [folder]'s copies: the rules a folder name has
+     * to meet, and that the folder does not already hold photos or videos of
+     * the person's own - Ente Saver's copies must never be mixed in with them.
+     */
+    suspend fun checkFolderName(folder: OutFolder, name: String): FolderCheck =
+        withContext(Dispatchers.IO) {
+            val o = repo.current()
+            val other = when (folder) {
+                OutFolder.PHOTOS -> o.layout.path(OutFolder.VIDEOS)
+                OutFolder.VIDEOS -> o.layout.path(OutFolder.PHOTOS)
+                OutFolder.SINGLE -> null
+            }
+            FolderName.problem(name, other)?.let { return@withContext FolderCheck(it) }
+            when (val theirs = OutputInventory(ctx).othersIn(FolderName.pathOf(name))) {
+                null -> FolderCheck(unchecked = true)
+                else -> FolderCheck(taken = theirs)
+            }
+        }
+
+    /**
+     * "" for the default, or a name of the person's own - checked again here,
+     * at the moment it is saved, so no answer from a moment ago (the name has
+     * changed since, or the gallery was busy) can let a folder through. True
+     * when it was saved.
+     */
+    suspend fun saveFolder(folder: OutFolder, name: String?): FolderCheck {
+        if (name != null) {
+            val check = checkFolderName(folder, name)
+            if (!check.ok) return check
+        }
+        setFolder(folder, if (name == null) "" else FolderName.pathOf(name))
+        return FolderCheck()
+    }
+
+    private fun setFolder(folder: OutFolder, value: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setFolders(mapOf(folder to value))
+            noteSettingChange(
+                detail = ActivityWording.encode(
+                    ActivityWording.Setting.FOLDER, repo.current().layout.path(folder)
+                )
+            )
+            refreshOldFolders()
+        }
+    }
+    /**
+     * A change to how photos are optimised, written whole. The history names
+     * the preset, which is the choice a person makes; Custom's knobs are
+     * details of that one choice.
+     */
+    fun setPhoto(v: PhotoSettings) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val before = repo.current().photo
+            repo.setPhoto(v)
+            if (before.preset != v.preset) {
+                noteSettingChange(detail = ActivityWording.encode(ActivityWording.Setting.PHOTOS, v.preset.name))
+            }
+        }
+    }
+
+    fun setVideo(v: VideoSettings) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val before = repo.current().video
+            repo.setVideo(v)
+            if (before.preset != v.preset) {
+                noteSettingChange(detail = ActivityWording.encode(ActivityWording.Setting.VIDEOS, v.preset.name))
+            }
+        }
+    }
+
+    /**
+     * What Auto turns into on this phone, for the notes under the two
+     * settings. HEIC is known only once the background work has tried it.
+     */
+    data class EncodePlan(
+        val heic: HeicSupport.State = HeicSupport.State.UNKNOWN,
+        val photoFormat: PhotoFormat = PhotoFormat.JPEG,
+        val videoCodec: VideoCodec = VideoCodec.H264,
+        val hevcHardware: Boolean = false
+    )
+
+    val encodePlan = MutableStateFlow(EncodePlan())
+
+    fun refreshEncodePlan() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val o = repo.current()
+            encodePlan.value = EncodePlan(
+                heic = HeicSupport.state(ctx),
+                photoFormat = PlannedEncode.photoFormat(ctx, o.photo.spec()),
+                videoCodec = PlannedEncode.videoCodec(o.video.spec()),
+                hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty()
+            )
+        }
     }
 
     fun setTheme(v: ThemeMode) {
@@ -1504,118 +1631,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ---- cloud detection and linking (A2, A3, A5) ---------------------------
+    // ---- Ente Photos (A2, A3, A5) -------------------------------------------
 
     /**
-     * What was found on this phone, and whether the app committed to it.
-     *
-     * One installed cloud app is not a guess, so it is stored immediately -
-     * otherwise Settings kept saying "Other app" for someone who clearly has
-     * Ente, and every capability decision downstream was made on the wrong
-     * assumption. Two or more is a genuine choice and gets a picker; none
-     * means "Other app" and the generic checklist.
+     * Whether Ente is on this phone, re-read whenever a screen that depends on
+     * it comes back into view - someone sent off to install it returns to a
+     * screen that already knows.
      */
-    data class CloudDetection(
-        val installed: List<CloudApp> = emptyList(),
-        val chosen: CloudApp = CloudApps.byId("other"),
-        val needsChoice: Boolean = false
-    )
+    val enteInstalled = MutableStateFlow(false)
 
-    val cloudDetection = MutableStateFlow(CloudDetection())
-
-    /**
-     * Notices a cloud app that arrived after setup, without being asked.
-     *
-     * Detection used to run exactly once, on the setup card. Anyone who
-     * installed Ente the day after finishing setup stayed on "Other app" for
-     * ever - and "Other app" has no package, so the byte-level proof that
-     * makes a removal safe could never be measured for them. Waiting for the
-     * user to go back into a picker and correct it is leaving the app's own
-     * accuracy to somebody who has no reason to know it matters.
-     *
-     * It only adopts where there is nothing to decide: the current choice is
-     * not a working one, and exactly one known cloud app is now on the
-     * phone. A deliberate choice that is still installed is never touched,
-     * and the change is written to the activity log rather than made
-     * silently.
-     */
-    fun adoptCloudIfObvious() {
+    fun refreshEnte() {
         viewModelScope.launch(Dispatchers.IO) {
-            val o = repo.current()
-            val current = CloudApps.byId(o.cloudSingle)
-            val currentWorks = current.packages.isNotEmpty() &&
-                CloudApps.installedPackage(ctx, current) != null
-            if (currentWorks) return@launch
-            val installed = CloudApps.SELECTABLE.filter {
-                it.packages.isNotEmpty() && CloudApps.installedPackage(ctx, it) != null
-            }
-            val only = installed.singleOrNull() ?: return@launch
-            if (only.id == o.cloudSingle) return@launch
-            persistCloud(only.id)
-            activityLog.record(
-                ActivityLog.Kind.SETTINGS_CHANGED,
-                detail = ctx.getString(R.string.activity_cloud_adopted, only.label)
-            )
-            refreshCloudCaps()
+            enteInstalled.value = EnteApp.isInstalled(ctx)
         }
     }
 
-    fun detectAndPersistCloud() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val o = repo.current()
-            val installed = CloudApps.SELECTABLE.filter {
-                it.packages.isNotEmpty() && CloudApps.installedPackage(ctx, it) != null
-            }
-            val alreadyChosen = o.cloudDetected
-            val chosen = when {
-                alreadyChosen -> CloudApps.byId(o.cloudSingle)
-                installed.size == 1 -> installed.first()
-                installed.isEmpty() -> CloudApps.byId("other")
-                else -> CloudApps.byId(o.cloudSingle)
-            }
-            // Only commit where there is nothing to decide. With two installed
-            // the app must not pick for the user and then act on that choice.
-            if (!alreadyChosen && installed.size <= 1) {
-                persistCloud(chosen.id)
-            }
-            cloudDetection.value = CloudDetection(
-                installed = installed,
-                chosen = chosen,
-                needsChoice = !alreadyChosen && installed.size > 1
-            )
-            refreshCloudCaps()
-        }
-    }
+    fun openEnte(): Boolean = EnteApp.launch(ctx)
 
-    private suspend fun persistCloud(id: String) {
-        repo.setString(OptionsRepo.K.CLOUD_SINGLE, id)
-        repo.setString(OptionsRepo.K.CLOUD_PHOTOS, id)
-        repo.setString(OptionsRepo.K.CLOUD_VIDEOS, id)
-        repo.setBool(OptionsRepo.K.CLOUD_DETECTED, true)
-        // Detection writes the choice directly, so it can land back on the
-        // very app a pending switch notice is about. That notice would then
-        // read "files sent to X are stored there, not in X", which says
-        // nothing. Landing back where you started is not a switch.
-        if (repo.current().cloudSwitchFrom == id) {
-            repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, "")
-        }
-    }
-
-    /** The user picked from the "Use a different app" list. */
-    fun chooseCloud(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            persistCloud(id)
-            cloudDetection.value = cloudDetection.value.copy(
-                chosen = CloudApps.byId(id), needsChoice = false
-            )
-            noteSettingChange(
-                detail = ActivityWording.encode(
-                    ActivityWording.Setting.CLOUD_APP, CloudApps.byId(id).label
-                )
-            )
-            refreshCloudCaps()
-        }
-    }
+    fun installEnte(source: EnteApp.Source): Boolean = EnteApp.openInstallPage(ctx, source)
 
     /**
      * Everything about the link that can actually be checked, checked.
@@ -1632,16 +1665,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun verifyCloudLink() {
         viewModelScope.launch(Dispatchers.IO) {
-            val o = repo.current()
-            val app = CloudApps.byId(o.cloudSingle)
-            val pkg = CloudApps.installedPackage(ctx, app)
+            val pkg = EnteApp.installedPackage(ctx)
             val folderHasFiles = (OutputInventory(ctx).query() ?: emptyList()).isNotEmpty()
             linkState.value = when {
-                app.packages.isNotEmpty() && pkg == null -> LinkState.NO_APP
+                !EnteApp.isInstalled(ctx) -> LinkState.NO_APP
                 !folderHasFiles -> LinkState.NO_FOLDER
                 pkg == null -> LinkState.CANNOT_TELL
                 else -> {
-                    val uid = CloudApps.uidOf(ctx, pkg)
+                    val uid = EnteApp.uidOf(ctx, pkg)
                     val now = System.currentTimeMillis()
                     val tx = uid?.let {
                         UsageVerifier.txBytesForUid(ctx, it, now - 86_400_000L, now)
@@ -1686,13 +1717,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun finishOnboarding() {
         viewModelScope.launch {
             repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
-            if (!repo.current().cloudDetected) {
-                val detected = CloudApps.detectDefault(ctx)
-                repo.setString(OptionsRepo.K.CLOUD_SINGLE, detected.id)
-                repo.setString(OptionsRepo.K.CLOUD_PHOTOS, detected.id)
-                repo.setString(OptionsRepo.K.CLOUD_VIDEOS, detected.id)
-                repo.setBool(OptionsRepo.K.CLOUD_DETECTED, true)
-            }
             Scheduler.ensure(ctx, repo.current())
             Scheduler.runNow(ctx)
         }

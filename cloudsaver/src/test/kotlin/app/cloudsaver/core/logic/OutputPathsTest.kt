@@ -7,62 +7,71 @@ import org.junit.Test
 
 class OutputPathsTest {
 
+    private val single = OutputLayout(OutputMode.SINGLE)
+    private val separate = OutputLayout(OutputMode.SEPARATE)
+
     @Test
     fun `single layout names one folder`() {
-        assertEquals(listOf("Pictures/CloudSaver"), OutputPaths.forMode(OutputMode.SINGLE))
+        assertEquals(listOf(Defaults.OUTPUT_DIR), OutputPaths.current(single))
     }
 
     @Test
     fun `separate layout names both folders`() {
         assertEquals(
-            listOf("Pictures/CloudSaver/Photos", "Pictures/CloudSaver/Videos"),
-            OutputPaths.forMode(OutputMode.SEPARATE)
+            listOf(Defaults.OUTPUT_DIR_PHOTOS, Defaults.OUTPUT_DIR_VIDEOS),
+            OutputPaths.current(separate)
         )
     }
 
     @Test
     fun `the printed path is the path the app actually writes to`() {
-        // These strings are typed into a different app by hand. If they drift
-        // from Defaults, the user backs up the wrong folder.
+        // These strings are picked in a different app by hand. If they drift
+        // from what the release step uses, the user backs up the wrong folder.
         for (mode in OutputMode.entries) {
-            for (path in OutputPaths.forMode(mode)) {
-                assertTrue("$path must be inside the output folder", Defaults.isOutputPath(path))
+            val layout = OutputLayout(mode, photos = "Pictures/Holiday", videos = "Pictures/Clips")
+            for (path in OutputPaths.current(layout)) {
+                assertTrue("$path must be one of the release folders",
+                    OutputLayout.folders(mode).any { layout.path(it) == path })
             }
         }
     }
 
     @Test
+    fun `a name of the person's own replaces only its own kind`() {
+        val own = OutputLayout(OutputMode.SEPARATE, photos = "Pictures/Holiday")
+        assertEquals(listOf("Pictures/Holiday", Defaults.OUTPUT_DIR_VIDEOS), own.current)
+        assertTrue(own.isCustom(OutFolder.PHOTOS))
+        assertTrue(!own.isCustom(OutFolder.VIDEOS))
+    }
+
+    @Test
     fun `the other layout is still watched`() {
-        assertEquals(
-            OutputPaths.forMode(OutputMode.SEPARATE),
-            OutputPaths.otherModeFolders(OutputMode.SINGLE)
-        )
-        assertEquals(
-            OutputPaths.forMode(OutputMode.SINGLE),
-            OutputPaths.otherModeFolders(OutputMode.SEPARATE)
-        )
+        assertEquals(separate.current, single.otherMode)
+        assertEquals(single.current, separate.otherMode)
     }
 
     @Test
     fun `joined reads as a sentence`() {
-        assertEquals("Pictures/CloudSaver", OutputPaths.joined(OutputMode.SINGLE))
-        assertTrue(OutputPaths.joined(OutputMode.SEPARATE).contains(" and "))
+        assertEquals(Defaults.OUTPUT_DIR, OutputPaths.joined(single))
+        assertTrue(OutputPaths.joined(separate).contains(" and "))
     }
 
     @Test
     fun `a MediaStore relative path maps back to its output folder`() {
         // MediaStore hands these back with a trailing slash.
-        assertEquals(OutFolder.SINGLE, OutputPaths.folderFor("Pictures/CloudSaver/"))
-        assertEquals(OutFolder.PHOTOS, OutputPaths.folderFor("Pictures/CloudSaver/Photos/"))
-        assertEquals(OutFolder.VIDEOS, OutputPaths.folderFor("Pictures/CloudSaver/Videos/"))
-        assertEquals(OutFolder.SINGLE, OutputPaths.folderFor("Pictures/CloudSaver"))
+        assertEquals(OutFolder.SINGLE, OutputPaths.folderFor(Defaults.OUTPUT_DIR + "/", single))
+        assertEquals(OutFolder.PHOTOS, OutputPaths.folderFor(Defaults.OUTPUT_DIR_PHOTOS + "/", single))
+        assertEquals(OutFolder.VIDEOS, OutputPaths.folderFor(Defaults.OUTPUT_DIR_VIDEOS + "/", single))
+        assertEquals(OutFolder.SINGLE, OutputPaths.folderFor(Defaults.OUTPUT_DIR, single))
+        val own = OutputLayout(OutputMode.SEPARATE, photos = "Pictures/Holiday")
+        assertEquals(OutFolder.PHOTOS, OutputPaths.folderFor("Pictures/holiday/", own))
     }
 
     @Test
     fun `somebody else's folder is not one of ours`() {
-        assertNull(OutputPaths.folderFor("DCIM/Camera/"))
-        assertNull(OutputPaths.folderFor("Pictures/"))
-        assertNull(OutputPaths.folderFor("Pictures/CloudSaverBackup/"))
-        assertNull(OutputPaths.folderFor(""))
+        assertNull(OutputPaths.folderFor("DCIM/Camera/", single))
+        assertNull(OutputPaths.folderFor("Pictures/", single))
+        assertNull(OutputPaths.folderFor(Defaults.OUTPUT_DIR + "Backup/", single))
+        assertNull(OutputPaths.folderFor("", single))
     }
 }

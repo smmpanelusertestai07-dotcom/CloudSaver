@@ -243,7 +243,7 @@ class UiWalkthroughTest {
         setOnboardingDone(true)
         setTheme("DARK")
         try {
-            ActivityScenario.launch(MainActivity::class.java).use {
+            ActivityScenario.launch(HostActivity::class.java).use {
                 shoot("50-dark-home")
                 compose.onNodeWithText(s(R.string.nav_storage)).performClick()
                 compose.assertTabSelected(s(R.string.nav_storage))
@@ -284,7 +284,7 @@ class UiWalkthroughTest {
     @Test
     fun onboardingLooksRight() {
         setOnboardingDone(false)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             shoot("10-onboarding-welcome")
             compose.onNodeWithText(s(R.string.onb_start)).performClick()
             compose.waitForIdle()
@@ -300,7 +300,7 @@ class UiWalkthroughTest {
     @Test
     fun everyMainScreenRenders() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             shoot("20-home")
 
             compose.onNodeWithText(s(R.string.nav_files)).performClick()
@@ -327,7 +327,7 @@ class UiWalkthroughTest {
     @Test
     fun calculatorOpensFromStorage() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_storage)).performClick()
             compose.openRow(s(R.string.calc_title))
             compose.assertOn(s(R.string.calc_title))
@@ -338,7 +338,7 @@ class UiWalkthroughTest {
     @Test
     fun activityScreenRenders() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             // Activity lives under Settings now, with the other reference
             // material, rather than competing for room on Home.
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
@@ -351,7 +351,7 @@ class UiWalkthroughTest {
     @Test
     fun helpSectionIsReachableFromSettings() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.onAllNodes(hasText(s(R.string.opt_group_help), substring = true)).onFirst()
                 .performScrollTo().assertIsDisplayed()
@@ -363,7 +363,7 @@ class UiWalkthroughTest {
     @Test
     fun largestFilesOpensFromTheFreeUpHub() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_storage)).performClick()
             compose.openRow(s(R.string.hub_title))
             compose.assertOn(s(R.string.hub_title))
@@ -377,7 +377,7 @@ class UiWalkthroughTest {
     @Test
     fun encryptedBackupDialogOpens() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.openRow(s(R.string.transfer_export))
             shoot("30-backup-password-dialog")
@@ -396,7 +396,7 @@ class UiWalkthroughTest {
     @Test
     fun theScreensBehindATapArePhotographedToo() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_files)).performClick()
             compose.waitForIdle()
 
@@ -425,7 +425,7 @@ class UiWalkthroughTest {
     @Test
     fun theIfSomethingIsDeletedPageIsPhotographed() {
         setOnboardingDone(true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.openExactRow(s(R.string.nav_help))
             compose.assertOn(s(R.string.help_deleted))

@@ -16,6 +16,7 @@ import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
+import app.cloudsaver.core.logic.Defaults
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -74,6 +75,14 @@ data class ItemRow(
     val outPixels: Long = 0,
     val outputSha256: String? = null,
     val outputFolder: String? = null,
+    /**
+     * The folder this copy was actually released into, as MediaStore wrote
+     * it, without the trailing slash. A row answers "is my copy still
+     * there?" by looking in its own folder: once a person can move where
+     * copies go, the folder a copy was released into and the folder new
+     * copies go to are no longer the same thing.
+     */
+    val outputRelPath: String? = null,
     val presetUsed: String? = null,
     val codecUsed: String? = null,
     val batchId: Long? = null,
@@ -268,6 +277,9 @@ data class BatchRow(
 
 data class StateCount(val state: String, val cnt: Int)
 
+/** How many released copies wait in one folder. */
+data class FolderCount(val outputRelPath: String, val cnt: Int)
+
 /** Compression outcome sample for the cloud calculator. */
 data class RatioSample(val sizeBytes: Long, val outputBytes: Long, val durationMs: Long)
 
@@ -422,6 +434,27 @@ interface ItemDao {
 
     @Query("SELECT * FROM items WHERE state = 'RELEASED'")
     suspend fun released(): List<ItemRow>
+
+    /** Every folder a copy still waits in. */
+    @Query(
+        "SELECT DISTINCT outputRelPath FROM items " +
+            "WHERE state = 'RELEASED' AND outputRelPath IS NOT NULL"
+    )
+    suspend fun releasedRoots(): List<String>
+
+    /** Released copies still waiting, counted per folder. */
+    @Query(
+        "SELECT outputRelPath, COUNT(*) AS cnt FROM items " +
+            "WHERE state = 'RELEASED' AND outputRelPath IS NOT NULL GROUP BY outputRelPath"
+    )
+    suspend fun releasedPerFolder(): List<FolderCount>
+
+    /** Copies still waiting in [relPath] or a folder inside it. */
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE state = 'RELEASED' AND " +
+            "(outputRelPath = :relPath COLLATE NOCASE OR outputRelPath LIKE :like ESCAPE '\\')"
+    )
+    suspend fun releasedCountIn(relPath: String, like: String): Int
 
     /** Released copies still waiting on evidence, oldest first. */
     @Query(
@@ -768,17 +801,17 @@ interface ItemDao {
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +
-            "WHERE outputBytes IS NOT NULL AND isVideo = 0 AND presetUsed = :preset " +
+            "WHERE outputBytes IS NOT NULL AND isVideo = 0 AND presetUsed = :key " +
             "ORDER BY updatedAt DESC LIMIT 500"
     )
-    suspend fun photoRatioSamples(preset: String): List<RatioSample>
+    suspend fun photoRatioSamples(key: String): List<RatioSample>
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +
-            "WHERE outputBytes IS NOT NULL AND isVideo = 1 AND presetUsed = :preset " +
-            "AND codecUsed = :codec ORDER BY updatedAt DESC LIMIT 500"
+            "WHERE outputBytes IS NOT NULL AND isVideo = 1 AND presetUsed = :key " +
+            "ORDER BY updatedAt DESC LIMIT 500"
     )
-    suspend fun videoRatioSamples(preset: String, codec: String): List<RatioSample>
+    suspend fun videoRatioSamples(key: String): List<RatioSample>
 }
 
 @Dao
@@ -942,7 +975,7 @@ interface CloudCapabilityDao {
         LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
         ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -1139,6 +1172,52 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v8 records the folder each copy was released into, forgets other
+         * cloud apps, and re-files encode results under the photo and video
+         * settings that replaced the single preset.
+         *
+         * Every copy released so far went to the folder its layout named, so
+         * that is filled in from the layout column; a copy released before
+         * the layout column existed went to the single folder. Rows that
+         * never reached a folder stay empty and are filled in on release.
+         */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `outputRelPath` TEXT")
+                connection.execSQL(
+                    "UPDATE `items` SET `outputRelPath` = CASE `outputFolder` " +
+                        "WHEN 'PHOTOS' THEN '${Defaults.LEGACY_OUTPUT_DIR_PHOTOS}' " +
+                        "WHEN 'VIDEOS' THEN '${Defaults.LEGACY_OUTPUT_DIR_VIDEOS}' " +
+                        "ELSE '${Defaults.LEGACY_OUTPUT_DIR}' END " +
+                        "WHERE `outputUri` IS NOT NULL OR `releasedAt` IS NOT NULL"
+                )
+                // Ente Saver works with Ente Photos only. What was learned
+                // about other cloud apps describes apps it no longer talks to.
+                connection.execSQL("DELETE FROM `cloud_capability` WHERE `cloudId` != 'ente'")
+                // Photos and videos have their own settings now, and encode
+                // results are grouped by what each setting stood for. The old
+                // single preset's results are re-filed under the same encode
+                // in the new terms, so no estimate starts again from nothing.
+                connection.execSQL(
+                    "UPDATE `items` SET `presetUsed` = CASE `presetUsed` " +
+                        "WHEN 'STORAGE_SAVER' THEN 'jpeg-16-82' " +
+                        "WHEN 'BALANCED' THEN 'jpeg-24-85' " +
+                        "WHEN 'MAX_SAVER' THEN 'jpeg-8-80' ELSE `presetUsed` END, " +
+                        "`codecUsed` = NULL WHERE `isVideo` = 0"
+                )
+                connection.execSQL(
+                    "UPDATE `items` SET `presetUsed` = lower(COALESCE(`codecUsed`, 'H264')) || '-' || " +
+                        "CASE `presetUsed` WHEN 'STORAGE_SAVER' THEN '1920' " +
+                        "WHEN 'BALANCED' THEN '2560' ELSE '1280' END || '-std' " +
+                        "WHERE `isVideo` = 1 AND `presetUsed` IN ('STORAGE_SAVER', 'BALANCED', 'MAX_SAVER')"
+                )
+                // The stored profiles were keyed by the old preset; each is
+                // rebuilt the first time it is asked for.
+                connection.execSQL("DELETE FROM `media_profile`")
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
@@ -1146,7 +1225,7 @@ abstract class AppDb : RoomDatabase() {
          */
         val MIGRATIONS = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8
         )
 
         @Volatile

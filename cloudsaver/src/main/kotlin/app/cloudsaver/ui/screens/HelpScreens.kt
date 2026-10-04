@@ -1,6 +1,8 @@
 package app.cloudsaver.ui.screens
 
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -40,17 +42,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,21 +65,26 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.BuildConfig
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.PhotoPreset
 import app.cloudsaver.core.logic.Platform
-import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.QualityKept
+import app.cloudsaver.core.logic.VideoPreset
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
+import app.cloudsaver.ui.components.PhotosIcon
 import app.cloudsaver.ui.components.SegmentedChoice
+import app.cloudsaver.ui.components.ShortcutDialog
 import app.cloudsaver.ui.goTo
+import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.PhotosShortcut
 import kotlin.math.roundToInt
 
 @Composable
-private fun HelpPage(
+internal fun HelpPage(
     nav: NavHostController,
     title: String,
     content: @Composable () -> Unit
@@ -123,6 +133,7 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
             nav.goTo(Routes.HELP_QUALITY)
         }
         HelpLink(stringResource(R.string.help_cloud)) { nav.goTo(Routes.HELP_CLOUD) }
+        HelpLink(stringResource(R.string.help_gallery)) { nav.goTo(Routes.HELP_GALLERY) }
         HelpLink(stringResource(R.string.help_privacy)) { nav.goTo(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.goTo(Routes.HELP_LICENSES) }
         HelpLink(stringResource(R.string.help_about)) { nav.goTo(Routes.HELP_ABOUT) }
@@ -139,7 +150,7 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
 }
 
 @Composable
-private fun HelpLink(label: String, onClick: () -> Unit) {
+internal fun HelpLink(label: String, onClick: () -> Unit) {
     AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onClick) {
         Row(
             Modifier.fillMaxWidth(),
@@ -284,6 +295,10 @@ fun HelpFaqScreen(nav: NavHostController) {
         HelpLink(stringResource(R.string.faq_deleted_link)) {
             nav.goTo(Routes.HELP_DELETED)
         }
+        // And the question question seven opens, answered step by step.
+        HelpLink(stringResource(R.string.help_gallery)) {
+            nav.goTo(Routes.HELP_GALLERY)
+        }
     }
 }
 
@@ -302,7 +317,10 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
     LaunchedEffect(Unit) { vm.refreshMeasuredQuality() }
 
     val options by vm.options.collectAsStateWithLifecycle()
-    val preset = options.preset
+    val plan by vm.encodePlan.collectAsStateWithLifecycle()
+    LaunchedEffect(options.photo, options.video) { vm.refreshEncodePlan() }
+    val photoSpec = options.photo.spec()
+    val videoSpec = options.video.spec()
 
     HelpPage(nav, stringResource(R.string.quality_explained_title)) {
         // Which setting is on right now, what it means in numbers, and the
@@ -326,56 +344,76 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.weight(1f)
                 )
             }
+            Text(
+                stringResource(R.string.opt_photos),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 8.dp)
+            )
             SegmentedChoice(
-                listOf(
-                    Preset.STORAGE_SAVER.name to stringResource(R.string.preset_storage),
-                    Preset.BALANCED.name to stringResource(R.string.preset_balanced),
-                    Preset.MAX_SAVER.name to stringResource(R.string.preset_max)
-                ),
-                preset.name
-            ) { vm.setPreset(Preset.valueOf(it)) }
+                PhotoPreset.entries.map { it.name to photoPresetLabel(it) },
+                options.photo.preset.name
+            ) { vm.setPhoto(options.photo.copy(preset = PhotoPreset.valueOf(it))) }
+            Text(
+                stringResource(R.string.opt_videos),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            SegmentedChoice(
+                VideoPreset.entries.map { it.name to videoPresetLabel(it) },
+                options.video.preset.name
+            ) { vm.setVideo(options.video.copy(preset = VideoPreset.valueOf(it))) }
             Text(
                 stringResource(
                     R.string.quality_current_limits,
-                    QualityKept.photoCapMp(preset),
-                    QualityKept.videoCapLongSide(preset),
-                    QualityKept.jpegQuality(preset)
+                    photoLimitPhrase(photoSpec),
+                    formatLabel(plan.photoFormat),
+                    QualityKept.photoQuality(photoSpec),
+                    videoLimitPhrase(videoSpec)
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 10.dp)
             )
-            Text(
-                stringResource(
-                    R.string.quality_current_headroom,
-                    // Every number the app prints goes through Formats, and
-                    // this one did not. It was rounded by a hand-written
-                    // String.format pinned to American formatting, so on a
-                    // phone set to a language that writes numbers differently
-                    // this single figure disagreed with every other number on
-                    // the screen. Formats rounds it the same way and writes it
-                    // the way the phone writes numbers.
-                    Formats.count(QualityKept.screenHeadroom(preset).roundToInt())
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            QualityKept.screenHeadroom(photoSpec)?.let { headroom ->
+                Text(
+                    stringResource(
+                        R.string.quality_current_headroom,
+                        // Every number the app prints goes through Formats, so
+                        // this one is written the way the phone writes numbers.
+                        Formats.count(headroom.roundToInt())
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             // CC3.2: how it looks, per preset - deliberately separate from the
             // pixel table below, and said to be, because "kept 33% of the
             // pixels" and "looks 97% the same" are both true at once and the
             // difference is the entire subject of this screen.
-            Text(
-                stringResource(
-                    when (preset) {
-                        Preset.STORAGE_SAVER -> R.string.quality_looks_storage
-                        Preset.BALANCED -> R.string.quality_looks_balanced
-                        Preset.MAX_SAVER -> R.string.quality_looks_max
-                    }
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 8.dp)
+            // A Custom setting has no figure: the looks were judged for the
+            // three presets, and a guess for an arbitrary mix is not one.
+            val looks = listOfNotNull(
+                when (options.photo.preset) {
+                    PhotoPreset.BEST -> R.string.quality_looks_photo_best
+                    PhotoPreset.BALANCED -> R.string.quality_looks_photo_balanced
+                    PhotoPreset.SMALLEST -> R.string.quality_looks_photo_smallest
+                    PhotoPreset.CUSTOM -> null
+                },
+                when (options.video.preset) {
+                    VideoPreset.BEST -> R.string.quality_looks_video_best
+                    VideoPreset.BALANCED -> R.string.quality_looks_video_balanced
+                    VideoPreset.SMALLEST -> R.string.quality_looks_video_smallest
+                    VideoPreset.CUSTOM -> null
+                }
             )
+            for (line in looks) {
+                Text(
+                    stringResource(line),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
             Text(
                 stringResource(R.string.quality_looks_note),
                 style = MaterialTheme.typography.bodySmall,
@@ -426,7 +464,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     stringResource(R.string.quality_detail_photo, mp.toInt()),
                     stringResource(
                         R.string.quality_detail_kept,
-                        QualityKept.photoDetailKeptPercent(mp, preset)
+                        QualityKept.photoDetailKeptPercent(mp, photoSpec)
                     )
                 )
             }
@@ -435,7 +473,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     label,
                     stringResource(
                         R.string.quality_detail_kept,
-                        QualityKept.videoDetailKeptPercent(side, preset)
+                        QualityKept.videoDetailKeptPercent(side, videoSpec)
                     )
                 )
             }
@@ -526,7 +564,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                             R.string.quality_measured_photos,
                             "${measured.photoShrinkPercent}%",
                             Formats.count(measured.photoCount),
-                            QualityKept.photoCapMp(preset)
+                            photoLimitPhrase(photoSpec)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 6.dp)
@@ -538,7 +576,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                             R.string.quality_measured_videos,
                             "${measured.videoShrinkPercent}%",
                             Formats.count(measured.videoCount),
-                            QualityKept.videoCapLongSide(preset)
+                            videoLimitPhrase(videoSpec)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 4.dp)
@@ -711,7 +749,6 @@ fun HelpLicensesScreen(nav: NavHostController) {
 @Composable
 fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
-    val preset = options.preset
     HelpPage(nav, stringResource(R.string.help_about)) {
         AppCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -871,15 +908,10 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             Text(
                 stringResource(
                     R.string.about_quality_line,
-                    stringResource(
-                        when (preset) {
-                            Preset.STORAGE_SAVER -> R.string.preset_storage
-                            Preset.BALANCED -> R.string.preset_balanced
-                            Preset.MAX_SAVER -> R.string.preset_max
-                        }
-                    ),
-                    QualityKept.photoCapMp(preset),
-                    QualityKept.videoCapLongSide(preset)
+                    photoPresetLabel(options.photo.preset),
+                    photoLimitPhrase(options.photo.spec()),
+                    videoPresetLabel(options.video.preset),
+                    videoLimitPhrase(options.video.spec())
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
@@ -919,13 +951,10 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
 /**
  * Everything about the other half of the job, in one place.
  *
- * The cloud app was explained in pieces scattered across setup, a warning
- * card, two settings hints and three FAQ answers - which is fine while you
- * are being walked through it and useless when you come back six months
- * later asking one specific question. This page is where those questions
- * live: why a second app at all, which ones suit, the one setting that
- * matters, how the app finds yours, what the name is really used for, what
- * happens with none, and what happens if you change.
+ * Why Ente Photos, in one place: why a second app at all, why Ente, the one
+ * setting that matters in it, what having everything in one place gives,
+ * how Ente Saver knows a copy arrived, what happens before Ente is
+ * installed, and what happened to copies sent through another app before.
  */
 @Composable
 fun HelpCloudScreen(nav: NavHostController) {
@@ -954,5 +983,83 @@ private fun CloudHelpBlock(title: Int, body: Int) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp)
         )
+    }
+}
+
+/**
+ * How to make Ente the phone's gallery, so there is one photo app and no
+ * confusion: the default app, the icon (Ente's own choices or this app's
+ * icon pack), a "Photos" shortcut, Ente's on-device search, and why Ente's
+ * Free up space also empties Ente Saver's folder.
+ */
+@Composable
+fun HelpGalleryScreen(nav: NavHostController) {
+    val context = LocalContext.current
+    var adding by rememberSaveable { mutableStateOf(false) }
+    HelpPage(nav, stringResource(R.string.help_gallery)) {
+        Text(
+            stringResource(R.string.gallery_intro),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
+        GalleryBlock(R.string.gallery_default_t, R.string.gallery_default_b) {
+            OutlinedButton(onClick = {
+                val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                Errand.begin()
+                if (runCatching { context.startActivity(intent) }.isFailure) {
+                    Errand.cancel()
+                    runCatching {
+                        Errand.begin()
+                        context.startActivity(
+                            Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }.onFailure { Errand.cancel() }
+                }
+            }) { Text(stringResource(R.string.gallery_default_button)) }
+        }
+        GalleryBlock(R.string.gallery_icon_t, R.string.gallery_icon_b)
+        GalleryBlock(R.string.gallery_pack_t, R.string.gallery_pack_b) {
+            PhotosIcon()
+        }
+        GalleryBlock(R.string.gallery_shortcut_t, R.string.gallery_shortcut_b) {
+            if (PhotosShortcut.supported(context)) {
+                OutlinedButton(onClick = { adding = true }) {
+                    Text(stringResource(R.string.gallery_shortcut_button))
+                }
+            } else {
+                Text(
+                    stringResource(R.string.shortcut_unsupported),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        GalleryBlock(R.string.gallery_rename_t, R.string.gallery_rename_b)
+        GalleryBlock(R.string.gallery_ml_t, R.string.gallery_ml_b)
+        GalleryBlock(R.string.gallery_freeup_t, R.string.gallery_freeup_b)
+        GalleryBlock(R.string.gallery_saver_t, R.string.gallery_saver_b)
+    }
+    if (adding) ShortcutDialog(onDone = { adding = false })
+}
+
+@Composable
+private fun GalleryBlock(title: Int, body: Int, extra: (@Composable () -> Unit)? = null) {
+    AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(
+            stringResource(title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            stringResource(body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        if (extra != null) {
+            Spacer(Modifier.padding(top = 8.dp))
+            extra()
+        }
     }
 }

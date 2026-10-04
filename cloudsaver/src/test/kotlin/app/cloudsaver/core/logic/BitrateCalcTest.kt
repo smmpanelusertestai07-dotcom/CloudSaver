@@ -17,8 +17,10 @@ class BitrateCalcTest {
 
     @Test
     fun bitrateCapAndFloor() {
-        // 4K60 H.264 would be ~49.8 Mbps -> capped at 12 Mbps.
-        assertEquals(BitrateCalc.CAP_BPS, BitrateCalc.targetBps(3840, 2160, 60f, VideoCodec.H264))
+        // 1440p60 H.264 would be ~22 Mbps -> capped at 12 Mbps.
+        assertEquals(BitrateCalc.CAP_BPS, BitrateCalc.targetBps(2560, 1440, 60f, VideoCodec.H264))
+        // 4K60 would be ~49.8 Mbps -> capped at 20 Mbps, where 12 would starve it.
+        assertEquals(BitrateCalc.CAP_BPS_UHD, BitrateCalc.targetBps(3840, 2160, 60f, VideoCodec.H264))
         // Tiny video -> floored at 1 Mbps.
         assertEquals(BitrateCalc.FLOOR_BPS, BitrateCalc.targetBps(320, 240, 15f, VideoCodec.H264))
     }
@@ -96,5 +98,18 @@ class BitrateCalcTest {
         val s = BitrateCalc.sampleSizeFor(16000, 12000, 8_000_000)
         assertTrue(s > 0 && (s and (s - 1)) == 0)
         assertTrue((16000L / s) * (12000L / s) <= 8_000_000L * 4)
+    }
+
+    @Test
+    fun `a copy that overshot every target is kept only when it is a real saving`() {
+        // Half the size of the original, the right length: kept.
+        assertTrue(BitrateCalc.worthKeeping(2_659_080, 1_260_989, 2_000, 1_966))
+        // A tenth or less saved is not worth a re-encoded copy.
+        assertFalse(BitrateCalc.worthKeeping(1_000_000, 950_000, 2_000, 2_000))
+        // Never larger, never empty.
+        assertFalse(BitrateCalc.worthKeeping(1_000_000, 1_200_000, 2_000, 2_000))
+        assertFalse(BitrateCalc.worthKeeping(1_000_000, 0, 2_000, 2_000))
+        // A clip that came out the wrong length is broken, however small.
+        assertFalse(BitrateCalc.worthKeeping(10_000_000, 2_000_000, 60_000, 50_000))
     }
 }

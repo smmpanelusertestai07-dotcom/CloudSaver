@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    An original gallery-style icon for the home-screen shortcut that opens
+    Ente, so Ente can look like the phone's own gallery. No other app's logo.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M37,35 h34 a7,7 0 0 1 7,7 v24 a7,7 0 0 1 -7,7 h-34 a7,7 0 0 1 -7,-7 v-24 a7,7 0 0 1 7,-7 Z M35,68 L46,54.6 Q47.2,53.2 48.4,54.6 L55.6,63 L60,58.4 Q61.2,57.2 62.4,58.4 L73,68 Z M60.105,46.200 a4.4,4.4 0 1,0 8.8,0 a4.4,4.4 0 1,0 -8.8,0 Z" />
+</vector>

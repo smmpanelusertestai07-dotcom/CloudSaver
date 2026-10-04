@@ -13,11 +13,16 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.FolderName
+import app.cloudsaver.core.logic.MediaSettings
+import app.cloudsaver.core.logic.OutFolder
+import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputMode
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.OutputRoots
+import app.cloudsaver.core.logic.PhotoSettings
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
-import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.core.logic.VideoSettings
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -31,15 +36,43 @@ data class Options(
     val scope: BackupScope = BackupScope.ALL,
     val excludedBuckets: Set<String> = emptySet(),
     val outputMode: OutputMode = OutputMode.SINGLE,
+    /**
+     * The person's own folder for each kind of copy, as a relative path
+     * ("Pictures/My photos"), or "" for the default. See [OutputLayout].
+     */
+    val folderSingle: String = "",
+    val folderPhotos: String = "",
+    val folderVideos: String = "",
+    /**
+     * Folders copies were released into before the person changed where they
+     * go. Watched until no copy waits there any more, then dropped with a
+     * one-time note that Ente can stop backing that folder up.
+     */
+    val pastOutputRoots: Set<String> = emptySet(),
+    /** An existing install's folders were checked against the new default. */
+    val foldersPinned: Boolean = false,
+    /** "Not now" on the card that offers the new folder. */
+    val moveCardDismissed: Boolean = false,
+    /**
+     * Copies go to a folder they did not go to before. Ente backs up only the
+     * folders turned on in it, so until the person says it is done, Home
+     * names the folder and where in Ente to turn it on.
+     */
+    val newFolderPending: Boolean = false,
+    /**
+     * The cloud app an earlier version was set to. Ente Saver works with Ente
+     * Photos only; anything else here means the person used another app
+     * before 11, and Home says once what changed. Set to "ente" when read.
+     */
     val cloudSingle: String = "ente",
-    val cloudPhotos: String = "ente",
-    val cloudVideos: String = "ente",
     val speed: SpeedMode = SpeedMode.SMART,
     val dailyCapMb: Int = Defaults.DAILY_CAP_MB,
     val minFreeMb: Int = Defaults.MIN_FREE_MB,
     val maxExtraMb: Int = Defaults.MAX_EXTRA_MB,
-    val preset: Preset = Preset.STORAGE_SAVER,
-    val codec: VideoCodec = VideoCodec.H264,
+    /** How photos are optimised; see [PhotoSettings]. */
+    val photo: PhotoSettings = PhotoSettings(),
+    /** How videos are optimised; see [VideoSettings]. */
+    val video: VideoSettings = VideoSettings(),
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = false,
     /** MediaStore volume for stage + output; "" = internal (primary). */
@@ -50,8 +83,6 @@ data class Options(
     val placeholderRemoved: Boolean = false,
     /** The double-backup warning was read during setup (Z5.2). */
     val doubleBackupAck: Boolean = false,
-    /** Old cloud app id after a switch; "" once the sheet was shown (Z10.1). */
-    val cloudSwitchFrom: String = "",
     /** When the very first copy entered the upload folder (Z10.6). */
     val firstReleaseAt: Long = 0,
     /** Files in the upload folder that CloudSaver did not create (DD2.1). */
@@ -144,7 +175,6 @@ data class Options(
     val releasedSinceSample: Int = 0,
     /** A confirmation failed recently, so samples are taken twice as often. */
     val recentPacingFailure: Boolean = false,
-    val cloudDetected: Boolean = false,
     /** Files seen in the upload folder last pass, so a shrink is detectable. */
     val lastOutputCount: Int = 0,
     /** Active CloudWatchdog.Problem name, or "" when the cloud looks healthy. */
@@ -179,6 +209,7 @@ data class Options(
     val dailyCapBytes: Long get() = if (dailyCapMb < 0) -1 else dailyCapMb * Defaults.MB
     val minFreeBytes: Long get() = minFreeMb * Defaults.MB
     val maxExtraBytes: Long get() = if (maxExtraMb < 0) -1 else maxExtraMb * Defaults.MB
+    val layout: OutputLayout get() = OutputLayout(outputMode, folderSingle, folderPhotos, folderVideos)
 }
 
 class OptionsRepo(private val context: Context) {
@@ -187,15 +218,32 @@ class OptionsRepo(private val context: Context) {
         val SCOPE = stringPreferencesKey("scope")
         val EXCLUDED_BUCKETS = stringSetPreferencesKey("excludedBuckets")
         val OUTPUT_MODE = stringPreferencesKey("outputMode")
+        val FOLDER_SINGLE = stringPreferencesKey("folderSingle")
+        val FOLDER_PHOTOS = stringPreferencesKey("folderPhotos")
+        val FOLDER_VIDEOS = stringPreferencesKey("folderVideos")
+        val PAST_OUTPUT_ROOTS = stringSetPreferencesKey("pastOutputRoots")
+        val FOLDERS_PINNED = booleanPreferencesKey("foldersPinned")
+        val MOVE_CARD_DISMISSED = booleanPreferencesKey("moveCardDismissed")
+        val NEW_FOLDER_PENDING = booleanPreferencesKey("newFolderPending")
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
-        val CLOUD_PHOTOS = stringPreferencesKey("cloudPhotos")
-        val CLOUD_VIDEOS = stringPreferencesKey("cloudVideos")
         val SPEED = stringPreferencesKey("speed")
         val DAILY_CAP_MB = intPreferencesKey("dailyCapMb")
         val MIN_FREE_MB = intPreferencesKey("minFreeMb")
         val MAX_EXTRA_MB = intPreferencesKey("maxExtraMb")
+        /** The single preset and codec before 11: read only to derive the two below. */
         val PRESET = stringPreferencesKey("preset")
         val CODEC = stringPreferencesKey("codec")
+        val PHOTO_PRESET = stringPreferencesKey("photoPreset")
+        val PHOTO_FORMAT = stringPreferencesKey("photoFormat")
+        val PHOTO_MAX_MP = intPreferencesKey("photoMaxMp")
+        val PHOTO_QUALITY = intPreferencesKey("photoQuality")
+        val VIDEO_PRESET = stringPreferencesKey("videoPreset")
+        val VIDEO_CODEC = stringPreferencesKey("videoCodec")
+        val VIDEO_LONG_SIDE = intPreferencesKey("videoLongSide")
+        val VIDEO_FPS = intPreferencesKey("videoFps")
+        val VIDEO_QUALITY = stringPreferencesKey("videoQuality")
+        val VIDEO_AUDIO_KBPS = intPreferencesKey("videoAudioKbps")
+        val VIDEO_HDR = stringPreferencesKey("videoHdr")
         val THEME = stringPreferencesKey("theme")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamicColor")
         val STORAGE_VOLUME = stringPreferencesKey("storageVolume")
@@ -209,7 +257,6 @@ class OptionsRepo(private val context: Context) {
         val ONBOARDING_DONE = booleanPreferencesKey("onboardingDone")
         val PLACEHOLDER_REMOVED = booleanPreferencesKey("placeholderRemoved")
         val DOUBLE_BACKUP_ACK = booleanPreferencesKey("doubleBackupAck")
-        val CLOUD_SWITCH_FROM = stringPreferencesKey("cloudSwitchFrom")
         val FIRST_RELEASE_AT = longPreferencesKey("firstReleaseAt")
         val FOREIGN_FILES = intPreferencesKey("foreignFiles")
         val RESTORE_DONE = booleanPreferencesKey("restoreDone")
@@ -235,7 +282,6 @@ class OptionsRepo(private val context: Context) {
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
         val RELEASED_SINCE_SAMPLE = intPreferencesKey("releasedSinceSample")
         val RECENT_PACING_FAILURE = booleanPreferencesKey("recentPacingFailure")
-        val CLOUD_DETECTED = booleanPreferencesKey("cloudDetected")
         val LAST_OUTPUT_COUNT = intPreferencesKey("lastOutputCount")
         val CLOUD_PROBLEM = stringPreferencesKey("cloudProblem")
         val ALERTS_MUTED_UNTIL = longPreferencesKey("alertsMutedUntil")
@@ -254,9 +300,14 @@ class OptionsRepo(private val context: Context) {
             scope = enumOr(p[K.SCOPE], BackupScope.ALL),
             excludedBuckets = p[K.EXCLUDED_BUCKETS] ?: emptySet(),
             outputMode = enumOr(p[K.OUTPUT_MODE], OutputMode.SINGLE),
+            folderSingle = p[K.FOLDER_SINGLE] ?: "",
+            folderPhotos = p[K.FOLDER_PHOTOS] ?: "",
+            folderVideos = p[K.FOLDER_VIDEOS] ?: "",
+            pastOutputRoots = p[K.PAST_OUTPUT_ROOTS] ?: emptySet(),
+            foldersPinned = p[K.FOLDERS_PINNED] ?: false,
+            moveCardDismissed = p[K.MOVE_CARD_DISMISSED] ?: false,
+            newFolderPending = p[K.NEW_FOLDER_PENDING] ?: false,
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
-            cloudPhotos = p[K.CLOUD_PHOTOS] ?: "ente",
-            cloudVideos = p[K.CLOUD_VIDEOS] ?: "ente",
             speed = enumOr(p[K.SPEED], SpeedMode.SMART),
             // Snapped, so a limit stored by an older build still lands on one
             // of the chips instead of leaving the control looking unset.
@@ -269,8 +320,8 @@ class OptionsRepo(private val context: Context) {
             maxExtraMb = Defaults.snapToChoice(
                 p[K.MAX_EXTRA_MB] ?: Defaults.MAX_EXTRA_MB, Defaults.MAX_EXTRA_CHOICES_MB
             ),
-            preset = enumOr(p[K.PRESET], Preset.STORAGE_SAVER),
-            codec = enumOr(p[K.CODEC], VideoCodec.H264),
+            photo = photoOf(p),
+            video = videoOf(p),
             theme = enumOr(p[K.THEME], ThemeMode.SYSTEM),
             dynamicColor = p[K.DYNAMIC_COLOR] ?: false,
             storageVolume = p[K.STORAGE_VOLUME] ?: "",
@@ -278,7 +329,6 @@ class OptionsRepo(private val context: Context) {
             warningsNotif = p[K.WARNINGS_NOTIF] ?: true,
             placeholderRemoved = p[K.PLACEHOLDER_REMOVED] ?: false,
             doubleBackupAck = p[K.DOUBLE_BACKUP_ACK] ?: false,
-            cloudSwitchFrom = p[K.CLOUD_SWITCH_FROM] ?: "",
             firstReleaseAt = p[K.FIRST_RELEASE_AT] ?: 0,
             foreignFiles = p[K.FOREIGN_FILES] ?: 0,
             restoreDone = p[K.RESTORE_DONE] ?: false,
@@ -310,7 +360,6 @@ class OptionsRepo(private val context: Context) {
             cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,
             releasedSinceSample = p[K.RELEASED_SINCE_SAMPLE] ?: 0,
             recentPacingFailure = p[K.RECENT_PACING_FAILURE] ?: false,
-            cloudDetected = p[K.CLOUD_DETECTED] ?: false,
             lastOutputCount = p[K.LAST_OUTPUT_COUNT] ?: 0,
             cloudProblem = p[K.CLOUD_PROBLEM] ?: "",
             alertsMutedUntil = p[K.ALERTS_MUTED_UNTIL] ?: 0,
@@ -322,10 +371,157 @@ class OptionsRepo(private val context: Context) {
             reclaimReminderGb = p[K.RECLAIM_REMINDER_GB] ?: 0,
             stallAlerts = p[K.STALL_ALERTS] ?: 0,
             stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
+        ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }
+    }
+
+    suspend fun current(): Options {
+        val o = flow.first()
+        if (o.foldersPinned) return o
+        pinLegacyFolders()
+        return flow.first()
+    }
+
+    /**
+     * Keeps an install that was already in use on the folder it had.
+     *
+     * Version 11 makes copies in Pictures/EnteSaver by default, and Ente is
+     * backing up Pictures/CloudSaver for everyone who set the app up before.
+     * Moving them silently would send every new copy to a folder Ente does
+     * not know, where nothing would ever upload. So their folders are written
+     * down as the old ones, once, and they move only when they tap Move -
+     * which then tells them the one thing to change in Ente. An install that
+     * never started setup has no copies and no Ente folder, and takes the new
+     * default.
+     */
+    suspend fun pinLegacyFolders() {
+        write { p ->
+            if (p[K.FOLDERS_PINNED] == true) return@write
+            p[K.FOLDERS_PINNED] = true
+            val inUse = (p[K.ONBOARDING_DONE] ?: false) || (p[K.ONBOARDING_STEP] ?: 0) != 0
+            if (!inUse) return@write
+            if ((p[K.FOLDER_SINGLE] ?: "").isEmpty()) p[K.FOLDER_SINGLE] = Defaults.LEGACY_OUTPUT_DIR
+            if ((p[K.FOLDER_PHOTOS] ?: "").isEmpty()) p[K.FOLDER_PHOTOS] = Defaults.LEGACY_OUTPUT_DIR_PHOTOS
+            if ((p[K.FOLDER_VIDEOS] ?: "").isEmpty()) p[K.FOLDER_VIDEOS] = Defaults.LEGACY_OUTPUT_DIR_VIDEOS
+        }
+    }
+
+    /**
+     * New folders for copies, in one write: [changes] maps each kind to its
+     * new value ("" for the default). Every folder that stops being used is
+     * added to the past ones, so the copies still waiting in it are watched
+     * until Ente has them; a folder moved back to is current again.
+     */
+    suspend fun setFolders(changes: Map<OutFolder, String>) {
+        write { p ->
+            changeFolders(p) {
+                for ((folder, value) in changes) {
+                    // Only what the folder setting itself could produce.
+                    if (FolderName.isStorable(value)) p[keyOf(folder)] = value
+                }
+            }
+        }
+    }
+
+    /** One folder for every copy, or separate ones for photos and videos. */
+    suspend fun setOutputMode(mode: OutputMode) {
+        write { p -> changeFolders(p) { p[K.OUTPUT_MODE] = mode.name } }
+    }
+
+    /**
+     * Runs [change] to where copies go, and keeps the books on it: a folder
+     * copies went to and no longer do joins the past ones, so Home can say
+     * what still waits there and when it may be turned off in Ente; one
+     * moved back to is current again; and when copies now go somewhere new,
+     * Home asks for that folder to be turned on in Ente. Only folders copies
+     * really went to are past ones - the unused half of the other
+     * arrangement is not, or every change would end in notes about folders
+     * nobody ever saw. Waiting copies stay watched through their own rows
+     * either way.
+     */
+    private fun changeFolders(p: MutablePreferences, change: () -> Unit) {
+        val before = layoutOf(p)
+        change()
+        val after = layoutOf(p)
+        val inUse = after.current + after.otherMode
+        val left = before.current.filter { old -> inUse.none { OutputRoots.same(it, old) } }
+        val past = (p[K.PAST_OUTPUT_ROOTS] ?: emptySet())
+            .filter { kept -> inUse.none { OutputRoots.same(it, kept) } } + left.map { OutputRoots.normalize(it) }
+        p[K.PAST_OUTPUT_ROOTS] = past.toSet()
+        if (after.current.any { now -> before.current.none { OutputRoots.same(it, now) } }) {
+            p[K.NEW_FOLDER_PENDING] = true
+        }
+    }
+
+    private fun keyOf(folder: OutFolder) = when (folder) {
+        OutFolder.SINGLE -> K.FOLDER_SINGLE
+        OutFolder.PHOTOS -> K.FOLDER_PHOTOS
+        OutFolder.VIDEOS -> K.FOLDER_VIDEOS
+    }
+
+    private fun layoutOf(p: Preferences) = OutputLayout(
+        enumOr(p[K.OUTPUT_MODE], OutputMode.SINGLE),
+        p[K.FOLDER_SINGLE] ?: "",
+        p[K.FOLDER_PHOTOS] ?: "",
+        p[K.FOLDER_VIDEOS] ?: ""
+    )
+
+    /**
+     * The photo setting as stored, each value checked against what the
+     * screen offers. Nothing stored yet - every install before 11, and every
+     * new one - reads as the nearest new preset to what the old single preset
+     * stood for (MediaSettings.fromLegacy), so an upgrade needs no write.
+     */
+    private fun photoOf(p: Preferences): PhotoSettings {
+        val legacy = MediaSettings.fromLegacy(p[K.PRESET], p[K.CODEC]).first
+        return PhotoSettings(
+            preset = enumOr(p[K.PHOTO_PRESET], legacy.preset),
+            format = enumOr(p[K.PHOTO_FORMAT], legacy.format),
+            maxMp = p[K.PHOTO_MAX_MP]?.takeIf { it in MediaSettings.PHOTO_MP_CHOICES } ?: legacy.maxMp,
+            quality = p[K.PHOTO_QUALITY]?.takeIf { it in MediaSettings.PHOTO_QUALITY_CHOICES }
+                ?: legacy.quality
         )
     }
 
-    suspend fun current(): Options = flow.first()
+    private fun videoOf(p: Preferences): VideoSettings {
+        val legacy = MediaSettings.fromLegacy(p[K.PRESET], p[K.CODEC]).second
+        return VideoSettings(
+            preset = enumOr(p[K.VIDEO_PRESET], legacy.preset),
+            codec = enumOr(p[K.VIDEO_CODEC], legacy.codec),
+            longSide = p[K.VIDEO_LONG_SIDE]?.takeIf { it in MediaSettings.VIDEO_LONG_SIDE_CHOICES }
+                ?: legacy.longSide,
+            fpsCap = p[K.VIDEO_FPS]?.takeIf { it in MediaSettings.VIDEO_FPS_CHOICES } ?: legacy.fpsCap,
+            quality = enumOr(p[K.VIDEO_QUALITY], legacy.quality),
+            audioKbps = p[K.VIDEO_AUDIO_KBPS]?.takeIf { it in MediaSettings.AUDIO_KBPS_CHOICES }
+                ?: legacy.audioKbps,
+            hdr = enumOr(p[K.VIDEO_HDR], legacy.hdr)
+        )
+    }
+
+    /** The whole photo setting in one write, so no half of a change can land alone. */
+    suspend fun setPhoto(v: PhotoSettings) {
+        write { putPhoto(it, v) }
+    }
+
+    suspend fun setVideo(v: VideoSettings) {
+        write { putVideo(it, v) }
+    }
+
+    private fun putPhoto(p: MutablePreferences, v: PhotoSettings) {
+        p[K.PHOTO_PRESET] = v.preset.name
+        p[K.PHOTO_FORMAT] = v.format.name
+        p[K.PHOTO_MAX_MP] = v.maxMp
+        p[K.PHOTO_QUALITY] = v.quality
+    }
+
+    private fun putVideo(p: MutablePreferences, v: VideoSettings) {
+        p[K.VIDEO_PRESET] = v.preset.name
+        p[K.VIDEO_CODEC] = v.codec.name
+        p[K.VIDEO_LONG_SIDE] = v.longSide
+        p[K.VIDEO_FPS] = v.fpsCap
+        p[K.VIDEO_QUALITY] = v.quality.name
+        p[K.VIDEO_AUDIO_KBPS] = v.audioKbps
+        p[K.VIDEO_HDR] = v.hdr.name
+    }
 
     /**
      * A choice, once made, is written even if the screen that made it goes.
@@ -381,6 +577,26 @@ class OptionsRepo(private val context: Context) {
         }
     }
 
+    /**
+     * Folders the person moved away from: still watched until they run empty.
+     * A folder they move back to is current again, not a past one.
+     */
+    suspend fun addPastOutputRoots(roots: Collection<String>) {
+        val add = roots.map { OutputRoots.normalize(it) }.filter { it.isNotEmpty() }
+        if (add.isEmpty()) return
+        write { it[K.PAST_OUTPUT_ROOTS] = (it[K.PAST_OUTPUT_ROOTS] ?: emptySet()) + add }
+    }
+
+    suspend fun removePastOutputRoots(roots: Collection<String>) {
+        if (roots.isEmpty()) return
+        write { p ->
+            val left = (p[K.PAST_OUTPUT_ROOTS] ?: emptySet()).filter { kept ->
+                roots.none { OutputRoots.same(it, kept) }
+            }.toSet()
+            p[K.PAST_OUTPUT_ROOTS] = left
+        }
+    }
+
     /** Remembers copies Android would not let the app delete on its own. */
     suspend fun addCopiesNeedingConsent(ids: Collection<Long>) {
         if (ids.isEmpty()) return
@@ -401,15 +617,24 @@ class OptionsRepo(private val context: Context) {
             "scope" to o.scope.name,
             "excludedBuckets" to o.excludedBuckets.joinToString("|"),
             "outputMode" to o.outputMode.name,
-            "cloudSingle" to o.cloudSingle,
-            "cloudPhotos" to o.cloudPhotos,
-            "cloudVideos" to o.cloudVideos,
+            "folderSingle" to o.folderSingle,
+            "folderPhotos" to o.folderPhotos,
+            "folderVideos" to o.folderVideos,
             "speed" to o.speed.name,
             "dailyCapMb" to o.dailyCapMb.toString(),
             "minFreeMb" to o.minFreeMb.toString(),
             "maxExtraMb" to o.maxExtraMb.toString(),
-            "preset" to o.preset.name,
-            "codec" to o.codec.name,
+            "photoPreset" to o.photo.preset.name,
+            "photoFormat" to o.photo.format.name,
+            "photoMaxMp" to o.photo.maxMp.toString(),
+            "photoQuality" to o.photo.quality.toString(),
+            "videoPreset" to o.video.preset.name,
+            "videoCodec" to o.video.codec.name,
+            "videoLongSide" to o.video.longSide.toString(),
+            "videoFps" to o.video.fpsCap.toString(),
+            "videoQuality" to o.video.quality.name,
+            "videoAudioKbps" to o.video.audioKbps.toString(),
+            "videoHdr" to o.video.hdr.name,
             "theme" to o.theme.name,
             "dynamicColor" to o.dynamicColor.toString(),
             "storageVolume" to o.storageVolume,
@@ -432,10 +657,19 @@ class OptionsRepo(private val context: Context) {
             map["excludedBuckets"]?.let { s ->
                 p[K.EXCLUDED_BUCKETS] = s.split('|').filter { it.isNotEmpty() }.toSet()
             }
-            map["outputMode"]?.let { p[K.OUTPUT_MODE] = it }
-            map["cloudSingle"]?.let { p[K.CLOUD_SINGLE] = it }
-            map["cloudPhotos"]?.let { p[K.CLOUD_PHOTOS] = it }
-            map["cloudVideos"]?.let { p[K.CLOUD_VIDEOS] = it }
+            // Through the same books as a change in Settings: the folder left
+            // behind is watched and named, the new one is asked for in Ente.
+            changeFolders(p) {
+                map["outputMode"]?.takeIf { v -> OutputMode.entries.any { it.name == v } }
+                    ?.let { p[K.OUTPUT_MODE] = it }
+                // A folder of the person's own comes back only if it is one the
+                // folder setting itself could have produced.
+                map["folderSingle"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_SINGLE] = it }
+                map["folderPhotos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_PHOTOS] = it }
+                map["folderVideos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_VIDEOS] = it }
+            }
+            // "cloud*" keys from backups made before 11 are ignored: Ente
+            // Saver works with Ente Photos only.
             map["speed"]?.let { p[K.SPEED] = it }
             // Only values the UI itself offers. A hand-edited backup could
             // otherwise set an absurd minimum-free figure, which makes the
@@ -449,8 +683,45 @@ class OptionsRepo(private val context: Context) {
             map["maxExtraMb"]?.toIntOrNull()
                 ?.takeIf { it in Defaults.MAX_EXTRA_CHOICES_MB }
                 ?.let { p[K.MAX_EXTRA_MB] = it }
-            map["preset"]?.let { p[K.PRESET] = it }
-            map["codec"]?.let { p[K.CODEC] = it }
+            // Photo and video settings: a backup from 11 on carries them;
+            // one from before carries the single preset and codec, which
+            // stand for the same encode. Either way only values the screen
+            // offers are taken; anything else keeps today's.
+            val legacy = MediaSettings.fromLegacy(map["preset"], map["codec"])
+            val hasNew = map.keys.any { it.startsWith("photo") || it.startsWith("video") }
+            val photoNow = photoOf(p)
+            val videoNow = videoOf(p)
+            if (hasNew) {
+                putPhoto(
+                    p,
+                    PhotoSettings(
+                        preset = enumOr(map["photoPreset"], photoNow.preset),
+                        format = enumOr(map["photoFormat"], photoNow.format),
+                        maxMp = map["photoMaxMp"]?.toIntOrNull()
+                            ?.takeIf { it in MediaSettings.PHOTO_MP_CHOICES } ?: photoNow.maxMp,
+                        quality = map["photoQuality"]?.toIntOrNull()
+                            ?.takeIf { it in MediaSettings.PHOTO_QUALITY_CHOICES } ?: photoNow.quality
+                    )
+                )
+                putVideo(
+                    p,
+                    VideoSettings(
+                        preset = enumOr(map["videoPreset"], videoNow.preset),
+                        codec = enumOr(map["videoCodec"], videoNow.codec),
+                        longSide = map["videoLongSide"]?.toIntOrNull()
+                            ?.takeIf { it in MediaSettings.VIDEO_LONG_SIDE_CHOICES } ?: videoNow.longSide,
+                        fpsCap = map["videoFps"]?.toIntOrNull()
+                            ?.takeIf { it in MediaSettings.VIDEO_FPS_CHOICES } ?: videoNow.fpsCap,
+                        quality = enumOr(map["videoQuality"], videoNow.quality),
+                        audioKbps = map["videoAudioKbps"]?.toIntOrNull()
+                            ?.takeIf { it in MediaSettings.AUDIO_KBPS_CHOICES } ?: videoNow.audioKbps,
+                        hdr = enumOr(map["videoHdr"], videoNow.hdr)
+                    )
+                )
+            } else if (map.containsKey("preset") || map.containsKey("codec")) {
+                putPhoto(p, legacy.first)
+                putVideo(p, legacy.second)
+            }
             map["theme"]?.let { p[K.THEME] = it }
             map["dynamicColor"]?.let { p[K.DYNAMIC_COLOR] = it.toBoolean() }
             map["storageVolume"]?.let { p[K.STORAGE_VOLUME] = it }

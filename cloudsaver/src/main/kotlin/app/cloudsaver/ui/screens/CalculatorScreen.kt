@@ -52,8 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.CapacityMath
-import app.cloudsaver.core.logic.QualityKept
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.ui.components.AnimatedNumber
@@ -89,20 +88,19 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
     val profile by vm.profile.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
 
-    LaunchedEffect(options.preset, options.codec, options.excludedBuckets) {
+    LaunchedEffect(options.photo, options.video, options.excludedBuckets) {
         vm.refreshCalculator()
         vm.refreshProfile()
     }
 
     var freeText by remember { mutableStateOf("") }
     var prefilled by remember { mutableStateOf(false) }
-    val cloudApp = CloudApps.byId(options.cloudSingle)
-    LaunchedEffect(cloudApp.id) {
+    // Ente's free plan as a starting point - editable, and labelled as a
+    // prefill, never presented as the person's own figure.
+    LaunchedEffect(Unit) {
         if (!prefilled && freeText.isEmpty()) {
-            cloudApp.prefillGb?.let {
-                freeText = it.toString()
-                prefilled = true
-            }
+            freeText = EnteApp.FREE_PLAN_GB.toString()
+            prefilled = true
         }
     }
 
@@ -478,8 +476,8 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(
                         stringResource(
                             R.string.calc_quality_limits,
-                            QualityKept.photoCapMp(options.preset),
-                            QualityKept.videoCapLongSide(options.preset)
+                            photoLimitPhrase(options.photo.spec()),
+                            videoLimitPhrase(options.video.spec())
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant

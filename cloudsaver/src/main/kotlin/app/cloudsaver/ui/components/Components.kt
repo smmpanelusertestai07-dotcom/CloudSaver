@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -46,12 +45,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipEntry
@@ -72,10 +69,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.cloudsaver.ui.theme.BrandIndigo
-import app.cloudsaver.ui.theme.BrandViolet
+import app.cloudsaver.ui.theme.BrandGreen
+import app.cloudsaver.ui.theme.BrandGreenDeep
 import app.cloudsaver.ui.theme.Dimens
-import app.cloudsaver.ui.theme.LocalIsDarkTheme
 import app.cloudsaver.ui.theme.MetricTextStyle
 import app.cloudsaver.ui.theme.OnBrand
 import kotlinx.coroutines.launch
@@ -150,7 +146,12 @@ private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier
 }
 
 /**
- * App-wide background: theme surface plus two soft brand glows.
+ * App-wide background: the theme's own surface, plain.
+ *
+ * There used to be two blurred brand glows behind every page. With a green
+ * brand they read on a dark screen as a stain over whatever they fell behind,
+ * and a plain surface is what Ente itself draws - so the page is flat, and
+ * the green is kept for what the person can tap.
  *
  * It also provides LocalContentColor. Material 3 leaves that to Surface, not
  * to MaterialTheme, so a plain Box root leaves every Text that does not name
@@ -160,47 +161,16 @@ private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier
 @Composable
 fun AppBackground(content: @Composable () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val dark = LocalIsDarkTheme.current
-    val glow = if (dark) 0.20f else 0.14f
     CompositionLocalProvider(
         LocalContentColor provides scheme.onBackground
     ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(scheme.background)
-    ) {
-        // The glows live in their own clipped layer behind the content.
-        //
-        // They used to be siblings of the content inside an unclipped Box, so
-        // a blurred circle offset past the edge spilled over whatever sat
-        // above it - most visibly as a green smear across the navigation bar,
-        // which reads as a rendering fault rather than as depth. Clipping the
-        // layer keeps the wash inside the page, and the second circle is now
-        // the brand indigo: a cyan glow on a dark background is simply green.
         Box(
             modifier = Modifier
-                .matchParentSize()
-                .clip(RectangleShape)
+                .fillMaxSize()
+                .background(scheme.background)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(320.dp)
-                    .offset(x = (-90).dp, y = (-120).dp)
-                    .blur(90.dp)
-                    .background(BrandIndigo.copy(alpha = glow), CircleShape)
-            )
-            Box(
-                modifier = Modifier
-                    .size(260.dp)
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 90.dp, y = 110.dp)
-                    .blur(90.dp)
-                    .background(BrandViolet.copy(alpha = glow * 0.7f), CircleShape)
-            )
+            content()
         }
-        content()
-    }
     }
 }
 
@@ -228,8 +198,8 @@ fun AppCard(
 
 /**
  * Brand gradient card used for the dashboard hero. Its content is white, so
- * both ends of the gradient have to carry white text: indigo is 4.7:1 and
- * violet 7.1:1, while the brand cyan would be 1.7:1 and unreadable.
+ * both ends of the gradient have to carry white text: the two greens are
+ * 5.1:1 and 8.5:1, while the icon's own bright green would be 2.4:1.
  */
 @Composable
 fun HeroCard(
@@ -243,7 +213,7 @@ fun HeroCard(
             modifier = modifier
                 .fillMaxWidth()
                 .clip(CardShape)
-                .background(Brush.linearGradient(listOf(BrandIndigo, BrandViolet)))
+                .background(Brush.linearGradient(listOf(BrandGreen, BrandGreenDeep)))
                 .padding(20.dp),
             content = content
         )
@@ -884,7 +854,7 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(percent = AdaptiveIconCornerPercent))
     ) {
         Image(
-            painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_background),
+            painter = painterResource(app.cloudsaver.R.drawable.ic_launcher_background),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -892,7 +862,7 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
                 .scale(AdaptiveIconScale)
         )
         Image(
-            painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_foreground),
+            painter = painterResource(app.cloudsaver.R.drawable.ic_launcher_foreground),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

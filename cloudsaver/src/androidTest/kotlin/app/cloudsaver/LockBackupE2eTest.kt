@@ -13,7 +13,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.UiDevice
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.PhotoPreset
+import app.cloudsaver.core.logic.PhotoSettings
+import app.cloudsaver.core.logic.VideoCodecChoice
+import app.cloudsaver.core.logic.VideoPreset
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.OptionsRepo
@@ -62,6 +65,7 @@ class LockBackupE2eTest {
     fun setUp(): Unit = runBlocking {
         AppDb.get(target).clearAllTables()
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+        repo.useDefaultFolders()
         repo.setBool(OptionsRepo.K.APP_LOCK, false)
         backupFile().delete()
     }
@@ -84,7 +88,7 @@ class LockBackupE2eTest {
     @Test
     fun nothingOfTheAppIsReachableWhileItIsLocked(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.waitForIdle()
             // The options flow starts on defaults and the stored value lands a
             // frame or two later, so the bar is briefly on screen before the
@@ -142,7 +146,7 @@ class LockBackupE2eTest {
     @Test
     fun aLockNeverLeavesTheUserWithNoWayIn(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.waitForIdle()
             // One of two things must be true within a few seconds: the lock
             // screen is up with something to unlock it, or the app has turned
@@ -180,21 +184,21 @@ class LockBackupE2eTest {
 
     @Test
     fun aBackupRoundTripsThroughARealFileWithItsPassword(): Unit = runBlocking {
-        repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
-        val before = repo.current().preset
+        repo.setPhoto(PhotoSettings(PhotoPreset.SMALLEST))
+        val before = repo.current().photo.preset
         assertTrue("export must succeed", exportTo(backupFile(), "correct horse battery"))
         assertTrue("the file must have content", backupFile().length() > 0)
 
         // Change the thing that was saved, then put the file back.
-        repo.setString(OptionsRepo.K.PRESET, Preset.BALANCED.name)
-        assertNotEquals(before, repo.current().preset)
+        repo.setPhoto(PhotoSettings(PhotoPreset.BEST))
+        assertNotEquals(before, repo.current().photo.preset)
 
         val result = importFrom(backupFile(), "correct horse battery")
         assertTrue(
             "a correct password must restore, got $result",
             result is SnapshotStore.ImportResult.Success
         )
-        assertEquals("the saved setting must come back", before, repo.current().preset)
+        assertEquals("the saved setting must come back", before, repo.current().photo.preset)
     }
 
     @Test
@@ -243,9 +247,9 @@ class LockBackupE2eTest {
 
     @Test
     fun theWrongPasswordRestoresNothingAtAll(): Unit = runBlocking {
-        repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
+        repo.setPhoto(PhotoSettings(PhotoPreset.SMALLEST))
         assertTrue(exportTo(backupFile(), "the real password"))
-        repo.setString(OptionsRepo.K.PRESET, Preset.BALANCED.name)
+        repo.setPhoto(PhotoSettings(PhotoPreset.BEST))
 
         val result = importFrom(backupFile(), "not the real password")
         assertEquals(
@@ -255,9 +259,27 @@ class LockBackupE2eTest {
         )
         assertEquals(
             "and must leave every setting exactly as it was",
-            Preset.BALANCED.name,
-            repo.current().preset.name
+            PhotoPreset.BEST.name,
+            repo.current().photo.preset.name
         )
+    }
+
+    @Test
+    fun aBackupFromBeforeElevenRestoresBothSettingsFromItsOnePreset(): Unit = runBlocking {
+        // A file written by 10.x carries one preset and one codec. It must
+        // come back as the same encode for photos and for videos - and an
+        // explicit HEVC choice must still be HEVC.
+        repo.importMap(mapOf("preset" to "MAX_SAVER", "codec" to "HEVC"))
+        val o = repo.current()
+        assertEquals(PhotoPreset.SMALLEST, o.photo.preset)
+        assertEquals(VideoPreset.CUSTOM, o.video.preset)
+        assertEquals(VideoCodecChoice.HEVC, o.video.codec)
+        assertEquals(1280, o.video.spec().longSide)
+        // And a value no screen offers is never taken from a file.
+        repo.importMap(mapOf("photoPreset" to "CUSTOM", "photoMaxMp" to "7", "photoQuality" to "75"))
+        assertEquals(PhotoPreset.CUSTOM, repo.current().photo.preset)
+        assertEquals(75, repo.current().photo.quality)
+        assertNotEquals(7, repo.current().photo.maxMp)
     }
 
     @Test
@@ -271,7 +293,7 @@ class LockBackupE2eTest {
 
     @Test
     fun aFileThatIsNotABackupIsRefusedAndChangesNothing(): Unit = runBlocking {
-        repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
+        repo.setPhoto(PhotoSettings(PhotoPreset.SMALLEST))
         val junk = File(target.cacheDir, "not-a-backup.csb")
         junk.writeBytes(ByteArray(4096) { (it % 251).toByte() })
         val result = importFrom(junk, null)
@@ -280,26 +302,26 @@ class LockBackupE2eTest {
             SnapshotStore.ImportResult.Unreadable,
             result
         )
-        assertEquals(Preset.MAX_SAVER.name, repo.current().preset.name)
+        assertEquals(PhotoPreset.SMALLEST.name, repo.current().photo.preset.name)
         junk.delete()
     }
 
     @Test
     fun anUnencryptedBackupStillRoundTrips(): Unit = runBlocking {
-        repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
-        val before = repo.current().preset
+        repo.setPhoto(PhotoSettings(PhotoPreset.SMALLEST))
+        val before = repo.current().photo.preset
         assertTrue(exportTo(backupFile(), null))
-        repo.setString(OptionsRepo.K.PRESET, Preset.BALANCED.name)
+        repo.setPhoto(PhotoSettings(PhotoPreset.BEST))
         assertTrue(importFrom(backupFile(), null) is SnapshotStore.ImportResult.Success)
-        assertEquals(before, repo.current().preset)
+        assertEquals(before, repo.current().photo.preset)
     }
 
     // ---- the dialog that asks for the password -------------------------------
 
     @Test
     fun theSaveBackupRowOpensThePasswordDialogAndCancellingChangesNothing(): Unit = runBlocking {
-        val presetBefore = repo.current().preset
-        ActivityScenario.launch(MainActivity::class.java).use {
+        val presetBefore = repo.current().photo.preset
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .performScrollTo().performClick()
@@ -317,6 +339,6 @@ class LockBackupE2eTest {
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .assertIsDisplayed()
         }
-        assertEquals(presetBefore, repo.current().preset)
+        assertEquals(presetBefore, repo.current().photo.preset)
     }
 }

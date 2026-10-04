@@ -21,6 +21,7 @@ import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.DuplicateScanner
+import app.cloudsaver.engine.InFlight
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.ReattachEngine
@@ -97,6 +98,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         }
 
         val db = AppDb.get(app)
+        // A run that ended with the app itself - out of memory mid-photo -
+        // left a note; the file gets its strike before anything else runs.
+        runCatching { InFlight.recover(app, db) }
         val dayBudget = DayBudget(app)
         val startAt = System.currentTimeMillis()
 

@@ -4,7 +4,7 @@ import android.content.Context
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.ReclaimRules
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
@@ -78,10 +78,10 @@ object ReclaimEligibility {
     fun isFavourite(row: ItemRow, favourites: Set<String>?): Boolean =
         favourites == null || (row.contentUri != null && row.contentUri in favourites)
 
-    /** True when the cloud app the user picked is installed and unflagged. */
-    suspend fun cloudHealthy(ctx: Context, o: Options): Boolean {
+    /** True when Ente is installed and nothing is flagged against it. */
+    fun cloudHealthy(ctx: Context, o: Options): Boolean {
         if (o.cloudProblem.isNotEmpty()) return false
-        return CloudApps.isAppInstalled(ctx, o.cloudSingle)
+        return EnteApp.isInstalled(ctx)
     }
 
     /**

@@ -15,7 +15,7 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="app.cloudsaver"
-            android:targetClass="app.cloudsaver.MainActivity">
+            android:targetClass="app.cloudsaver.HostActivity">
             <extra android:name="app.cloudsaver.route" android:value="free_space_hub" />
         </intent>
     </shortcut>
@@ -28,7 +28,7 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="app.cloudsaver"
-            android:targetClass="app.cloudsaver.MainActivity">
+            android:targetClass="app.cloudsaver.HostActivity">
             <extra android:name="app.cloudsaver.route" android:value="activity" />
         </intent>
     </shortcut>

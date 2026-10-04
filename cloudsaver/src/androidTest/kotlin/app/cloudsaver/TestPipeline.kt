@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkQuery
+import app.cloudsaver.core.logic.OutFolder
+import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.work.Scheduler
 import java.util.concurrent.TimeUnit
 
@@ -56,4 +58,19 @@ object TestPipeline {
             WorkQuery.fromStates(WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED)
         ).get(TIMEOUT_MS, TimeUnit.MILLISECONDS)
     }.getOrDefault(emptyList())
+}
+
+/**
+ * The folders a new install has: the defaults, nothing moved away from.
+ *
+ * An install that was already in use is kept on its old folder the first
+ * time options are read (OptionsRepo.pinLegacyFolders). The suites mark
+ * setup done straight away, so whichever happened to read options first
+ * would otherwise decide which folder every later test saw.
+ */
+suspend fun OptionsRepo.useDefaultFolders() {
+    setBool(OptionsRepo.K.FOLDERS_PINNED, true)
+    setFolders(mapOf(OutFolder.SINGLE to "", OutFolder.PHOTOS to "", OutFolder.VIDEOS to ""))
+    setStringSet(OptionsRepo.K.PAST_OUTPUT_ROOTS, emptySet())
+    setBool(OptionsRepo.K.NEW_FOLDER_PENDING, false)
 }

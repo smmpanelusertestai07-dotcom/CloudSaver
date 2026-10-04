@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The icon pack's pictures and lists are read by other apps, by name, so
+    nothing in this app refers to them - and resource shrinking would remove
+    them as unused. This keeps them.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/iconpack_*,@xml/appfilter,@xml/drawable" />

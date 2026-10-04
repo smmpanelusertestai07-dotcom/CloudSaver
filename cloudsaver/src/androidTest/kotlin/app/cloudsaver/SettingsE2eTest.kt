@@ -13,13 +13,13 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasNoClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -36,13 +36,18 @@ import androidx.test.uiautomator.Until
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.OutputPaths
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.PhotoFormat
+import app.cloudsaver.core.logic.PhotoPreset
+import app.cloudsaver.core.logic.PhotoSettings
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
-import app.cloudsaver.core.logic.VideoCodec
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.core.logic.VideoCodecChoice
+import app.cloudsaver.core.logic.VideoPreset
+import app.cloudsaver.core.logic.VideoSettings
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
@@ -104,7 +109,7 @@ class SettingsE2eTest {
 
     /**
      * Empty, because the activity has to be launched *after* the options have
-     * been seeded: MainActivity reads onboardingDone on its first frame, and a
+     * been seeded: HostActivity reads onboardingDone on its first frame, and a
      * rule that launches for us would launch before @Before runs.
      */
     @get:Rule
@@ -114,7 +119,7 @@ class SettingsE2eTest {
     private val context: Context get() = instrumentation.targetContext
     private val device: UiDevice get() = UiDevice.getInstance(instrumentation)
 
-    private var scenario: ActivityScenario<MainActivity>? = null
+    private var scenario: ActivityScenario<HostActivity>? = null
 
     // ---- lifecycle ---------------------------------------------------------
 
@@ -145,25 +150,25 @@ class SettingsE2eTest {
         // Settings are process-wide state; leaving this suite's choices behind
         // would silently change what every later test starts from.
         writeKnownOptions()
+        EnteApp.assumeInstalledForTest = false
     }
 
     /** The starting point every test below asserts against. */
     private fun writeKnownOptions() = runBlocking {
         val repo = OptionsRepo.get(context)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+        repo.useDefaultFolders()
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
         repo.setString(OptionsRepo.K.SCOPE, BackupScope.ALL.name)
         repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
         repo.setString(OptionsRepo.K.OUTPUT_MODE, OutputMode.SINGLE.name)
-        repo.setString(OptionsRepo.K.CLOUD_SINGLE, DEFAULT_CLOUD)
-        repo.setString(OptionsRepo.K.CLOUD_PHOTOS, DEFAULT_CLOUD)
-        repo.setString(OptionsRepo.K.CLOUD_VIDEOS, DEFAULT_CLOUD)
+        repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
         repo.setString(OptionsRepo.K.SPEED, SpeedMode.SMART.name)
         repo.setInt(OptionsRepo.K.DAILY_CAP_MB, Defaults.DAILY_CAP_MB)
         repo.setInt(OptionsRepo.K.MIN_FREE_MB, Defaults.MIN_FREE_MB)
         repo.setInt(OptionsRepo.K.MAX_EXTRA_MB, Defaults.MAX_EXTRA_MB)
-        repo.setString(OptionsRepo.K.PRESET, Preset.STORAGE_SAVER.name)
-        repo.setString(OptionsRepo.K.CODEC, VideoCodec.H264.name)
+        repo.setPhoto(PhotoSettings())
+        repo.setVideo(VideoSettings())
         repo.setString(OptionsRepo.K.THEME, ThemeMode.SYSTEM.name)
         repo.setBool(OptionsRepo.K.DYNAMIC_COLOR, false)
         repo.setString(OptionsRepo.K.STORAGE_VOLUME, "")
@@ -270,7 +275,7 @@ class SettingsE2eTest {
         compose.onNodeWithText(Defaults.OUTPUT_DIR_VIDEOS).performScrollTo().assertIsDisplayed()
 
         // The copy button, which is the only reason the paths are printed.
-        val paths = OutputPaths.forMode(OutputMode.SEPARATE)
+        val paths = OutputPaths.current(OutputLayout(OutputMode.SEPARATE))
         val clipboard =
             context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         compose.onNodeWithText(
@@ -288,47 +293,26 @@ class SettingsE2eTest {
         compose.onNodeWithText(s(R.string.folder_pick_two)).performScrollTo().assertIsDisplayed()
     }
 
-    /** 4. Cloud app. */
+    /** 4. Ente Photos. */
     @Test
-    fun cloudAppIsPickedFromTheListAndSticks() {
-        openSettings()
+    fun enteCardOffersTheInstallPagesUntilEnteIsThere() {
         val hint = s(R.string.cloud_intended)
-        val from = CloudApps.byId(DEFAULT_CLOUD)
-        val to = CloudApps.SELECTABLE.first { it.id != from.id }
+        // No emulator has Ente: the card says so and offers the three places
+        // it is installed from, rather than a button that would do nothing.
+        EnteApp.assumeInstalledForTest = false
+        openSettings()
+        assertCardValue(hint, s(R.string.cloud_not_installed_mark))
+        for (label in listOf(R.string.ente_install_play, R.string.ente_install_fdroid, R.string.ente_install_web)) {
+            compose.onNodeWithText(s(label)).performScrollTo().assertIsDisplayed()
+        }
+        compose.onNodeWithText(s(R.string.cl_ente)).performScrollTo().assertIsDisplayed()
 
-        assertCardValue(hint, from.label)
-        compose.onNodeWithText("${s(R.string.cloud_for_all)}: ${from.label}")
-            .performScrollTo()
-            .performClick()
-
-        // The dialog's own section heading, not its title: the title repeats the
-        // card title behind it, so waiting on that would wait for nothing.
-        awaitNode(hasText(s(R.string.cloud_section_e2ee)), "the cloud picker never opened")
-        val order = CloudApps.SELECTABLE.filter { it.e2ee } + CloudApps.SELECTABLE.filter { !it.e2ee }
-        val row = order.indexOfFirst { it.id == to.id }
-        assertTrue("${to.id} is missing from the cloud picker", row >= 0)
-        // Matched by the name on the row, not by its position among every
-        // radio button the app has. The settings screen behind this dialog
-        // carries nine segmented choices, and each of their options reports
-        // itself as a radio button so a screen reader can say which one is
-        // on - so an index into "all radio buttons" stopped meaning the
-        // picker's rows and started meaning whichever control happened to
-        // come first in the tree.
-        val pick = isRadioButton and hasText(to.label)
-        compose.onNode(pick).performScrollTo().performClick()
-        awaitOption("cloud app") { it.cloudSingle == to.id }
-        compose.onNode(pick).assertIsSelected()
-
-        compose.onNodeWithText(s(R.string.ok)).performClick()
-        awaitNodeGone(hasText(s(R.string.cloud_section_e2ee)), "the cloud picker stayed up")
-        assertCardValue(hint, to.label)
-        compose.onNodeWithText("${s(R.string.cloud_for_all)}: ${to.label}")
-            .performScrollTo()
-            .assertIsDisplayed()
-
+        // Back from installing it: the card knows without being reopened.
+        EnteApp.assumeInstalledForTest = true
         recreateAndOpenSettings()
-        assertEquals(to.id, options().cloudSingle)
-        assertCardValue(hint, to.label)
+        assertCardValue(hint, s(R.string.cloud_installed_mark))
+        compose.onNodeWithText(context.getString(R.string.onb5_open, EnteApp.LABEL)).performScrollTo().assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithText(s(R.string.ente_install_play)).fetchSemanticsNodes().size)
     }
 
     /** 5. Speed, and 6. Daily upload limit. */
@@ -464,62 +448,71 @@ class SettingsE2eTest {
         assertEquals(card, options().storageVolume)
     }
 
-    /** 8. Quality preset, 9. Video format, and the preset's info button. */
+    /** 8. Photos and 9. Videos: presets, Custom's knobs, and the info button. */
     @Test
-    fun qualityPresetAndCodecChangeAndExplainThemselves() {
+    fun photoAndVideoSettingsChangeSeparatelyAndExplainThemselves() {
         openSettings()
-        val presetHint = s(R.string.opt_preset_hint)
-        val codecHint = s(R.string.opt_codec_hint)
+        val photoHint = s(R.string.opt_photos_hint)
+        val videoHint = s(R.string.opt_videos_hint)
 
-        assertCardValue(presetHint, s(R.string.preset_storage))
-        compose.onNodeWithText(s(R.string.preset_storage_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Both start on Balanced, each saying what that means.
+        assertCardValue(photoHint, s(R.string.preset_balanced))
+        assertCardValue(videoHint, s(R.string.preset_balanced))
+        compose.onNodeWithText(s(R.string.preset_balanced_photo)).performScrollTo().assertIsDisplayed()
 
-        tap(segment(presetHint, s(R.string.preset_balanced)))
-        awaitOption("quality preset") { it.preset == Preset.BALANCED }
-        assertCardValue(presetHint, s(R.string.preset_balanced))
-        compose.onNodeWithText(s(R.string.preset_balanced_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Photos move on their own; videos stay where they were.
+        tap(segment(photoHint, s(R.string.preset_best)))
+        awaitOption("photo preset") { it.photo.preset == PhotoPreset.BEST }
+        assertEquals(VideoPreset.BALANCED, options().video.preset)
+        compose.onNodeWithText(s(R.string.preset_best_photo)).performScrollTo().assertIsDisplayed()
 
-        tap(segment(presetHint, s(R.string.preset_max)))
-        awaitOption("quality preset") { it.preset == Preset.MAX_SAVER }
-        assertCardValue(presetHint, s(R.string.preset_max))
-        compose.onNodeWithText(s(R.string.preset_max_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Custom opens every knob.
+        tap(segment(photoHint, s(R.string.preset_custom)))
+        awaitOption("photo preset") { it.photo.preset == PhotoPreset.CUSTOM }
+        awaitNode(hasText(s(R.string.custom_format)), "Custom did not open the photo knobs")
+        tap(segment(s(R.string.custom_format), s(R.string.format_webp)))
+        awaitOption("photo format") { it.photo.format == PhotoFormat.WEBP }
+        compose.onNodeWithText(s(R.string.photo_webp_note)).performScrollTo().assertIsDisplayed()
+        tap(segment(s(R.string.custom_size), context.getString(R.string.size_mp_short, 8)))
+        awaitOption("photo size") { it.photo.maxMp == 8 }
 
-        // The card prints the enum name rather than the chip's label, so the
-        // expected value comes from the model, not from a literal.
-        assertCardValue(codecHint, VideoCodec.H264.name)
-        tap(segment(codecHint, s(R.string.codec_hevc)))
-        awaitOption("video format") { it.codec == VideoCodec.HEVC }
-        assertCardValue(codecHint, VideoCodec.HEVC.name)
-        compose.onNodeWithText(s(R.string.codec_hevc_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Videos, separately.
+        tap(segment(videoHint, s(R.string.preset_smallest)))
+        awaitOption("video preset") { it.video.preset == VideoPreset.SMALLEST }
+        compose.onNodeWithText(s(R.string.preset_smallest_video)).performScrollTo().assertIsDisplayed()
+        tap(segment(videoHint, s(R.string.preset_custom)))
+        awaitOption("video preset") { it.video.preset == VideoPreset.CUSTOM }
+        awaitNode(hasText(s(R.string.custom_sound)), "Custom did not open the video knobs")
+        tap(segment(s(R.string.custom_sound), "64"))
+        awaitOption("sound") { it.video.audioKbps == 64 }
+        tap(segment(s(R.string.custom_codec), s(R.string.codec_hevc)))
+        awaitOption("video codec") { it.video.codec == VideoCodecChoice.HEVC }
+        // No emulator has an HEVC chip, and the card says what that means
+        // rather than quietly encoding in software.
+        compose.onNodeWithText(s(R.string.video_hevc_none)).performScrollTo().assertIsDisplayed()
 
-        tap(segment(codecHint, s(R.string.codec_h264)))
-        awaitOption("video format") { it.codec == VideoCodec.H264 }
-        assertCardValue(codecHint, VideoCodec.H264.name)
-        compose.onNodeWithText(s(R.string.codec_h264_detail)).performScrollTo()
-            .assertIsDisplayed()
-
-        // The (i) next to the preset is a control too: it opens the page that
-        // explains what the presets mean.
-        compose.onNodeWithContentDescription(s(R.string.quality_explained_title))
+        // The (i) beside each opens the page that explains what they mean.
+        compose.onAllNodesWithContentDescription(s(R.string.quality_explained_title))[0]
             .performScrollTo()
             .performClick()
         awaitNode(
             hasText(s(R.string.quality_explained_title)) and hasNoClickAction(),
             "the info button did not open the quality page"
         )
-        awaitNodeGone(hasText(presetHint), "Settings stayed under the quality page")
+        awaitNodeGone(hasText(photoHint), "Settings stayed under the quality page")
         compose.onNodeWithContentDescription(s(R.string.back)).performClick()
-        awaitNode(hasText(presetHint), "Back did not return to Settings")
+        awaitNode(hasText(photoHint), "Back did not return to Settings")
 
         recreateAndOpenSettings()
-        assertEquals(Preset.MAX_SAVER, options().preset)
-        assertEquals(VideoCodec.H264, options().codec)
-        assertCardValue(presetHint, s(R.string.preset_max))
-        assertCardValue(codecHint, VideoCodec.H264.name)
+        val o = options()
+        assertEquals(PhotoPreset.CUSTOM, o.photo.preset)
+        assertEquals(PhotoFormat.WEBP, o.photo.format)
+        assertEquals(8, o.photo.maxMp)
+        assertEquals(VideoPreset.CUSTOM, o.video.preset)
+        assertEquals(64, o.video.audioKbps)
+        assertEquals(VideoCodecChoice.HEVC, o.video.codec)
+        assertCardValue(photoHint, s(R.string.preset_custom))
+        assertCardValue(videoHint, s(R.string.preset_custom))
     }
 
     /** 10. Theme, and the wallpaper-colours switch that lives inside it. */
@@ -782,7 +775,7 @@ class SettingsE2eTest {
     /** Launches the app (once per test) and lands on the Settings tab. */
     private fun openSettings() {
         if (scenario == null) {
-            scenario = ActivityScenario.launch(MainActivity::class.java)
+            scenario = ActivityScenario.launch(HostActivity::class.java)
         }
         val tab = s(R.string.nav_options)
         compose.waitUntil(UI_TIMEOUT) {
@@ -912,12 +905,9 @@ class SettingsE2eTest {
     private fun placeholderPrefix(id: Int): String = context.getString(id, "").trim()
 
     private companion object {
-        const val DEFAULT_CLOUD = "ente"
         const val PHOTOS_SHOULD_SURVIVE = "the media type was lost across a recreate"
 
         val isCheckbox: SemanticsMatcher =
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox)
-        val isRadioButton: SemanticsMatcher =
-            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
     }
 }

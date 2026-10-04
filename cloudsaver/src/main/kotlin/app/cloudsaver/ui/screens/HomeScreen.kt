@@ -72,10 +72,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.HomeAction
+import app.cloudsaver.core.logic.KnownClouds
+import app.cloudsaver.core.logic.OutputLayout
+import app.cloudsaver.core.logic.OutputPaths
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.core.logic.RunDecider
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.ui.AppViewModel
@@ -127,7 +132,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val savings by vm.savings.collectAsStateWithLifecycle()
     val budget by vm.budget.collectAsStateWithLifecycle()
     val asIs by vm.asIs.collectAsStateWithLifecycle()
-    val canConfirm by vm.cloudHasFreeUp.collectAsStateWithLifecycle()
     val skipReasons by vm.skipReasons.collectAsStateWithLifecycle()
     val statusWaiting by vm.statusWaiting.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
@@ -138,6 +142,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     var explain by remember { mutableStateOf<Int?>(null) }
     val projection by vm.projectedSavings.collectAsStateWithLifecycle()
     val detailKept by vm.detailKept.collectAsStateWithLifecycle()
+    val oldFolders by vm.oldFolders.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // The confirmed count, held for as long as its card is on screen.
@@ -154,9 +159,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         vm.detectLeftoverFiles()
         vm.refreshBudget()
         vm.refreshAsIs()
-        vm.refreshCloudCaps()
         vm.refreshSkipReasons()
         vm.refreshPowerRequirements()
+        vm.refreshOldFolders()
         vm.refreshProjection()
     }
 
@@ -224,32 +229,112 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        // Z10.1: the cloud app changed. Where the already-sent files live is
-        // the one fact a switch quietly breaks, so it is said once, plainly.
-        // Both names, and only when they are actually two different apps. The
-        // sentence names where files went and where they did not; with one app
-        // in both halves it reads "sent to X are stored there, not in X", which
-        // is worse than saying nothing.
-        val switchedFrom = CloudApps.byId(options.cloudSwitchFrom).label
-        val switchedTo = CloudApps.byId(options.cloudSingle).label
-        if (options.cloudSwitchFrom.isNotEmpty() && switchedFrom != switchedTo) {
-            AlertDialog(
-                onDismissRequest = { vm.dismissCloudSwitchNotice() },
-                title = { Text(stringResource(R.string.cloud_switch_title)) },
-                text = {
-                    // A dialog's text slot does not scroll. On a small screen at a
-                    // large font its lower half simply sits past the edge, and the
-                    // buttons are pushed off with it.
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        Text(stringResource(R.string.cloud_switch_body, switchedFrom, switchedTo))
+        // Ente Saver works with Ente Photos only. Someone who used another
+        // cloud app before 11 is told once, on a card rather than in a
+        // dialog: what they sent stays where it is, and nothing on the phone
+        // was touched.
+        KnownClouds.previousChoice(options.cloudSingle)?.let { previous ->
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.ente_only_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(
+                        R.string.ente_only_body,
+                        previous.ifEmpty { stringResource(R.string.ente_only_other_app) }
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                FlowRow {
+                    if (health.cloudMissing) {
+                        TextButton(onClick = { nav.goTo(Routes.OPTIONS) }) {
+                            Text(stringResource(R.string.ente_only_get))
+                        }
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { vm.dismissCloudSwitchNotice() }) {
+                    TextButton(onClick = { vm.dismissEnteOnlyNotice() }) {
                         Text(stringResource(R.string.ok))
                     }
                 }
-            )
+            }
+        }
+
+        // Version 11's folder is Pictures/EnteSaver. Someone who set the app
+        // up before stays on the old one until they choose to move, because
+        // Ente is backing up the old one; the card says what moving means and
+        // the one thing to change in Ente afterwards.
+        val onOldFolder = options.foldersPinned && options.layout.current.any {
+            OutputRoots.isUnder(it, Defaults.LEGACY_OUTPUT_DIR)
+        }
+        if (onOldFolder && !options.moveCardDismissed) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.move_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(
+                        R.string.move_body,
+                        OutputPaths.joined(OutputLayout(options.layout.mode)),
+                        OutputPaths.joined(options.layout)
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                FlowRow {
+                    TextButton(onClick = { vm.moveToDefaultFolders() }) {
+                        Text(stringResource(R.string.move_button))
+                    }
+                    TextButton(onClick = { vm.dismissMoveCard() }) {
+                        Text(stringResource(R.string.move_later))
+                    }
+                }
+            }
+        }
+        // Copies now go to a folder they did not go to before, and Ente
+        // backs up only the folders turned on in it. Until the person says
+        // it is done, the card names the folder and the way there - without
+        // it, new copies would wait in a folder Ente never looks at.
+        if (options.newFolderPending && !onOldFolder) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.new_folder_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.new_folder_body, OutputPaths.joined(options.layout)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                TextButton(onClick = { vm.dismissNewFolderCard() }) {
+                    Text(stringResource(R.string.new_folder_done))
+                }
+            }
+        }
+        // After a move, the old folder still holds copies Ente has not
+        // collected. It has to stay on in Ente until it is empty; the card
+        // says how many are left and goes when the last one has.
+        for (old in oldFolders) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.old_folder_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    pluralStringResource(R.plurals.old_folder_body, old.waiting, old.waiting, old.path),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
 
         // Z10.6: the whole chain, proven or stalled, as one card each - the
@@ -260,10 +345,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             AppCard(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
                     if (success) {
-                        stringResource(
-                            R.string.chain_success_title,
-                            CloudApps.byId(options.cloudSingle).label
-                        )
+                        stringResource(R.string.chain_success_title, EnteApp.LABEL)
                     } else {
                         stringResource(R.string.chain_stalled_title)
                     },
@@ -279,10 +361,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     if (success) {
                         stringResource(R.string.chain_success_body)
                     } else {
-                        stringResource(
-                            R.string.chain_stalled_body,
-                            CloudApps.byId(options.cloudSingle).label
-                        )
+                        stringResource(R.string.chain_stalled_body, EnteApp.LABEL)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -294,9 +373,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 // card's edge - so they wrap onto a second line instead.
                 FlowRow {
                     if (!success) {
-                        TextButton(onClick = {
-                            CloudApps.launch(context, options.cloudSingle)
-                        }) { Text(stringResource(R.string.chain_open_checklist)) }
+                        TextButton(onClick = { vm.openEnte() }) {
+                            Text(stringResource(R.string.chain_open_checklist))
+                        }
                     }
                     TextButton(onClick = { vm.dismissFirstChainNotice() }) {
                         Text(stringResource(R.string.ok))
@@ -547,7 +626,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // section at all and its chip - the one thing that says the pause is
         // temporary rather than the app having died - could never appear.
         val anyHealth = health.paused || anyPower || health.usageAccessOff ||
-            health.cloudMissing || health.cloudNone || health.spaceLow || health.volumeMissing ||
+            health.cloudMissing || health.spaceLow || health.volumeMissing ||
             health.backgroundWorkStopped || options.foreignFiles > 0
         AnimatedVisibility(
             visible = anyHealth,
@@ -608,18 +687,10 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             OemPages.openUsageAccess(context)
                         }
                     }
-                    // One chip, and it says which of the two things is
-                    // actually true. A second chip for "no cloud app at all"
-                    // carried the very same four words as this one, so a
-                    // phone with nothing installed - the common case - drew
-                    // the identical chip twice.
-                    if (health.cloudMissing || health.cloudNone) {
-                        StatusChip(
-                            stringResource(
-                                if (health.cloudNone) R.string.chip_cloud
-                                else R.string.chip_cloud_gone
-                            )
-                        ) {
+                    // Ente is not on the phone: Settings has the install
+                    // buttons and the steps.
+                    if (health.cloudMissing) {
+                        StatusChip(stringResource(R.string.chip_cloud)) {
                             nav.goTo(Routes.OPTIONS)
                         }
                     }
@@ -1015,7 +1086,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // app cannot see the uploads for itself. With usage access granted
         // the check is automatic, and offering it anyway would imply the
         // automatic part does not work.
-        if (HomeAction.showVerifyLink(!health.usageAccessOff, canConfirm)) {
+        if (HomeAction.showVerifyLink(!health.usageAccessOff, cloudRemovesItsUploads = !health.cloudMissing)) {
             TextButton(onClick = { vm.startConfirmFlow() }) {
                 Text(stringResource(R.string.btn_verify_link))
             }

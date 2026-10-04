@@ -3,21 +3,26 @@ package app.cloudsaver.media
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import app.cloudsaver.core.logic.BitrateCalc
-import app.cloudsaver.core.logic.PresetSpec
+import app.cloudsaver.core.logic.FormatResolver
+import app.cloudsaver.core.logic.PhotoFormat
+import app.cloudsaver.core.logic.PhotoSpec
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import kotlin.math.sqrt
 
 /**
- * Photo pipeline: decode within the preset pixel budget, JPEG q(preset) 4:2:0,
- * copy all important EXIF (dates, GPS, camera), bake orientation into pixels
- * (Orientation=1). If the result is not smaller, the original is copied as-is.
+ * Photo pipeline: decode upright within the setting's pixel budget, write
+ * HEIC, WebP or JPEG at the setting's quality, copy all important EXIF
+ * (dates, GPS, camera) with orientation normal. If the result is not smaller,
+ * or would lose something the original carries, the original is copied as-is.
  */
 object PhotoCompressor {
 
@@ -68,12 +73,20 @@ object PhotoCompressor {
         ExifInterface.TAG_USER_COMMENT
     )
 
+    /**
+     * Makes the light copy of one photo, or copies it as it is when a copy
+     * would lose something or would not be smaller.
+     *
+     * [heicWorks] is this phone's answer from [HeicSupport]: HEIC is written
+     * only where the phone's own hardware has proved it can.
+     */
     fun compress(
         context: Context,
         uri: Uri,
         displayName: String,
         srcBytes: Long,
-        spec: PresetSpec,
+        spec: PhotoSpec,
+        heicWorks: Boolean,
         tempDir: File
     ): CompressResult {
         val ext = displayName.substringAfterLast('.', "").lowercase()
@@ -84,8 +97,15 @@ object PhotoCompressor {
         // Motion photos and multi-picture / depth JPEGs carry an embedded video
         // or depth map that re-encoding would throw away, so they are copied
         // byte-for-byte. The reason is shown in the item's details.
-        MediaTraits.embeddedPayloadReason(context, uri)?.let { reason ->
+        val traits = MediaTraits.photoTraits(context, uri)
+        traits.asIsReason?.let { reason ->
             return copyAsIs(context, uri, displayName, tempDir, reason)
+        }
+        val format = when (
+            val decision = FormatResolver.resolve(spec.format, heicWorks, traits.ultraHdr, Build.VERSION.SDK_INT)
+        ) {
+            is FormatResolver.Decision.AsIs -> return copyAsIs(context, uri, displayName, tempDir, decision.reason)
+            is FormatResolver.Decision.Encode -> decision.format
         }
 
         // Read EXIF (with original GPS if ACCESS_MEDIA_LOCATION is granted).
@@ -118,57 +138,197 @@ object PhotoCompressor {
             return copyAsIs(context, uri, displayName, tempDir, "undecodable")
         }
 
-        val maxPixels = spec.photoMaxMp * 1_000_000L
-        val sample = BitrateCalc.sampleSizeFor(bounds.outWidth, bounds.outHeight, maxPixels)
-        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val maxPixels = spec.maxPixels
         var bitmap: Bitmap = try {
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, decodeOpts)
-            } ?: return copyAsIs(context, uri, displayName, tempDir, "open_failed")
-        } catch (e: Exception) {
-            return copyAsIs(context, uri, displayName, tempDir, "decode_failed")
+            decodeUpright(context, uri, bounds.outWidth, bounds.outHeight, orientation, maxPixels)
+                ?: return copyAsIs(context, uri, displayName, tempDir, "decode_failed")
         } catch (e: OutOfMemoryError) {
             return copyAsIs(context, uri, displayName, tempDir, "oom")
         }
 
         try {
-            // Exact downscale if the sampled decode is still over budget.
-            val pixels = bitmap.width.toLong() * bitmap.height.toLong()
-            if (pixels > maxPixels) {
-                val scale = sqrt(maxPixels.toDouble() / pixels)
-                val w = (bitmap.width * scale).toInt().coerceAtLeast(1)
-                val h = (bitmap.height * scale).toInt().coerceAtLeast(1)
-                val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
-                if (scaled !== bitmap) {
-                    bitmap.recycle()
-                    bitmap = scaled
-                }
+            var written = format
+            var outFile = encode(context, bitmap, format, spec.quality, exifValues, tempDir)
+            if (outFile == null && format == PhotoFormat.HEIC) {
+                // This phone passed the HEIC test but failed on this photo: the
+                // photo goes out as JPEG, and enough of these undo the pass.
+                HeicSupport.noteFailure(context)
+                written = PhotoFormat.JPEG
+                outFile = encode(context, bitmap, PhotoFormat.JPEG, spec.quality, exifValues, tempDir)
+            }
+            if (outFile != null && written == PhotoFormat.HEIC && outFile.length() >= srcBytes) {
+                // Some encoders write HEIC at a fixed bitrate whatever the
+                // quality says, and a small photo then comes out larger than
+                // it went in. The photo still gets its chance as JPEG; this
+                // is not counted against HEIC, because an already small
+                // original does the same to any encoder.
+                outFile.delete()
+                written = PhotoFormat.JPEG
+                outFile = encode(context, bitmap, PhotoFormat.JPEG, spec.quality, exifValues, tempDir)
+            }
+            if (outFile == null) {
+                return copyAsIs(context, uri, displayName, tempDir, "encode_failed")
             }
 
-            // Bake EXIF orientation into pixels.
-            val matrix = orientationMatrix(orientation)
-            if (matrix != null) {
-                val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                if (rotated !== bitmap) {
-                    bitmap.recycle()
-                    bitmap = rotated
-                }
-            }
-
-            val outFile = File(tempDir, "photo_${System.nanoTime()}.jpg")
-            FileOutputStream(outFile).use { fos ->
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, spec.jpegQuality, fos)) {
-                    outFile.delete()
-                    return copyAsIs(context, uri, displayName, tempDir, "encode_failed")
-                }
-            }
-
+            // Measured after the EXIF went in. The encoder wrote no EXIF at
+            // all; the block copied off the original carries every tag, and
+            // two of them - the description and the user comment - have no
+            // length limit, so a copy that was smaller a moment ago can be
+            // pushed back over the original. That is the whole promise of the
+            // app: a copy that is not smaller is not a saving, it is a second
+            // file.
             if (outFile.length() <= 0 || outFile.length() >= srcBytes) {
                 outFile.delete()
                 return copyAsIs(context, uri, displayName, tempDir, "not_smaller")
             }
+            // An Ultra HDR photo is only re-made when its gain map survives;
+            // otherwise its HDR would quietly be gone from the copy.
+            if (traits.ultraHdr && !MediaTraits.hasGainMap(outFile)) {
+                outFile.delete()
+                return copyAsIs(context, uri, displayName, tempDir, "ultra_hdr_kept")
+            }
 
-            // Write EXIF onto the compressed copy; orientation is now normal.
+            return CompressResult(
+                outFile,
+                outFile.length(),
+                asIs = false,
+                reason = "compressed_${written.name.lowercase()}",
+                ext = FormatResolver.extensionOf(written),
+                srcPixels = bounds.outWidth.toLong() * bounds.outHeight.toLong(),
+                outPixels = bitmap.width.toLong() * bitmap.height.toLong()
+            )
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    /**
+     * The photo, upright and no bigger than [maxPixels], in one decode.
+     *
+     * The platform decoder scales while it decodes and turns the photo the
+     * way its EXIF says, so a 50 MP photo becomes a 16 MP bitmap without a
+     * 50 MP one ever being held - on a 4 GB phone, the difference between a
+     * photo that is optimised and one the system kills the app over. The
+     * older route (sample, scale, rotate: three bitmaps) remains for any
+     * photo that decoder will not open.
+     */
+    private fun decodeUpright(
+        context: Context,
+        uri: Uri,
+        width: Int,
+        height: Int,
+        orientation: Int,
+        maxPixels: Long
+    ): Bitmap? {
+        val swaps = orientation in SWAPPING_ORIENTATIONS
+        val uprightW = if (swaps) height else width
+        val uprightH = if (swaps) width else height
+        decodeWithImageDecoder(context, uri, maxPixels)?.let { decoded ->
+            // Trusted only when it came out the shape the EXIF says it is.
+            val wantLandscape = uprightW >= uprightH
+            val isLandscape = decoded.width >= decoded.height
+            if (uprightW == uprightH || wantLandscape == isLandscape) return decoded
+            decoded.recycle()
+        }
+        return decodeWithBitmapFactory(context, uri, width, height, orientation, maxPixels)
+    }
+
+    private fun decodeWithImageDecoder(context: Context, uri: Uri, maxPixels: Long): Bitmap? = try {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
+            // Software memory: a hardware bitmap cannot be compressed.
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            val w = info.size.width
+            val h = info.size.height
+            val pixels = w.toLong() * h.toLong()
+            if (pixels > maxPixels) {
+                val scale = sqrt(maxPixels.toDouble() / pixels)
+                decoder.setTargetSize(
+                    (w * scale).toInt().coerceAtLeast(1),
+                    (h * scale).toInt().coerceAtLeast(1)
+                )
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun decodeWithBitmapFactory(
+        context: Context,
+        uri: Uri,
+        width: Int,
+        height: Int,
+        orientation: Int,
+        maxPixels: Long
+    ): Bitmap? {
+        val sample = BitrateCalc.sampleSizeFor(width, height, maxPixels)
+        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
+        var bitmap: Bitmap = try {
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, decodeOpts)
+            } ?: return null
+        } catch (e: Exception) {
+            return null
+        }
+        // Exact downscale if the sampled decode is still over budget.
+        val pixels = bitmap.width.toLong() * bitmap.height.toLong()
+        if (pixels > maxPixels) {
+            val scale = sqrt(maxPixels.toDouble() / pixels)
+            val w = (bitmap.width * scale).toInt().coerceAtLeast(1)
+            val h = (bitmap.height * scale).toInt().coerceAtLeast(1)
+            val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+            if (scaled !== bitmap) {
+                bitmap.recycle()
+                bitmap = scaled
+            }
+        }
+        // Bake EXIF orientation into pixels.
+        val matrix = orientationMatrix(orientation)
+        if (matrix != null) {
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            if (rotated !== bitmap) {
+                bitmap.recycle()
+                bitmap = rotated
+            }
+        }
+        return bitmap
+    }
+
+    /**
+     * Writes [bitmap] as [format] with the original's EXIF, orientation
+     * normal; null when the encoder would not, with nothing left behind.
+     */
+    private fun encode(
+        context: Context,
+        bitmap: Bitmap,
+        format: PhotoFormat,
+        quality: Int,
+        exifValues: Map<String, String>,
+        tempDir: File
+    ): File? {
+        val outFile = File(tempDir, "photo_${System.nanoTime()}.${FormatResolver.extensionOf(format)}")
+        val ok = try {
+            when (format) {
+                PhotoFormat.HEIC -> {
+                    HeicSupport.write(
+                        bitmap, outFile, quality,
+                        exif = ExifBlock.build(exifValues, tempDir),
+                        timeoutMs = HEIC_PHOTO_LIMIT_MS
+                    )
+                    true
+                }
+                else -> FileOutputStream(outFile).use { fos ->
+                    bitmap.compress(compressFormatFor(format), quality, fos)
+                }
+            }
+        } catch (e: Exception) {
+            false
+        }
+        if (!ok || outFile.length() <= 0) {
+            outFile.delete()
+            return null
+        }
+        if (format != PhotoFormat.HEIC) {
+            // Write EXIF onto the copy; orientation is now normal.
             try {
                 val outExif = ExifInterface(outFile.absolutePath)
                 for ((tag, value) in exifValues) outExif.setAttribute(tag, value)
@@ -180,33 +340,28 @@ object PhotoCompressor {
             } catch (e: Exception) {
                 // EXIF write failure is not fatal.
             }
-
-            // Measure again, because writing the EXIF changed the file. The
-            // encoder wrote no EXIF segment at all; saveAttributes inserts one
-            // carrying every tag copied off the original, and two of those -
-            // the description and the user comment - have no length limit. So
-            // a copy that passed the check above by a few hundred bytes can be
-            // pushed back over the original here, and this is the last moment
-            // anything looks at it. That is the whole promise of the app: a
-            // copy that is not smaller is not a saving, it is a second file.
-            if (outFile.length() >= srcBytes) {
-                outFile.delete()
-                return copyAsIs(context, uri, displayName, tempDir, "not_smaller")
-            }
-
-            return CompressResult(
-                outFile,
-                outFile.length(),
-                asIs = false,
-                reason = "compressed",
-                ext = "jpg",
-                srcPixels = bounds.outWidth.toLong() * bounds.outHeight.toLong(),
-                outPixels = bitmap.width.toLong() * bitmap.height.toLong()
-            )
-        } finally {
-            bitmap.recycle()
         }
+        return outFile
     }
+
+    @Suppress("DEPRECATION")
+    private fun compressFormatFor(format: PhotoFormat): Bitmap.CompressFormat = when {
+        format != PhotoFormat.WEBP -> Bitmap.CompressFormat.JPEG
+        // The small, sharp WebP arrived in Android 11; the older one is still
+        // lossy below quality 100.
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Bitmap.CompressFormat.WEBP_LOSSY
+        else -> Bitmap.CompressFormat.WEBP
+    }
+
+    /** How long one photo's HEIC encode may take before it goes out as JPEG. */
+    private const val HEIC_PHOTO_LIMIT_MS = 30_000L
+
+    private val SWAPPING_ORIENTATIONS = setOf(
+        ExifInterface.ORIENTATION_ROTATE_90,
+        ExifInterface.ORIENTATION_ROTATE_270,
+        ExifInterface.ORIENTATION_TRANSPOSE,
+        ExifInterface.ORIENTATION_TRANSVERSE
+    )
 
     private fun orientationMatrix(orientation: Int): Matrix? {
         val m = Matrix()

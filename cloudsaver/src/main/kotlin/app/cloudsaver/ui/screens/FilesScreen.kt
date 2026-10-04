@@ -53,12 +53,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.ListFilters
-import app.cloudsaver.core.logic.OutFolder
+import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.core.logic.RowActions
+import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AccessNotice
@@ -400,27 +400,43 @@ fun FilesScreen(vm: AppViewModel) {
                     row.bucket?.let {
                         KeyValueRow(stringResource(R.string.detail_album), it)
                     }
-                    row.presetUsed?.let {
-                        KeyValueRow(
-                            stringResource(R.string.detail_preset),
-                            if (row.isVideo && row.codecUsed != null) {
-                                "$it / ${row.codecUsed}"
-                            } else {
-                                it
+                    // The settings the copy was made with, in the words the
+                    // Settings screen uses - never the stored key itself.
+                    row.presetUsed?.let { key ->
+                        val made = if (row.isVideo) {
+                            MediaSettings.parseVideoKey(key)?.let { k ->
+                                val codec = row.codecUsed
+                                    ?.let { c -> VideoCodec.entries.firstOrNull { it.name == c } }
+                                    ?: k.codec
+                                stringResource(
+                                    R.string.detail_video_settings,
+                                    codecLabel(codec),
+                                    if (k.longSide <= 0) stringResource(R.string.res_keep) else MediaSettings.pLabel(k.longSide),
+                                    videoQualityLabel(k.quality).lowercase()
+                                )
                             }
-                        )
+                        } else {
+                            MediaSettings.parsePhotoKey(key)?.let { k ->
+                                stringResource(
+                                    R.string.detail_photo_settings,
+                                    row.outputName?.substringAfterLast('.', "")?.uppercase()
+                                        ?.takeIf { it.isNotEmpty() } ?: formatLabel(k.format),
+                                    if (k.maxMp <= 0) {
+                                        stringResource(R.string.photo_size_full)
+                                    } else {
+                                        stringResource(R.string.photo_size_mp, k.maxMp)
+                                    },
+                                    k.quality
+                                )
+                            }
+                        }
+                        made?.let { KeyValueRow(stringResource(R.string.detail_preset), it) }
                     }
-                    row.outputFolder?.let { folder ->
-                        // Where it went, so the folder to select in the cloud
-                        // app is never a guess.
-                        KeyValueRow(
-                            stringResource(R.string.detail_folder),
-                            Defaults.outFolderRelPath(
-                                runCatching {
-                                    OutFolder.valueOf(folder)
-                                }.getOrDefault(OutFolder.SINGLE)
-                            )
-                        )
+                    row.outputRelPath?.let { folder ->
+                        // Where it went, so the folder to select in Ente is
+                        // never a guess - the folder the copy really went to,
+                        // which after a move is not always today's.
+                        KeyValueRow(stringResource(R.string.detail_folder), folder)
                     }
                     row.skipReason?.let {
                         KeyValueRow(stringResource(R.string.detail_reason), it)
@@ -530,7 +546,7 @@ fun Thumbnail(row: ItemRow) {
             )
         } else {
             Icon(
-                painterResource(R.drawable.ic_stat_cloud),
+                painterResource(R.drawable.ic_stat_saver),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)

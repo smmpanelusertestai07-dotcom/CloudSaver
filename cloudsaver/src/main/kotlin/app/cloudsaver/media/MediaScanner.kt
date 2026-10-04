@@ -10,8 +10,8 @@ import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.KeptCopies
+import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.ScanSources
-import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.util.Permissions
@@ -505,7 +505,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             .groupBy { folderKey(it) }
             .filterValues { rows -> ScanSources.looksLikePipelineOutput(rows.map { it.displayName }) }
             .keys
-        val cloudPackages = CloudApps.ALL.flatMap { it.packages }
+        val cloudPackages = KnownClouds.ALL_PACKAGES
         return found.filter { f ->
             ScanSources.exclusionReason(
                 relativePath = f.relativePath,

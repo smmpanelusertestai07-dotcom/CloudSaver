@@ -1,5 +1,6 @@
 package app.cloudsaver
 
+import android.content.ContentValues
 import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -10,14 +11,22 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.FolderName
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.OutFolder
+import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.core.logic.VideoCodecChoice
+import app.cloudsaver.core.logic.VideoPreset
+import app.cloudsaver.core.logic.VideoSettings
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.MaintainEngine
+import app.cloudsaver.media.EncoderCaps
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
+import app.cloudsaver.media.VideoCompressor
 import java.io.File
 import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
@@ -26,6 +35,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -53,7 +63,10 @@ class PipelineE2eTest {
     fun setUp() {
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
-        runBlocking { AppDb.get(context).clearAllTables() }
+        runBlocking {
+            AppDb.get(context).clearAllTables()
+            OptionsRepo.get(context).useDefaultFolders()
+        }
     }
 
     @After
@@ -246,6 +259,87 @@ class PipelineE2eTest {
         )
     }
 
+    /**
+     * An ordinary 60 fps clip is written at 30, the cap every preset carries:
+     * half the frames is most of the saving, and nothing a phone shows misses
+     * them. (Slow motion, 90 fps and up, keeps every frame - MediaSettingsTest.)
+     */
+    @Test
+    fun aSixtyFpsClipIsWrittenAtThirty() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(
+            context, "e2e_sixty.mp4", width = 640, height = 360, frames = 120, fps = 60, textured = true
+        )
+        assertNotNull("the device must be able to produce a 60 fps clip", uri)
+        val src = File(context.cacheDir, "sixty_out").apply { mkdirs() }
+        val result = VideoCompressor.compress(
+            context, uri!!, "e2e_sixty.mp4", "video/mp4", sizeOf(uri),
+            VideoSettings().spec(), src
+        )
+        try {
+            assertFalse(
+                "the clip must be re-encoded, got ${result.reason} (${result.detail}; source ${sizeOf(uri)} bytes)",
+                result.asIs
+            )
+            val fps = videoFrames(result.file.absolutePath) / 2.0
+            assertTrue("written at about 30 fps, measured $fps", fps in 25.0..35.0)
+        } finally {
+            result.file.delete()
+        }
+    }
+
+    /**
+     * HEVC is never encoded in software: on a phone without an HEVC chip -
+     * every emulator - a clip asked for in HEVC comes out H.264, and Settings
+     * says so.
+     */
+    @Test
+    fun hevcWithoutAChipFallsBackToH264() = runBlockingTest {
+        assumeFalse("this phone has an HEVC chip", EncoderCaps.hevcFits(640, 360, 10f))
+        val uri = MediaFixtures.insertVideo(context, "e2e_hevc_ask.mp4", width = 640, height = 360, frames = 30)
+        assertNotNull(uri)
+        val spec = VideoSettings(VideoPreset.CUSTOM, codec = VideoCodecChoice.HEVC, audioKbps = 64).spec()
+        val out = File(context.cacheDir, "hevc_out").apply { mkdirs() }
+        val result = VideoCompressor.compress(context, uri!!, "e2e_hevc_ask.mp4", "video/mp4", sizeOf(uri), spec, out)
+        try {
+            if (!result.asIs) {
+                assertEquals(VideoCodec.H264, result.codec)
+                assertEquals(MediaFormat.MIMETYPE_VIDEO_AVC, videoMime(result.file.absolutePath))
+            }
+        } finally {
+            result.file.delete()
+        }
+    }
+
+    private fun videoFrames(path: String): Int {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(path)
+            val track = (0 until extractor.trackCount).first {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+            }
+            extractor.selectTrack(track)
+            var frames = 0
+            while (extractor.sampleTime >= 0) {
+                frames++
+                extractor.advance()
+            }
+            frames
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun videoMime(path: String): String? {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(path)
+            (0 until extractor.trackCount).map { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) }
+                .firstOrNull { it?.startsWith("video/") == true }
+        } finally {
+            extractor.release()
+        }
+    }
+
     /** True when the container at [source] (a path or a content URI) has an audio track. */
     private fun hasAudioTrack(source: String): Boolean {
         val ex = MediaExtractor()
@@ -261,6 +355,121 @@ class PipelineE2eTest {
             }
         } finally {
             runCatching { ex.release() }
+        }
+    }
+
+    /**
+     * A copy that leaves the folders the app looks at is read as collected,
+     * and its original is offered for deletion. So when the person picks a
+     * new folder, the copies still waiting in the old one must stay watched:
+     * here maintenance runs while the "back from Ente's Free up space" window
+     * is open - the moment every missing copy counts as uploaded - and the
+     * waiting copies must still be seen. Only once they really leave are they
+     * confirmed, and only then is the old folder let go.
+     */
+    @Test
+    fun aNewFolderNeverMakesWaitingCopiesLookUploaded() = runBlockingTest {
+        val moved = FolderName.pathOf("E2eMovedFolder")
+        val repo = OptionsRepo.get(context)
+        try {
+            (1..2).forEach { i ->
+                MediaFixtures.insertPhoto(
+                    context,
+                    name = "e2e_move_$i.jpg",
+                    seed = 20 + i,
+                    captureMillis = captureAt
+                )
+            }
+            val db = AppDb.get(context)
+            MediaScanner(context, db).scan()
+            val stager = Stager(context, db)
+            val before = repo.current()
+            for (row in db.items().byState(ItemState.NEW.name).filter { it.displayName.startsWith("e2e_move_") }) {
+                assertTrue(stager.stageOne(row, before))
+            }
+            assertEquals(2, Releaser(context, db).releaseBatch(before, System.currentTimeMillis()))
+
+            repo.setFolders(mapOf(OutFolder.SINGLE to moved))
+            val after = repo.current()
+            assertTrue(
+                "the old folder must be remembered: ${after.pastOutputRoots}",
+                after.pastOutputRoots.any { it.trimEnd('/') == Defaults.OUTPUT_DIR }
+            )
+
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            MaintainEngine(context).run()
+            val waiting = db.items().released().filter { it.displayName.startsWith("e2e_move_") }
+            assertEquals("copies still in the old folder are still waiting", 2, waiting.size)
+            assertTrue(waiting.all { it.outputRelPath?.trimEnd('/') == Defaults.OUTPUT_DIR })
+
+            // A new copy goes to the new folder.
+            MediaFixtures.insertPhoto(context, name = "e2e_move_3.jpg", seed = 23, captureMillis = captureAt)
+            MediaScanner(context, db).scan()
+            val third = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_move_3.jpg" }
+            assertTrue(stager.stageOne(third, after))
+            assertEquals(1, Releaser(context, db).releaseBatch(after, System.currentTimeMillis()))
+            assertEquals(1, OutputInventory(context).query(listOf(moved)).orEmpty().size)
+            assertEquals(
+                moved,
+                db.items().released().single { it.displayName == "e2e_move_3.jpg" }.outputRelPath?.trimEnd('/')
+            )
+
+            // Ente collects the old folder's copies: now they are confirmed,
+            // and the emptied folder is let go.
+            for (entry in OutputInventory(context).query(listOf(Defaults.OUTPUT_DIR)).orEmpty()) {
+                context.contentResolver.delete(entry.uri, null, null)
+            }
+            MaintainEngine(context).run()
+            assertTrue(
+                "collected copies are no longer waiting",
+                db.items().released().none { it.displayName == "e2e_move_1.jpg" || it.displayName == "e2e_move_2.jpg" }
+            )
+            assertTrue(
+                "the emptied old folder is let go",
+                repo.current().pastOutputRoots.none { it.trimEnd('/') == Defaults.OUTPUT_DIR }
+            )
+        } finally {
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
+            for (entry in OutputInventory(context).query(listOf(moved)).orEmpty()) {
+                runCatching { context.contentResolver.delete(entry.uri, null, null) }
+            }
+            repo.useDefaultFolders()
+        }
+    }
+
+    /**
+     * A folder renamed in a file manager takes its copies with it. They are
+     * gone from the folder the app watches, but not gone: even inside the
+     * "back from Ente's Free up space" window, a copy that still exists is
+     * followed to where it is, never counted as collected.
+     */
+    @Test
+    fun aCopyMovedElsewhereIsFollowedNotCountedAsUploaded() = runBlockingTest {
+        val elsewhere = "Pictures/E2eRenamedByHand/"
+        val repo = OptionsRepo.get(context)
+        try {
+            MediaFixtures.insertPhoto(context, name = "e2e_moved_1.jpg", seed = 31, captureMillis = captureAt)
+            val db = AppDb.get(context)
+            MediaScanner(context, db).scan()
+            val options = repo.current()
+            val row = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_moved_1.jpg" }
+            assertTrue(Stager(context, db).stageOne(row, options))
+            assertEquals(1, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
+            val released = db.items().released().single { it.displayName == "e2e_moved_1.jpg" }
+
+            val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, elsewhere) }
+            assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
+
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            MaintainEngine(context).run()
+            val after = db.items().byId(released.id)!!
+            assertEquals("a moved copy is still waiting", ItemState.RELEASED.name, after.state)
+            assertEquals(elsewhere.trimEnd('/'), after.outputRelPath?.trimEnd('/'))
+        } finally {
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
+            for (entry in OutputInventory(context).query(listOf(elsewhere)).orEmpty()) {
+                runCatching { context.contentResolver.delete(entry.uri, null, null) }
+            }
         }
     }
 

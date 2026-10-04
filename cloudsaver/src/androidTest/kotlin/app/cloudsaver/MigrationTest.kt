@@ -94,6 +94,19 @@ class MigrationTest {
         assertEquals(1_700_000_000_000L, bumped.priorityAt)
         assertEquals("jumping the queue must not touch the shooting date", realDate, bumped.captureAt)
 
+        // v8's folder column: a copy released before rows recorded their
+        // folder went to the folder its layout named under the old name, and
+        // that is the folder maintenance must keep looking in - not the new
+        // default, where the copy never was.
+        assertEquals("Pictures/CloudSaver/Photos", carried.first().outputRelPath)
+        assertEquals(listOf("Pictures/CloudSaver/Photos"), db.items().releasedRoots())
+        assertEquals(1, db.items().releasedCountIn("Pictures/CloudSaver", "Pictures/CloudSaver/%"))
+        assertEquals(0, db.items().releasedCountIn("Pictures/EnteSaver", "Pictures/EnteSaver/%"))
+        // And its encode is re-filed under the photo setting it stands for,
+        // so the estimates built on it carry on rather than starting over.
+        assertEquals("jpeg-16-82", carried.first().presetUsed)
+        assertNull("a photo has no video codec", carried.first().codecUsed)
+
         // v6's indices: proven by asking SQLite, not assumed. Room validates
         // entity indices at open, but only for entities it knows - a typo in
         // the migration SQL would surface here first.
@@ -212,9 +225,11 @@ class MigrationTest {
         raw.execSQL(
             "INSERT INTO `items` (fingerprint, displayName, sizeBytes, dateModified, " +
                 "captureAt, dateAdded, durationMs, mimeType, isVideo, state, evidence, " +
-                "attempts, originalMissing, appDeletedCopy, fromImport, updatedAt) " +
+                "attempts, originalMissing, appDeletedCopy, fromImport, updatedAt, " +
+                "outputFolder, releasedAt, presetUsed, codecUsed) " +
                 "VALUES ('fp-1', 'e2e_before_upgrade.jpg', 2048, 1, 1, 1, 0, 'image/jpeg', " +
-                "0, '${ItemState.RELEASED.name}', 'CONFIRMED', 0, 0, 0, 0, 1)"
+                "0, '${ItemState.RELEASED.name}', 'CONFIRMED', 0, 0, 0, 0, 1, 'PHOTOS', 1, " +
+                "'STORAGE_SAVER', 'H264')"
         )
         raw.version = 2
         raw.close()

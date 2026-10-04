@@ -5,10 +5,10 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.os.StatFs
 import android.os.storage.StorageManager
 import android.provider.MediaStore
+import app.cloudsaver.core.logic.Defaults
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -157,10 +157,7 @@ object Volumes {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "probe_${System.nanoTime()}.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            put(
-                MediaStore.MediaColumns.RELATIVE_PATH,
-                Environment.DIRECTORY_PICTURES + "/CloudSaver/"
-            )
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Defaults.OUTPUT_DIR + "/")
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         var uri: Uri? = null

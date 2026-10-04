@@ -136,10 +136,12 @@ object MediaFixtures {
         height: Int = 720,
         frames: Int = 20,
         captureMillis: Long = 1_600_000_000_000L,
-        withAudio: Boolean = false
+        withAudio: Boolean = false,
+        fps: Int = 10,
+        textured: Boolean = false
     ): Uri? {
         val temp = File(context.cacheDir, name)
-        if (!encodeH264(temp, width, height, frames, withAudio)) {
+        if (!encodeH264(temp, width, height, frames, withAudio, fps, textured)) {
             temp.delete()
             return null
         }
@@ -209,13 +211,16 @@ object MediaFixtures {
         width: Int,
         height: Int,
         frames: Int,
-        withAudio: Boolean = false
+        withAudio: Boolean = false,
+        fps: Int = 10,
+        textured: Boolean = false
     ): Boolean {
+        val frameUs = 1_000_000L / fps
         var codec: MediaCodec? = null
         var muxer: MediaMuxer? = null
         // Encoded up front so both tracks are known before the muxer starts:
         // MediaMuxer refuses a track added after start().
-        val audio = if (withAudio) encodeSilentAac(frames * 100_000L) ?: return false else null
+        val audio = if (withAudio) encodeSilentAac(frames * frameUs) ?: return false else null
         return try {
             val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
                 .apply {
@@ -224,7 +229,7 @@ object MediaFixtures {
                         MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
                     )
                     setInteger(MediaFormat.KEY_BIT_RATE, 8_000_000)
-                    setInteger(MediaFormat.KEY_FRAME_RATE, 10)
+                    setInteger(MediaFormat.KEY_FRAME_RATE, fps)
                     setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
                 }
             codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
@@ -249,13 +254,13 @@ object MediaFixtures {
                         buffer.clear()
                         if (sent == frames) {
                             codec.queueInputBuffer(
-                                inIndex, 0, 0, sent * 100_000L,
+                                inIndex, 0, 0, sent * frameUs,
                                 MediaCodec.BUFFER_FLAG_END_OF_STREAM
                             )
                         } else {
-                            fillFrame(frame, width, height, sent)
+                            fillFrame(frame, width, height, sent, textured)
                             buffer.put(frame)
-                            codec.queueInputBuffer(inIndex, 0, frameBytes, sent * 100_000L, 0)
+                            codec.queueInputBuffer(inIndex, 0, frameBytes, sent * frameUs, 0)
                         }
                         sent++
                     }
@@ -365,11 +370,21 @@ object MediaFixtures {
         }
     }
 
-    private fun fillFrame(frame: ByteArray, width: Int, height: Int, index: Int) {
+    /**
+     * A moving gradient. [textured] lays a fine still pattern over it: costly
+     * in every key frame, cheap between them, the way a real scene is - so a
+     * clip at a high bitrate is as large as a real one, and an encode at the
+     * app's own target has something to save.
+     */
+    private fun fillFrame(frame: ByteArray, width: Int, height: Int, index: Int, textured: Boolean = false) {
         val ySize = width * height
         for (y in 0 until height) {
             for (x in 0 until width) {
-                frame[y * width + x] = ((x + y + index * 12) and 0xFF).toByte()
+                frame[y * width + x] = if (textured) {
+                    ((x + y + index * 12) % 192 + (((x * 31) xor (y * 17)) and 0x3F)).toByte()
+                } else {
+                    ((x + y + index * 12) and 0xFF).toByte()
+                }
             }
         }
         var i = ySize

@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
@@ -32,12 +33,13 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import app.cloudsaver.core.logic.CapacityMath
 import app.cloudsaver.core.logic.ItemState
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
+import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.ListTags
@@ -141,7 +143,7 @@ class HomeFilesE2eTest {
     private val context: Context get() = instrumentation.targetContext
     private val db get() = AppDb.get(context)
 
-    private var scenario: ActivityScenario<MainActivity>? = null
+    private var scenario: ActivityScenario<HostActivity>? = null
 
     /** The album MediaFixtures writes into, as MediaStore labels it. */
     private val fixtureAlbum: String get() = MediaFixtures.TEST_ALBUM.substringAfterLast('/')
@@ -177,6 +179,7 @@ class HomeFilesE2eTest {
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
         runBlocking { db.clearAllTables() }
+        EnteApp.assumeInstalledForTest = false
     }
 
     /**
@@ -189,14 +192,15 @@ class HomeFilesE2eTest {
     private suspend fun resetOptions() {
         val repo = OptionsRepo.get(context)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+        repo.useDefaultFolders()
         repo.setBool(OptionsRepo.K.APP_LOCK, false)
         repo.setBool(OptionsRepo.K.PAUSE_ALL, false)
         repo.setBool(OptionsRepo.K.PLACEHOLDER_REMOVED, false)
         repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
-        // "Other app" is always treated as installed, so Home draws no
-        // "no cloud app" chip and the calculator prefills nothing.
-        repo.setString(OptionsRepo.K.CLOUD_SINGLE, "other")
-        repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, "")
+        // No emulator has Ente on it. The debug build's stand-in treats it
+        // as installed, so Home draws no "Ente is not installed" chip.
+        EnteApp.assumeInstalledForTest = true
+        repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
         repo.setString(OptionsRepo.K.FIRST_CHAIN_STATE, "")
         repo.setString(OptionsRepo.K.WAIT_REASON, "NONE")
         repo.setString(OptionsRepo.K.STORAGE_VOLUME, "")
@@ -309,9 +313,9 @@ class HomeFilesE2eTest {
     // ---- launching and navigating -----------------------------------------
 
     /** Starts the app and waits until Home has actually drawn. */
-    private fun launchHome(): ActivityScenario<MainActivity> {
+    private fun launchHome(): ActivityScenario<HostActivity> {
         scenario?.close()
-        val launched = ActivityScenario.launch(MainActivity::class.java)
+        val launched = ActivityScenario.launch(HostActivity::class.java)
         scenario = launched
         compose.waitForIdle()
         awaitNode(hasText(s(R.string.app_tagline)), "the Home screen")
@@ -723,12 +727,11 @@ class HomeFilesE2eTest {
 
     @Test
     fun homeAttentionChipForAMissingCloudAppLeadsToSettings() {
-        // Ente is a real, selectable cloud app; on any device that does not
-        // have it installed the health check must raise the chip.
-        runBlocking { OptionsRepo.get(context).setString(OptionsRepo.K.CLOUD_SINGLE, "ente") }
+        // Without the stand-in, a phone without Ente must raise the chip.
+        EnteApp.assumeInstalledForTest = false
         assertFalse(
-            "this test needs a cloud app that is NOT installed on the device",
-            CloudApps.isAppInstalled(context, "ente")
+            "this test needs a phone WITHOUT Ente Photos installed",
+            EnteApp.isInstalled(context)
         )
 
         launchHome()
@@ -1164,10 +1167,8 @@ class HomeFilesE2eTest {
         compose.onNodeWithText(s(R.string.calc_title)).performScrollTo().performClick()
         compose.waitForIdle()
 
-        // "Other app" has no free-plan figure to prefill, so the screen opens
-        // asking for one rather than answering a question nobody asked.
+        // Ente's free plan is the starting figure, ready to be replaced.
         assertScrolledInto(s(R.string.calc_input_label), "the calculator's input label")
-        assertScrolledInto(s(R.string.calc_enter), "the prompt to type a plan size")
 
         // A plan size the app cannot know, typed in. Typing focuses the field
         // and the keyboard rises over the bottom of this screen; its entrance
@@ -1175,7 +1176,7 @@ class HomeFilesE2eTest {
         // they change - so a node scrolled into view can be somewhere else by
         // the time it is asserted on. This test is about the arithmetic, not
         // the keyboard, so the keyboard is put away before anything is read.
-        compose.onNode(hasSetTextAction()).performTextInput("50")
+        compose.onNode(hasSetTextAction()).performTextReplacement("50")
         Espresso.closeSoftKeyboard()
         compose.waitForIdle()
         awaitNode(hasText(s(R.string.calc_hero_label)), "the calculator's answer")
@@ -1256,13 +1257,13 @@ class HomeFilesE2eTest {
             videoCount = totals.videoCount
         )
         val ratios = CapacityMath.ratios(
-            photo = db.items().photoRatioSamples(options.preset.name).map {
+            photo = db.items().photoRatioSamples(PlannedEncode.photoKey(context, options)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes)
             },
-            video = db.items().videoRatioSamples(options.preset.name, options.codec.name).map {
+            video = db.items().videoRatioSamples(PlannedEncode.videoKey(options)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes, it.durationMs / 60_000.0)
             },
-            codec = options.codec,
+            codec = PlannedEncode.videoCodec(options.video.spec()),
             source = CapacityMath.Source.MEASURED,
             galleryPhotoMedian = if (totals.photoCount > 0) {
                 totals.photoBytes / totals.photoCount

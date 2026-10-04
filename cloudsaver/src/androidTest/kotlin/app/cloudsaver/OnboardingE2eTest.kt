@@ -71,7 +71,7 @@ class OnboardingE2eTest {
     private val context: Context get() = instrumentation.targetContext
     private val device: UiDevice get() = UiDevice.getInstance(instrumentation)
 
-    private var scenario: ActivityScenario<MainActivity>? = null
+    private var scenario: ActivityScenario<HostActivity>? = null
 
     /** The album MediaFixtures writes into, as the picker will label it. */
     private val fixtureAlbum: String get() = MediaFixtures.TEST_ALBUM.substringAfterLast('/')
@@ -119,6 +119,7 @@ class OnboardingE2eTest {
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, false)
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
         repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
+        repo.useDefaultFolders()
     }
 
     private fun clearOutputFolder() {
@@ -128,9 +129,9 @@ class OnboardingE2eTest {
         runCatching { File(context.getExternalFilesDir(null), "stage").deleteRecursively() }
     }
 
-    private fun launch(): ActivityScenario<MainActivity> {
+    private fun launch(): ActivityScenario<HostActivity> {
         scenario?.close()
-        val launched = ActivityScenario.launch(MainActivity::class.java)
+        val launched = ActivityScenario.launch(HostActivity::class.java)
         scenario = launched
         compose.waitForIdle()
         return launched

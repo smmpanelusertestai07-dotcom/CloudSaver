@@ -65,6 +65,7 @@ import app.cloudsaver.ui.screens.HelpAboutScreen
 import app.cloudsaver.ui.screens.HelpCloudScreen
 import app.cloudsaver.ui.screens.HelpDeletedScreen
 import app.cloudsaver.ui.screens.HelpFaqScreen
+import app.cloudsaver.ui.screens.HelpGalleryScreen
 import app.cloudsaver.ui.screens.HelpLicensesScreen
 import app.cloudsaver.ui.screens.HelpPrivacyScreen
 import app.cloudsaver.ui.screens.HelpQualityScreen
@@ -100,6 +101,7 @@ object Routes {
     const val HELP_DELETED = "help_deleted"
     const val HELP_QUALITY = "help_quality"
     const val HELP_CLOUD = "help_cloud"
+    const val HELP_GALLERY = "help_gallery"
     const val HELP_PRIVACY = "help_privacy"
     const val HELP_LICENSES = "help_licenses"
     const val HELP_ABOUT = "help_about"
@@ -122,7 +124,7 @@ object Routes {
     val ALL: Set<String> = setOf(
         HOME, FILES, STORAGE, OPTIONS, FREE_UP, FREE_SPACE_HUB, ACTIVITY,
         RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT, CALCULATOR, HELP,
-        HELP_FAQ, HELP_DELETED, HELP_QUALITY, HELP_CLOUD,
+        HELP_FAQ, HELP_DELETED, HELP_QUALITY, HELP_CLOUD, HELP_GALLERY,
         HELP_PRIVACY, HELP_LICENSES, HELP_ABOUT, PERMISSIONS
     )
 
@@ -213,9 +215,7 @@ private fun MainNav(vm: AppViewModel) {
     // the app comes back to the foreground.
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         vm.refreshHealth()
-        // A cloud app installed after setup is found by the app, not
-        // by asking the user to go and correct a picker.
-        vm.adoptCloudIfObvious()
+        vm.refreshEnte()
     }
 
     // A lock that only ever asks once is not a lock: re-arm it whenever the
@@ -409,6 +409,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.HELP_DELETED) { HelpDeletedScreen(nav) }
                 composable(Routes.HELP_QUALITY) { HelpQualityScreen(nav, vm) }
                 composable(Routes.HELP_CLOUD) { HelpCloudScreen(nav) }
+                composable(Routes.HELP_GALLERY) { HelpGalleryScreen(nav) }
                 composable(Routes.HELP_PRIVACY) { HelpPrivacyScreen(nav) }
                 composable(Routes.HELP_LICENSES) { HelpLicensesScreen(nav) }
                 composable(Routes.HELP_ABOUT) { HelpAboutScreen(vm, nav) }

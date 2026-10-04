@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The icon this pack offers, for launchers that let a person choose one per app. -->
+<resources>
+    <version>1</version>
+    <category title="Gallery" />
+    <item drawable="iconpack_photos" />
+</resources>

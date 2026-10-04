@@ -35,6 +35,7 @@ import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.ReclaimRules
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
@@ -143,11 +144,11 @@ class FreeUpConsentE2eTest {
             db.clearAllTables()
             val repo = OptionsRepo.get(target)
             repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+            repo.useDefaultFolders()
             repo.setBool(OptionsRepo.K.APP_LOCK, false)
-            // The gate re-checks cloud health at the moment of action, and
-            // "Other app" is the one choice that needs no installed package -
-            // no emulator has Ente or MEGA on it.
-            repo.setString(OptionsRepo.K.CLOUD_SINGLE, "other")
+            // The gate re-checks Ente at the moment of action, and no
+            // emulator has Ente on it: the debug build's stand-in says it is.
+            EnteApp.assumeInstalledForTest = true
             repo.setString(OptionsRepo.K.CLOUD_PROBLEM, "")
             // The "I understand" tick is a one-off acknowledgement, not part of
             // what this suite is testing; its absence is asserted instead.
@@ -162,6 +163,7 @@ class FreeUpConsentE2eTest {
         MediaFixtures.cleanUp(target)
         runBlocking { db.clearAllTables() }
         Storage.tempDir(target).listFiles()?.forEach { it.delete() }
+        EnteApp.assumeInstalledForTest = false
     }
 
     // ---- the four consent outcomes -------------------------------------------
@@ -179,7 +181,7 @@ class FreeUpConsentE2eTest {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(3, "refuse")
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -248,7 +250,7 @@ class FreeUpConsentE2eTest {
         val seeds = seedBackedUpOriginals(3, "accept")
         val expectedFreed = ROW_BYTES * seeds.size
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -333,7 +335,7 @@ class FreeUpConsentE2eTest {
         val chunk = ReclaimRules.MAX_URIS_PER_REQUEST
         val seeds = seedBackedUpOriginals(chunk + 1, "chunk")
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -421,7 +423,7 @@ class FreeUpConsentE2eTest {
         assumeTrue("no media trash before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(2, "restore")
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -528,7 +530,7 @@ class FreeUpConsentE2eTest {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val (keeper, extra) = seedIdenticalPair()
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openHubCard(R.string.find_duplicates)
             awaitRow(extra.name)
@@ -594,7 +596,7 @@ class FreeUpConsentE2eTest {
             leftover.setLastModified(System.currentTimeMillis() - 2 * 60 * 60 * 1000L)
         )
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openHub()
             awaitText(R.string.hub_leftovers)

@@ -86,7 +86,7 @@ jobs:
           set -eu
           VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          APK_NAME="CloudSaver-v$VERSION-release.apk"
+          APK_NAME="EnteSaver-v$VERSION-release.apk"
           echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           UNSIGNED=cloudsaver/build/outputs/apk/release/cloudsaver-release-unsigned.apk
@@ -99,7 +99,7 @@ jobs:
           # is still required. Writing "-P 16 in out" prints the usage text
           # and produces no file - caught by signing a real APK by hand
           # rather than by reading the flag name and assuming.
-          "$BT/zipalign" -f -P 16 4 "$UNSIGNED" CloudSaver-aligned.apk
+          "$BT/zipalign" -f -P 16 4 "$UNSIGNED" EnteSaver-aligned.apk
           "$BT/apksigner" sign \
             --ks release.jks \
             --ks-pass env:KEYSTORE_PASSWORD \
@@ -108,10 +108,10 @@ jobs:
             --v2-signing-enabled true \
             --v3-signing-enabled true \
             --out "$APK_NAME" \
-            CloudSaver-aligned.apk
+            EnteSaver-aligned.apk
           "$BT/apksigner" verify --print-certs "$APK_NAME"
           # The emulator job installs a fixed name, so keep one alongside it.
-          cp "$APK_NAME" CloudSaver-release.apk
+          cp "$APK_NAME" EnteSaver-release.apk
 
       - name: Alignment gate (16 KiB pages, Android 16)
         run: |
@@ -148,21 +148,23 @@ jobs:
           set -eu
           KEYSTORE_NOTE=""
           if [ "${{ steps.keystore.outputs.generated }}" = "true" ]; then
-            KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other CloudSaver build - Android refuses an update whose signer differs. Generate one key on your own machine and add it as repository secrets; the release step refuses to publish until you do."
+            KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other Ente Saver or CloudSaver build - Android refuses an update whose signer differs. Generate one key on your own machine and add it as repository secrets; the release step refuses to publish until you do."
           fi
           cat > RELEASE_NOTES.md <<EOF
-          This is the final release of CloudSaver. It is designed to run without
-          any future update. Only the owner's own device findings may ever be
-          patched.
+          Ente Saver (formerly CloudSaver), made for Ente Photos. It installs
+          over CloudSaver and keeps everything it knew. Only the owner's own
+          device findings may ever be patched.
 
-          Offline storage saver. Optimised copies go to Pictures/CloudSaver; your
-          cloud app backs up only that folder. Originals are never touched
-          automatically. Everything else is explained inside the app (Help).
+          Offline storage saver. Light copies go to one folder (Pictures/EnteSaver
+          for a new install; an existing install keeps Pictures/CloudSaver until
+          you tap Move); Ente Photos backs up only that folder. Photos and videos
+          have their own settings. Originals are never touched automatically.
+          Everything else is explained inside the app (Help).
 
           Built to last without maintenance: no server, no account, no analytics,
           no internet permission, nothing that expires, and a database that can
           only be migrated - never rebuilt - so the record of what already
-          reached your cloud cannot be lost.
+          reached Ente cannot be lost.
 
           Install: download ${APK_NAME} below and open it on your phone.
           Play Protect may warn about a sideloaded APK - choose "More details" ->
@@ -177,7 +179,7 @@ jobs:
       - name: Job summary
         run: |
           {
-            echo "## CloudSaver build ${VERSION}"
+            echo "## Ente Saver build ${VERSION}"
             echo ""
             echo "- APK size: ${APK_SIZE} bytes"
             echo "- APK SHA-256: \`${APK_SHA256}\`"
@@ -216,9 +218,9 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
         with:
-          name: CloudSaver-release.apk
+          name: EnteSaver-release.apk
           path: |
-            CloudSaver-*.apk
+            EnteSaver-*.apk
             RELEASE_NOTES.md
           if-no-files-found: error
 
@@ -233,12 +235,21 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    # Android 17 (API 37) runs ahead of the target, to see early what the
+    # next version changes; until it is the target it may fail without
+    # holding anything up.
+    continue-on-error: ${{ matrix.ahead == true }}
     strategy:
       # One level failing must not hide the others: the whole point is to
       # learn which Androids are affected, not just that something is.
       fail-fast: false
       matrix:
         api: [29, 30, 31, 32, 33, 34, 35, 36]
+        include:
+          # The SDK names Android 17's packages "android-37.0", not "android-37".
+          - api: 37
+            image: "37.0"
+            ahead: true
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -281,12 +292,12 @@ jobs:
       - name: Download signed APK
         uses: actions/download-artifact@v7
         with:
-          name: CloudSaver-release.apk
+          name: EnteSaver-release.apk
 
       - name: Run instrumented suite + live install on a real emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ matrix.api }}
+          api-level: ${{ matrix.image || matrix.api }}
           target: google_apis
           arch: x86_64
           force-avd-creation: false
@@ -363,7 +374,7 @@ jobs:
       - name: Download signed APK
         uses: actions/download-artifact@v7
         with:
-          name: CloudSaver-release.apk
+          name: EnteSaver-release.apk
 
       - name: Publish the GitHub Release, once
         env:
@@ -390,7 +401,7 @@ jobs:
             echo "To publish a new build, raise versionName in cloudsaver/build.gradle.kts."
             exit 0
           fi
-          gh release create "$TAG" "CloudSaver-v${VERSION}-release.apk" \
-            --title "CloudSaver $TAG" \
+          gh release create "$TAG" "EnteSaver-v${VERSION}-release.apk" \
+            --title "Ente Saver $TAG" \
             --notes-file RELEASE_NOTES.md \
             --repo "$GITHUB_REPOSITORY"

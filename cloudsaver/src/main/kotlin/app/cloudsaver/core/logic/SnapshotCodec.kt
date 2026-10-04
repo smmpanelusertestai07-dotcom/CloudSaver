@@ -57,7 +57,12 @@ object SnapshotCodec {
          * builds still read files that carry them.
          */
         val keptUri: String? = null,
-        val neverOptimise: Boolean = false
+        val neverOptimise: Boolean = false,
+        /**
+         * The folder the copy was released into. Optional, like the two
+         * above: a file without it is read as the old single-name folders.
+         */
+        val outputRelPath: String? = null
     )
 
     data class SnapBatch(
@@ -150,6 +155,7 @@ object SnapshotCodec {
             i.confirmedAt?.let { o.put("confAt", it) }
             i.keptUri?.let { o.put("kept", it) }
             if (i.neverOptimise) o.put("never", true)
+            i.outputRelPath?.let { o.put("outRel", it) }
             items.put(o)
         }
         root.put("items", items)
@@ -244,7 +250,8 @@ object SnapshotCodec {
                 releasedAt = if (o.has("relAt")) o.optLong("relAt") else null,
                 confirmedAt = if (o.has("confAt")) o.optLong("confAt") else null,
                 keptUri = o.optString("kept", "").ifEmpty { null },
-                neverOptimise = o.optBoolean("never", false)
+                neverOptimise = o.optBoolean("never", false),
+                outputRelPath = o.optString("outRel", "").ifEmpty { null }
             )
         }
         val batches = mutableListOf<SnapBatch>()

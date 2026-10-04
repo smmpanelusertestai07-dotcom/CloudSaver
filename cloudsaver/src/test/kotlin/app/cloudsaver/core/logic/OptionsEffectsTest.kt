@@ -12,10 +12,22 @@ class OptionsEffectsTest {
 
     @Test
     fun presetTableMatchesSpec() {
-        assertEquals(PresetSpec(1920, 16, 82), Presets.spec(Preset.STORAGE_SAVER))
-        assertEquals(PresetSpec(2560, 24, 85), Presets.spec(Preset.BALANCED))
-        assertEquals(PresetSpec(1280, 8, 80), Presets.spec(Preset.MAX_SAVER))
-        assertEquals(16_000_000L, Presets.photoMaxPixels(Preset.STORAGE_SAVER))
+        assertEquals(PhotoSpec(PhotoFormat.AUTO, 24, 85), PhotoSettings(PhotoPreset.BEST).spec())
+        assertEquals(PhotoSpec(PhotoFormat.AUTO, 16, 82), PhotoSettings(PhotoPreset.BALANCED).spec())
+        assertEquals(PhotoSpec(PhotoFormat.AUTO, 8, 75), PhotoSettings(PhotoPreset.SMALLEST).spec())
+        assertEquals(16_000_000L, PhotoSettings().spec().maxPixels)
+        assertEquals(
+            VideoSpec(VideoCodecChoice.AUTO, 2560, 30, VideoQuality.HIGH, 128, HdrPolicy.KEEP_WHEN_POSSIBLE),
+            VideoSettings(VideoPreset.BEST).spec()
+        )
+        assertEquals(
+            VideoSpec(VideoCodecChoice.AUTO, 1920, 30, VideoQuality.STANDARD, 128, HdrPolicy.KEEP_WHEN_POSSIBLE),
+            VideoSettings(VideoPreset.BALANCED).spec()
+        )
+        assertEquals(
+            VideoSpec(VideoCodecChoice.AUTO, 1280, 30, VideoQuality.SMALL, 96, HdrPolicy.KEEP_WHEN_POSSIBLE),
+            VideoSettings(VideoPreset.SMALLEST).spec()
+        )
     }
 
     @Test
@@ -27,8 +39,8 @@ class OptionsEffectsTest {
         assertEquals(250, o.dailyCapMb)
         assertEquals(1500, o.minFreeMb)
         assertEquals(1500, o.maxExtraMb)
-        assertEquals(Preset.STORAGE_SAVER, o.preset)
-        assertEquals(VideoCodec.H264, o.codec)
+        assertEquals(PhotoPreset.BALANCED, o.photo.preset)
+        assertEquals(VideoPreset.BALANCED, o.video.preset)
         assertEquals(ThemeMode.SYSTEM, o.theme)
         // The brand palette is the default; wallpaper colours are opt-in, or
         // the app looks like a different product on every phone.
@@ -96,20 +108,24 @@ class OptionsEffectsTest {
 
     @Test
     fun outputFoldersAreUnderPicturesNeverDcim() {
-        assertEquals("Pictures/CloudSaver", Defaults.outFolderRelPath(OutFolder.SINGLE))
-        assertEquals("Pictures/CloudSaver/Photos", Defaults.outFolderRelPath(OutFolder.PHOTOS))
-        assertEquals("Pictures/CloudSaver/Videos", Defaults.outFolderRelPath(OutFolder.VIDEOS))
+        assertEquals("Pictures/CloudSaver", Defaults.legacyRelPath(OutFolder.SINGLE))
+        assertEquals("Pictures/CloudSaver/Photos", Defaults.legacyRelPath(OutFolder.PHOTOS))
+        assertEquals("Pictures/CloudSaver/Videos", Defaults.legacyRelPath(OutFolder.VIDEOS))
+        val layout = OutputLayout(OutputMode.SINGLE)
         for (folder in OutFolder.entries) {
-            assertTrue(!Defaults.outFolderRelPath(folder).startsWith("DCIM"))
+            assertTrue(layout.path(folder).startsWith("Pictures/"))
+            assertTrue(Defaults.legacyRelPath(folder).startsWith("Pictures/"))
         }
     }
 
     @Test
     fun onlyTheRealOutputFolderCountsAsOurs() {
+        val layout = OutputLayout(OutputMode.SINGLE)
         for (folder in OutFolder.entries) {
-            val path = Defaults.outFolderRelPath(folder)
-            assertTrue(Defaults.isOutputPath(path))
-            assertTrue(Defaults.isOutputPath("$path/"))
+            for (path in listOf(layout.path(folder), Defaults.legacyRelPath(folder))) {
+                assertTrue(Defaults.isOutputPath(path))
+                assertTrue(Defaults.isOutputPath("$path/"))
+            }
         }
         assertTrue(Defaults.isOutputPath("Pictures/CloudSaver/.cloudsaver/"))
 
@@ -122,10 +138,10 @@ class OptionsEffectsTest {
         assertFalse(Defaults.isOutputPath(""))
 
         // The SQL pattern must draw the same line.
-        assertEquals("Pictures/CloudSaver/%", Defaults.OUTPUT_DIR_LIKE)
-        assertTrue(sqlLike("Pictures/CloudSaver/", Defaults.OUTPUT_DIR_LIKE))
-        assertTrue(sqlLike("Pictures/CloudSaver/Photos/", Defaults.OUTPUT_DIR_LIKE))
-        assertFalse(sqlLike("Pictures/CloudSaverBackup/", Defaults.OUTPUT_DIR_LIKE))
+        assertEquals("Pictures/CloudSaver/%", Defaults.LEGACY_OUTPUT_DIR_LIKE)
+        assertTrue(sqlLike("Pictures/CloudSaver/", Defaults.LEGACY_OUTPUT_DIR_LIKE))
+        assertTrue(sqlLike("Pictures/CloudSaver/Photos/", Defaults.LEGACY_OUTPUT_DIR_LIKE))
+        assertFalse(sqlLike("Pictures/CloudSaverBackup/", Defaults.LEGACY_OUTPUT_DIR_LIKE))
     }
 
     /** Minimal stand-in for SQLite LIKE: only '%' is used in our patterns. */

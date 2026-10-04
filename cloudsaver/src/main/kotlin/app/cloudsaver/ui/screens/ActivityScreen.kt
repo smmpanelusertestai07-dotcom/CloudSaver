@@ -57,10 +57,9 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.ActivityWording
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.OutputMode
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.PhotoPreset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
-import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.ui.AppViewModel
@@ -139,7 +138,7 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                         text = { Text(stringResource(R.string.activity_export)) },
                         onClick = {
                             menuOpen = false
-                            exportLauncher.launch("cloudsaver-activity.txt")
+                            exportLauncher.launch("entesaver-activity.txt")
                         }
                     )
                     DropdownMenuItem(
@@ -387,11 +386,14 @@ private fun settingSentence(detail: String?): String {
         ?: return stringResource(R.string.activity_settings)
     val name = stringResource(
         when (change.setting) {
-            ActivityWording.Setting.QUALITY -> R.string.opt_preset
+            ActivityWording.Setting.QUALITY -> R.string.opt_group_quality
             ActivityWording.Setting.CLOUD_APP -> R.string.opt_cloud
             ActivityWording.Setting.SPEED -> R.string.opt_speed
             ActivityWording.Setting.LAYOUT -> R.string.opt_output
-            ActivityWording.Setting.CODEC -> R.string.opt_codec
+            ActivityWording.Setting.CODEC -> R.string.opt_videos
+            ActivityWording.Setting.PHOTOS -> R.string.opt_photos
+            ActivityWording.Setting.VIDEOS -> R.string.opt_videos
+            ActivityWording.Setting.FOLDER -> R.string.opt_output
             ActivityWording.Setting.THEME -> R.string.opt_theme
             ActivityWording.Setting.SCOPE -> R.string.opt_scope
             ActivityWording.Setting.SPACE -> R.string.opt_group_space
@@ -404,10 +406,18 @@ private fun settingSentence(detail: String?): String {
 @Composable
 private fun settingValue(change: ActivityWording.Change): String {
     val res = when (change.setting) {
+        // Before 11 one preset covered both; named here by what it became.
         ActivityWording.Setting.QUALITY -> when (change.value) {
-            Preset.STORAGE_SAVER.name -> R.string.preset_storage
-            Preset.BALANCED.name -> R.string.preset_balanced
-            Preset.MAX_SAVER.name -> R.string.preset_max
+            "STORAGE_SAVER" -> R.string.preset_balanced
+            "BALANCED" -> R.string.preset_best
+            "MAX_SAVER" -> R.string.preset_smallest
+            else -> null
+        }
+        ActivityWording.Setting.PHOTOS, ActivityWording.Setting.VIDEOS -> when (change.value) {
+            PhotoPreset.BEST.name -> R.string.preset_best
+            PhotoPreset.BALANCED.name -> R.string.preset_balanced
+            PhotoPreset.SMALLEST.name -> R.string.preset_smallest
+            PhotoPreset.CUSTOM.name -> R.string.preset_custom
             else -> null
         }
         ActivityWording.Setting.SPEED -> when (change.value) {
@@ -422,8 +432,8 @@ private fun settingValue(change: ActivityWording.Change): String {
             else -> null
         }
         ActivityWording.Setting.CODEC -> when (change.value) {
-            VideoCodec.H264.name -> R.string.codec_h264
-            VideoCodec.HEVC.name -> R.string.codec_hevc
+            "H264" -> R.string.codec_h264
+            "HEVC" -> R.string.codec_hevc
             else -> null
         }
         ActivityWording.Setting.THEME -> when (change.value) {
@@ -438,8 +448,8 @@ private fun settingValue(change: ActivityWording.Change): String {
             BackupScope.VIDEOS.name -> R.string.scope_videos
             else -> null
         }
-        // Cloud app and space store a label already fit to read.
-        ActivityWording.Setting.CLOUD_APP, ActivityWording.Setting.SPACE -> null
+        // Cloud app, space and folder store a label already fit to read.
+        ActivityWording.Setting.CLOUD_APP, ActivityWording.Setting.SPACE, ActivityWording.Setting.FOLDER -> null
     }
     return res?.let { stringResource(it) } ?: change.value
 }

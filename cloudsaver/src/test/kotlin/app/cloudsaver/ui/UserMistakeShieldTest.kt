@@ -75,7 +75,7 @@ class UserMistakeShieldTest {
         assertTrue(reclaim.contains("reclaim_blindspot"))
         assertTrue(
             "the sheet must offer the door, not just the advice",
-            reclaim.contains("CloudApps.launch")
+            reclaim.contains("EnteApp.launch(context)")
         )
         assertTrue(
             "every original-removing batch must pass through the sheet",

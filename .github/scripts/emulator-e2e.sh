@@ -81,7 +81,7 @@ fi
 
 echo "::group::Install the signed release APK and launch it"
 adb uninstall "$PKG" 2>/dev/null || true
-adb install -r CloudSaver-release.apk
+adb install -r EnteSaver-release.apk
 adb logcat -c || true
 adb shell am start -n "$PKG/.MainActivity"
 sleep 12
@@ -117,6 +117,22 @@ if [ -n "$W" ] && [ -n "$H" ]; then
     i=$(( i + 1 ))
   done
 fi
+
+# The release APK's promises that only the installed package can show.
+# No internet permission, ever: the whole privacy claim rests on it.
+if adb shell dumpsys package "$PKG" | grep -q "android.permission.INTERNET"; then
+  echo "::error::The released APK holds the INTERNET permission"
+  exit 1
+fi
+# The icon pack is found by launchers through their own actions; a pack
+# no launcher can see is a feature that silently is not there.
+if ! adb shell cmd package query-activities -a org.adw.launcher.THEMES | grep -q "IconPackActivity"; then
+  echo "::error::The icon pack is not discoverable by launchers"
+  exit 1
+fi
+# The Photos shortcut's landing screen must open without bringing the app down.
+adb shell am start -n "$PKG/.OpenEnteActivity" || true
+sleep 3
 
 if adb logcat -d -b crash | grep -q "$PKG"; then
   echo "::error::Crash reported for $PKG"

@@ -6,6 +6,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
@@ -29,8 +30,11 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import app.cloudsaver.core.logic.BitrateCalc
-import app.cloudsaver.core.logic.PresetSpec
+import app.cloudsaver.core.logic.HdrPolicy
+import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.core.logic.VideoCodecResolver
+import app.cloudsaver.core.logic.VideoSpec
 import com.google.common.collect.ImmutableList
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -42,11 +46,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /**
- * Video pipeline (Media3 Transformer): MP4 out, H.264/HEVC, aspect kept, fps kept,
- * rotation applied upright, AAC 128 kbps. Target bitrate from OUTPUT pixels x fps
- * (0.10 bpp H.264 / 0.065 HEVC), VBR first. Known Media3 pitfalls are handled with
- * a mandatory result check and a retry ladder: VBR -> CBR -> software encoder ->
- * copy as-is. An item is never lost.
+ * Video pipeline (Media3 Transformer): MP4 out, H.264 or HEVC (HEVC only on a
+ * hardware encoder that takes the clip), aspect kept, rotation applied
+ * upright, an ordinary high frame rate capped (slow motion kept), AAC at the
+ * setting's bitrate. Target bitrate from OUTPUT pixels x fps x the quality's
+ * bits per pixel, VBR first. Known Media3 pitfalls are handled with a
+ * mandatory result check and a retry ladder: VBR -> CBR -> H.264 (on its
+ * hardware for an HEVC clip, in software for an H.264 one) -> copy as-is.
+ * An item is never lost.
  */
 @OptIn(UnstableApi::class)
 object VideoCompressor {
@@ -60,12 +67,27 @@ object VideoCompressor {
         val fps: Float
     )
 
-    private data class Attempt(val cbr: Boolean, val software: Boolean, val label: String)
+    private data class Attempt(
+        val cbr: Boolean,
+        val software: Boolean,
+        val label: String,
+        val codec: VideoCodec
+    )
 
-    private val ATTEMPTS = listOf(
-        Attempt(cbr = false, software = false, label = "vbr"),
-        Attempt(cbr = true, software = false, label = "cbr"),
-        Attempt(cbr = false, software = true, label = "sw")
+    /**
+     * The rungs for a clip encoded as [codec]. HEVC is never handed to a
+     * software encoder - on a budget phone that is many times the clip's own
+     * length, running hot - so its last rung is H.264 on the hardware every
+     * phone has.
+     */
+    private fun attemptsFor(codec: VideoCodec): List<Attempt> = listOf(
+        Attempt(cbr = false, software = false, label = "vbr", codec = codec),
+        Attempt(cbr = true, software = false, label = "cbr", codec = codec),
+        if (codec == VideoCodec.HEVC) {
+            Attempt(cbr = false, software = false, label = "h264", codec = VideoCodec.H264)
+        } else {
+            Attempt(cbr = false, software = true, label = "sw", codec = VideoCodec.H264)
+        }
     )
 
     private val COPY_OK_CONTAINERS = setOf("video/mp4", "video/quicktime", "video/3gpp")
@@ -95,6 +117,9 @@ object VideoCompressor {
      */
     const val MIN_TOTAL_MS = 5 * 60_000L
 
+    /** The long side every phone's hardware encoder takes. */
+    private const val FULL_HD_LONG_SIDE = 1920
+
     /** Below this there is no point starting another attempt at all. */
     private const val MIN_ATTEMPT_MS = 60_000L
 
@@ -113,8 +138,7 @@ object VideoCompressor {
         displayName: String,
         mimeType: String,
         srcBytes: Long,
-        spec: PresetSpec,
-        codec: VideoCodec,
+        spec: VideoSpec,
         tempDir: File,
         maxTotalMs: Long = DEFAULT_TOTAL_MS
     ): CompressResult {
@@ -129,29 +153,49 @@ object VideoCompressor {
         } else {
             probe.width to probe.height
         }
-        val (outW, outH) = BitrateCalc.outputDims(upright.first, upright.second, spec.videoLongSide)
-        val targetBps = BitrateCalc.targetBps(outW, outH, probe.fps, codec)
+        // An ordinary 60 fps clip is written at 30; slow motion keeps every frame.
+        val cappedFps = MediaSettings.outputFps(probe.fps, spec.fpsCap)
+        val outFps = cappedFps ?: probe.fps
+        var dims = BitrateCalc.outputDims(upright.first, upright.second, spec.longSideLimit)
+        // Above 1080p only where a hardware encoder takes it: a budget chip
+        // that stops at 1080p would otherwise encode in software, for hours.
+        if (maxOf(dims.first, dims.second) > FULL_HD_LONG_SIDE &&
+            !EncoderCaps.anyHardwareFits(dims.first, dims.second, outFps)
+        ) {
+            dims = BitrateCalc.outputDims(upright.first, upright.second, FULL_HD_LONG_SIDE)
+        }
+        val (outW, outH) = dims
+        val codec = VideoCodecResolver.resolve(
+            spec.codec, VideoCodecResolver.Hardware(hevcFits = EncoderCaps.hevcFits(outW, outH, outFps))
+        )
+        val targetBps = BitrateCalc.targetBps(outW, outH, outFps, codec, spec.quality)
         val containerOk = mimeType.lowercase() in COPY_OK_CONTAINERS
         val srcLongSide = maxOf(upright.first, upright.second)
 
-        if (BitrateCalc.shouldCopyAsIs(srcLongSide, spec.videoLongSide, probe.bitrateBps, targetBps, containerOk)) {
+        if (cappedFps == null &&
+            BitrateCalc.shouldCopyAsIs(srcLongSide, spec.longSideLimit, probe.bitrateBps, targetBps, containerOk)
+        ) {
             return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, "already_efficient")
         }
 
-        val codecMime = if (codec == VideoCodec.H264) MimeTypes.VIDEO_H264 else MimeTypes.VIDEO_H265
-
-        // HDR policy: H.264 cannot carry HDR, so tone-map to SDR. HEVC keeps HDR
-        // only when this device can actually encode 10-bit HDR; otherwise it is
-        // tone-mapped too. A device that can do neither ends at the as-is copy
-        // below - colours are never silently washed out.
+        // HDR policy: H.264 cannot carry HDR, so it is tone-mapped to SDR, as
+        // is everything when the setting asks for SDR. HEVC keeps HDR only
+        // when this device can actually encode 10-bit HDR; otherwise it is
+        // tone-mapped too. A device that can do neither ends at the as-is
+        // copy below - colours are never silently washed out.
         val hdr = MediaTraits.hdrOf(context, uri)
         val keepHdr = hdr != MediaTraits.Hdr.NONE &&
+            spec.hdr == HdrPolicy.KEEP_WHEN_POSSIBLE &&
             codec == VideoCodec.HEVC &&
             MediaTraits.deviceSupportsHdrHevcEncode()
-        val hdrMode = when {
-            hdr == MediaTraits.Hdr.NONE -> Composition.HDR_MODE_KEEP_HDR
-            keepHdr -> Composition.HDR_MODE_KEEP_HDR
-            else -> Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
+        // The phone's own decoder does it where it can: lighter than a GL
+        // pass. Not every decoder that runs Android 12 will, though, and one
+        // that will not ends the export - so a rung that fails that way is
+        // run again through OpenGL, and every rung after it too.
+        var toneMap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC
+        } else {
+            Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
         }
         val hdrTag = when {
             hdr == MediaTraits.Hdr.NONE -> ""
@@ -160,7 +204,22 @@ object VideoCompressor {
         }
 
         var outOfTime = false
-        for (attempt in ATTEMPTS) {
+        var notSmaller = false
+        var detail = ""
+        // The smallest copy that only missed its bitrate target, kept in case
+        // no rung meets it (BitrateCalc.worthKeeping).
+        var fallback: CompressResult? = null
+        val attempts = attemptsFor(codec)
+        var rung = 0
+        while (rung < attempts.size) {
+            val attempt = attempts[rung]
+            // Keeping HDR is a promise about HEVC; the H.264 rung tone-maps.
+            val hdrMode = when {
+                hdr == MediaTraits.Hdr.NONE -> Composition.HDR_MODE_KEEP_HDR
+                keepHdr && attempt.codec == VideoCodec.HEVC -> Composition.HDR_MODE_KEEP_HDR
+                else -> toneMap
+            }
+            val codecMime = if (attempt.codec == VideoCodec.H264) MimeTypes.VIDEO_H264 else MimeTypes.VIDEO_H265
             // Each rung gets what is left of the budget, not a fresh twenty
             // minutes of its own, so three attempts can never cost three times
             // the number the caller asked for.
@@ -171,12 +230,26 @@ object VideoCompressor {
             }
             val outFile = File(tempDir, "video_${System.nanoTime()}_${attempt.label}.mp4")
             val export = try {
-                runTransform(context, uri, outFile, outW, outH, targetBps, codecMime, attempt, hdrMode, leftMs)
+                runTransform(
+                    context, uri, outFile, outW, outH,
+                    BitrateCalc.targetBps(outW, outH, outFps, attempt.codec, spec.quality),
+                    codecMime, attempt, hdrMode, leftMs,
+                    audioBps = spec.audioKbps * 1000,
+                    frameRateCap = cappedFps?.toInt(),
+                    onError = { detail = "${attempt.label}: $it" }
+                )
             } catch (ce: CancellationException) {
                 outFile.delete()
+                fallback?.file?.delete()
                 throw ce
             } catch (e: Exception) {
+                detail = "${attempt.label}: ${e.javaClass.simpleName}"
                 null
+            }
+            if (export == null && hdrMode == Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC) {
+                outFile.delete()
+                toneMap = Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
+                continue
             }
             if (export != null && outFile.exists()) {
                 val outBytes = outFile.length()
@@ -189,7 +262,8 @@ object VideoCompressor {
                     probeDurationMs(outFile)
                 }
                 val outBps = if (outDur > 0) outBytes * 8000L / outDur else Long.MAX_VALUE
-                if (BitrateCalc.resultAcceptable(srcBytes, outBytes, outBps, targetBps, probe.durationMs, outDur)) {
+                val rungTarget = BitrateCalc.targetBps(outW, outH, outFps, attempt.codec, spec.quality)
+                if (BitrateCalc.resultAcceptable(srcBytes, outBytes, outBps, rungTarget, probe.durationMs, outDur)) {
                     return CompressResult(
                         outFile,
                         outBytes,
@@ -197,18 +271,51 @@ object VideoCompressor {
                         reason = "compressed_${attempt.label}$hdrTag",
                         ext = "mp4",
                         srcPixels = upright.first.toLong() * upright.second.toLong(),
-                        outPixels = outW.toLong() * outH.toLong()
+                        outPixels = outW.toLong() * outH.toLong(),
+                        codec = attempt.codec
                     )
+                }
+                detail = "${attempt.label}: $outBytes of $srcBytes bytes, $outBps of $rungTarget bps, " +
+                    "$outDur of ${probe.durationMs} ms"
+                if (BitrateCalc.worthKeeping(srcBytes, outBytes, probe.durationMs, outDur) &&
+                    outBytes < (fallback?.bytes ?: Long.MAX_VALUE)
+                ) {
+                    fallback?.file?.delete()
+                    fallback = CompressResult(
+                        outFile,
+                        outBytes,
+                        asIs = false,
+                        reason = "compressed_${attempt.label}$hdrTag",
+                        ext = "mp4",
+                        srcPixels = upright.first.toLong() * upright.second.toLong(),
+                        outPixels = outW.toLong() * outH.toLong(),
+                        codec = attempt.codec,
+                        detail = detail
+                    )
+                    rung++
+                    continue
+                }
+                if (outBytes >= srcBytes && outBps <= rungTarget * BitrateCalc.RESULT_BITRATE_FACTOR) {
+                    // The encoder kept to its target and the copy is still no
+                    // smaller: the original is already leaner than the setting,
+                    // and the next rung aims at the same target. Trying it
+                    // would only spend the battery a second time.
+                    notSmaller = true
+                    outFile.delete()
+                    break
                 }
             }
             outFile.delete()
+            rung++
         }
+        fallback?.let { return it }
         val failReason = when {
             outOfTime -> "out_of_time"
+            notSmaller -> "not_smaller"
             hdr == MediaTraits.Hdr.NONE -> "encoder_rejected"
             else -> "hdr_not_supported"
         }
-        return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, failReason)
+        return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, failReason).copy(detail = detail)
     }
 
     /** Runs a single Transformer export; null on any export error or timeout. */
@@ -222,7 +329,10 @@ object VideoCompressor {
         codecMime: String,
         attempt: Attempt,
         hdrMode: Int,
-        attemptMs: Long
+        attemptMs: Long,
+        audioBps: Int,
+        frameRateCap: Int?,
+        onError: (String) -> Unit
     ): ExportResult? = withContext(Dispatchers.Default) {
         // Background priority: encoding must never make the phone feel slow.
         val thread = HandlerThread("cloudsaver-transform", Process.THREAD_PRIORITY_BACKGROUND)
@@ -245,7 +355,7 @@ object VideoCompressor {
                 val encoderFactory = DefaultEncoderFactory.Builder(context)
                     .setRequestedVideoEncoderSettings(videoSettings)
                     .setRequestedAudioEncoderSettings(
-                        AudioEncoderSettings.Builder().setBitrate(128_000).build()
+                        AudioEncoderSettings.Builder().setBitrate(audioBps).build()
                     )
                     .setEnableFallback(true)
                     .apply { if (attempt.software) setVideoEncoderSelector(SOFTWARE_SELECTOR) }
@@ -261,6 +371,7 @@ object VideoCompressor {
                         exportResult: ExportResult,
                         exportException: ExportException
                     ) {
+                        onError("${exportException.errorCodeName} ${exportException.cause?.javaClass?.simpleName.orEmpty()}")
                         done.complete(null)
                     }
                 }
@@ -286,6 +397,9 @@ object VideoCompressor {
                             )
                         )
                     )
+                    // A cap, not a target: Media3 drops frames only from a
+                    // clip that runs faster than this.
+                    .apply { if (frameRateCap != null) setFrameRate(frameRateCap) }
                     .build()
                 // The track set is chosen from the clip, not assumed. Read in
                 // Media3's own bytecode, a sequence's track types do two
@@ -308,6 +422,7 @@ object VideoCompressor {
                 val composition = Composition.Builder(sequence).setHdrMode(hdrMode).build()
                 transformer.start(composition, outFile.absolutePath)
             } catch (t: Throwable) {
+                onError("start ${t.javaClass.simpleName}")
                 done.complete(null)
             }
         }
