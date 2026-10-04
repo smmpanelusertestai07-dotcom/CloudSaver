@@ -407,7 +407,8 @@ class OptionsRepo(private val context: Context) {
         write { p ->
             val before = layoutOf(p)
             for ((folder, value) in changes) {
-                p[keyOf(folder)] = value
+                // Only what the folder setting itself could produce.
+                if (FolderName.isStorable(value)) p[keyOf(folder)] = value
             }
             val after = layoutOf(p)
             val inUse = after.current + after.otherMode

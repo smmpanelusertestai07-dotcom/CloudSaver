@@ -536,6 +536,7 @@
     <string name="folder_problem_hidden">A name that starts with a dot is hidden from the gallery, and from Ente.</string>
     <string name="folder_problem_reserved">That name is used for something else. Choose another.</string>
     <string name="folder_problem_same">Photos and videos need different folders.</string>
+    <string name="folder_problem_unchecked">The gallery could not be checked just now. Try again in a moment.</string>
     <plurals name="folder_problem_taken">
         <item quantity="one">This folder already holds %1$d photo or video of your own. Choose another name, so Ente Saver never mixes its copies with yours.</item>
         <item quantity="other">This folder already holds %1$d photos or videos of your own. Choose another name, so Ente Saver never mixes its copies with yours.</item>

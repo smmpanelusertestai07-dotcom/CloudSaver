@@ -13,7 +13,9 @@ import app.cloudsaver.data.EnteApp
 class OpenEnteActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!EnteApp.launch(this)) EnteApp.openInstallPage(this, EnteApp.Source.PLAY)
+        if (!EnteApp.launch(this, errand = false)) {
+            EnteApp.openInstallPage(this, EnteApp.Source.PLAY, errand = false)
+        }
         finish()
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +41,7 @@ import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.theme.Dimens
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * One line per folder in use - which kind of copy goes there, the exact
@@ -106,14 +108,18 @@ fun FolderDialog(
     var name by rememberSaveable {
         mutableStateOf(if (layout.isCustom(folder)) FolderName.nameOf(layout.path(folder)) else "")
     }
-    var check by remember { mutableStateOf(AppViewModel.FolderCheck(FolderName.Problem.EMPTY)) }
+    // Null while the name typed last has not been checked yet.
+    var check by remember { mutableStateOf<AppViewModel.FolderCheck?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(own, name) {
+        check = null
         if (!own) return@LaunchedEffect
         // A short pause, so the gallery is not asked on every keystroke.
         delay(250)
         check = vm.checkFolderName(folder, name)
     }
-    val canSave = !own || check.ok
+    val canSave = !saving && (!own || check?.ok == true)
     AlertDialog(
         onDismissRequest = onDone,
         title = { Text(stringResource(folderLabel(folder))) },
@@ -132,21 +138,26 @@ fun FolderDialog(
                 if (own) {
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it.take(FolderName.MAX_LENGTH + 5) },
+                        onValueChange = {
+                            name = it.take(FolderName.MAX_LENGTH + 5)
+                            check = null
+                        },
                         label = { Text(stringResource(R.string.folder_name_label)) },
                         prefix = { Text(FolderName.PREFIX) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        isError = name.isNotBlank() && !check.ok,
+                        isError = name.isNotBlank() && check?.ok == false,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
                     )
-                    val problem = check.problem
+                    val done = check
+                    val problem = done?.problem
                     val note = when {
-                        problem == FolderName.Problem.EMPTY -> null
+                        done == null || problem == FolderName.Problem.EMPTY -> null
                         problem != null -> stringResource(problemText(problem))
-                        check.taken > 0 -> pluralStringResource(R.plurals.folder_problem_taken, check.taken, check.taken)
+                        done.taken > 0 -> pluralStringResource(R.plurals.folder_problem_taken, done.taken, done.taken)
+                        done.unchecked -> stringResource(R.string.folder_problem_unchecked)
                         else -> null
                     }
                     note?.let {
@@ -170,8 +181,12 @@ fun FolderDialog(
             TextButton(
                 enabled = canSave,
                 onClick = {
-                    vm.setFolder(folder, if (own) FolderName.pathOf(name) else "")
-                    onDone()
+                    saving = true
+                    scope.launch {
+                        val result = vm.saveFolder(folder, if (own) name else null)
+                        saving = false
+                        if (result.ok) onDone() else check = result
+                    }
                 }
             ) { Text(stringResource(R.string.folder_save)) }
         },

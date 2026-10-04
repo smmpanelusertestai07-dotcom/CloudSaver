@@ -19,6 +19,7 @@ import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.util.Locks
 import app.cloudsaver.util.Permissions
 import java.io.File
@@ -45,6 +46,8 @@ class SnapshotStore(
 ) {
 
     companion object {
+        private val FOLDER_KEYS = setOf("folderSingle", "folderPhotos", "folderVideos")
+
         /**
          * How many rebuildable item rows a snapshot carries.
          *
@@ -412,9 +415,23 @@ class SnapshotStore(
         // which has no part in a Room transaction.
         val imported = db.withTransaction { mergeRows(snapshot) }
         if (importOptions && snapshot.options.isNotEmpty()) {
-            optionsRepo.importMap(snapshot.options, onlyIfSetupUntouched)
+            optionsRepo.importMap(withoutForeignFolders(snapshot.options), onlyIfSetupUntouched)
         }
         return imported
+    }
+
+    /**
+     * A backup's own folder names, less any that now hold photos or videos of
+     * the person's own - or that could not be checked. A backup file is
+     * found by name and can be written by anything, so a folder it names is
+     * held to the same check as one typed in Settings; a dropped one leaves
+     * the default in place.
+     */
+    private fun withoutForeignFolders(options: Map<String, String>): Map<String, String> {
+        val inventory = OutputInventory(context)
+        return options.filterNot { (key, value) ->
+            key in FOLDER_KEYS && value.isNotEmpty() && inventory.othersIn(value) != 0
+        }
     }
 
     private suspend fun mergeRows(snapshot: SnapshotCodec.Snapshot): Int {

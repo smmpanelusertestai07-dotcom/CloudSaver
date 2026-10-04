@@ -74,27 +74,35 @@ object EnteApp {
     /** True for a package name that belongs to Ente. */
     fun isEnte(pkg: String?): Boolean = pkg != null && pkg in PACKAGES
 
-    /** Opens Ente (its own Free up space screen has no public link). */
-    fun launch(context: Context): Boolean {
+    /**
+     * Opens Ente (its own Free up space screen has no public link).
+     *
+     * [errand] is the app lock's grace for a trip out and back. It is right
+     * when a person taps a button inside Ente Saver, and wrong for the
+     * "Photos" shortcut: that one can be started by anything on the phone,
+     * and would otherwise leave an unlocked Ente Saver open to whoever picks
+     * the phone up in the next two minutes.
+     */
+    fun launch(context: Context, errand: Boolean = true): Boolean {
         val pkg = installedPackage(context) ?: return false
         val intent = context.packageManager.getLaunchIntentForPackage(pkg) ?: return false
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return start(context, intent)
+        return start(context, intent, errand)
     }
 
     /** Opens the page Ente is installed from; the phone picks the store or browser. */
-    fun openInstallPage(context: Context, source: Source): Boolean {
+    fun openInstallPage(context: Context, source: Source, errand: Boolean = true): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(source.uri))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return start(context, intent)
+        return start(context, intent, errand)
     }
 
-    private fun start(context: Context, intent: Intent): Boolean = try {
-        Errand.begin()
+    private fun start(context: Context, intent: Intent, errand: Boolean): Boolean = try {
+        if (errand) Errand.begin()
         context.startActivity(intent)
         true
     } catch (e: Exception) {
-        Errand.cancel()
+        if (errand) Errand.cancel()
         false
     }
 

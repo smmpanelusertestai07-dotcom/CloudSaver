@@ -1384,8 +1384,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Why a typed folder name cannot be used, or null; [taken] counts the person's own files in it. */
-    data class FolderCheck(val problem: FolderName.Problem? = null, val taken: Int = 0) {
-        val ok: Boolean get() = problem == null && taken == 0
+    data class FolderCheck(
+        val problem: FolderName.Problem? = null,
+        val taken: Int = 0,
+        /** The gallery could not be asked; a name is never passed unasked. */
+        val unchecked: Boolean = false
+    ) {
+        val ok: Boolean get() = problem == null && taken == 0 && !unchecked
     }
 
     /**
@@ -1402,14 +1407,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 OutFolder.SINGLE -> null
             }
             FolderName.problem(name, other)?.let { return@withContext FolderCheck(it) }
-            val path = FolderName.pathOf(name)
-            val theirs = OutputInventory(ctx).query(listOf(path))
-                ?.count { !it.ownedByUs && !ScanSources.isPipelineName(it.name) } ?: 0
-            FolderCheck(taken = theirs)
+            when (val theirs = OutputInventory(ctx).othersIn(FolderName.pathOf(name))) {
+                null -> FolderCheck(unchecked = true)
+                else -> FolderCheck(taken = theirs)
+            }
         }
 
-    /** [value] is "" for the default, or a path the folder check passed. */
-    fun setFolder(folder: OutFolder, value: String) {
+    /**
+     * "" for the default, or a name of the person's own - checked again here,
+     * at the moment it is saved, so no answer from a moment ago (the name has
+     * changed since, or the gallery was busy) can let a folder through. True
+     * when it was saved.
+     */
+    suspend fun saveFolder(folder: OutFolder, name: String?): FolderCheck {
+        if (name != null) {
+            val check = checkFolderName(folder, name)
+            if (!check.ok) return check
+        }
+        setFolder(folder, if (name == null) "" else FolderName.pathOf(name))
+        return FolderCheck()
+    }
+
+    private fun setFolder(folder: OutFolder, value: String) {
         viewModelScope.launch(Dispatchers.IO) {
             repo.setFolders(mapOf(folder to value))
             noteSettingChange(

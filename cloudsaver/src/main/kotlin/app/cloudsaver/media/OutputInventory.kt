@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import app.cloudsaver.core.logic.OutputRoots
+import app.cloudsaver.core.logic.ScanSources
 
 /**
  * What is actually inside the output folders right now (MediaStore view):
@@ -24,6 +25,14 @@ class OutputInventory(private val context: Context) {
         val dateTaken: Long,
         val ownedByUs: Boolean
     )
+
+    /**
+     * How many photos and videos of the person's own [path] holds - files
+     * this app did not make. Null when the gallery could not be read, which
+     * no caller may take for "none".
+     */
+    fun othersIn(path: String): Int? =
+        query(listOf(path))?.count { !it.ownedByUs && !ScanSources.isPipelineName(it.name) }
 
     /**
      * The contents of [roots] and every folder inside them, or null if any

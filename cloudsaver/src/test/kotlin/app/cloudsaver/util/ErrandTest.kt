@@ -132,6 +132,17 @@ class ErrandTest {
     }
 
     @Test
+    fun `the Photos shortcut never opens a grace window`() {
+        // Anything on the phone can start it, so it must not leave an
+        // unlocked Ente Saver open behind it.
+        val shortcut = File("src/main/kotlin/app/cloudsaver/OpenEnteActivity.kt").readText()
+        assertTrue(shortcut.contains("EnteApp.launch(this, errand = false)"))
+        assertTrue(shortcut.contains("EnteApp.openInstallPage(this, EnteApp.Source.PLAY, errand = false)"))
+        val ente = File("src/main/kotlin/app/cloudsaver/data/EnteApp.kt").readText()
+        assertTrue(ente.contains("if (errand) Errand.begin()"))
+    }
+
+    @Test
     fun `with the lock on, the whole window stays out of screenshots and recents`() {
         // Android takes the recents thumbnail before the lock is back up on
         // the way in, so securing only the locked screen left the file lists
