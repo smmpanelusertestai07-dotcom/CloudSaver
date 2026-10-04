@@ -278,11 +278,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 o.outputMode.name
             ) { pendingLayout = OutputMode.valueOf(it) }
             // The user has to pick this exact string inside another app, so it
-            // is printed rather than described.
-            FolderPaths(o.layout)
-            CopyPathButton(o.layout)
-            // The default, or a folder of the person's own for each kind.
+            // is printed rather than described - once, beside the kind of copy
+            // it is for, with the default or a folder of the person's own.
+            FolderPaths(o.layout, showPaths = false)
             FolderChoiceRows(o.layout) { changingFolder = it }
+            CopyPathButton(o.layout)
         }
         changingFolder?.let { folder ->
             FolderDialog(vm, o.layout, folder) { changingFolder = null }

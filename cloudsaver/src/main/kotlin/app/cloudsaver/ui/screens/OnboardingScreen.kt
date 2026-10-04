@@ -998,7 +998,7 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
 
 /** The exact folder(s) to pick in the cloud app - never paraphrased. */
 @Composable
-fun FolderPaths(layout: OutputLayout) {
+fun FolderPaths(layout: OutputLayout, showPaths: Boolean = true) {
     val paths = OutputPaths.current(layout)
     Column(Modifier.padding(top = 8.dp)) {
         Text(
@@ -1008,7 +1008,7 @@ fun FolderPaths(layout: OutputLayout) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        for (path in paths) {
+        for (path in paths.takeIf { showPaths }.orEmpty()) {
             Text(
                 path,
                 style = MaterialTheme.typography.bodyMedium,
