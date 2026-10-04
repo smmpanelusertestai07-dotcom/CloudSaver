@@ -72,10 +72,10 @@ import app.cloudsaver.core.logic.OnboardingSteps
 import app.cloudsaver.core.logic.OnboardingSteps.Step
 import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputPaths
-import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AlbumGrid
@@ -775,7 +775,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
                 SummaryLine(
                     stringResource(R.string.onb_ready_quality),
-                    presetSummary(options.preset)
+                    qualitySummary(options)
                 )
                 SummaryLine(
                     stringResource(R.string.onb_ready_when),
@@ -1108,12 +1108,10 @@ private fun scopeSummary(
 }
 
 @Composable
-private fun presetSummary(preset: Preset): String = stringResource(
-    when (preset) {
-        Preset.STORAGE_SAVER -> R.string.preset_storage
-        Preset.BALANCED -> R.string.preset_balanced
-        Preset.MAX_SAVER -> R.string.preset_max
-    }
+private fun qualitySummary(options: Options): String = stringResource(
+    R.string.onb_ready_quality_value,
+    photoPresetLabel(options.photo.preset),
+    videoPresetLabel(options.video.preset)
 )
 
 @Composable

@@ -39,6 +39,7 @@ import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
+import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.ListTags
@@ -1255,13 +1256,13 @@ class HomeFilesE2eTest {
             videoCount = totals.videoCount
         )
         val ratios = CapacityMath.ratios(
-            photo = db.items().photoRatioSamples(options.preset.name).map {
+            photo = db.items().photoRatioSamples(PlannedEncode.photoKey(context, options)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes)
             },
-            video = db.items().videoRatioSamples(options.preset.name, options.codec.name).map {
+            video = db.items().videoRatioSamples(PlannedEncode.videoKey(options)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes, it.durationMs / 60_000.0)
             },
-            codec = options.codec,
+            codec = PlannedEncode.videoCodec(options.video.spec()),
             source = CapacityMath.Source.MEASURED,
             galleryPhotoMedian = if (totals.photoCount > 0) {
                 totals.photoBytes / totals.photoCount

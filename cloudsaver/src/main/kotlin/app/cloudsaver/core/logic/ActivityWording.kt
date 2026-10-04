@@ -11,8 +11,12 @@ package app.cloudsaver.core.logic
  */
 object ActivityWording {
 
-    /** The settings worth naming in the history. */
-    enum class Setting { QUALITY, CLOUD_APP, SPEED, LAYOUT, CODEC, THEME, SCOPE, SPACE }
+    /**
+     * The settings worth naming in the history. QUALITY and CODEC are the
+     * single preset and codec before 11, kept so older entries still read;
+     * PHOTOS and VIDEOS replaced them.
+     */
+    enum class Setting { QUALITY, CLOUD_APP, SPEED, LAYOUT, CODEC, THEME, SCOPE, SPACE, PHOTOS, VIDEOS }
 
     data class Change(val setting: Setting, val value: String)
 

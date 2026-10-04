@@ -107,6 +107,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.heifwriter)
     implementation(libs.androidx.biometric)
     implementation(libs.media3.transformer)
     implementation(libs.media3.effect)

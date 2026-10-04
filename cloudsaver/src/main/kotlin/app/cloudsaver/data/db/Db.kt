@@ -791,17 +791,17 @@ interface ItemDao {
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +
-            "WHERE outputBytes IS NOT NULL AND isVideo = 0 AND presetUsed = :preset " +
+            "WHERE outputBytes IS NOT NULL AND isVideo = 0 AND presetUsed = :key " +
             "ORDER BY updatedAt DESC LIMIT 500"
     )
-    suspend fun photoRatioSamples(preset: String): List<RatioSample>
+    suspend fun photoRatioSamples(key: String): List<RatioSample>
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +
-            "WHERE outputBytes IS NOT NULL AND isVideo = 1 AND presetUsed = :preset " +
-            "AND codecUsed = :codec ORDER BY updatedAt DESC LIMIT 500"
+            "WHERE outputBytes IS NOT NULL AND isVideo = 1 AND presetUsed = :key " +
+            "ORDER BY updatedAt DESC LIMIT 500"
     )
-    suspend fun videoRatioSamples(preset: String, codec: String): List<RatioSample>
+    suspend fun videoRatioSamples(key: String): List<RatioSample>
 }
 
 @Dao
@@ -1162,8 +1162,9 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
-         * v8 records the folder each copy was released into, and forgets
-         * other cloud apps.
+         * v8 records the folder each copy was released into, forgets other
+         * cloud apps, and re-files encode results under the photo and video
+         * settings that replaced the single preset.
          *
          * Every copy released so far went to the folder its layout named, so
          * that is filled in from the layout column; a copy released before
@@ -1183,6 +1184,26 @@ abstract class AppDb : RoomDatabase() {
                 // Ente Saver works with Ente Photos only. What was learned
                 // about other cloud apps describes apps it no longer talks to.
                 connection.execSQL("DELETE FROM `cloud_capability` WHERE `cloudId` != 'ente'")
+                // Photos and videos have their own settings now, and encode
+                // results are grouped by what each setting stood for. The old
+                // single preset's results are re-filed under the same encode
+                // in the new terms, so no estimate starts again from nothing.
+                connection.execSQL(
+                    "UPDATE `items` SET `presetUsed` = CASE `presetUsed` " +
+                        "WHEN 'STORAGE_SAVER' THEN 'jpeg-16-82' " +
+                        "WHEN 'BALANCED' THEN 'jpeg-24-85' " +
+                        "WHEN 'MAX_SAVER' THEN 'jpeg-8-80' ELSE `presetUsed` END, " +
+                        "`codecUsed` = NULL WHERE `isVideo` = 0"
+                )
+                connection.execSQL(
+                    "UPDATE `items` SET `presetUsed` = lower(COALESCE(`codecUsed`, 'H264')) || '-' || " +
+                        "CASE `presetUsed` WHEN 'STORAGE_SAVER' THEN '1920' " +
+                        "WHEN 'BALANCED' THEN '2560' ELSE '1280' END || '-std' " +
+                        "WHERE `isVideo` = 1 AND `presetUsed` IN ('STORAGE_SAVER', 'BALANCED', 'MAX_SAVER')"
+                )
+                // The stored profiles were keyed by the old preset; each is
+                // rebuilt the first time it is asked for.
+                connection.execSQL("DELETE FROM `media_profile`")
             }
         }
 

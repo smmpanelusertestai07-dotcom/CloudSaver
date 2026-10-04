@@ -53,7 +53,7 @@ class LightCopyTest {
             .substringBefore("private suspend fun writeVerified")
         assertTrue(
             "the remake must use the current quality setting",
-            source.contains("Presets.spec(options.preset)")
+            source.contains("options.photo.spec()") && source.contains("options.video.spec()")
         )
         assertTrue(source.contains("PhotoCompressor.compress"))
         assertTrue(source.contains("VideoCompressor.compress"))

@@ -19,6 +19,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -38,10 +39,14 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.OutputPaths
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.PhotoFormat
+import app.cloudsaver.core.logic.PhotoPreset
+import app.cloudsaver.core.logic.PhotoSettings
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
-import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.core.logic.VideoCodecChoice
+import app.cloudsaver.core.logic.VideoPreset
+import app.cloudsaver.core.logic.VideoSettings
 import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
@@ -161,8 +166,8 @@ class SettingsE2eTest {
         repo.setInt(OptionsRepo.K.DAILY_CAP_MB, Defaults.DAILY_CAP_MB)
         repo.setInt(OptionsRepo.K.MIN_FREE_MB, Defaults.MIN_FREE_MB)
         repo.setInt(OptionsRepo.K.MAX_EXTRA_MB, Defaults.MAX_EXTRA_MB)
-        repo.setString(OptionsRepo.K.PRESET, Preset.STORAGE_SAVER.name)
-        repo.setString(OptionsRepo.K.CODEC, VideoCodec.H264.name)
+        repo.setPhoto(PhotoSettings())
+        repo.setVideo(VideoSettings())
         repo.setString(OptionsRepo.K.THEME, ThemeMode.SYSTEM.name)
         repo.setBool(OptionsRepo.K.DYNAMIC_COLOR, false)
         repo.setString(OptionsRepo.K.STORAGE_VOLUME, "")
@@ -442,62 +447,71 @@ class SettingsE2eTest {
         assertEquals(card, options().storageVolume)
     }
 
-    /** 8. Quality preset, 9. Video format, and the preset's info button. */
+    /** 8. Photos and 9. Videos: presets, Custom's knobs, and the info button. */
     @Test
-    fun qualityPresetAndCodecChangeAndExplainThemselves() {
+    fun photoAndVideoSettingsChangeSeparatelyAndExplainThemselves() {
         openSettings()
-        val presetHint = s(R.string.opt_preset_hint)
-        val codecHint = s(R.string.opt_codec_hint)
+        val photoHint = s(R.string.opt_photos_hint)
+        val videoHint = s(R.string.opt_videos_hint)
 
-        assertCardValue(presetHint, s(R.string.preset_storage))
-        compose.onNodeWithText(s(R.string.preset_storage_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Both start on Balanced, each saying what that means.
+        assertCardValue(photoHint, s(R.string.preset_balanced))
+        assertCardValue(videoHint, s(R.string.preset_balanced))
+        compose.onNodeWithText(s(R.string.preset_balanced_photo)).performScrollTo().assertIsDisplayed()
 
-        tap(segment(presetHint, s(R.string.preset_balanced)))
-        awaitOption("quality preset") { it.preset == Preset.BALANCED }
-        assertCardValue(presetHint, s(R.string.preset_balanced))
-        compose.onNodeWithText(s(R.string.preset_balanced_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Photos move on their own; videos stay where they were.
+        tap(segment(photoHint, s(R.string.preset_best)))
+        awaitOption("photo preset") { it.photo.preset == PhotoPreset.BEST }
+        assertEquals(VideoPreset.BALANCED, options().video.preset)
+        compose.onNodeWithText(s(R.string.preset_best_photo)).performScrollTo().assertIsDisplayed()
 
-        tap(segment(presetHint, s(R.string.preset_max)))
-        awaitOption("quality preset") { it.preset == Preset.MAX_SAVER }
-        assertCardValue(presetHint, s(R.string.preset_max))
-        compose.onNodeWithText(s(R.string.preset_max_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Custom opens every knob.
+        tap(segment(photoHint, s(R.string.preset_custom)))
+        awaitOption("photo preset") { it.photo.preset == PhotoPreset.CUSTOM }
+        awaitNode(hasText(s(R.string.custom_format)), "Custom did not open the photo knobs")
+        tap(segment(s(R.string.custom_format), s(R.string.format_webp)))
+        awaitOption("photo format") { it.photo.format == PhotoFormat.WEBP }
+        compose.onNodeWithText(s(R.string.photo_webp_note)).performScrollTo().assertIsDisplayed()
+        tap(segment(s(R.string.custom_size), context.getString(R.string.size_mp_short, 8)))
+        awaitOption("photo size") { it.photo.maxMp == 8 }
 
-        // The card prints the enum name rather than the chip's label, so the
-        // expected value comes from the model, not from a literal.
-        assertCardValue(codecHint, VideoCodec.H264.name)
-        tap(segment(codecHint, s(R.string.codec_hevc)))
-        awaitOption("video format") { it.codec == VideoCodec.HEVC }
-        assertCardValue(codecHint, VideoCodec.HEVC.name)
-        compose.onNodeWithText(s(R.string.codec_hevc_detail)).performScrollTo()
-            .assertIsDisplayed()
+        // Videos, separately.
+        tap(segment(videoHint, s(R.string.preset_smallest)))
+        awaitOption("video preset") { it.video.preset == VideoPreset.SMALLEST }
+        compose.onNodeWithText(s(R.string.preset_smallest_video)).performScrollTo().assertIsDisplayed()
+        tap(segment(videoHint, s(R.string.preset_custom)))
+        awaitOption("video preset") { it.video.preset == VideoPreset.CUSTOM }
+        awaitNode(hasText(s(R.string.custom_sound)), "Custom did not open the video knobs")
+        tap(segment(s(R.string.custom_sound), "64"))
+        awaitOption("sound") { it.video.audioKbps == 64 }
+        tap(segment(s(R.string.custom_codec), s(R.string.codec_hevc)))
+        awaitOption("video codec") { it.video.codec == VideoCodecChoice.HEVC }
+        // No emulator has an HEVC chip, and the card says what that means
+        // rather than quietly encoding in software.
+        compose.onNodeWithText(s(R.string.video_hevc_none)).performScrollTo().assertIsDisplayed()
 
-        tap(segment(codecHint, s(R.string.codec_h264)))
-        awaitOption("video format") { it.codec == VideoCodec.H264 }
-        assertCardValue(codecHint, VideoCodec.H264.name)
-        compose.onNodeWithText(s(R.string.codec_h264_detail)).performScrollTo()
-            .assertIsDisplayed()
-
-        // The (i) next to the preset is a control too: it opens the page that
-        // explains what the presets mean.
-        compose.onNodeWithContentDescription(s(R.string.quality_explained_title))
+        // The (i) beside each opens the page that explains what they mean.
+        compose.onAllNodesWithContentDescription(s(R.string.quality_explained_title))[0]
             .performScrollTo()
             .performClick()
         awaitNode(
             hasText(s(R.string.quality_explained_title)) and hasNoClickAction(),
             "the info button did not open the quality page"
         )
-        awaitNodeGone(hasText(presetHint), "Settings stayed under the quality page")
+        awaitNodeGone(hasText(photoHint), "Settings stayed under the quality page")
         compose.onNodeWithContentDescription(s(R.string.back)).performClick()
-        awaitNode(hasText(presetHint), "Back did not return to Settings")
+        awaitNode(hasText(photoHint), "Back did not return to Settings")
 
         recreateAndOpenSettings()
-        assertEquals(Preset.MAX_SAVER, options().preset)
-        assertEquals(VideoCodec.H264, options().codec)
-        assertCardValue(presetHint, s(R.string.preset_max))
-        assertCardValue(codecHint, VideoCodec.H264.name)
+        val o = options()
+        assertEquals(PhotoPreset.CUSTOM, o.photo.preset)
+        assertEquals(PhotoFormat.WEBP, o.photo.format)
+        assertEquals(8, o.photo.maxMp)
+        assertEquals(VideoPreset.CUSTOM, o.video.preset)
+        assertEquals(64, o.video.audioKbps)
+        assertEquals(VideoCodecChoice.HEVC, o.video.codec)
+        assertCardValue(photoHint, s(R.string.preset_custom))
+        assertCardValue(videoHint, s(R.string.preset_custom))
     }
 
     /** 10. Theme, and the wallpaper-colours switch that lives inside it. */

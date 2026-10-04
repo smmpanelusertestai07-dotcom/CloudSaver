@@ -12,7 +12,6 @@ import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OriginalCheck
-import app.cloudsaver.core.logic.Presets
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
@@ -20,6 +19,7 @@ import app.cloudsaver.data.db.ReclaimBatchRow
 import app.cloudsaver.data.db.ReclaimItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.media.HeicSupport
 import app.cloudsaver.media.PhotoCompressor
 import app.cloudsaver.media.VideoCompressor
 import app.cloudsaver.util.Locks
@@ -164,17 +164,19 @@ class ReclaimEngine(private val context: Context) {
         if (row.originalMissing) return null
         val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             ?: return null
-        val spec = Presets.spec(options.preset)
         val tempDir = Storage.tempDir(context, options.storageVolume)
         val result = try {
             if (row.isVideo) {
                 VideoCompressor.compress(
-                    context, original, row.displayName, row.mimeType, row.sizeBytes, spec,
-                    options.codec, tempDir
+                    context, original, row.displayName, row.mimeType, row.sizeBytes,
+                    options.video.spec(), tempDir
                 )
             } else {
+                // HEIC only where this phone has already passed its test; a
+                // screen is waiting on this, so the test is not run here.
                 PhotoCompressor.compress(
-                    context, original, row.displayName, row.sizeBytes, spec, tempDir
+                    context, original, row.displayName, row.sizeBytes,
+                    options.photo.spec(), HeicSupport.works(context), tempDir
                 )
             }
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {

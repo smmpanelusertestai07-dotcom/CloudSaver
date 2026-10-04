@@ -7,45 +7,56 @@ import org.junit.Test
 
 class QualityKeptTest {
 
+    private val balancedPhoto = PhotoSettings(PhotoPreset.BALANCED).spec()
+    private val smallestPhoto = PhotoSettings(PhotoPreset.SMALLEST).spec()
+    private val bestPhoto = PhotoSettings(PhotoPreset.BEST).spec()
+    private val balancedVideo = VideoSettings(VideoPreset.BALANCED).spec()
+    private val smallestVideo = VideoSettings(VideoPreset.SMALLEST).spec()
+    private val bestVideo = VideoSettings(VideoPreset.BEST).spec()
+
     @Test
     fun `a file already under the cap keeps every pixel`() {
         // The app re-saves it; it never shrinks it, and never upscales it.
-        assertEquals(100, QualityKept.photoDetailKeptPercent(12.0, Preset.STORAGE_SAVER))
-        assertEquals(100, QualityKept.photoDetailKeptPercent(16.0, Preset.STORAGE_SAVER))
-        assertEquals(100, QualityKept.videoDetailKeptPercent(1920, Preset.STORAGE_SAVER))
-        assertEquals(100, QualityKept.videoDetailKeptPercent(1280, Preset.STORAGE_SAVER))
+        assertEquals(100, QualityKept.photoDetailKeptPercent(12.0, balancedPhoto))
+        assertEquals(100, QualityKept.photoDetailKeptPercent(16.0, balancedPhoto))
+        assertEquals(100, QualityKept.videoDetailKeptPercent(1920, balancedVideo))
+        assertEquals(100, QualityKept.videoDetailKeptPercent(1280, balancedVideo))
     }
 
     @Test
     fun `a photo above the cap keeps the cap's share of its pixels`() {
         // 48 MP capped at 16 MP keeps a third.
-        assertEquals(33, QualityKept.photoDetailKeptPercent(48.0, Preset.STORAGE_SAVER))
+        assertEquals(33, QualityKept.photoDetailKeptPercent(48.0, balancedPhoto))
         // 24 MP capped at 8 MP on the most aggressive preset keeps a third too.
-        assertEquals(33, QualityKept.photoDetailKeptPercent(24.0, Preset.MAX_SAVER))
+        assertEquals(33, QualityKept.photoDetailKeptPercent(24.0, smallestPhoto))
     }
 
     @Test
     fun `video detail falls with the square of the long side`() {
         // 4K at 3840 capped to 1920 is half the width, so a quarter of the
         // pixels. This is why video saves so much more than photos do.
-        assertEquals(25, QualityKept.videoDetailKeptPercent(3840, Preset.STORAGE_SAVER))
-        assertEquals(25, QualityKept.videoDetailKeptPercent(2560, Preset.MAX_SAVER))
+        assertEquals(25, QualityKept.videoDetailKeptPercent(3840, balancedVideo))
+        assertEquals(25, QualityKept.videoDetailKeptPercent(2560, smallestVideo))
     }
 
     @Test
     fun `the figures come from the real encoder settings`() {
         // If a preset is retuned, these move with it rather than going stale.
-        assertEquals(Presets.spec(Preset.STORAGE_SAVER).jpegQuality, QualityKept.jpegQuality(Preset.STORAGE_SAVER))
-        assertEquals(Presets.spec(Preset.BALANCED).photoMaxMp, QualityKept.photoCapMp(Preset.BALANCED))
-        assertEquals(Presets.spec(Preset.MAX_SAVER).videoLongSide, QualityKept.videoCapLongSide(Preset.MAX_SAVER))
+        assertEquals(balancedPhoto.quality, QualityKept.photoQuality(balancedPhoto))
+        assertEquals(bestPhoto.maxMp, QualityKept.photoCapMp(bestPhoto))
+        assertEquals(smallestVideo.longSide, QualityKept.videoCapLongSide(smallestVideo))
     }
 
     @Test
     fun `the cap still beats the screen on every preset that claims to`() {
         // The reassurance the app offers has to be true before it is offered.
-        assertTrue(QualityKept.screenHeadroom(Preset.STORAGE_SAVER) > 5.0)
-        assertTrue(QualityKept.screenHeadroom(Preset.BALANCED) > 5.0)
-        assertTrue(QualityKept.screenHeadroom(Preset.MAX_SAVER) > 2.0)
+        assertTrue(QualityKept.screenHeadroom(balancedPhoto)!! > 5.0)
+        assertTrue(QualityKept.screenHeadroom(bestPhoto)!! > 5.0)
+        assertTrue(QualityKept.screenHeadroom(smallestPhoto)!! > 2.0)
+        // Full size has no cap to compare, and claims nothing.
+        assertNull(QualityKept.screenHeadroom(PhotoSpec(PhotoFormat.JPEG, 0, 90)))
+        assertEquals(100, QualityKept.photoDetailKeptPercent(108.0, PhotoSpec(PhotoFormat.JPEG, 0, 90)))
+        assertEquals(100, QualityKept.videoDetailKeptPercent(3840, bestVideo.copy(longSide = 0)))
     }
 
     @Test

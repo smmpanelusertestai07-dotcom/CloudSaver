@@ -102,6 +102,10 @@ class MigrationTest {
         assertEquals(listOf("Pictures/CloudSaver/Photos"), db.items().releasedRoots())
         assertEquals(1, db.items().releasedCountIn("Pictures/CloudSaver", "Pictures/CloudSaver/%"))
         assertEquals(0, db.items().releasedCountIn("Pictures/EnteSaver", "Pictures/EnteSaver/%"))
+        // And its encode is re-filed under the photo setting it stands for,
+        // so the estimates built on it carry on rather than starting over.
+        assertEquals("jpeg-16-82", carried.first().presetUsed)
+        assertNull("a photo has no video codec", carried.first().codecUsed)
 
         // v6's indices: proven by asking SQLite, not assumed. Room validates
         // entity indices at open, but only for entities it knows - a typo in
@@ -222,9 +226,10 @@ class MigrationTest {
             "INSERT INTO `items` (fingerprint, displayName, sizeBytes, dateModified, " +
                 "captureAt, dateAdded, durationMs, mimeType, isVideo, state, evidence, " +
                 "attempts, originalMissing, appDeletedCopy, fromImport, updatedAt, " +
-                "outputFolder, releasedAt) " +
+                "outputFolder, releasedAt, presetUsed, codecUsed) " +
                 "VALUES ('fp-1', 'e2e_before_upgrade.jpg', 2048, 1, 1, 1, 0, 'image/jpeg', " +
-                "0, '${ItemState.RELEASED.name}', 'CONFIRMED', 0, 0, 0, 0, 1, 'PHOTOS', 1)"
+                "0, '${ItemState.RELEASED.name}', 'CONFIRMED', 0, 0, 0, 0, 1, 'PHOTOS', 1, " +
+                "'STORAGE_SAVER', 'H264')"
         )
         raw.version = 2
         raw.close()

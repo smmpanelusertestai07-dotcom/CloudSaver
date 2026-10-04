@@ -90,10 +90,8 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.OutputMode
-import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
-import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.EnteApp
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Lock as AppLock
@@ -539,55 +537,25 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
 
         SectionHeader(stringResource(R.string.opt_group_quality))
-        // 8. Preset
-        OptionCard(
-            stringResource(R.string.opt_preset),
-            stringResource(R.string.opt_preset_hint),
+        // 8. Photos and 9. Videos: two settings, because they are two
+        // trade-offs. The note under each says what this phone will actually
+        // do, which depends on its encoder chips - asked once per visit.
+        val plan by vm.encodePlan.collectAsStateWithLifecycle()
+        LaunchedEffect(o.photo, o.video) { vm.refreshEncodePlan() }
+        PhotoSettingsCard(
+            photo = o.photo,
+            plan = plan,
             icon = IconQuality,
-            value = presetLabel(o.preset),
+            onChange = { vm.setPhoto(it) },
             onInfo = { nav.goTo(Routes.HELP_QUALITY) }
-        ) {
-            SegmentedChoice(
-                listOf(
-                    Preset.STORAGE_SAVER.name to stringResource(R.string.preset_storage),
-                    Preset.BALANCED.name to stringResource(R.string.preset_balanced),
-                    Preset.MAX_SAVER.name to stringResource(R.string.preset_max)
-                ),
-                o.preset.name
-            ) { vm.setPreset(Preset.valueOf(it)) }
-            // Say what each preset actually does, in numbers.
-            ChoiceNote(
-                when (o.preset) {
-                    Preset.STORAGE_SAVER -> stringResource(R.string.preset_storage_detail)
-                    Preset.BALANCED -> stringResource(R.string.preset_balanced_detail)
-                    Preset.MAX_SAVER -> stringResource(R.string.preset_max_detail)
-                }
-            )
-            ChoiceNote(stringResource(R.string.applies_to_new_only))
-        }
-
-        // 9. Codec
-        OptionCard(
-            stringResource(R.string.opt_codec),
-            stringResource(R.string.opt_codec_hint),
+        )
+        VideoSettingsCard(
+            video = o.video,
+            plan = plan,
             icon = IconCodec,
-            value = o.codec.name
-        ) {
-            SegmentedChoice(
-                listOf(
-                    VideoCodec.H264.name to stringResource(R.string.codec_h264),
-                    VideoCodec.HEVC.name to stringResource(R.string.codec_hevc)
-                ),
-                o.codec.name
-            ) { vm.setCodec(VideoCodec.valueOf(it)) }
-            ChoiceNote(
-                when (o.codec) {
-                    VideoCodec.H264 -> stringResource(R.string.codec_h264_detail)
-                    VideoCodec.HEVC -> stringResource(R.string.codec_hevc_detail)
-                }
-            )
-            ChoiceNote(stringResource(R.string.applies_to_new_only))
-        }
+            onChange = { vm.setVideo(it) },
+            onInfo = { nav.goTo(Routes.HELP_QUALITY) }
+        )
 
 
         SectionHeader(stringResource(R.string.opt_group_appearance))
@@ -1221,14 +1189,6 @@ private fun speedLabel(speed: SpeedMode): String = stringResource(
     }
 )
 
-@Composable
-private fun presetLabel(preset: Preset): String = stringResource(
-    when (preset) {
-        Preset.STORAGE_SAVER -> R.string.preset_storage
-        Preset.BALANCED -> R.string.preset_balanced
-        Preset.MAX_SAVER -> R.string.preset_max
-    }
-)
 
 @Composable
 private fun themeLabel(theme: ThemeMode): String = stringResource(
@@ -1277,7 +1237,7 @@ private val InfoIcon = Icons.Outlined.Info
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OptionCard(
+internal fun OptionCard(
     title: String,
     hint: String,
     icon: ImageVector? = null,
@@ -1512,7 +1472,7 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
 
 /** One quiet line under a choice, saying what the selection means. */
 @Composable
-private fun ChoiceNote(text: String) {
+internal fun ChoiceNote(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.bodySmall,

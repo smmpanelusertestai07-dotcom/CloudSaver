@@ -26,7 +26,8 @@ import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
-import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.PhotoFormat
+import app.cloudsaver.core.logic.PhotoSettings
 import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.core.logic.ReclaimRules
@@ -36,6 +37,7 @@ import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.core.logic.VideoSettings
 import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
@@ -51,8 +53,11 @@ import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.engine.SnapshotStore
 import app.cloudsaver.engine.UsageVerifier
+import app.cloudsaver.media.EncoderCaps
+import app.cloudsaver.media.HeicSupport
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
+import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.util.Errand
@@ -323,8 +328,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshMeasuredQuality() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
-            val photos = db.items().photoRatioSamples(o.preset.name)
-            val videos = db.items().videoRatioSamples(o.preset.name, o.codec.name)
+            val photos = db.items().photoRatioSamples(PlannedEncode.photoKey(ctx, o))
+            val videos = db.items().videoRatioSamples(PlannedEncode.videoKey(o))
             fun shrink(rows: List<RatioSample>): Int {
                 val original = rows.sumOf { it.sizeBytes }
                 if (original <= 0) return 0
@@ -861,10 +866,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 monthlyVideoBytes = totals.monthlyVideoBytes,
                 videoCount = totals.videoCount
             )
-            val photoSamples = db.items().photoRatioSamples(o.preset.name).map {
+            val photoSamples = db.items().photoRatioSamples(PlannedEncode.photoKey(ctx, o)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes)
             }
-            val videoSamples = db.items().videoRatioSamples(o.preset.name, o.codec.name).map {
+            val videoSamples = db.items().videoRatioSamples(PlannedEncode.videoKey(o)).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes, it.durationMs / 60_000.0)
             }
             // The gallery's own median is what the sample is judged against:
@@ -873,7 +878,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             calcRatios.value = CapacityMath.ratios(
                 photo = photoSamples,
                 video = videoSamples,
-                codec = o.codec,
+                codec = PlannedEncode.videoCodec(o.video.spec()),
                 source = calcSource.value ?: CapacityMath.Source.MEASURED,
                 galleryPhotoMedian = if (totals.photoCount > 0) {
                     totals.photoBytes / totals.photoCount
@@ -1318,17 +1323,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
         }
     }
-    fun setPreset(v: Preset) {
-        setStr(OptionsRepo.K.PRESET, v.name)
-        noteSettingChange(
-            detail = ActivityWording.encode(ActivityWording.Setting.QUALITY, v.name)
-        )
+    /**
+     * A change to how photos are optimised, written whole. The history names
+     * the preset, which is the choice a person makes; Custom's knobs are
+     * details of that one choice.
+     */
+    fun setPhoto(v: PhotoSettings) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val before = repo.current().photo
+            repo.setPhoto(v)
+            if (before.preset != v.preset) {
+                noteSettingChange(detail = ActivityWording.encode(ActivityWording.Setting.PHOTOS, v.preset.name))
+            }
+        }
     }
-    fun setCodec(v: VideoCodec) {
-        setStr(OptionsRepo.K.CODEC, v.name)
-        noteSettingChange(
-            detail = ActivityWording.encode(ActivityWording.Setting.CODEC, v.name)
-        )
+
+    fun setVideo(v: VideoSettings) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val before = repo.current().video
+            repo.setVideo(v)
+            if (before.preset != v.preset) {
+                noteSettingChange(detail = ActivityWording.encode(ActivityWording.Setting.VIDEOS, v.preset.name))
+            }
+        }
+    }
+
+    /**
+     * What Auto turns into on this phone, for the notes under the two
+     * settings. HEIC is known only once the background work has tried it.
+     */
+    data class EncodePlan(
+        val heic: HeicSupport.State = HeicSupport.State.UNKNOWN,
+        val photoFormat: PhotoFormat = PhotoFormat.JPEG,
+        val videoCodec: VideoCodec = VideoCodec.H264,
+        val hevcHardware: Boolean = false
+    )
+
+    val encodePlan = MutableStateFlow(EncodePlan())
+
+    fun refreshEncodePlan() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val o = repo.current()
+            encodePlan.value = EncodePlan(
+                heic = HeicSupport.state(ctx),
+                photoFormat = PlannedEncode.photoFormat(ctx, o.photo.spec()),
+                videoCodec = PlannedEncode.videoCodec(o.video.spec()),
+                hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty()
+            )
+        }
     }
 
     fun setTheme(v: ThemeMode) {

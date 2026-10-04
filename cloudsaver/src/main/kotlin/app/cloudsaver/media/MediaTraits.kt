@@ -76,15 +76,56 @@ object MediaTraits {
      * are matched against the file's own bytes instead, and only as many bytes
      * as the file actually has are ever held.
      */
-    fun embeddedPayloadReason(context: Context, uri: Uri): String? {
-        val head = readChunk(context, uri, MAX_SCAN) ?: return null
-        return when {
+    fun embeddedPayloadReason(context: Context, uri: Uri): String? =
+        photoTraits(context, uri).asIsReason
+
+    /**
+     * What a photo carries besides its picture.
+     *
+     * [asIsReason] is why it must be copied byte for byte, or null. An Ultra
+     * HDR photo - a JPEG with a gain map that brightens its highlights on an
+     * HDR screen - is told apart from a depth or multi-picture one: it holds
+     * a container directory and a second picture too, but Android 14 can
+     * write the gain map back into a smaller JPEG, so it is reported as
+     * [ultraHdr] instead and the encoder decides.
+     */
+    data class PhotoTraits(val asIsReason: String?, val ultraHdr: Boolean)
+
+    fun photoTraits(context: Context, uri: Uri): PhotoTraits {
+        val head = readChunk(context, uri, MAX_SCAN) ?: return PhotoTraits(null, false)
+        return traitsOf(head)
+    }
+
+    fun traitsOf(head: ByteArray): PhotoTraits {
+        val ultra = ULTRA_HDR_MARKER_BYTES.any { containsBytes(head, it) }
+        val realDepth = DEPTH_DATA_MARKER_BYTES.any { containsBytes(head, it) }
+        val reason = when {
             MOTION_MARKER_BYTES.any { containsBytes(head, it) } -> "motion_photo"
+            realDepth -> "depth_photo"
+            ultra -> null
             DEPTH_MARKER_BYTES.any { containsBytes(head, it) } -> "depth_photo"
             hasMpfSegment(head) -> "multi_picture"
             else -> null
         }
+        return PhotoTraits(reason, ultra && reason == null)
     }
+
+    /** True when a written file still carries its gain map. */
+    fun hasGainMap(file: java.io.File): Boolean = runCatching {
+        file.inputStream().use { readUpTo(it, MAX_SCAN) }.let { head ->
+            ULTRA_HDR_MARKER_BYTES.any { containsBytes(head, it) }
+        }
+    }.getOrDefault(false)
+
+    /** The gain map's own XMP namespace and version tag (Ultra HDR, ISO 21496-1). */
+    private val ULTRA_HDR_MARKER_BYTES = listOf(
+        "hdrgm:Version", "http://ns.adobe.com/hdr-gain-map/1.0/"
+    ).map { it.toByteArray(Charsets.ISO_8859_1) }
+
+    /** Depth and portrait data proper, as opposed to the container that also holds a gain map. */
+    private val DEPTH_DATA_MARKER_BYTES = listOf(
+        "GDepth:Data", "GImage:Data", "http://ns.google.com/photos/1.0/depthmap/"
+    ).map { it.toByteArray(Charsets.ISO_8859_1) }
 
     /** Google/Samsung motion photo (a still with an embedded MP4). */
     private val MOTION_MARKERS = listOf(

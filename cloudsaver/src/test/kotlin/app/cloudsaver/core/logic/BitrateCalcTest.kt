@@ -17,8 +17,10 @@ class BitrateCalcTest {
 
     @Test
     fun bitrateCapAndFloor() {
-        // 4K60 H.264 would be ~49.8 Mbps -> capped at 12 Mbps.
-        assertEquals(BitrateCalc.CAP_BPS, BitrateCalc.targetBps(3840, 2160, 60f, VideoCodec.H264))
+        // 1440p60 H.264 would be ~22 Mbps -> capped at 12 Mbps.
+        assertEquals(BitrateCalc.CAP_BPS, BitrateCalc.targetBps(2560, 1440, 60f, VideoCodec.H264))
+        // 4K60 would be ~49.8 Mbps -> capped at 20 Mbps, where 12 would starve it.
+        assertEquals(BitrateCalc.CAP_BPS_UHD, BitrateCalc.targetBps(3840, 2160, 60f, VideoCodec.H264))
         // Tiny video -> floored at 1 Mbps.
         assertEquals(BitrateCalc.FLOOR_BPS, BitrateCalc.targetBps(320, 240, 15f, VideoCodec.H264))
     }

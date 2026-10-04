@@ -60,9 +60,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.BuildConfig
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.PhotoPreset
 import app.cloudsaver.core.logic.Platform
-import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.QualityKept
+import app.cloudsaver.core.logic.VideoPreset
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
@@ -302,7 +303,10 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
     LaunchedEffect(Unit) { vm.refreshMeasuredQuality() }
 
     val options by vm.options.collectAsStateWithLifecycle()
-    val preset = options.preset
+    val plan by vm.encodePlan.collectAsStateWithLifecycle()
+    LaunchedEffect(options.photo, options.video) { vm.refreshEncodePlan() }
+    val photoSpec = options.photo.spec()
+    val videoSpec = options.video.spec()
 
     HelpPage(nav, stringResource(R.string.quality_explained_title)) {
         // Which setting is on right now, what it means in numbers, and the
@@ -326,56 +330,76 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.weight(1f)
                 )
             }
+            Text(
+                stringResource(R.string.opt_photos),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 8.dp)
+            )
             SegmentedChoice(
-                listOf(
-                    Preset.STORAGE_SAVER.name to stringResource(R.string.preset_storage),
-                    Preset.BALANCED.name to stringResource(R.string.preset_balanced),
-                    Preset.MAX_SAVER.name to stringResource(R.string.preset_max)
-                ),
-                preset.name
-            ) { vm.setPreset(Preset.valueOf(it)) }
+                PhotoPreset.entries.map { it.name to photoPresetLabel(it) },
+                options.photo.preset.name
+            ) { vm.setPhoto(options.photo.copy(preset = PhotoPreset.valueOf(it))) }
+            Text(
+                stringResource(R.string.opt_videos),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            SegmentedChoice(
+                VideoPreset.entries.map { it.name to videoPresetLabel(it) },
+                options.video.preset.name
+            ) { vm.setVideo(options.video.copy(preset = VideoPreset.valueOf(it))) }
             Text(
                 stringResource(
                     R.string.quality_current_limits,
-                    QualityKept.photoCapMp(preset),
-                    QualityKept.videoCapLongSide(preset),
-                    QualityKept.jpegQuality(preset)
+                    photoLimitPhrase(photoSpec),
+                    formatLabel(plan.photoFormat),
+                    QualityKept.photoQuality(photoSpec),
+                    videoLimitPhrase(videoSpec)
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 10.dp)
             )
-            Text(
-                stringResource(
-                    R.string.quality_current_headroom,
-                    // Every number the app prints goes through Formats, and
-                    // this one did not. It was rounded by a hand-written
-                    // String.format pinned to American formatting, so on a
-                    // phone set to a language that writes numbers differently
-                    // this single figure disagreed with every other number on
-                    // the screen. Formats rounds it the same way and writes it
-                    // the way the phone writes numbers.
-                    Formats.count(QualityKept.screenHeadroom(preset).roundToInt())
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            QualityKept.screenHeadroom(photoSpec)?.let { headroom ->
+                Text(
+                    stringResource(
+                        R.string.quality_current_headroom,
+                        // Every number the app prints goes through Formats, so
+                        // this one is written the way the phone writes numbers.
+                        Formats.count(headroom.roundToInt())
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             // CC3.2: how it looks, per preset - deliberately separate from the
             // pixel table below, and said to be, because "kept 33% of the
             // pixels" and "looks 97% the same" are both true at once and the
             // difference is the entire subject of this screen.
-            Text(
-                stringResource(
-                    when (preset) {
-                        Preset.STORAGE_SAVER -> R.string.quality_looks_storage
-                        Preset.BALANCED -> R.string.quality_looks_balanced
-                        Preset.MAX_SAVER -> R.string.quality_looks_max
-                    }
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 8.dp)
+            // A Custom setting has no figure: the looks were judged for the
+            // three presets, and a guess for an arbitrary mix is not one.
+            val looks = listOfNotNull(
+                when (options.photo.preset) {
+                    PhotoPreset.BEST -> R.string.quality_looks_photo_best
+                    PhotoPreset.BALANCED -> R.string.quality_looks_photo_balanced
+                    PhotoPreset.SMALLEST -> R.string.quality_looks_photo_smallest
+                    PhotoPreset.CUSTOM -> null
+                },
+                when (options.video.preset) {
+                    VideoPreset.BEST -> R.string.quality_looks_video_best
+                    VideoPreset.BALANCED -> R.string.quality_looks_video_balanced
+                    VideoPreset.SMALLEST -> R.string.quality_looks_video_smallest
+                    VideoPreset.CUSTOM -> null
+                }
             )
+            for (line in looks) {
+                Text(
+                    stringResource(line),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
             Text(
                 stringResource(R.string.quality_looks_note),
                 style = MaterialTheme.typography.bodySmall,
@@ -426,7 +450,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     stringResource(R.string.quality_detail_photo, mp.toInt()),
                     stringResource(
                         R.string.quality_detail_kept,
-                        QualityKept.photoDetailKeptPercent(mp, preset)
+                        QualityKept.photoDetailKeptPercent(mp, photoSpec)
                     )
                 )
             }
@@ -435,7 +459,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     label,
                     stringResource(
                         R.string.quality_detail_kept,
-                        QualityKept.videoDetailKeptPercent(side, preset)
+                        QualityKept.videoDetailKeptPercent(side, videoSpec)
                     )
                 )
             }
@@ -526,7 +550,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                             R.string.quality_measured_photos,
                             "${measured.photoShrinkPercent}%",
                             Formats.count(measured.photoCount),
-                            QualityKept.photoCapMp(preset)
+                            photoLimitPhrase(photoSpec)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 6.dp)
@@ -538,7 +562,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                             R.string.quality_measured_videos,
                             "${measured.videoShrinkPercent}%",
                             Formats.count(measured.videoCount),
-                            QualityKept.videoCapLongSide(preset)
+                            videoLimitPhrase(videoSpec)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 4.dp)
@@ -711,7 +735,6 @@ fun HelpLicensesScreen(nav: NavHostController) {
 @Composable
 fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
-    val preset = options.preset
     HelpPage(nav, stringResource(R.string.help_about)) {
         AppCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -871,15 +894,10 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             Text(
                 stringResource(
                     R.string.about_quality_line,
-                    stringResource(
-                        when (preset) {
-                            Preset.STORAGE_SAVER -> R.string.preset_storage
-                            Preset.BALANCED -> R.string.preset_balanced
-                            Preset.MAX_SAVER -> R.string.preset_max
-                        }
-                    ),
-                    QualityKept.photoCapMp(preset),
-                    QualityKept.videoCapLongSide(preset)
+                    photoPresetLabel(options.photo.preset),
+                    photoLimitPhrase(options.photo.spec()),
+                    videoPresetLabel(options.video.preset),
+                    videoLimitPhrase(options.video.spec())
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)

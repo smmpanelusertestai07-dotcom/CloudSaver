@@ -11,13 +11,19 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.core.logic.VideoCodecChoice
+import app.cloudsaver.core.logic.VideoPreset
+import app.cloudsaver.core.logic.VideoSettings
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.MaintainEngine
+import app.cloudsaver.media.EncoderCaps
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
+import app.cloudsaver.media.VideoCompressor
 import java.io.File
 import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
@@ -26,6 +32,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -244,6 +251,82 @@ class PipelineE2eTest {
             "the optimised copy of a silent clip was given an audio track",
             hasAudioTrack(staged.stagePath!!)
         )
+    }
+
+    /**
+     * An ordinary 60 fps clip is written at 30, the cap every preset carries:
+     * half the frames is most of the saving, and nothing a phone shows misses
+     * them. (Slow motion, 90 fps and up, keeps every frame - MediaSettingsTest.)
+     */
+    @Test
+    fun aSixtyFpsClipIsWrittenAtThirty() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(context, "e2e_sixty.mp4", width = 640, height = 360, frames = 120, fps = 60)
+        assertNotNull("the device must be able to produce a 60 fps clip", uri)
+        val src = File(context.cacheDir, "sixty_out").apply { mkdirs() }
+        val result = VideoCompressor.compress(
+            context, uri!!, "e2e_sixty.mp4", "video/mp4", sizeOf(uri),
+            VideoSettings().spec(), src
+        )
+        try {
+            assertFalse("the clip must be re-encoded, got ${result.reason}", result.asIs)
+            val fps = videoFrames(result.file.absolutePath) / 2.0
+            assertTrue("written at about 30 fps, measured $fps", fps in 25.0..35.0)
+        } finally {
+            result.file.delete()
+        }
+    }
+
+    /**
+     * HEVC is never encoded in software: on a phone without an HEVC chip -
+     * every emulator - a clip asked for in HEVC comes out H.264, and Settings
+     * says so.
+     */
+    @Test
+    fun hevcWithoutAChipFallsBackToH264() = runBlockingTest {
+        assumeFalse("this phone has an HEVC chip", EncoderCaps.hevcFits(640, 360, 10f))
+        val uri = MediaFixtures.insertVideo(context, "e2e_hevc_ask.mp4", width = 640, height = 360, frames = 30)
+        assertNotNull(uri)
+        val spec = VideoSettings(VideoPreset.CUSTOM, codec = VideoCodecChoice.HEVC, audioKbps = 64).spec()
+        val out = File(context.cacheDir, "hevc_out").apply { mkdirs() }
+        val result = VideoCompressor.compress(context, uri!!, "e2e_hevc_ask.mp4", "video/mp4", sizeOf(uri), spec, out)
+        try {
+            if (!result.asIs) {
+                assertEquals(VideoCodec.H264, result.codec)
+                assertEquals(MediaFormat.MIMETYPE_VIDEO_AVC, videoMime(result.file.absolutePath))
+            }
+        } finally {
+            result.file.delete()
+        }
+    }
+
+    private fun videoFrames(path: String): Int {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(path)
+            val track = (0 until extractor.trackCount).first {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+            }
+            extractor.selectTrack(track)
+            var frames = 0
+            while (extractor.sampleTime >= 0) {
+                frames++
+                extractor.advance()
+            }
+            frames
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun videoMime(path: String): String? {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(path)
+            (0 until extractor.trackCount).map { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) }
+                .firstOrNull { it?.startsWith("video/") == true }
+        } finally {
+            extractor.release()
+        }
     }
 
     /** True when the container at [source] (a path or a content URI) has an audio track. */

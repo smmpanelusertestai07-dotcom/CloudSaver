@@ -14,8 +14,8 @@ package app.cloudsaver.core.logic
  *
  *  - **Detail kept** is resolution: what share of the original's pixels are
  *    still there. Exactly computable, and 100% for anything already under the
- *    preset's cap - which on the default preset is most photos.
- *  - **Encoder quality** is the JPEG quality factor used when re-saving. A
+ *    setting's cap - which on the default setting is most photos.
+ *  - **Encoder quality** is the quality factor used when re-saving. A
  *    setting, not an opinion.
  */
 object QualityKept {
@@ -29,14 +29,14 @@ object QualityKept {
      */
     const val PHONE_SCREEN_MP = 2.6
 
-    /** The JPEG quality factor the photo path encodes at, per preset. */
-    fun jpegQuality(preset: Preset): Int = Presets.spec(preset).jpegQuality
+    /** The quality factor the photo path encodes at. */
+    fun photoQuality(spec: PhotoSpec): Int = spec.quality
 
-    /** The megapixel ceiling for photos, per preset. */
-    fun photoCapMp(preset: Preset): Int = Presets.spec(preset).photoMaxMp
+    /** The megapixel ceiling for photos; 0 keeps every pixel. */
+    fun photoCapMp(spec: PhotoSpec): Int = spec.maxMp
 
-    /** The long-side ceiling for video, per preset. */
-    fun videoCapLongSide(preset: Preset): Int = Presets.spec(preset).videoLongSide
+    /** The long-side ceiling for video; 0 keeps the clip's own size. */
+    fun videoCapLongSide(spec: VideoSpec): Int = spec.longSide
 
     /**
      * Share of the original's pixels that survive, as a percentage.
@@ -51,11 +51,12 @@ object QualityKept {
     }
 
     /** Detail kept for a photo of [originalMp] megapixels. */
-    fun photoDetailKeptPercent(originalMp: Double, preset: Preset): Int =
-        detailKeptPercent(
-            (originalMp * 1_000_000).toLong(),
-            photoCapMp(preset) * 1_000_000L
-        )
+    fun photoDetailKeptPercent(originalMp: Double, spec: PhotoSpec): Int =
+        if (spec.maxMp <= 0) {
+            100
+        } else {
+            detailKeptPercent((originalMp * 1_000_000).toLong(), spec.maxMp * 1_000_000L)
+        }
 
     /**
      * Detail kept for a video, from its long side.
@@ -64,10 +65,10 @@ object QualityKept {
      * 1080p keeps a quarter of them - which is why video saves so much more
      * space than photos do.
      */
-    fun videoDetailKeptPercent(originalLongSide: Int, preset: Preset): Int {
+    fun videoDetailKeptPercent(originalLongSide: Int, spec: VideoSpec): Int {
         if (originalLongSide <= 0) return 100
-        val cap = videoCapLongSide(preset)
-        if (originalLongSide <= cap) return 100
+        val cap = spec.longSide
+        if (cap <= 0 || originalLongSide <= cap) return 100
         val ratio = cap.toDouble() / originalLongSide
         return (ratio * ratio * 100).toInt().coerceIn(1, 100)
     }
@@ -75,8 +76,10 @@ object QualityKept {
     /**
      * How many times more detail the capped photo still has than a phone
      * screen can display. Below 1 the cap is genuinely visible on the phone.
+     * Null when nothing is capped: every pixel the camera took is kept.
      */
-    fun screenHeadroom(preset: Preset): Double = photoCapMp(preset) / PHONE_SCREEN_MP
+    fun screenHeadroom(spec: PhotoSpec): Double? =
+        if (spec.maxMp <= 0) null else spec.maxMp / PHONE_SCREEN_MP
 
     /**
      * Detail kept for one file the app really encoded, from the pixel counts

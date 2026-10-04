@@ -7,6 +7,7 @@ import app.cloudsaver.data.db.MediaProfileRow
 import app.cloudsaver.data.db.RatioSample
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.media.MediaScanner
+import app.cloudsaver.media.PlannedEncode
 
 /**
  * Recomputes what this phone's media actually looks like.
@@ -25,8 +26,10 @@ class ProfileBuilder(private val context: Context) {
         val totals = runCatching { scanner.totals(options.excludedBuckets, now) }
             .getOrDefault(MediaScanner.Totals())
 
-        val photoSamples = db.items().photoRatioSamples(options.preset.name)
-        val videoSamples = db.items().videoRatioSamples(options.preset.name, options.codec.name)
+        val photoKey = PlannedEncode.photoKey(context, options)
+        val videoKey = PlannedEncode.videoKey(options)
+        val photoSamples = db.items().photoRatioSamples(photoKey)
+        val videoSamples = db.items().videoRatioSamples(videoKey)
 
         val photoMedian = MediaProfile.median(photoSamples.map { it.sizeBytes })
         val videoMedian = MediaProfile.median(videoSamples.map { it.sizeBytes })
@@ -63,8 +66,8 @@ class ProfileBuilder(private val context: Context) {
         val videoPredictions = db.items().predictionSamples(video = true)
 
         val row = MediaProfileRow(
-            preset = options.preset.name,
-            codec = options.codec.name,
+            preset = photoKey,
+            codec = videoKey,
             photoCount = totals.photoCount,
             photoBytes = totals.photoBytes,
             photoMedianBytes = galleryPhotoMedian,
@@ -111,7 +114,7 @@ class ProfileBuilder(private val context: Context) {
      * correct and is stated as such.
      */
     suspend fun current(options: Options): MediaProfile.Profile {
-        val row = db.profile().get(options.preset.name, options.codec.name)
+        val row = db.profile().get(PlannedEncode.photoKey(context, options), PlannedEncode.videoKey(options))
             ?: rebuild(options)
         return row.toProfile(db.items().bytesAddedSince(monthAgoSeconds()))
     }

@@ -52,7 +52,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.CapacityMath
-import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.data.EnteApp
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AccessNotice
@@ -89,7 +88,7 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
     val profile by vm.profile.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
 
-    LaunchedEffect(options.preset, options.codec, options.excludedBuckets) {
+    LaunchedEffect(options.photo, options.video, options.excludedBuckets) {
         vm.refreshCalculator()
         vm.refreshProfile()
     }
@@ -477,8 +476,8 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(
                         stringResource(
                             R.string.calc_quality_limits,
-                            QualityKept.photoCapMp(options.preset),
-                            QualityKept.videoCapLongSide(options.preset)
+                            photoLimitPhrase(options.photo.spec()),
+                            videoLimitPhrase(options.video.spec())
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant

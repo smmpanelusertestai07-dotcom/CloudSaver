@@ -1,5 +1,6 @@
 package app.cloudsaver.media
 
+import app.cloudsaver.core.logic.VideoCodec
 import java.io.File
 
 /**
@@ -18,5 +19,7 @@ data class CompressResult(
     val reason: String,
     val ext: String,
     val srcPixels: Long = 0,
-    val outPixels: Long = 0
+    val outPixels: Long = 0,
+    /** The video codec actually used, for the file's details; null for a photo. */
+    val codec: VideoCodec? = null
 )
