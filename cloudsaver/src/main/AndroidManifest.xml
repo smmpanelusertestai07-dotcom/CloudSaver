@@ -100,78 +100,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        <!-- The other looks, chosen in Settings, Appearance (AppLooks). -->
+        <!-- The shorter name, chosen in Settings, Appearance (AppLooks). -->
         <activity-alias
-            android:name=".AliasSaverGreen"
+            android:name=".AliasSaver"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name_short"
             android:roundIcon="@mipmap/ic_launcher"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".AliasEnteSaverDark"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_dark"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_dark"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".AliasSaverDark"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_dark"
-            android:label="@string/app_name_short"
-            android:roundIcon="@mipmap/ic_launcher_dark"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".AliasEnteSaverLight"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_light"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_light"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".AliasSaverLight"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_light"
-            android:label="@string/app_name_short"
-            android:roundIcon="@mipmap/ic_launcher_light"
             android:targetActivity=".HostActivity">
             <meta-data
                 android:name="android.app.shortcuts"

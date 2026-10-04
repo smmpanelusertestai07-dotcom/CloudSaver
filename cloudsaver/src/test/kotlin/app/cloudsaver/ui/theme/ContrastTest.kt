@@ -126,7 +126,7 @@ class ContrastTest {
     fun `text on the brand gradient is readable`() {
         // The hero card paints its own background, so the scheme's pairings do
         // not cover it. Both ends of the gradient have to work.
-        for ((name, background) in listOf("indigo" to BrandIndigo, "violet" to BrandViolet)) {
+        for ((name, background) in listOf("green" to BrandGreen, "deep green" to BrandGreenDeep)) {
             assertReadable("OnBrand over $name", OnBrand, background, 4.5)
             // The muted variant carries supporting lines, not body copy.
             assertReadable("OnBrandMuted over $name", OnBrandMuted, background, 3.0)

@@ -7,7 +7,8 @@ import androidx.core.content.edit
 import app.cloudsaver.R
 
 /**
- * The name and icon Ente Saver wears on the home screen.
+ * The name Ente Saver wears on the home screen: "Ente Saver" or the shorter
+ * "Saver", always with the one Ente Saver icon.
  *
  * Each look is a launcher alias in the manifest; exactly one is switched on.
  * A switch is not made the moment it is chosen: turning off the alias the
@@ -17,22 +18,13 @@ import app.cloudsaver.R
  */
 object AppLooks {
 
-    enum class Look(
-        val alias: String,
-        val nameRes: Int,
-        val background: Int,
-        val foreground: Int
-    ) {
-        ENTE_SAVER_GREEN(".MainActivity", R.string.app_name, R.drawable.ic_launcher_background, R.drawable.ic_launcher_foreground),
-        SAVER_GREEN(".AliasSaverGreen", R.string.app_name_short, R.drawable.ic_launcher_background, R.drawable.ic_launcher_foreground),
-        ENTE_SAVER_DARK(".AliasEnteSaverDark", R.string.app_name, R.drawable.ic_launcher_dark_background, R.drawable.ic_launcher_dark_foreground),
-        SAVER_DARK(".AliasSaverDark", R.string.app_name_short, R.drawable.ic_launcher_dark_background, R.drawable.ic_launcher_dark_foreground),
-        ENTE_SAVER_LIGHT(".AliasEnteSaverLight", R.string.app_name, R.drawable.ic_launcher_light_background, R.drawable.ic_launcher_light_foreground),
-        SAVER_LIGHT(".AliasSaverLight", R.string.app_name_short, R.drawable.ic_launcher_light_background, R.drawable.ic_launcher_light_foreground)
+    enum class Look(val alias: String, val nameRes: Int) {
+        ENTE_SAVER(".MainActivity", R.string.app_name),
+        SAVER(".AliasSaver", R.string.app_name_short)
     }
 
     /** The look every install starts with: the one alias enabled in the manifest. */
-    val DEFAULT = Look.ENTE_SAVER_GREEN
+    val DEFAULT = Look.ENTE_SAVER
 
     private const val PREFS = "looks"
     private const val KEY_PENDING = "pending"

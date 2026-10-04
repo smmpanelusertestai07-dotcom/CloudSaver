@@ -30,8 +30,8 @@ import app.cloudsaver.R
 import app.cloudsaver.util.AppLooks
 
 /**
- * Ente Saver's own name and icon on the home screen: "Ente Saver" or the
- * shorter "Saver", in green, dark or light. The switch happens when the app
+ * Ente Saver's name on the home screen: "Ente Saver" or the shorter "Saver",
+ * with the one Ente Saver icon either way. The switch happens when the app
  * goes to the background, and launchers take a moment to redraw.
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -62,7 +62,7 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
                         )
                         .padding(6.dp)
                 ) {
-                    LookIcon(look)
+                    LookIcon()
                     Text(
                         stringResource(look.nameRes),
                         style = MaterialTheme.typography.labelMedium,
@@ -76,15 +76,15 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
     }
 }
 
-/** The look's icon, drawn from the same two layers the launcher uses. */
+/** Ente Saver's icon, drawn from the same two layers the launcher uses. */
 @Composable
-private fun LookIcon(look: AppLooks.Look) {
+private fun LookIcon() {
     Box(
         Modifier
             .size(48.dp)
             .clip(RoundedCornerShape(percent = 24))
     ) {
-        for (layer in listOf(look.background, look.foreground)) {
+        for (layer in listOf(R.drawable.ic_launcher_background, R.drawable.ic_launcher_foreground)) {
             Image(
                 painterResource(layer),
                 contentDescription = null,

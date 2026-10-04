@@ -74,9 +74,9 @@ import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
+import app.cloudsaver.ui.components.PhotosIcon
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.ui.components.ShortcutDialog
-import app.cloudsaver.ui.components.ShortcutStyleRow
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
@@ -1020,7 +1020,7 @@ fun HelpGalleryScreen(nav: NavHostController) {
         }
         GalleryBlock(R.string.gallery_icon_t, R.string.gallery_icon_b)
         GalleryBlock(R.string.gallery_pack_t, R.string.gallery_pack_b) {
-            ShortcutStyleRow(selected = null, onPick = null)
+            PhotosIcon()
         }
         GalleryBlock(R.string.gallery_shortcut_t, R.string.gallery_shortcut_b) {
             if (PhotosShortcut.supported(context)) {

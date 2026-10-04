@@ -1,11 +1,7 @@
 package app.cloudsaver.ui.components
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
 import app.cloudsaver.ui.theme.Dimens
@@ -44,53 +42,31 @@ private val SHORTCUT_LABELS = listOf(
     R.string.shortcut_label_photos, R.string.shortcut_label_gallery, R.string.shortcut_label_cloud
 )
 
-private val STYLE_PICTURES = mapOf(
-    PhotosShortcut.Style.SUNSET to R.drawable.iconpack_photos,
-    PhotosShortcut.Style.FAN to R.drawable.iconpack_gallery,
-    PhotosShortcut.Style.CLOUD to R.drawable.iconpack_cloud_photos
-)
-
-/** The three gallery icons; tappable when [onPick] is given, a preview otherwise. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The gallery icon Ente is given - by the icon pack and by the shortcut
+ * alike, so the two never disagree about what Ente looks like.
+ */
 @Composable
-fun ShortcutStyleRow(selected: PhotosShortcut.Style?, onPick: ((PhotosShortcut.Style) -> Unit)?) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        for (style in PhotosShortcut.Style.entries) {
-            val shape = RoundedCornerShape(12.dp)
-            val base = Modifier
-                .size(52.dp)
-                .clip(shape)
-            Image(
-                painterResource(STYLE_PICTURES.getValue(style)),
-                contentDescription = null,
-                modifier = if (onPick == null) {
-                    base
-                } else {
-                    base
-                        .selectable(selected = selected == style, role = Role.RadioButton) { onPick(style) }
-                        .then(
-                            if (selected == style) {
-                                Modifier.border(3.dp, MaterialTheme.colorScheme.primary, shape)
-                            } else {
-                                Modifier
-                            }
-                        )
-                }
-            )
-        }
-    }
+fun PhotosIcon(size: Dp = 52.dp) {
+    Image(
+        painterResource(R.drawable.iconpack_photos),
+        contentDescription = null,
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(percent = 24))
+    )
 }
 
 /**
- * Name and icon for the shortcut, then the phone's own confirmation. The
- * label is at most twelve characters, which is what fits under an icon.
+ * A name for the shortcut, shown as it will sit on the home screen, then the
+ * phone's own confirmation. The label is at most twelve characters, which is
+ * what fits under an icon.
  */
 @Composable
 fun ShortcutDialog(onDone: () -> Unit) {
     val context = LocalContext.current
     var labelIndex by rememberSaveable { mutableStateOf(0) }
     var own by rememberSaveable { mutableStateOf("") }
-    var style by rememberSaveable { mutableStateOf(PhotosShortcut.Style.SUNSET) }
     val fixed = SHORTCUT_LABELS.map { stringResource(it) }
     val label = if (labelIndex < fixed.size) {
         fixed[labelIndex]
@@ -102,6 +78,20 @@ fun ShortcutDialog(onDone: () -> Unit) {
         title = { Text(stringResource(R.string.gallery_shortcut_button)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    PhotosIcon(56.dp)
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
                 Text(stringResource(R.string.shortcut_label_title), style = MaterialTheme.typography.labelLarge)
                 for ((i, text) in (fixed + stringResource(R.string.shortcut_label_own)).withIndex()) {
                     Row(
@@ -126,12 +116,6 @@ fun ShortcutDialog(onDone: () -> Unit) {
                     )
                 }
                 Text(
-                    stringResource(R.string.shortcut_style_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
-                )
-                ShortcutStyleRow(selected = style, onPick = { style = it })
-                Text(
                     stringResource(R.string.shortcut_badge_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -141,7 +125,7 @@ fun ShortcutDialog(onDone: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = {
-                PhotosShortcut.request(context, label, style)
+                PhotosShortcut.request(context, label)
                 onDone()
             }) { Text(stringResource(R.string.shortcut_add)) }
         },

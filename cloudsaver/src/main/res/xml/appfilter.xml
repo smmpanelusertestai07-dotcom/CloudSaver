@@ -4,9 +4,9 @@
     launcher that takes icon packs, so the photo app on the home screen looks
     like a gallery. Every launcher entry Ente has is listed - its main
     activity and each of its own icon choices - in all three builds (Play
-    Store, ente.com, F-Droid). The other two icons are listed in drawable.xml
-    for launchers that let a person pick per app. No icon back or mask is set,
-    so every other app keeps its own icon.
+    Store, ente.com, F-Droid). The same icon is listed in drawable.xml for
+    launchers that let a person pick per app. No icon back or mask is set, so
+    every other app keeps its own icon.
 -->
 <resources>
     <item component="ComponentInfo{io.ente.photos/io.ente.photos.MainActivity}" drawable="iconpack_photos" />

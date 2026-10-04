@@ -79,7 +79,7 @@ class IconPackTest {
             xml("src/main/res/xml/appfilter.xml").children("item") +
                 xml("src/main/res/xml/drawable.xml").children("item")
             ).map { it.getAttribute("drawable") }.toSet()
-        assertEquals(setOf("iconpack_photos", "iconpack_gallery", "iconpack_cloud_photos"), named)
+        assertEquals("one icon: Ente as the phone's Photos", setOf("iconpack_photos"), named)
         for (name in named) {
             assertTrue(name, File("src/main/res/drawable-nodpi/$name.png").isFile)
         }
@@ -91,5 +91,14 @@ class IconPackTest {
         assertTrue(keep.contains("@drawable/iconpack_*"))
         assertTrue(keep.contains("@xml/appfilter"))
         assertTrue(keep.contains("@xml/drawable"))
+    }
+
+    @Test
+    fun `Ente Saver has one icon, and only its name can change`() {
+        assertEquals(listOf(".MainActivity", ".AliasSaver"), AppLooks.Look.entries.map { it.alias })
+        for (alias in aliases) {
+            assertEquals("@mipmap/ic_launcher", alias.getAttribute("android:icon"))
+        }
+        assertTrue(File("src/main/res/mipmap-anydpi/ic_shortcut_photos.xml").isFile)
     }
 }
