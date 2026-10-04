@@ -246,7 +246,9 @@ jobs:
       matrix:
         api: [29, 30, 31, 32, 33, 34, 35, 36]
         include:
+          # The SDK names Android 17's packages "android-37.0", not "android-37".
           - api: 37
+            image: "37.0"
             ahead: true
     steps:
       - name: Checkout
@@ -295,7 +297,7 @@ jobs:
       - name: Run instrumented suite + live install on a real emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ matrix.api }}
+          api-level: ${{ matrix.image || matrix.api }}
           target: google_apis
           arch: x86_64
           force-avd-creation: false
