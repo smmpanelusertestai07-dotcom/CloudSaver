@@ -156,6 +156,16 @@ object PhotoCompressor {
                 written = PhotoFormat.JPEG
                 outFile = encode(context, bitmap, PhotoFormat.JPEG, spec.quality, exifValues, tempDir)
             }
+            if (outFile != null && written == PhotoFormat.HEIC && outFile.length() >= srcBytes) {
+                // Some encoders write HEIC at a fixed bitrate whatever the
+                // quality says, and a small photo then comes out larger than
+                // it went in. The photo still gets its chance as JPEG; this
+                // is not counted against HEIC, because an already small
+                // original does the same to any encoder.
+                outFile.delete()
+                written = PhotoFormat.JPEG
+                outFile = encode(context, bitmap, PhotoFormat.JPEG, spec.quality, exifValues, tempDir)
+            }
             if (outFile == null) {
                 return copyAsIs(context, uri, displayName, tempDir, "encode_failed")
             }

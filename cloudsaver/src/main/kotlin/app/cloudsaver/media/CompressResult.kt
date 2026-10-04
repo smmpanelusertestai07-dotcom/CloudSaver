@@ -21,5 +21,11 @@ data class CompressResult(
     val srcPixels: Long = 0,
     val outPixels: Long = 0,
     /** The video codec actually used, for the file's details; null for a photo. */
-    val codec: VideoCodec? = null
+    val codec: VideoCodec? = null,
+    /**
+     * What the last encode ran into when a video went out as-is - the
+     * exporter's error, or the numbers it was turned down for. Not shown to
+     * anyone; it is what a failing test or a bug report needs to say why.
+     */
+    val detail: String = ""
 )

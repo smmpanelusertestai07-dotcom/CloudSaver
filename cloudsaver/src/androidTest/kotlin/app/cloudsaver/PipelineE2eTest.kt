@@ -265,7 +265,9 @@ class PipelineE2eTest {
      */
     @Test
     fun aSixtyFpsClipIsWrittenAtThirty() = runBlockingTest {
-        val uri = MediaFixtures.insertVideo(context, "e2e_sixty.mp4", width = 640, height = 360, frames = 120, fps = 60)
+        val uri = MediaFixtures.insertVideo(
+            context, "e2e_sixty.mp4", width = 640, height = 360, frames = 120, fps = 60, textured = true
+        )
         assertNotNull("the device must be able to produce a 60 fps clip", uri)
         val src = File(context.cacheDir, "sixty_out").apply { mkdirs() }
         val result = VideoCompressor.compress(
@@ -273,7 +275,10 @@ class PipelineE2eTest {
             VideoSettings().spec(), src
         )
         try {
-            assertFalse("the clip must be re-encoded, got ${result.reason}", result.asIs)
+            assertFalse(
+                "the clip must be re-encoded, got ${result.reason} (${result.detail}; source ${sizeOf(uri)} bytes)",
+                result.asIs
+            )
             val fps = videoFrames(result.file.absolutePath) / 2.0
             assertTrue("written at about 30 fps, measured $fps", fps in 25.0..35.0)
         } finally {

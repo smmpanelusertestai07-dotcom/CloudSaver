@@ -137,10 +137,11 @@ object MediaFixtures {
         frames: Int = 20,
         captureMillis: Long = 1_600_000_000_000L,
         withAudio: Boolean = false,
-        fps: Int = 10
+        fps: Int = 10,
+        textured: Boolean = false
     ): Uri? {
         val temp = File(context.cacheDir, name)
-        if (!encodeH264(temp, width, height, frames, withAudio, fps)) {
+        if (!encodeH264(temp, width, height, frames, withAudio, fps, textured)) {
             temp.delete()
             return null
         }
@@ -211,7 +212,8 @@ object MediaFixtures {
         height: Int,
         frames: Int,
         withAudio: Boolean = false,
-        fps: Int = 10
+        fps: Int = 10,
+        textured: Boolean = false
     ): Boolean {
         val frameUs = 1_000_000L / fps
         var codec: MediaCodec? = null
@@ -256,7 +258,7 @@ object MediaFixtures {
                                 MediaCodec.BUFFER_FLAG_END_OF_STREAM
                             )
                         } else {
-                            fillFrame(frame, width, height, sent)
+                            fillFrame(frame, width, height, sent, textured)
                             buffer.put(frame)
                             codec.queueInputBuffer(inIndex, 0, frameBytes, sent * frameUs, 0)
                         }
@@ -368,11 +370,21 @@ object MediaFixtures {
         }
     }
 
-    private fun fillFrame(frame: ByteArray, width: Int, height: Int, index: Int) {
+    /**
+     * A moving gradient. [textured] lays a fine still pattern over it: costly
+     * in every key frame, cheap between them, the way a real scene is - so a
+     * clip at a high bitrate is as large as a real one, and an encode at the
+     * app's own target has something to save.
+     */
+    private fun fillFrame(frame: ByteArray, width: Int, height: Int, index: Int, textured: Boolean = false) {
         val ySize = width * height
         for (y in 0 until height) {
             for (x in 0 until width) {
-                frame[y * width + x] = ((x + y + index * 12) and 0xFF).toByte()
+                frame[y * width + x] = if (textured) {
+                    ((x + y + index * 12) % 192 + (((x * 31) xor (y * 17)) and 0x3F)).toByte()
+                } else {
+                    ((x + y + index * 12) and 0xFF).toByte()
+                }
             }
         }
         var i = ySize

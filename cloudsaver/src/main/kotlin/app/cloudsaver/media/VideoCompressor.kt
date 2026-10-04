@@ -201,6 +201,8 @@ object VideoCompressor {
         }
 
         var outOfTime = false
+        var notSmaller = false
+        var detail = ""
         for (attempt in attemptsFor(codec)) {
             // Keeping HDR is a promise about HEVC; the H.264 rung tone-maps.
             val hdrMode = when {
@@ -224,12 +226,14 @@ object VideoCompressor {
                     BitrateCalc.targetBps(outW, outH, outFps, attempt.codec, spec.quality),
                     codecMime, attempt, hdrMode, leftMs,
                     audioBps = spec.audioKbps * 1000,
-                    frameRateCap = cappedFps?.toInt()
+                    frameRateCap = cappedFps?.toInt(),
+                    onError = { detail = "${attempt.label}: $it" }
                 )
             } catch (ce: CancellationException) {
                 outFile.delete()
                 throw ce
             } catch (e: Exception) {
+                detail = "${attempt.label}: ${e.javaClass.simpleName}"
                 null
             }
             if (export != null && outFile.exists()) {
@@ -256,15 +260,27 @@ object VideoCompressor {
                         codec = attempt.codec
                     )
                 }
+                detail = "${attempt.label}: $outBytes of $srcBytes bytes, $outBps of $rungTarget bps, " +
+                    "$outDur of ${probe.durationMs} ms"
+                if (outBytes >= srcBytes && outBps <= rungTarget * BitrateCalc.RESULT_BITRATE_FACTOR) {
+                    // The encoder kept to its target and the copy is still no
+                    // smaller: the original is already leaner than the setting,
+                    // and the next rung aims at the same target. Trying it
+                    // would only spend the battery a second time.
+                    notSmaller = true
+                    outFile.delete()
+                    break
+                }
             }
             outFile.delete()
         }
         val failReason = when {
             outOfTime -> "out_of_time"
+            notSmaller -> "not_smaller"
             hdr == MediaTraits.Hdr.NONE -> "encoder_rejected"
             else -> "hdr_not_supported"
         }
-        return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, failReason)
+        return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, failReason).copy(detail = detail)
     }
 
     /** Runs a single Transformer export; null on any export error or timeout. */
@@ -280,7 +296,8 @@ object VideoCompressor {
         hdrMode: Int,
         attemptMs: Long,
         audioBps: Int,
-        frameRateCap: Int?
+        frameRateCap: Int?,
+        onError: (String) -> Unit
     ): ExportResult? = withContext(Dispatchers.Default) {
         // Background priority: encoding must never make the phone feel slow.
         val thread = HandlerThread("cloudsaver-transform", Process.THREAD_PRIORITY_BACKGROUND)
@@ -319,6 +336,7 @@ object VideoCompressor {
                         exportResult: ExportResult,
                         exportException: ExportException
                     ) {
+                        onError("${exportException.errorCodeName} ${exportException.cause?.javaClass?.simpleName.orEmpty()}")
                         done.complete(null)
                     }
                 }
@@ -369,6 +387,7 @@ object VideoCompressor {
                 val composition = Composition.Builder(sequence).setHdrMode(hdrMode).build()
                 transformer.start(composition, outFile.absolutePath)
             } catch (t: Throwable) {
+                onError("start ${t.javaClass.simpleName}")
                 done.complete(null)
             }
         }
