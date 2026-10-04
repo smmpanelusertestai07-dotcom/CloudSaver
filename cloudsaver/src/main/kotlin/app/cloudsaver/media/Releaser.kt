@@ -12,7 +12,7 @@ import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.ReleasePlanner
 import app.cloudsaver.core.logic.ReleaseVerdict
 import app.cloudsaver.core.logic.VolumeRules
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
@@ -103,7 +103,9 @@ class Releaser(private val context: Context, private val db: AppDb) {
                         releasedAt = now,
                         totalBytes = 0,
                         folder = folder.name,
-                        cloudPackage = cloudPackageFor(options, folder)
+                        // The Ente build on this phone, whose traffic will
+                        // later account for this batch.
+                        cloudPackage = EnteApp.installedPackage(context)
                     )
                 )
             }
@@ -200,15 +202,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 confirmedAt = now
             )
         )
-    }
-
-    private fun cloudPackageFor(options: Options, folder: OutFolder): String? {
-        val id = when (folder) {
-            OutFolder.SINGLE -> options.cloudSingle
-            OutFolder.PHOTOS -> options.cloudPhotos
-            OutFolder.VIDEOS -> options.cloudVideos
-        }
-        return CloudApps.installedPackage(context, CloudApps.byId(id))
     }
 
     /**

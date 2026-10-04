@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -58,7 +57,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -71,7 +69,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -97,15 +94,15 @@ import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
-import app.cloudsaver.data.CloudApp
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Lock as AppLock
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AlbumGrid
 import app.cloudsaver.ui.components.AppCard
-import app.cloudsaver.ui.components.CloudAppIcon
 import app.cloudsaver.ui.components.EmptyState
+import app.cloudsaver.ui.components.EnteIcon
+import app.cloudsaver.ui.components.EnteInstallButtons
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PasswordDialog
@@ -156,7 +153,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     // already written stay where they are. That is worth saying before the
     // change, not discovering afterwards.
     var pendingVolume by remember { mutableStateOf<String?>(null) }
-    var cloudPickerFor by remember { mutableStateOf<String?>(null) } // "single"|"photos"|"videos"
 
     val exportOkLabel = stringResource(R.string.transfer_export_ok)
     val importOkLabel = stringResource(R.string.transfer_import_ok)
@@ -284,48 +280,55 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             CopyPathButton(o.layout)
         }
 
-        // Which cloud apps this setting is actually feeding right now. In
-        // separate-folder mode there can be two of them, and the card used to
-        // name the single-folder choice regardless - so someone sending photos
-        // to one app and videos to another was told, on the row and in the
-        // set-up checklist underneath, about an app they were not using at all.
-        val cloudsInUse = if (o.outputMode == OutputMode.SINGLE) {
-            listOf(o.cloudSingle)
-        } else {
-            listOf(o.cloudPhotos, o.cloudVideos).distinct()
-        }
+        // Ente Photos: the one app light copies are made for. Whether it is on
+        // the phone is asked again whenever Settings comes back, so someone
+        // sent off to install it returns to a card that already knows.
+        val enteHere by vm.enteInstalled.collectAsStateWithLifecycle()
+        LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshEnte() }
         OptionCard(
             stringResource(R.string.opt_cloud),
             stringResource(R.string.cloud_intended),
             icon = IconCloud,
-            // One app can be named on the row; two cannot, and half an answer
-            // is worse than none, so the buttons below carry it instead.
-            value = if (cloudsInUse.size == 1) CloudApps.byId(cloudsInUse[0]).label else null
+            value = stringResource(
+                if (enteHere) R.string.cloud_installed_mark else R.string.cloud_not_installed_mark
+            )
         ) {
-            if (o.outputMode == OutputMode.SINGLE) {
-                CloudButton(
-                    stringResource(R.string.cloud_for_all),
-                    o.cloudSingle
-                ) { cloudPickerFor = "single" }
-            } else {
-                CloudButton(
-                    stringResource(R.string.cloud_for_photos),
-                    o.cloudPhotos
-                ) { cloudPickerFor = "photos" }
-                CloudButton(
-                    stringResource(R.string.cloud_for_videos),
-                    o.cloudVideos
-                ) { cloudPickerFor = "videos" }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                EnteIcon(installed = enteHere)
+                Spacer(Modifier.width(10.dp))
+                Text(EnteApp.LABEL, style = MaterialTheme.typography.bodyLarge)
             }
-            for (cloudId in cloudsInUse) {
-                CloudApps.byId(cloudId).checklistRes?.let { res ->
+            if (enteHere) {
+                OutlinedButton(
+                    onClick = { vm.openEnte() },
+                    modifier = Modifier.padding(top = 6.dp)
+                ) {
                     Text(
-                        stringResource(res),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
+                        stringResource(R.string.onb5_open, EnteApp.LABEL),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+            } else {
+                Text(
+                    stringResource(R.string.ente_missing_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                EnteInstallButtons(
+                    onInstall = { vm.installEnte(it) },
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+            Text(
+                stringResource(R.string.cl_ente),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            TextButton(onClick = { nav.goTo(Routes.HELP_CLOUD) }) {
+                Text(stringResource(R.string.help_cloud))
             }
         }
 
@@ -1080,189 +1083,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         )
     }
-
-    cloudPickerFor?.let { target ->
-        val current = when (target) {
-            "photos" -> o.cloudPhotos
-            "videos" -> o.cloudVideos
-            else -> o.cloudSingle
-        }
-        AlertDialog(
-            onDismissRequest = { cloudPickerFor = null },
-            confirmButton = {
-                TextButton(onClick = { cloudPickerFor = null }) { Text(stringResource(R.string.ok)) }
-            },
-            title = { Text(stringResource(R.string.opt_cloud)) },
-            text = {
-                val onPick: (String) -> Unit = { id ->
-                    when (target) {
-                        "photos" -> vm.setCloudPhotos(id)
-                        "videos" -> vm.setCloudVideos(id)
-                        else -> vm.setCloudSingle(id)
-                    }
-                }
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(
-                        stringResource(R.string.cloud_intended),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        stringResource(R.string.cloud_section_e2ee),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 10.dp)
-                    )
-                    for (app in CloudApps.SELECTABLE.filter { it.e2ee }) {
-                        CloudPickRow(app, current, onPick)
-                    }
-                    Text(
-                        stringResource(R.string.cloud_section_also),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 10.dp)
-                    )
-                    for (app in CloudApps.SELECTABLE.filter { !it.e2ee }) {
-                        CloudPickRow(app, current, onPick)
-                    }
-                    Text(
-                        stringResource(R.string.cloud_section_unsupported),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 10.dp)
-                    )
-                    for (app in CloudApps.ALL.filter { !it.supported }) {
-                        // Lined up with the rows above - the empty space is
-                        // where their dot sits - and faded as a whole, tile
-                        // included, because none of these can be chosen.
-                        Row(
-                            verticalAlignment = Alignment.Top,
-                            modifier = Modifier
-                                .padding(top = 8.dp)
-                                .alpha(0.6f)
-                        ) {
-                            Spacer(Modifier.width(34.dp))
-                            CloudAppIcon(app = app, installed = false)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(app.label, style = MaterialTheme.typography.bodyLarge)
-                                app.unsupportedReasonRes?.let { res ->
-                                    Text(
-                                        stringResource(res),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CloudPickRow(
-    app: CloudApp,
-    current: String,
-    onPick: (String) -> Unit
-) {
-    val context = LocalContext.current
-    // Asking the package manager whether an app is installed is a call out to
-    // another process, so it is remembered rather than asked on every frame
-    // of the picker's scroll - and asked again whenever the app comes back to
-    // the front, because the one thing this list invites is leaving to
-    // install an app and returning to a dialog that was never closed.
-    var installed by remember(app.id) {
-        mutableStateOf(app.packages.isNotEmpty() && CloudApps.installedPackage(context, app) != null)
-    }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        installed = app.packages.isNotEmpty() && CloudApps.installedPackage(context, app) != null
-    }
-    Row(
-        // Level with the app's name, not centred on a block that can run to
-        // eight lines and leave the dot and the icon floating beside nothing.
-        verticalAlignment = Alignment.Top,
-        // The whole row picks the app, and says which one is picked. Before,
-        // only the dot was tappable and it carried no label, so the name -
-        // the one thing identifying the choice - was not part of the control.
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = app.id == current,
-                role = Role.RadioButton,
-                onClick = { onPick(app.id) }
-            )
-    ) {
-        RadioButton(
-            selected = app.id == current,
-            onClick = null,
-            modifier = Modifier.padding(top = 2.dp)
-        )
-        Spacer(Modifier.width(10.dp))
-        // The same face the setup picker shows, so the two lists cannot
-        // disagree about which app is on the phone.
-        CloudAppIcon(app = app, installed = installed)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            // The tag has no weight and the name is arbitrarily long, so in a
-            // Row the name took the whole line and "Recommended" was measured
-            // into nothing - the one word the section exists to say. Flowing,
-            // the tag moves under the name instead of disappearing.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(app.label, style = MaterialTheme.typography.bodyLarge)
-                if (app.recommended) {
-                    RecommendedTag()
-                }
-            }
-            // Said in words for every real app, installed or not, so a tile
-            // without the phone's own icon is never left to explain itself.
-            if (app.packages.isNotEmpty()) {
-                Text(
-                    stringResource(
-                        if (installed) R.string.cloud_installed_mark else R.string.cloud_not_installed_mark
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (installed) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-            if (app.recommended) {
-                // A tag with no reason behind it is just an advertisement.
-                Text(
-                    stringResource(R.string.cloud_recommended),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-            // What this particular app can and cannot be relied on for. The
-            // same three lines for every entry, including "Other app", so no
-            // choice looks safer than it is.
-            Text(
-                cloudPromiseLine(app.id),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-            app.checklistRes?.let {
-                Text(
-                    stringResource(it),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
-    }
 }
 
 /**
@@ -1701,26 +1521,3 @@ private fun ChoiceNote(text: String) {
     )
 }
 
-@Composable
-private fun CloudButton(label: String, cloudId: String, onClick: () -> Unit) {
-    val app = CloudApps.byId(cloudId)
-    // Full width, because the cloud app's own name is arbitrary text and the
-    // label in front of it is a whole phrase: left to size itself the button
-    // grew with them and ran past the edge of the card on a narrow phone. Full
-    // width, the words wrap inside a button that is already as wide as it can
-    // get. The two halves are joined by a resource rather than in code, so the
-    // punctuation between them is translatable like everything else.
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier
-            .padding(top = 4.dp)
-            .fillMaxWidth()
-    ) {
-        Text(
-            stringResource(R.string.cloud_button_label, label, app.label),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
-    }
-}

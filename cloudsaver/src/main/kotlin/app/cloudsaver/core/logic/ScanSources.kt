@@ -1,6 +1,5 @@
 package app.cloudsaver.core.logic
 
-import app.cloudsaver.data.CloudApps
 
 /**
  * Decides which gallery folders the scanner and the album picker may touch.
@@ -85,7 +84,7 @@ object ScanSources {
         relativePath: String?,
         bucketName: String?,
         looksLikeOutput: Boolean = false,
-        cloudPackages: Collection<String> = CloudApps.ALL_PACKAGES
+        cloudPackages: Collection<String> = KnownClouds.ALL_PACKAGES
     ): Reason? = when {
         Defaults.isAppOwnedPath(relativePath) -> Reason.OUR_OUTPUT
         isHiddenPath(relativePath) -> Reason.HIDDEN

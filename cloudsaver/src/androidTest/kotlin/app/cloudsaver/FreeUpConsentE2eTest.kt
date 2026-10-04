@@ -35,6 +35,7 @@ import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.ReclaimRules
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
@@ -144,10 +145,9 @@ class FreeUpConsentE2eTest {
             val repo = OptionsRepo.get(target)
             repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
             repo.setBool(OptionsRepo.K.APP_LOCK, false)
-            // The gate re-checks cloud health at the moment of action, and
-            // "Other app" is the one choice that needs no installed package -
-            // no emulator has Ente or MEGA on it.
-            repo.setString(OptionsRepo.K.CLOUD_SINGLE, "other")
+            // The gate re-checks Ente at the moment of action, and no
+            // emulator has Ente on it: the debug build's stand-in says it is.
+            EnteApp.assumeInstalledForTest = true
             repo.setString(OptionsRepo.K.CLOUD_PROBLEM, "")
             // The "I understand" tick is a one-off acknowledgement, not part of
             // what this suite is testing; its absence is asserted instead.
@@ -162,6 +162,7 @@ class FreeUpConsentE2eTest {
         MediaFixtures.cleanUp(target)
         runBlocking { db.clearAllTables() }
         Storage.tempDir(target).listFiles()?.forEach { it.delete() }
+        EnteApp.assumeInstalledForTest = false
     }
 
     // ---- the four consent outcomes -------------------------------------------

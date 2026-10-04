@@ -23,14 +23,11 @@ val OnBrandMuted = Color(0xE6FFFFFF)
 val OnBrandFaint = Color(0xBFFFFFFF)
 
 /**
- * Another app's tile, drawn while that app is not on the phone.
- *
- * Like the banner, a brand looks the same in both themes, so these do not
- * come from the scheme. The brand colour itself travels with the app's entry
- * in CloudApps; these are the two it is paired with.
+ * Ente's own green, for Ente's tile while Ente is not on the phone - once it
+ * is, its real icon is drawn instead. A brand looks the same in both themes,
+ * so this does not come from the scheme; [OnBrand] is drawn on it.
  */
-val OtherAppPlainTile = Color(0xFFFFFFFF)
-val OnOtherAppPlainTile = Color(0xFF1B1B1F)
+val EnteGreen = Color(0xFF08C225)
 
 // Brand tones used by gradients and the logo.
 //

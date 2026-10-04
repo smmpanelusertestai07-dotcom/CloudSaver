@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -32,17 +31,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,7 +58,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,24 +68,22 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.BackupScope
-import app.cloudsaver.core.logic.CloudCapability
-import app.cloudsaver.core.logic.CloudPromise
 import app.cloudsaver.core.logic.OnboardingSteps
 import app.cloudsaver.core.logic.OnboardingSteps.Step
 import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
-import app.cloudsaver.data.CloudApp
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AlbumGrid
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
-import app.cloudsaver.ui.components.CloudAppIcon
 import app.cloudsaver.ui.components.EmptyState
+import app.cloudsaver.ui.components.EnteIcon
+import app.cloudsaver.ui.components.EnteInstallButtons
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.ui.components.SegmentedChoice
@@ -616,14 +609,12 @@ fun OnboardingScreen(vm: AppViewModel) {
             }
 
             Step.CLOUD -> {
-                LaunchedEffect(Unit) { vm.detectAndPersistCloud() }
-                val detection by vm.cloudDetection.collectAsStateWithLifecycle()
+                val installed by vm.enteInstalled.collectAsStateWithLifecycle()
                 val link by vm.linkState.collectAsStateWithLifecycle()
-                // Saveable, not remembered: turning the phone sideways
-                // while the cloud picker is open used to close it and drop
-                // the choice half-made.
-                var picking by rememberSaveable { mutableStateOf(false) }
-                val chosen = detection.chosen
+                // Asked again every time the app comes back: the person this
+                // step sends off to install Ente returns to a step that
+                // already knows, without having to go back and forth.
+                LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshEnte() }
                 StepCard(
                     title = stringResource(R.string.onb5_title),
                     text = stringResource(R.string.cloud_intended),
@@ -631,63 +622,43 @@ fun OnboardingScreen(vm: AppViewModel) {
                     // has to read and do. Continuing past the double-backup
                     // card is the acknowledgement Z5.2 asks to record - the
                     // card was on screen, unconditionally, before this button.
+                    // Setup is not blocked without Ente: light copies are
+                    // still made, they just wait until Ente is there.
                     buttonLabel = stringResource(R.string.onb_done_next),
                     onButton = {
                         vm.acknowledgeDoubleBackup()
                         go(Step.READY)
                     }
                 ) {
-                    if (detection.installed.isEmpty()) {
-                        // Setup is not blocked - the app is still worth
-                        // running without a cloud app, it just cannot finish
-                        // the journey - so this explains rather than stops.
-                        Surface(
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            shape = RoundedCornerShape(Dimens.ControlCorner),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(
-                                    stringResource(R.string.cloud_none_title),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
-                                Text(
-                                    stringResource(R.string.cloud_none_body),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                            }
-                        }
-                    } else if (detection.needsChoice) {
-                        // More than one is installed and nothing is chosen
-                        // yet, so `chosen` is still the stored default - an
-                        // app that may not be on this phone at all. Saying
-                        // "Found: MEGA" to someone running Ente and Filen is
-                        // worse than saying nothing: it is a detection result
-                        // that was never detected.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        EnteIcon(installed = installed)
+                        Spacer(Modifier.width(10.dp))
                         Text(
-                            pluralStringResource(
-                                R.plurals.onb5_found_several,
-                                detection.installed.size,
-                                detection.installed.size
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.onb5_found, chosen.label),
+                            if (installed) {
+                                stringResource(R.string.onb5_found, EnteApp.LABEL)
+                            } else {
+                                stringResource(R.string.ente_missing_title)
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                     }
+                    if (!installed) {
+                        Text(
+                            stringResource(R.string.ente_missing_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        EnteInstallButtons(
+                            onInstall = { vm.installEnte(it) },
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                     // Z5.1: the one mistake that silently doubles a cloud
-                    // bill - the cloud app backing up Camera AND the
-                    // CloudSaver folder. Shown always, even when that app's
-                    // own folder list cannot be read.
+                    // bill - Ente backing up Camera AND the light copies.
+                    // Shown always, even when Ente's own folder list cannot
+                    // be read.
                     Surface(
                         color = MaterialTheme.colorScheme.tertiaryContainer,
                         shape = RoundedCornerShape(Dimens.ControlCorner),
@@ -708,42 +679,27 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
-                            if (chosen.packages.isNotEmpty()) {
-                                TextButton(onClick = { CloudApps.launch(context, chosen.id) }) {
+                            if (installed) {
+                                TextButton(onClick = { vm.openEnte() }) {
                                     Text(stringResource(R.string.double_backup_show))
                                 }
                             }
                         }
                     }
                     FolderPaths(options.layout)
-                    chosen.checklistRes?.let { res ->
-                        Text(
-                            stringResource(res),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
                     Text(
-                        cloudPromiseLine(chosen.id),
+                        stringResource(R.string.cl_ente),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        stringResource(R.string.promise_exact),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp)
                     )
-                    if (detection.needsChoice) {
-                        Text(
-                            stringResource(R.string.onb5_several),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    // Three buttons that used to be three Column children
-                    // with nothing between them, so they touched. Flowing
-                    // them puts a gap between the three and lets them share a
-                    // line where there is room for it, while on a narrow
-                    // phone at a large font each still gets a line of its
-                    // own. "Open %s" carries a cloud app's name, which is as
-                    // long as that company chose to make it.
+                    // Two buttons that wrap rather than run off a narrow
+                    // phone at a large font.
                     FlowRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -751,13 +707,13 @@ fun OnboardingScreen(vm: AppViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (chosen.packages.isNotEmpty()) {
+                        if (installed) {
                             OutlinedButton(onClick = {
-                                CloudApps.launch(context, chosen.id)
+                                vm.openEnte()
                                 vm.clearLinkState()
                             }) {
                                 Text(
-                                    stringResource(R.string.onb5_open, chosen.label),
+                                    stringResource(R.string.onb5_open, EnteApp.LABEL),
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -766,13 +722,6 @@ fun OnboardingScreen(vm: AppViewModel) {
                         OutlinedButton(onClick = { vm.verifyCloudLink() }) {
                             Text(
                                 stringResource(R.string.onb5_check),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        OutlinedButton(onClick = { picking = true }) {
-                            Text(
-                                stringResource(R.string.cloud_use_different),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -791,16 +740,6 @@ fun OnboardingScreen(vm: AppViewModel) {
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
-                }
-                if (picking) {
-                    CloudPickerDialog(
-                        current = chosen.id,
-                        onPick = {
-                            vm.chooseCloud(it)
-                            picking = false
-                        },
-                        onDismiss = { picking = false }
-                    )
                 }
             }
 
@@ -842,19 +781,15 @@ fun OnboardingScreen(vm: AppViewModel) {
                     stringResource(R.string.onb_ready_when),
                     speedSummary(options.speed)
                 )
-                val anyCloud = remember { CloudApps.anyInstalled(context) }
+                val enteHere = remember { EnteApp.isInstalled(context) }
                 SummaryLine(
                     stringResource(R.string.onb_ready_cloud),
-                    if (anyCloud) {
-                        CloudApps.byId(options.cloudSingle).label
-                    } else {
-                        stringResource(R.string.onb_ready_cloud_none)
-                    }
+                    if (enteHere) EnteApp.LABEL else stringResource(R.string.onb_ready_cloud_none)
                 )
                 // The summary is the last thing read before the app starts
                 // working, so the one condition that changes what "working"
                 // will achieve belongs on it.
-                if (!anyCloud) {
+                if (!enteHere) {
                     Text(
                         stringResource(R.string.cloud_none_body),
                         style = MaterialTheme.typography.bodySmall,
@@ -1190,20 +1125,6 @@ private fun speedSummary(speed: SpeedMode): String = stringResource(
     }
 )
 
-/** What can honestly be promised with the chosen cloud (J1). */
-@Composable
-fun cloudPromiseLine(cloudId: String): String {
-    val caps = CloudCapability.defaultsFor(cloudId)
-    return when (CloudPromise.forCloud(cloudId, caps)) {
-        CloudPromise.Promise.EXACT ->
-            stringResource(R.string.promise_exact)
-        CloudPromise.Promise.LEDGER_ONLY ->
-            stringResource(R.string.promise_ledger)
-        CloudPromise.Promise.UNKNOWN ->
-            stringResource(R.string.promise_unknown)
-    }
-}
-
 @Composable
 fun linkStateLine(state: AppViewModel.LinkState): String = when (state) {
     AppViewModel.LinkState.CONNECTED -> stringResource(R.string.link_connected)
@@ -1211,110 +1132,6 @@ fun linkStateLine(state: AppViewModel.LinkState): String = when (state) {
     AppViewModel.LinkState.NO_FOLDER -> stringResource(R.string.link_no_folder)
     AppViewModel.LinkState.NO_TRAFFIC -> stringResource(R.string.link_no_traffic)
     AppViewModel.LinkState.CANNOT_TELL -> stringResource(R.string.link_cannot_tell)
-}
-
-/** The one picker, shared by setup and Settings (A3). */
-@Composable
-fun CloudPickerDialog(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-        title = { Text(stringResource(R.string.opt_cloud)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    stringResource(R.string.cloud_section_e2ee),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                for (app in CloudApps.SELECTABLE.filter { it.e2ee }) {
-                    CloudPickRowSimple(app, current, onPick)
-                }
-                Text(
-                    stringResource(R.string.cloud_section_also),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 10.dp)
-                )
-                for (app in CloudApps.SELECTABLE.filter { !it.e2ee }) {
-                    CloudPickRowSimple(app, current, onPick)
-                }
-            }
-        }
-    )
-}
-
-@Composable
-private fun CloudPickRowSimple(
-    app: CloudApp,
-    current: String,
-    onPick: (String) -> Unit
-) {
-    val context = LocalContext.current
-    // Whether this cloud app is on the phone, asked again every time the app
-    // comes back to the foreground.
-    //
-    // Asked once and remembered for the life of the row, the answer went stale
-    // in the one situation this picker creates: the list says an app is not
-    // installed, the reader leaves to install it, comes back to a picker that
-    // was never closed - and the row still says nothing, because the question
-    // was only ever asked before they left. The package manager is asked once
-    // per row per return to the app, which is nothing, and never on a frame of
-    // scrolling.
-    var installed by remember(app.id) {
-        mutableStateOf(CloudApps.isAppInstalled(context, app.id))
-    }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        installed = CloudApps.isAppInstalled(context, app.id)
-    }
-    // A radio row like the one in Settings: the whole row picks the app, the
-    // dot says which one is picked, and a screen reader hears "selected".
-    // It used to be a text button, which tinted every app name in the
-    // accent colour and said which app was in use only in words.
-    Row(
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = Dimens.TouchTarget)
-            .selectable(
-                selected = app.id == current,
-                role = Role.RadioButton,
-                onClick = { onPick(app.id) }
-            )
-            .padding(vertical = 6.dp)
-    ) {
-        RadioButton(
-            selected = app.id == current,
-            onClick = null,
-            modifier = Modifier.padding(top = 2.dp)
-        )
-        Spacer(Modifier.width(10.dp))
-        // The app's own icon where the app is on the phone, its initial on
-        // its own colour where it is not - so "installed" is legible before
-        // the words are read, every row still has a face, and no third-party
-        // logo is ever shipped inside this APK.
-        CloudAppIcon(app = app, installed = installed)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(app.label, style = MaterialTheme.typography.bodyLarge)
-            // Three different rows, three different truths. "Other app" is
-            // not an app and can never be installed or missing, so it says
-            // what it actually is; the rest say plainly whether they are on
-            // this phone, because a row that said nothing when an app was
-            // absent left the reader to guess from a missing icon.
-            Text(
-                when {
-                    app.packages.isEmpty() -> stringResource(R.string.cloud_other_note)
-                    installed -> stringResource(R.string.cloud_installed_mark)
-                    else -> stringResource(R.string.cloud_not_installed_mark)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
 }
 
 /** Progress as dots: the active step is a wide pill, the rest are small. */

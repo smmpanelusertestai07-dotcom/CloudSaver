@@ -321,31 +321,27 @@ class SetupFlowTest {
     }
 
     @Test
-    fun `every cloud app in the picker has a face, installed or not`() {
-        // A row with an icon next to a row with nothing reads as broken,
-        // not as "not installed". The one component draws the phone's own
-        // icon for an installed app, a lettered tile for one that is not,
-        // and the plain cloud glyph for "no cloud app" - and both pickers
-        // use it, so setup and Settings cannot drift apart.
-        val icon = File("src/main/kotlin/app/cloudsaver/ui/components/CloudAppIcon.kt").readText()
-        assertTrue(icon.contains("if (installed) CloudApps.iconFor(context, app) else null"))
-        assertTrue(icon.contains("app.packages.isEmpty() -> Icon("))
-        assertTrue("a lettered tile for the rest", icon.contains("app.label.firstOrNull()?.uppercaseChar()"))
-        // The tile is the app's own colour: one grey circle for every app
-        // sat on a dialog of nearly the same grey in the light theme and
-        // vanished. A white brand gets a border instead of disappearing.
-        assertTrue("on the app's own colour", icon.contains(".background(brand ?: OtherAppPlainTile)"))
-        assertTrue("a white tile is outlined", icon.contains("it.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)"))
+    fun `Ente has a face, installed or not, and setup notices it arriving`() {
+        // Installed, Ente's own icon from the phone; not installed, a tile in
+        // Ente's green - never a logo shipped inside this APK.
+        val parts = File("src/main/kotlin/app/cloudsaver/ui/components/EnteParts.kt").readText()
+        assertTrue(parts.contains("if (installed) EnteApp.icon(context) else null"))
+        assertTrue(parts.contains(".background(EnteGreen)"))
         for (screen in listOf("OnboardingScreen.kt", "OptionsScreen.kt")) {
             val text = File("src/main/kotlin/app/cloudsaver/ui/screens/$screen").readText()
-            assertTrue("$screen must use the shared icon", text.contains("CloudAppIcon(app = app, installed = installed)"))
-            // Both lists invite leaving to install an app; both must notice
-            // it on the way back rather than show the answer from before.
+            assertTrue("$screen must use the shared icon", Regex("""EnteIcon\(installed = \w+\)""").containsMatchIn(text))
+            // Both invite leaving to install Ente; both must notice it on
+            // the way back rather than show the answer from before.
             assertTrue(
-                "$screen must ask again whether the app is installed on return",
-                Regex("""LifecycleEventEffect\(Lifecycle\.Event\.ON_RESUME\) \{\s+installed =""").containsMatchIn(text)
+                "$screen must ask again whether Ente is installed on return",
+                text.contains("LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshEnte() }")
             )
-            assertTrue("$screen picks with a radio row", text.contains("role = Role.RadioButton"))
+            assertTrue("$screen offers the three install pages", text.contains("EnteInstallButtons("))
         }
+        // The pages open in the phone's own store or browser; this app has no
+        // internet permission and downloads nothing itself.
+        val ente = File("src/main/kotlin/app/cloudsaver/data/EnteApp.kt").readText()
+        assertTrue(ente.contains("Intent(Intent.ACTION_VIEW, Uri.parse(source.uri))"))
+        assertTrue("the test stand-in is inert in a release build", ente.contains("(BuildConfig.DEBUG && assumeInstalledForTest)"))
     }
 }

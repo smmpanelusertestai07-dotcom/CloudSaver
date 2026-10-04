@@ -213,9 +213,7 @@ private fun MainNav(vm: AppViewModel) {
     // the app comes back to the foreground.
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         vm.refreshHealth()
-        // A cloud app installed after setup is found by the app, not
-        // by asking the user to go and correct a picker.
-        vm.adoptCloudIfObvious()
+        vm.refreshEnte()
     }
 
     // A lock that only ever asks once is not a lock: re-arm it whenever the

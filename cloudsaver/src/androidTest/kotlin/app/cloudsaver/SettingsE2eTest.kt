@@ -13,7 +13,6 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasNoClickAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -43,7 +42,7 @@ import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
@@ -146,6 +145,7 @@ class SettingsE2eTest {
         // Settings are process-wide state; leaving this suite's choices behind
         // would silently change what every later test starts from.
         writeKnownOptions()
+        EnteApp.assumeInstalledForTest = false
     }
 
     /** The starting point every test below asserts against. */
@@ -156,9 +156,7 @@ class SettingsE2eTest {
         repo.setString(OptionsRepo.K.SCOPE, BackupScope.ALL.name)
         repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
         repo.setString(OptionsRepo.K.OUTPUT_MODE, OutputMode.SINGLE.name)
-        repo.setString(OptionsRepo.K.CLOUD_SINGLE, DEFAULT_CLOUD)
-        repo.setString(OptionsRepo.K.CLOUD_PHOTOS, DEFAULT_CLOUD)
-        repo.setString(OptionsRepo.K.CLOUD_VIDEOS, DEFAULT_CLOUD)
+        repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
         repo.setString(OptionsRepo.K.SPEED, SpeedMode.SMART.name)
         repo.setInt(OptionsRepo.K.DAILY_CAP_MB, Defaults.DAILY_CAP_MB)
         repo.setInt(OptionsRepo.K.MIN_FREE_MB, Defaults.MIN_FREE_MB)
@@ -289,47 +287,26 @@ class SettingsE2eTest {
         compose.onNodeWithText(s(R.string.folder_pick_two)).performScrollTo().assertIsDisplayed()
     }
 
-    /** 4. Cloud app. */
+    /** 4. Ente Photos. */
     @Test
-    fun cloudAppIsPickedFromTheListAndSticks() {
-        openSettings()
+    fun enteCardOffersTheInstallPagesUntilEnteIsThere() {
         val hint = s(R.string.cloud_intended)
-        val from = CloudApps.byId(DEFAULT_CLOUD)
-        val to = CloudApps.SELECTABLE.first { it.id != from.id }
+        // No emulator has Ente: the card says so and offers the three places
+        // it is installed from, rather than a button that would do nothing.
+        EnteApp.assumeInstalledForTest = false
+        openSettings()
+        assertCardValue(hint, s(R.string.cloud_not_installed_mark))
+        for (label in listOf(R.string.ente_install_play, R.string.ente_install_fdroid, R.string.ente_install_web)) {
+            compose.onNodeWithText(s(label)).performScrollTo().assertIsDisplayed()
+        }
+        compose.onNodeWithText(s(R.string.cl_ente)).performScrollTo().assertIsDisplayed()
 
-        assertCardValue(hint, from.label)
-        compose.onNodeWithText("${s(R.string.cloud_for_all)}: ${from.label}")
-            .performScrollTo()
-            .performClick()
-
-        // The dialog's own section heading, not its title: the title repeats the
-        // card title behind it, so waiting on that would wait for nothing.
-        awaitNode(hasText(s(R.string.cloud_section_e2ee)), "the cloud picker never opened")
-        val order = CloudApps.SELECTABLE.filter { it.e2ee } + CloudApps.SELECTABLE.filter { !it.e2ee }
-        val row = order.indexOfFirst { it.id == to.id }
-        assertTrue("${to.id} is missing from the cloud picker", row >= 0)
-        // Matched by the name on the row, not by its position among every
-        // radio button the app has. The settings screen behind this dialog
-        // carries nine segmented choices, and each of their options reports
-        // itself as a radio button so a screen reader can say which one is
-        // on - so an index into "all radio buttons" stopped meaning the
-        // picker's rows and started meaning whichever control happened to
-        // come first in the tree.
-        val pick = isRadioButton and hasText(to.label)
-        compose.onNode(pick).performScrollTo().performClick()
-        awaitOption("cloud app") { it.cloudSingle == to.id }
-        compose.onNode(pick).assertIsSelected()
-
-        compose.onNodeWithText(s(R.string.ok)).performClick()
-        awaitNodeGone(hasText(s(R.string.cloud_section_e2ee)), "the cloud picker stayed up")
-        assertCardValue(hint, to.label)
-        compose.onNodeWithText("${s(R.string.cloud_for_all)}: ${to.label}")
-            .performScrollTo()
-            .assertIsDisplayed()
-
+        // Back from installing it: the card knows without being reopened.
+        EnteApp.assumeInstalledForTest = true
         recreateAndOpenSettings()
-        assertEquals(to.id, options().cloudSingle)
-        assertCardValue(hint, to.label)
+        assertCardValue(hint, s(R.string.cloud_installed_mark))
+        compose.onNodeWithText(context.getString(R.string.onb5_open, EnteApp.LABEL)).performScrollTo().assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithText(s(R.string.ente_install_play)).fetchSemanticsNodes().size)
     }
 
     /** 5. Speed, and 6. Daily upload limit. */
@@ -913,12 +890,9 @@ class SettingsE2eTest {
     private fun placeholderPrefix(id: Int): String = context.getString(id, "").trim()
 
     private companion object {
-        const val DEFAULT_CLOUD = "ente"
         const val PHOTOS_SHOULD_SURVIVE = "the media type was lost across a recreate"
 
         val isCheckbox: SemanticsMatcher =
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox)
-        val isRadioButton: SemanticsMatcher =
-            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
     }
 }

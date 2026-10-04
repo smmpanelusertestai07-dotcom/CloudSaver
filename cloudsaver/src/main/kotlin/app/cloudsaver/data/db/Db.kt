@@ -1162,7 +1162,8 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
-         * v8 records the folder each copy was released into.
+         * v8 records the folder each copy was released into, and forgets
+         * other cloud apps.
          *
          * Every copy released so far went to the folder its layout named, so
          * that is filled in from the layout column; a copy released before
@@ -1179,6 +1180,9 @@ abstract class AppDb : RoomDatabase() {
                         "ELSE '${Defaults.LEGACY_OUTPUT_DIR}' END " +
                         "WHERE `outputUri` IS NOT NULL OR `releasedAt` IS NOT NULL"
                 )
+                // Ente Saver works with Ente Photos only. What was learned
+                // about other cloud apps describes apps it no longer talks to.
+                connection.execSQL("DELETE FROM `cloud_capability` WHERE `cloudId` != 'ente'")
             }
         }
 

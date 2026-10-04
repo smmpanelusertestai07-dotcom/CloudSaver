@@ -21,7 +21,7 @@ import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.StateMachine
 import app.cloudsaver.core.logic.Stops
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
@@ -133,7 +133,7 @@ class MaintainEngine(private val context: Context) {
         val volumeMissing = o.storageVolume.isNotEmpty() &&
             Volumes.byName(context, o.storageVolume) == null
         if (volumeMissing) {
-            step { verifyBatches(o, now) }
+            step { verifyBatches(now) }
             step { ageEvidence(now) }
             step { dailySnapshot(o, now) }
             if (now - o.volumeWarnedAt > 86_400_000L) {
@@ -165,8 +165,8 @@ class MaintainEngine(private val context: Context) {
         step { promoteGone(now) }
         step { pruneRoots(o) }
         step { foreignFiles(o, entries) }
-        step { pacedEvidence(o, now) }
-        step { verifyBatches(o, now) }
+        step { pacedEvidence(now) }
+        step { verifyBatches(now) }
         step { ageEvidence(now) }
         step { selfHealStage(now) }
         step { originalsPresence(now) }
@@ -220,7 +220,7 @@ class MaintainEngine(private val context: Context) {
         step { repairStalePending(now) }
         step { detectGone(o, now, entries, summary) }
         step { promoteGone(now) }
-        step { pacedEvidence(o, now) }
+        step { pacedEvidence(now) }
         activity.recordIfAny(ActivityLog.Kind.BACKED_UP, summary.confirmed)
         return summary.confirmed
     }
@@ -242,7 +242,7 @@ class MaintainEngine(private val context: Context) {
         val presentNames = namesByFolder(entries)
         val confirmActive = o.confirmFlowStartedAt > 0 &&
             now - o.confirmFlowStartedAt <= Defaults.CONFIRM_WINDOW_MS
-        val caps = watchdog.capsFor(o.cloudSingle)
+        val caps = watchdog.caps()
         val quietMs = CloudCapability.resendQuietPeriodMs(caps)
         // A whole folder can vanish at once, and rows released together share
         // a window; querying network stats per row would then mean hundreds of
@@ -257,7 +257,7 @@ class MaintainEngine(private val context: Context) {
             val evidence = evidenceOf(row)
             val releasedAt = row.releasedAt ?: now
             val fileBytes = row.outputBytes ?: 0L
-            val tx = txCache.getOrPut(releasedAt) { txSinceRelease(o, releasedAt, now) ?: 0L }
+            val tx = txCache.getOrPut(releasedAt) { txSinceRelease(releasedAt, now) ?: 0L }
 
             // A copy that already carried evidence and then vanished is simply
             // finished. Re-sending it would say the app trusts its own earlier
@@ -315,7 +315,7 @@ class MaintainEngine(private val context: Context) {
                     // Only a cloud that removes its own uploads behaves this
                     // way, so this is also how the app learns what it is
                     // talking to - without ever asking the user.
-                    watchdog.learnFreeUp(o.cloudSingle, now)
+                    watchdog.learnFreeUp(now)
                     summary.confirmed++
                 }
 
@@ -513,7 +513,7 @@ class MaintainEngine(private val context: Context) {
      * a byte total says something about the pair and nothing about either, and
      * a claim about the wrong file is worse than no claim at all.
      */
-    private suspend fun pacedEvidence(o: Options, now: Long) {
+    private suspend fun pacedEvidence(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         val released = db.items().awaitingEvidence()
             .mapNotNull { row -> row.releasedAt?.let { row to it } }
@@ -529,7 +529,7 @@ class MaintainEngine(private val context: Context) {
         val row = waiting.first()
         val fileBytes = row.outputBytes ?: return
         val releasedAt = row.releasedAt ?: return
-        val tx = txSinceRelease(o, releasedAt, now) ?: return
+        val tx = txSinceRelease(releasedAt, now) ?: return
         if (!EvidenceRules.confirmedPaced(tx, fileBytes)) return
         db.items().update(
             row.copy(
@@ -556,7 +556,7 @@ class MaintainEngine(private val context: Context) {
      * deletion. So the batches are settled oldest first against one cumulative
      * total: a transmitted byte can only pay for one batch.
      */
-    private suspend fun verifyBatches(o: Options, now: Long) {
+    private suspend fun verifyBatches(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         val pending = db.batches().unverified()
             .filter { it.totalBytes > 0 && it.cloudPackage != null }
@@ -574,7 +574,7 @@ class MaintainEngine(private val context: Context) {
         // make an entry of this map stale.
         val releasedByBatch = db.items().released().groupBy { it.batchId }
         for ((pkg, batches) in pending.groupBy { it.cloudPackage!! }) {
-            val uid = CloudApps.uidOf(context, pkg) ?: continue
+            val uid = EnteApp.uidOf(context, pkg) ?: continue
             val since = batches.first().releasedAt
             val tx = UsageVerifier.txBytesForUid(context, uid, since, now) ?: continue
             var required = 0L
@@ -664,12 +664,11 @@ class MaintainEngine(private val context: Context) {
     ): Boolean {
         val waiting = db.items().awaitingEvidence()
         val waitingBytes = waiting.sumOf { it.outputBytes ?: 0L }
-        val tx = txSinceRelease(o, now - CloudWatchdog.SILENCE_MS, now)
+        val tx = txSinceRelease(now - CloudWatchdog.SILENCE_MS, now)
         val shrank = o.lastOutputCount > 0 && entries.size < o.lastOutputCount
         repo.setInt(OptionsRepo.K.LAST_OUTPUT_COUNT, entries.size)
 
         val verdict = watchdog.check(
-            cloudId = o.cloudSingle,
             waitingCopies = waiting.size,
             waitingBytes = waitingBytes,
             txLastWindow = tx,
@@ -739,7 +738,7 @@ class MaintainEngine(private val context: Context) {
      * count into evidence about a specific file.
      */
     private suspend fun pacedRelease(o: Options, now: Long, summary: Summary) {
-        val caps = watchdog.capsFor(o.cloudSingle)
+        val caps = watchdog.caps()
         val oracle = CloudCapability.hasDisappearanceOracle(caps)
         val inFlight = db.items().awaitingEvidence().mapNotNull { it.releasedAt }
         val slots = Pacing.slotsFree(inFlight, now, oracle, o.cleanConfirmStreak)
@@ -804,16 +803,14 @@ class MaintainEngine(private val context: Context) {
 
         val released = db.items().released()
         val waiting = released.count { evidenceOf(it).ordinal < Evidence.VERIFIED.ordinal }
-        val cloudPkg = CloudApps.installedPackage(context, CloudApps.byId(o.cloudSingle))
-        // "Other app" has no package to detect, so installedPackage() is null
-        // for it. Treating that as "no cloud app" pauses deletion forever: the
-        // copies pile up, hit the extra-space limit, and compression stops for
-        // good. Availability follows the same rule the health check uses; with
-        // no package there is simply no traffic to measure, so deletion falls
-        // back to the age rule in DeletePlanner.
-        val cloudAvailable = CloudApps.isAppInstalled(context, o.cloudSingle)
+        val cloudPkg = EnteApp.installedPackage(context)
+        // Availability follows the same rule the health check uses. Where
+        // Ente's traffic cannot be measured (no Usage Access), deletion falls
+        // back to the age rule in DeletePlanner rather than stopping for good
+        // - copies piling up past the space limit would stop compression too.
+        val cloudAvailable = EnteApp.isInstalled(context)
         val tx3d = cloudPkg?.let { pkg ->
-            CloudApps.uidOf(context, pkg)?.let { uid ->
+            EnteApp.uidOf(context, pkg)?.let { uid ->
                 UsageVerifier.txBytesForUid(
                     context, uid, now - Defaults.SAFETY_TX_DAYS * 86_400_000L, now
                 )
@@ -940,10 +937,9 @@ class MaintainEngine(private val context: Context) {
         return carried
     }
 
-    /** Bytes the chosen cloud app transmitted since [from]; null if unmeasurable. */
-    private fun txSinceRelease(o: Options, from: Long, now: Long): Long? {
-        val pkg = CloudApps.installedPackage(context, CloudApps.byId(o.cloudSingle)) ?: return null
-        val uid = CloudApps.uidOf(context, pkg) ?: return null
+    /** Bytes Ente transmitted since [from]; null if unmeasurable. */
+    private fun txSinceRelease(from: Long, now: Long): Long? {
+        val uid = EnteApp.uid(context) ?: return null
         return UsageVerifier.txBytesForUid(context, uid, from, now)
     }
 

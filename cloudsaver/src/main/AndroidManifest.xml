@@ -29,20 +29,12 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
-    <!-- Supported cloud backup apps: needed for install detection, launch intents
-         and per-UID upload verification. -->
+    <!-- Ente Photos, in its three builds: needed to find it, open it and
+         measure its uploads. No other app is looked up. -->
     <queries>
         <package android:name="io.ente.photos" />
         <package android:name="io.ente.photos.independent" />
         <package android:name="io.ente.photos.fdroid" />
-        <package android:name="mega.privacy.android.app" />
-        <package android:name="me.proton.android.drive" />
-        <package android:name="io.filen.app" />
-        <package android:name="com.nextcloud.client" />
-        <package android:name="com.google.android.apps.photos" />
-        <package android:name="app.alextran.immich" />
-        <package android:name="com.dropbox.android" />
-        <package android:name="com.microsoft.skydrive" />
     </queries>
 
     <!-- Android's own Auto Backup would copy this app's database and settings

@@ -55,7 +55,7 @@ class ErrandTest {
         assertTrue(oem.contains("} catch (e: Exception) {\n            Errand.cancel()\n            false"))
         val power = File(main, "util/PowerPages.kt").readText()
         assertTrue(power.contains("// Try the next component; skins rename these between versions.\n                Errand.cancel()"))
-        assertTrue(File(main, "data/CloudApps.kt").readText().contains("Errand.cancel()"))
+        assertTrue(File(main, "data/EnteApp.kt").readText().contains("Errand.cancel()"))
         assertTrue(File(main, "ui/AppViewModel.kt").readText().contains("Errand.cancel()"))
     }
 
@@ -101,7 +101,7 @@ class ErrandTest {
         // the absence rather than by a number that happens to still hold.
         val names = launchers.map { it.name }.toSet()
         for (expected in listOf(
-            "OemPages.kt", "PowerPages.kt", "AlbumPicker.kt", "AppViewModel.kt", "CloudApps.kt"
+            "OemPages.kt", "PowerPages.kt", "AlbumPicker.kt", "AppViewModel.kt", "EnteApp.kt"
         )) {
             assertTrue("$expected no longer appears to launch anything", expected in names)
         }

@@ -4,16 +4,16 @@ import android.content.Context
 import android.content.pm.PackageManager
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.CloudCapability
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.EnteApp
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.CloudCapabilityRow
 
 /**
- * Watches the cloud app the user chose, and stops deleting anything the
- * moment that app stops behaving like a working backup.
+ * Watches Ente Photos, and stops deleting anything the moment it stops
+ * behaving like a working backup.
  *
- * The whole product rests on one assumption - that some other app is quietly
- * uploading the folder. When that stops being true, the dangerous thing is
+ * The whole product rests on one assumption - that Ente is quietly uploading
+ * the folder. When that stops being true, the dangerous thing is
  * not that copies pile up; it is that the app keeps reclaiming space against
  * evidence that is no longer arriving. So every failing check pauses
  * deletion, and only deletion: compressing and releasing continue, because
@@ -47,19 +47,18 @@ class CloudWatchdog(private val context: Context) {
      * @param folderShrank  whether the upload folder got smaller recently
      */
     suspend fun check(
-        cloudId: String,
         waitingCopies: Int,
         waitingBytes: Long,
         txLastWindow: Long?,
         folderShrank: Boolean,
         now: Long = System.currentTimeMillis()
     ): Verdict {
-        val app = CloudApps.byId(cloudId)
-        val pkg = CloudApps.installedPackage(context, app)
+        val pkg = EnteApp.installedPackage(context)
 
-        // "Other app" has no package to inspect; nothing here can be checked,
-        // and holding deletions forever on that basis would jam the pipeline.
-        if (app.packages.isEmpty()) return Verdict(null, null)
+        // Installed but with nothing to inspect - only ever the debug builds'
+        // test stand-in - is treated as nothing to report rather than as
+        // missing, so the pipeline is testable on a phone without Ente.
+        if (pkg == null && EnteApp.isInstalled(context)) return Verdict(null, null)
 
         if (pkg == null) {
             return Verdict(
@@ -69,14 +68,14 @@ class CloudWatchdog(private val context: Context) {
         }
 
         val version = versionCodeOf(pkg)
-        val stored = db.capabilities().byId(cloudId)
-        val caps = CloudCapability.defaultsFor(cloudId)
+        val stored = db.capabilities().byId(EnteApp.ID)
+        val caps = CloudCapability.ENTE
         val updated = stored != null && stored.lastSeenVersionCode != 0L &&
             version != 0L && stored.lastSeenVersionCode != version
 
         db.capabilities().put(
             CloudCapabilityRow(
-                cloudId = cloudId,
+                cloudId = EnteApp.ID,
                 hasFreeUpSpace = stored?.hasFreeUpSpace ?: caps.hasFreeUpSpace,
                 hasHashDedupe = stored?.hasHashDedupe ?: caps.hasHashDedupe,
                 packageName = pkg,
@@ -121,19 +120,19 @@ class CloudWatchdog(private val context: Context) {
     }
 
     /**
-     * Records that this cloud removes its own uploads.
+     * Records that Ente was seen removing its own uploads.
      *
-     * Called when a released copy disappeared while the app was transmitting
-     * its bytes - behaviour only a cloud with a free-up feature has. Learning
-     * it here means the app adapts to a cloud the registry never knew about.
+     * Called when a released copy disappeared while Ente was transmitting its
+     * bytes. Ente is known to do this; the record says it has also been seen
+     * doing it on this phone.
      */
-    suspend fun learnFreeUp(cloudId: String, now: Long = System.currentTimeMillis()) {
-        val stored = db.capabilities().byId(cloudId)
+    suspend fun learnFreeUp(now: Long = System.currentTimeMillis()) {
+        val stored = db.capabilities().byId(EnteApp.ID)
         if (stored?.learnedFreeUp == true) return
-        val caps = CloudCapability.defaultsFor(cloudId)
+        val caps = CloudCapability.ENTE
         db.capabilities().put(
             CloudCapabilityRow(
-                cloudId = cloudId,
+                cloudId = EnteApp.ID,
                 hasFreeUpSpace = true,
                 hasHashDedupe = stored?.hasHashDedupe ?: caps.hasHashDedupe,
                 packageName = stored?.packageName,
@@ -144,10 +143,10 @@ class CloudWatchdog(private val context: Context) {
         )
     }
 
-    /** Stored capabilities if we have them, registry defaults otherwise. */
-    suspend fun capsFor(cloudId: String): CloudCapability.Caps {
-        val stored = db.capabilities().byId(cloudId)
-        val defaults = CloudCapability.defaultsFor(cloudId)
+    /** Stored capabilities if we have them, Ente's own otherwise. */
+    suspend fun caps(): CloudCapability.Caps {
+        val stored = db.capabilities().byId(EnteApp.ID)
+        val defaults = CloudCapability.ENTE
         return CloudCapability.Caps(
             hasFreeUpSpace = stored?.hasFreeUpSpace ?: defaults.hasFreeUpSpace,
             hasHashDedupe = stored?.hasHashDedupe ?: defaults.hasHashDedupe

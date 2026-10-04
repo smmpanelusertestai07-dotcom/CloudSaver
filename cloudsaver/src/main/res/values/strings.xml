@@ -62,8 +62,7 @@
     <string name="skip_duplicate">Already handled once</string>
     <string name="skip_returned_copy">Already optimised \u2014 came back from your cloud</string>
     <string name="chip_usage">Usage access off</string>
-    <string name="chip_cloud">No cloud app</string>
-    <string name="chip_cloud_gone">Cloud app is gone</string>
+    <string name="chip_cloud">Ente Photos is not installed</string>
     <string name="partial_title">CloudSaver can only see the photos you picked</string>
     <string name="partial_body">To back up your gallery it needs access to all photos. Until then nothing is scanned, and no total is shown.</string>
     <string name="partial_action">Allow all photos</string>
@@ -81,10 +80,8 @@
     <string name="chain_success_title">Your first file reached %1$s</string>
     <string name="chain_success_body">Everything is working. From here on, backup runs on its own.</string>
     <string name="chain_stalled_title">Your first file has not been collected yet</string>
-    <string name="chain_stalled_body">Two likely causes: %1$s is not backing up the CloudSaver folder, or it has not run yet. Its checklist shows where to look.</string>
-    <string name="chain_open_checklist">Open the checklist</string>
-    <string name="cloud_switch_title">Files already sent stay where they are</string>
-    <string name="cloud_switch_body">Files already sent to %1$s are stored there, not in %2$s. CloudSaver will not send them again.</string>
+    <string name="chain_stalled_body">Two likely causes: %1$s is not backing up the CloudSaver folder, or it has not run yet. Open it and check Settings, Backup, Backed up folders.</string>
+    <string name="chain_open_checklist">Open Ente Photos</string>
     <string name="detail_holding_app">Stored in</string>
     <string name="daily_limit_note">This limits how much CloudSaver adds to the upload folder each day, which is what your cloud app then uploads. When and on which network that app uploads is set inside that app.</string>
     <string name="chip_space">Storage low</string>
@@ -233,22 +230,21 @@
     <string name="activity_reclaimed">Freed up %1$s originals, recovering %2$s</string>
     <string name="activity_paused">CloudSaver paused itself</string>
     <string name="activity_resumed">CloudSaver started again</string>
-    <string name="activity_cloud_problem">Your cloud app needs attention</string>
+    <string name="activity_cloud_problem">Ente Photos needs attention</string>
     <string name="activity_skipped">A file was skipped</string>
     <string name="activity_settings">Settings changed</string>
     <string name="activity_recovered">State restored from a safety snapshot</string>
     <string name="activity_removed_early">%1$s kept disappearing before upload</string>
     <string name="activity_pending_repaired">Finished publishing files a previous run left half-written</string>
-    <string name="activity_cloud_adopted">Found %1$s on this phone and set it as your cloud app</string>
     <string name="activity_reclaim_skipped">%1$s was left alone - CloudSaver could not confirm it was safe</string>
-    <string name="activity_cloud_ok">Your cloud app is uploading again</string>
+    <string name="activity_cloud_ok">Ente Photos is uploading again</string>
 
     <!-- cloud health -->
-    <string name="cloud_problem_missing">Your cloud app is not installed any more. Nothing will be deleted until it is back.</string>
-    <string name="cloud_problem_updated">Your cloud app updated. Check that its backup is still on and still pointing at the CloudSaver folder.</string>
-    <string name="cloud_problem_silent">Your cloud app has not uploaded anything for three days. Open it and check it is signed in and allowed to run.</string>
-    <string name="cloud_problem_full">Your cloud may be full. Nothing will be deleted until uploads start again.</string>
-    <string name="warn_cloud_title">Your cloud app needs attention</string>
+    <string name="cloud_problem_missing">Ente Photos is not installed any more. Nothing will be deleted until it is back.</string>
+    <string name="cloud_problem_updated">Ente Photos updated. Check that backup is still on and the CloudSaver folder is still in its backed up folders.</string>
+    <string name="cloud_problem_silent">Ente Photos has not uploaded anything for three days. Open it and check you are signed in and backup is on.</string>
+    <string name="cloud_problem_full">Your Ente storage may be full. Nothing will be deleted until uploads start again.</string>
+    <string name="warn_cloud_title">Ente Photos needs attention</string>
 
     <!-- storage -->
     <string name="storage_stage">Working on these now</string>
@@ -502,20 +498,19 @@
     <string name="output_switch_note">Switching layout never deletes anything. Files already in the old folder stay there and are still uploaded; new files go to the new layout, and CloudSaver keeps watching both until the old one is empty.</string>
     <string name="output_single">Single</string>
     <string name="output_separate">Separate</string>
-    <string name="opt_cloud">Cloud app</string>
-    <string name="cloud_for_all">Cloud app</string>
-    <string name="cloud_for_photos">For photos</string>
-    <string name="cloud_for_videos">For videos</string>
-    <!-- What the button on the Cloud app setting reads: which files, then which app. -->
-    <string name="cloud_button_label">%1$s: %2$s</string>
-    <string name="cloud_intended">CloudSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that store files exactly as sent. Clouds like Google Photos and OneDrive already make photos smaller for you.</string>
-    <string name="cloud_recommended">Recommended: end-to-end encrypted, independently audited, removes files after upload, and skips duplicates by content.</string>
+    <string name="opt_cloud">Ente Photos</string>
+    <string name="cloud_intended">Ente Photos uploads the folder of light copies, end-to-end encrypted, and keeps every file exactly as sent. Ente\u2019s own free up space then removes the copies it has, which is how CloudSaver knows they arrived.</string>
+    <string name="ente_missing_title">Ente Photos is not on this phone yet</string>
+    <string name="ente_missing_body">Install it from one of these, sign in, then come back. Light copies are made in the meantime; nothing can be freed until Ente has them.</string>
+    <string name="ente_install_play">Play Store</string>
+    <string name="ente_install_fdroid">F-Droid</string>
+    <string name="ente_install_web">Ente website</string>
+    <string name="ente_only_title">Now for Ente Photos only</string>
+    <string name="ente_only_body">Copies already uploaded by %1$s stay in that account. From now on, light copies are made for Ente Photos, and nothing on this phone was changed or deleted.</string>
+    <string name="ente_only_other_app">your other cloud app</string>
+    <string name="ente_only_get">Set up Ente Photos</string>
     <string name="cloud_installed_mark">Installed on this phone</string>
     <string name="cloud_not_installed_mark">Not on this phone yet</string>
-    <string name="cloud_other_note">For a cloud app not listed here. Set it to back up the CloudSaver folder yourself.</string>
-    <string name="cloud_section_e2ee">Best fit (E2EE)</string>
-    <string name="cloud_section_also">Also works</string>
-    <string name="cloud_section_unsupported">Can\u2019t be used with CloudSaver</string>
     <string name="opt_speed">Speed</string>
     <string name="opt_speed_hint">When the app is allowed to optimise.</string>
     <string name="speed_smart">Smart</string>
@@ -747,16 +742,7 @@
     <string name="calc_pace">Last 30 days: %1$s GB added.</string>
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
-    <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · \"Backup only new photos\" OFF · Backed up folders → CloudSaver, and nothing else.</string>
-    <string name="cl_mega">In MEGA: Camera uploads folder = CloudSaver · Video quality = Original (else MEGA makes your videos smaller a second time) · Note: MEGA has no duplicate check, so a self-healed copy may upload twice.</string>
-    <string name="cl_filen">In Filen: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
-    <string name="cl_proton">In Proton Drive: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
-    <string name="cl_nextcloud">In Nextcloud: Auto upload → add the CloudSaver folder, and nothing else.</string>
-    <string name="cl_immich">In Immich: backup album = CloudSaver only.</string>
-    <string name="cl_onedrive">In OneDrive: back up the CloudSaver folder and no other. Note: not end-to-end encrypted - OneDrive can see your files.</string>
-    <string name="cl_other">In your app: pick the CloudSaver folder yourself and back up only that folder.</string>
-    <string name="cl_gphotos_no">Its backup cannot leave out the Camera folder, so originals would upload too. Google Photos also has its own Storage saver.</string>
-    <string name="cl_dropbox_no">Its phone app backs up the camera roll only, never a folder you choose.</string>
+    <string name="cl_ente">In Ente: Settings, Backup. Backed up folders: the CloudSaver folder only, not Camera. Backup videos on. Backup over mobile data as you like.</string>
 
     <!-- onboarding -->
     <string name="app_tagline">Save your cloud space \u2014 light copies, untouched originals.</string>
@@ -817,19 +803,13 @@
     <string name="onb4_text">Lets CloudSaver see how much the cloud app uploaded - used to verify uploads.</string>
     <string name="onb4_grant">Grant usage access</string>
     <string name="onb4_granted">Usage access is on. CloudSaver can confirm uploads by the amount your cloud app sends.</string>
-    <string name="onb5_title">Point your cloud app here</string>
+    <string name="onb5_title">Back up with Ente Photos</string>
     <string name="onb5_open">Open %1$s</string>
     <string name="onb6_running">Optimising\u2026</string>
 
     <!-- setup: cloud step, power, folders, promises -->
     <string name="onb5_found">Found: %1$s</string>
-    <plurals name="onb5_found_several">
-        <item quantity="one">Found %1$d cloud app \u2014 pick which one to use below.</item>
-        <item quantity="other">Found %1$d cloud apps \u2014 pick which one to use below.</item>
-    </plurals>
-    <string name="onb5_several">More than one cloud app is installed, so nothing was chosen for you. Pick the one you want to use.</string>
     <string name="onb5_check">Check the connection</string>
-    <string name="cloud_use_different">Use a different app</string>
     <string name="power_battery">Battery optimisation (optional)</string>
     <string name="power_auto_launch">Allow auto-launch</string>
     <string name="power_background">Allow background activity</string>
@@ -841,11 +821,9 @@
     <string name="power_open">Open</string>
     <string name="folder_pick_one">In your cloud app, back up only this folder:</string>
     <string name="folder_pick_two">In your cloud app, back up only these folders:</string>
-    <string name="promise_exact">Your cloud app removes files after upload and skips duplicates, so confirmation is exact and a re-sent file never becomes a second copy.</string>
-    <string name="promise_ledger">Your cloud app has no duplicate check. CloudSaver never re-sends a file it has already confirmed, so duplicates are avoided from our side, but we cannot control what the app itself does.</string>
-    <string name="promise_unknown">Your cloud app has no duplicate check, and we cannot detect its abilities, so confirmation uses upload size and time. CloudSaver never re-sends a file it has already confirmed.</string>
+    <string name="promise_exact">Ente removes copies after upload and skips duplicates, so confirmation is exact and a re-sent file never becomes a second copy.</string>
     <string name="link_connected">Looks connected - your cloud app is installed, the folder has files, and it has been uploading.</string>
-    <string name="link_no_app">That cloud app is not installed. Install it, or pick a different one.</string>
+    <string name="link_no_app">Ente Photos is not installed. Install it with one of the buttons above.</string>
     <string name="link_no_folder">The upload folder is still empty. Come back after CloudSaver has optimised its first files.</string>
     <string name="link_no_traffic">Your cloud app has not uploaded anything in the last day. Open it and check the folder is selected and backup is on.</string>
     <string name="link_cannot_tell">Cannot check upload activity without Usage access. The folder is ready either way.</string>
@@ -873,7 +851,6 @@
     <string name="about_version_line">Version %1$s</string>
     <string name="about_requires_title">Works on your phone</string>
     <string name="about_partner">Two apps do the job: CloudSaver makes the smaller copies and puts them in one folder; the cloud app you already use uploads that folder. CloudSaver never uploads anything and never deletes an original on its own.</string>
-    <string name="cloud_none_title">No cloud app found on this phone</string>
     <string name="cloud_none_body">CloudSaver will still optimise your photos and videos on its usual schedule, and the smaller copies will wait in the Pictures/CloudSaver folder. Nothing is uploaded until you install a cloud app and point it at that folder, and until something collects them the copies use the space you allowed and no original can be offered for removal. You can finish setup now and install a cloud app whenever you like.</string>
     <string name="onb_ready_cloud_none">None installed yet</string>
     <string name="about_trademarks">Ente, MEGA, Filen, Proton Drive, Nextcloud, Immich, OneDrive, Google Photos and Dropbox belong to their owners and are named here only to say which apps work with CloudSaver. CloudSaver is independent, and is not made by or connected with any of them.</string>

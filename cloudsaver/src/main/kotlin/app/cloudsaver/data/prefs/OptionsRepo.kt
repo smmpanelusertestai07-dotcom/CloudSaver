@@ -47,9 +47,12 @@ data class Options(
      * one-time note that Ente can stop backing that folder up.
      */
     val pastOutputRoots: Set<String> = emptySet(),
+    /**
+     * The cloud app an earlier version was set to. Ente Saver works with Ente
+     * Photos only; anything else here means the person used another app
+     * before 11, and Home says once what changed. Set to "ente" when read.
+     */
     val cloudSingle: String = "ente",
-    val cloudPhotos: String = "ente",
-    val cloudVideos: String = "ente",
     val speed: SpeedMode = SpeedMode.SMART,
     val dailyCapMb: Int = Defaults.DAILY_CAP_MB,
     val minFreeMb: Int = Defaults.MIN_FREE_MB,
@@ -66,8 +69,6 @@ data class Options(
     val placeholderRemoved: Boolean = false,
     /** The double-backup warning was read during setup (Z5.2). */
     val doubleBackupAck: Boolean = false,
-    /** Old cloud app id after a switch; "" once the sheet was shown (Z10.1). */
-    val cloudSwitchFrom: String = "",
     /** When the very first copy entered the upload folder (Z10.6). */
     val firstReleaseAt: Long = 0,
     /** Files in the upload folder that CloudSaver did not create (DD2.1). */
@@ -160,7 +161,6 @@ data class Options(
     val releasedSinceSample: Int = 0,
     /** A confirmation failed recently, so samples are taken twice as often. */
     val recentPacingFailure: Boolean = false,
-    val cloudDetected: Boolean = false,
     /** Files seen in the upload folder last pass, so a shrink is detectable. */
     val lastOutputCount: Int = 0,
     /** Active CloudWatchdog.Problem name, or "" when the cloud looks healthy. */
@@ -209,8 +209,6 @@ class OptionsRepo(private val context: Context) {
         val FOLDER_VIDEOS = stringPreferencesKey("folderVideos")
         val PAST_OUTPUT_ROOTS = stringSetPreferencesKey("pastOutputRoots")
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
-        val CLOUD_PHOTOS = stringPreferencesKey("cloudPhotos")
-        val CLOUD_VIDEOS = stringPreferencesKey("cloudVideos")
         val SPEED = stringPreferencesKey("speed")
         val DAILY_CAP_MB = intPreferencesKey("dailyCapMb")
         val MIN_FREE_MB = intPreferencesKey("minFreeMb")
@@ -230,7 +228,6 @@ class OptionsRepo(private val context: Context) {
         val ONBOARDING_DONE = booleanPreferencesKey("onboardingDone")
         val PLACEHOLDER_REMOVED = booleanPreferencesKey("placeholderRemoved")
         val DOUBLE_BACKUP_ACK = booleanPreferencesKey("doubleBackupAck")
-        val CLOUD_SWITCH_FROM = stringPreferencesKey("cloudSwitchFrom")
         val FIRST_RELEASE_AT = longPreferencesKey("firstReleaseAt")
         val FOREIGN_FILES = intPreferencesKey("foreignFiles")
         val RESTORE_DONE = booleanPreferencesKey("restoreDone")
@@ -256,7 +253,6 @@ class OptionsRepo(private val context: Context) {
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
         val RELEASED_SINCE_SAMPLE = intPreferencesKey("releasedSinceSample")
         val RECENT_PACING_FAILURE = booleanPreferencesKey("recentPacingFailure")
-        val CLOUD_DETECTED = booleanPreferencesKey("cloudDetected")
         val LAST_OUTPUT_COUNT = intPreferencesKey("lastOutputCount")
         val CLOUD_PROBLEM = stringPreferencesKey("cloudProblem")
         val ALERTS_MUTED_UNTIL = longPreferencesKey("alertsMutedUntil")
@@ -280,8 +276,6 @@ class OptionsRepo(private val context: Context) {
             folderVideos = p[K.FOLDER_VIDEOS] ?: "",
             pastOutputRoots = p[K.PAST_OUTPUT_ROOTS] ?: emptySet(),
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
-            cloudPhotos = p[K.CLOUD_PHOTOS] ?: "ente",
-            cloudVideos = p[K.CLOUD_VIDEOS] ?: "ente",
             speed = enumOr(p[K.SPEED], SpeedMode.SMART),
             // Snapped, so a limit stored by an older build still lands on one
             // of the chips instead of leaving the control looking unset.
@@ -303,7 +297,6 @@ class OptionsRepo(private val context: Context) {
             warningsNotif = p[K.WARNINGS_NOTIF] ?: true,
             placeholderRemoved = p[K.PLACEHOLDER_REMOVED] ?: false,
             doubleBackupAck = p[K.DOUBLE_BACKUP_ACK] ?: false,
-            cloudSwitchFrom = p[K.CLOUD_SWITCH_FROM] ?: "",
             firstReleaseAt = p[K.FIRST_RELEASE_AT] ?: 0,
             foreignFiles = p[K.FOREIGN_FILES] ?: 0,
             restoreDone = p[K.RESTORE_DONE] ?: false,
@@ -335,7 +328,6 @@ class OptionsRepo(private val context: Context) {
             cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,
             releasedSinceSample = p[K.RELEASED_SINCE_SAMPLE] ?: 0,
             recentPacingFailure = p[K.RECENT_PACING_FAILURE] ?: false,
-            cloudDetected = p[K.CLOUD_DETECTED] ?: false,
             lastOutputCount = p[K.LAST_OUTPUT_COUNT] ?: 0,
             cloudProblem = p[K.CLOUD_PROBLEM] ?: "",
             alertsMutedUntil = p[K.ALERTS_MUTED_UNTIL] ?: 0,
@@ -449,9 +441,6 @@ class OptionsRepo(private val context: Context) {
             "folderSingle" to o.folderSingle,
             "folderPhotos" to o.folderPhotos,
             "folderVideos" to o.folderVideos,
-            "cloudSingle" to o.cloudSingle,
-            "cloudPhotos" to o.cloudPhotos,
-            "cloudVideos" to o.cloudVideos,
             "speed" to o.speed.name,
             "dailyCapMb" to o.dailyCapMb.toString(),
             "minFreeMb" to o.minFreeMb.toString(),
@@ -486,9 +475,8 @@ class OptionsRepo(private val context: Context) {
             map["folderSingle"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_SINGLE] = it }
             map["folderPhotos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_PHOTOS] = it }
             map["folderVideos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_VIDEOS] = it }
-            map["cloudSingle"]?.let { p[K.CLOUD_SINGLE] = it }
-            map["cloudPhotos"]?.let { p[K.CLOUD_PHOTOS] = it }
-            map["cloudVideos"]?.let { p[K.CLOUD_VIDEOS] = it }
+            // "cloud*" keys from backups made before 11 are ignored: Ente
+            // Saver works with Ente Photos only.
             map["speed"]?.let { p[K.SPEED] = it }
             // Only values the UI itself offers. A hand-edited backup could
             // otherwise set an absurd minimum-free figure, which makes the

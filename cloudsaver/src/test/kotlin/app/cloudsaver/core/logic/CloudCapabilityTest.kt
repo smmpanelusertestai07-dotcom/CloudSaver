@@ -8,44 +8,31 @@ import org.junit.Test
 class CloudCapabilityTest {
 
     @Test
-    fun `an unknown cloud is assumed to do neither`() {
-        val caps = CloudCapability.defaultsFor("something-new")
-        assertFalse(caps.hasFreeUpSpace)
-        assertFalse(caps.hasHashDedupe)
+    fun `Ente frees up space and checks for duplicates`() {
+        assertTrue(CloudCapability.ENTE.hasFreeUpSpace)
+        assertTrue(CloudCapability.ENTE.hasHashDedupe)
     }
 
     @Test
     fun `only a cloud that frees up space can be believed when a copy vanishes`() {
-        assertTrue(
-            CloudCapability.hasDisappearanceOracle(CloudCapability.defaultsFor("ente"))
-        )
+        assertTrue(CloudCapability.hasDisappearanceOracle(CloudCapability.ENTE))
         assertFalse(
-            CloudCapability.hasDisappearanceOracle(CloudCapability.defaultsFor("mega"))
+            CloudCapability.hasDisappearanceOracle(
+                CloudCapability.Caps(hasFreeUpSpace = false, hasHashDedupe = false)
+            )
         )
     }
 
     @Test
-    fun `a cloud without hash de-duplication gets a day of patience`() {
-        // MEGA stores a re-sent file twice, so a slow upload must not be
-        // mistaken for a lost one.
+    fun `a cloud without duplicate checks gets a day of patience`() {
+        // A cloud that stores a re-sent file twice must not have a slow upload
+        // mistaken for a lost one. Ente collapses the re-send, so no wait.
         assertEquals(
             24 * 3_600_000L,
-            CloudCapability.resendQuietPeriodMs(CloudCapability.defaultsFor("mega"))
+            CloudCapability.resendQuietPeriodMs(
+                CloudCapability.Caps(hasFreeUpSpace = true, hasHashDedupe = false)
+            )
         )
-        assertEquals(
-            0L,
-            CloudCapability.resendQuietPeriodMs(CloudCapability.defaultsFor("ente"))
-        )
-    }
-
-    @Test
-    fun `every selectable cloud has an entry`() {
-        // A cloud the registry forgets silently falls back to the cautious
-        // defaults, which is safe but means the pipeline never adapts to it.
-        for (id in listOf("ente", "mega", "filen", "proton", "nextcloud", "immich", "onedrive", "other")) {
-            val caps = CloudCapability.defaultsFor(id)
-            // Present is what matters; the values themselves are the registry's.
-            assertEquals(caps, CloudCapability.defaultsFor(id))
-        }
+        assertEquals(0L, CloudCapability.resendQuietPeriodMs(CloudCapability.ENTE))
     }
 }
