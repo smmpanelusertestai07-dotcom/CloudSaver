@@ -53,11 +53,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.ListFilters
-import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.RowActions
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.AppViewModel
@@ -410,17 +408,11 @@ fun FilesScreen(vm: AppViewModel) {
                             }
                         )
                     }
-                    row.outputFolder?.let { folder ->
-                        // Where it went, so the folder to select in the cloud
-                        // app is never a guess.
-                        KeyValueRow(
-                            stringResource(R.string.detail_folder),
-                            Defaults.outFolderRelPath(
-                                runCatching {
-                                    OutFolder.valueOf(folder)
-                                }.getOrDefault(OutFolder.SINGLE)
-                            )
-                        )
+                    row.outputRelPath?.let { folder ->
+                        // Where it went, so the folder to select in Ente is
+                        // never a guess - the folder the copy really went to,
+                        // which after a move is not always today's.
+                        KeyValueRow(stringResource(R.string.detail_folder), folder)
                     }
                     row.skipReason?.let {
                         KeyValueRow(stringResource(R.string.detail_reason), it)

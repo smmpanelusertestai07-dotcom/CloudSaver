@@ -13,7 +13,10 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.FolderName
+import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
@@ -31,6 +34,19 @@ data class Options(
     val scope: BackupScope = BackupScope.ALL,
     val excludedBuckets: Set<String> = emptySet(),
     val outputMode: OutputMode = OutputMode.SINGLE,
+    /**
+     * The person's own folder for each kind of copy, as a relative path
+     * ("Pictures/My photos"), or "" for the default. See [OutputLayout].
+     */
+    val folderSingle: String = "",
+    val folderPhotos: String = "",
+    val folderVideos: String = "",
+    /**
+     * Folders copies were released into before the person changed where they
+     * go. Watched until no copy waits there any more, then dropped with a
+     * one-time note that Ente can stop backing that folder up.
+     */
+    val pastOutputRoots: Set<String> = emptySet(),
     val cloudSingle: String = "ente",
     val cloudPhotos: String = "ente",
     val cloudVideos: String = "ente",
@@ -179,6 +195,7 @@ data class Options(
     val dailyCapBytes: Long get() = if (dailyCapMb < 0) -1 else dailyCapMb * Defaults.MB
     val minFreeBytes: Long get() = minFreeMb * Defaults.MB
     val maxExtraBytes: Long get() = if (maxExtraMb < 0) -1 else maxExtraMb * Defaults.MB
+    val layout: OutputLayout get() = OutputLayout(outputMode, folderSingle, folderPhotos, folderVideos)
 }
 
 class OptionsRepo(private val context: Context) {
@@ -187,6 +204,10 @@ class OptionsRepo(private val context: Context) {
         val SCOPE = stringPreferencesKey("scope")
         val EXCLUDED_BUCKETS = stringSetPreferencesKey("excludedBuckets")
         val OUTPUT_MODE = stringPreferencesKey("outputMode")
+        val FOLDER_SINGLE = stringPreferencesKey("folderSingle")
+        val FOLDER_PHOTOS = stringPreferencesKey("folderPhotos")
+        val FOLDER_VIDEOS = stringPreferencesKey("folderVideos")
+        val PAST_OUTPUT_ROOTS = stringSetPreferencesKey("pastOutputRoots")
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
         val CLOUD_PHOTOS = stringPreferencesKey("cloudPhotos")
         val CLOUD_VIDEOS = stringPreferencesKey("cloudVideos")
@@ -254,6 +275,10 @@ class OptionsRepo(private val context: Context) {
             scope = enumOr(p[K.SCOPE], BackupScope.ALL),
             excludedBuckets = p[K.EXCLUDED_BUCKETS] ?: emptySet(),
             outputMode = enumOr(p[K.OUTPUT_MODE], OutputMode.SINGLE),
+            folderSingle = p[K.FOLDER_SINGLE] ?: "",
+            folderPhotos = p[K.FOLDER_PHOTOS] ?: "",
+            folderVideos = p[K.FOLDER_VIDEOS] ?: "",
+            pastOutputRoots = p[K.PAST_OUTPUT_ROOTS] ?: emptySet(),
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
             cloudPhotos = p[K.CLOUD_PHOTOS] ?: "ente",
             cloudVideos = p[K.CLOUD_VIDEOS] ?: "ente",
@@ -322,7 +347,7 @@ class OptionsRepo(private val context: Context) {
             reclaimReminderGb = p[K.RECLAIM_REMINDER_GB] ?: 0,
             stallAlerts = p[K.STALL_ALERTS] ?: 0,
             stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
-        )
+        ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }
     }
 
     suspend fun current(): Options = flow.first()
@@ -381,6 +406,26 @@ class OptionsRepo(private val context: Context) {
         }
     }
 
+    /**
+     * Folders the person moved away from: still watched until they run empty.
+     * A folder they move back to is current again, not a past one.
+     */
+    suspend fun addPastOutputRoots(roots: Collection<String>) {
+        val add = roots.map { OutputRoots.normalize(it) }.filter { it.isNotEmpty() }
+        if (add.isEmpty()) return
+        write { it[K.PAST_OUTPUT_ROOTS] = (it[K.PAST_OUTPUT_ROOTS] ?: emptySet()) + add }
+    }
+
+    suspend fun removePastOutputRoots(roots: Collection<String>) {
+        if (roots.isEmpty()) return
+        write { p ->
+            val left = (p[K.PAST_OUTPUT_ROOTS] ?: emptySet()).filter { kept ->
+                roots.none { OutputRoots.same(it, kept) }
+            }.toSet()
+            p[K.PAST_OUTPUT_ROOTS] = left
+        }
+    }
+
     /** Remembers copies Android would not let the app delete on its own. */
     suspend fun addCopiesNeedingConsent(ids: Collection<Long>) {
         if (ids.isEmpty()) return
@@ -401,6 +446,9 @@ class OptionsRepo(private val context: Context) {
             "scope" to o.scope.name,
             "excludedBuckets" to o.excludedBuckets.joinToString("|"),
             "outputMode" to o.outputMode.name,
+            "folderSingle" to o.folderSingle,
+            "folderPhotos" to o.folderPhotos,
+            "folderVideos" to o.folderVideos,
             "cloudSingle" to o.cloudSingle,
             "cloudPhotos" to o.cloudPhotos,
             "cloudVideos" to o.cloudVideos,
@@ -433,6 +481,11 @@ class OptionsRepo(private val context: Context) {
                 p[K.EXCLUDED_BUCKETS] = s.split('|').filter { it.isNotEmpty() }.toSet()
             }
             map["outputMode"]?.let { p[K.OUTPUT_MODE] = it }
+            // A folder of the person's own comes back only if it is one the
+            // folder setting itself could have produced.
+            map["folderSingle"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_SINGLE] = it }
+            map["folderPhotos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_PHOTOS] = it }
+            map["folderVideos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_VIDEOS] = it }
             map["cloudSingle"]?.let { p[K.CLOUD_SINGLE] = it }
             map["cloudPhotos"]?.let { p[K.CLOUD_PHOTOS] = it }
             map["cloudVideos"]?.let { p[K.CLOUD_VIDEOS] = it }

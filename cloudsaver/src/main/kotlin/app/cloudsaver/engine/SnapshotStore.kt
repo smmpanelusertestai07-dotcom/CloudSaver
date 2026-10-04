@@ -97,7 +97,8 @@ class SnapshotStore(
                 releasedAt = row.releasedAt,
                 confirmedAt = row.confirmedAt,
                 keptUri = row.keptUri,
-                neverOptimise = row.neverOptimise
+                neverOptimise = row.neverOptimise,
+                outputRelPath = row.outputRelPath
             )
         }
         val batches = db.batches().all().map { b ->
@@ -439,6 +440,9 @@ class SnapshotStore(
                     outputBytes = mapped.outputBytes,
                     outputSha256 = mapped.outputSha256,
                     outputFolder = mapped.outputFolder?.name,
+                    outputRelPath = mapped.outputRelPath
+                        ?: mapped.outputFolder?.takeIf { mapped.releasedAt != null }
+                            ?.let { Defaults.legacyRelPath(it) },
                     releasedAt = mapped.releasedAt,
                     confirmedAt = mapped.confirmedAt,
                     keptUri = mapped.keptUri,

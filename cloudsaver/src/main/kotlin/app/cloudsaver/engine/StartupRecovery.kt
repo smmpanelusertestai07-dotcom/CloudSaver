@@ -182,7 +182,7 @@ class StartupRecovery(private val context: Context) {
             val collection = MediaStore.Images.Media.getContentUri(volume)
             val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND " +
                 "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
-            val args = arrayOf(Defaults.OUTPUT_DIR_LIKE, context.packageName)
+            val args = arrayOf(Defaults.LEGACY_OUTPUT_DIR_LIKE, context.packageName)
             try {
                 val ids = mutableListOf<Long>()
                 resolver.query(

@@ -685,6 +685,8 @@
     <string name="chip_keep_permissions">Permissions will be removed if unused</string>
     <string name="power_background_restriction">Background restriction</string>
     <string name="power_keep_permissions">Keep permissions when unused</string>
+    <string name="old_folder_empty_title">An old folder is empty now</string>
+    <string name="old_folder_empty_text">No copy waits in %1$s any more. In Ente Photos you can stop backing up that folder: Settings, Backup, Backed up folders.</string>
     <string name="warn_stalled_title">The phone keeps stopping CloudSaver</string>
     <string name="warn_stalled_text">Files have waited for days because the phone is not letting background runs happen. Open Permissions and battery to see which switch is off.</string>
     <string name="privacy_b7_title">What the phone\u2019s own settings do to it</string>

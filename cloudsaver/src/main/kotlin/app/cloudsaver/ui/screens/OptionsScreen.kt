@@ -280,8 +280,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             ) { pendingLayout = OutputMode.valueOf(it) }
             // The user has to pick this exact string inside another app, so it
             // is printed rather than described.
-            FolderPaths(o.outputMode)
-            CopyPathButton(o.outputMode)
+            FolderPaths(o.layout)
+            CopyPathButton(o.layout)
         }
 
         // Which cloud apps this setting is actually feeding right now. In
@@ -916,7 +916,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(stringResource(R.string.output_switch_body))
                     Spacer(Modifier.height(10.dp))
-                    FolderPaths(target)
+                    FolderPaths(o.layout.copy(mode = target))
                     Spacer(Modifier.height(6.dp))
                     Text(
                         stringResource(R.string.output_switch_note),

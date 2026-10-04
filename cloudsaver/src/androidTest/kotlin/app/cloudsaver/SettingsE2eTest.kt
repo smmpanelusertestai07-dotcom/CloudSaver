@@ -36,6 +36,7 @@ import androidx.test.uiautomator.Until
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.Preset
@@ -270,7 +271,7 @@ class SettingsE2eTest {
         compose.onNodeWithText(Defaults.OUTPUT_DIR_VIDEOS).performScrollTo().assertIsDisplayed()
 
         // The copy button, which is the only reason the paths are printed.
-        val paths = OutputPaths.forMode(OutputMode.SEPARATE)
+        val paths = OutputPaths.current(OutputLayout(OutputMode.SEPARATE))
         val clipboard =
             context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         compose.onNodeWithText(

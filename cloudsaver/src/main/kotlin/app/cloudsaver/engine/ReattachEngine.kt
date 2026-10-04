@@ -2,7 +2,9 @@ package app.cloudsaver.engine
 
 import android.content.Context
 import app.cloudsaver.core.logic.Fingerprint
+import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputPaths
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.ReattachRules
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
@@ -13,7 +15,7 @@ import java.io.File
  * Reunites light copies with their originals after the database was lost.
  *
  * An uninstall or "Clear data" takes Room with it but leaves every copy in
- * Pictures/CloudSaver. The snapshot usually brings the state back; when it
+ * its folder. The snapshot usually brings the state back; when it
  * does not - the snapshot was deleted, or this is a phone-to-phone move with
  * the folder copied across - the filenames are the last thing left, and each
  * one carries its original's fingerprint.
@@ -29,8 +31,15 @@ class ReattachEngine(private val context: Context) {
         if (repo.current().copiesReattached) return
 
         // A failed query looks identical to an empty folder, so a null answer
-        // is left alone rather than recorded as "nothing to adopt".
-        val entries = OutputInventory(context).query() ?: return
+        // is left alone rather than recorded as "nothing to adopt". Only the
+        // output folders, current and old: a copy that came back from the
+        // cloud into some other album carries the same name, but it is not
+        // waiting to be uploaded, and adopting it would have the app watch
+        // a folder of the person's own.
+        val o = repo.current()
+        val layout = o.layout
+        val entries = OutputInventory(context)
+            .query(OutputRoots.watched(layout, o.pastOutputRoots, emptyList())) ?: return
 
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
@@ -48,7 +57,10 @@ class ReattachEngine(private val context: Context) {
                     outputUri = entry.uri.toString(),
                     outputName = entry.name,
                     outputBytes = entry.bytes,
-                    outputFolder = OutputPaths.folderFor(entry.relPath)?.name ?: row.outputFolder,
+                    outputFolder = OutputPaths.folderFor(entry.relPath, layout)?.name
+                        ?: row.outputFolder
+                        ?: (if (entry.isVideo) OutFolder.VIDEOS else OutFolder.PHOTOS).name,
+                    outputRelPath = OutputRoots.normalize(entry.relPath),
                     stagePath = null,
                     releasedAt = row.releasedAt ?: System.currentTimeMillis()
                 )

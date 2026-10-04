@@ -193,7 +193,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     UsageRow(
                         icon = Icons.Outlined.CloudUpload,
                         label = stringResource(R.string.storage_output),
-                        path = OutputPaths.joined(options.outputMode),
+                        path = OutputPaths.joined(options.layout),
                         bytes = stats.outputBytes
                     )
                 }

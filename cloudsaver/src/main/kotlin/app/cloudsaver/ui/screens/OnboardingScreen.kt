@@ -77,7 +77,7 @@ import app.cloudsaver.core.logic.CloudCapability
 import app.cloudsaver.core.logic.CloudPromise
 import app.cloudsaver.core.logic.OnboardingSteps
 import app.cloudsaver.core.logic.OnboardingSteps.Step
-import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
@@ -715,7 +715,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                             }
                         }
                     }
-                    FolderPaths(options.outputMode)
+                    FolderPaths(options.layout)
                     chosen.checklistRes?.let { res ->
                         Text(
                             stringResource(res),
@@ -899,8 +899,8 @@ fun OnboardingScreen(vm: AppViewModel) {
                 Spacer(Modifier.height(10.dp))
                 // The folder is printed, not described: this exact string is
                 // what has to be picked inside the cloud app.
-                FolderPaths(options.outputMode)
-                CopyPathButton(options.outputMode)
+                FolderPaths(options.layout)
+                CopyPathButton(options.layout)
 
                 Spacer(Modifier.height(12.dp))
                 var compare by remember { mutableStateOf<ItemRow?>(null) }
@@ -1063,8 +1063,8 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
 
 /** The exact folder(s) to pick in the cloud app - never paraphrased. */
 @Composable
-fun FolderPaths(mode: OutputMode) {
-    val paths = OutputPaths.forMode(mode)
+fun FolderPaths(layout: OutputLayout) {
+    val paths = OutputPaths.current(layout)
     Column(Modifier.padding(top = 8.dp)) {
         Text(
             stringResource(
@@ -1089,12 +1089,12 @@ fun FolderPaths(mode: OutputMode) {
  * Puts the output folder on the clipboard.
  *
  * Cloud apps ask you to pick a folder by typing or browsing to it, and
- * "Pictures/CloudSaver" typed slightly wrong backs up nothing at all while
+ * a folder path typed slightly wrong backs up nothing at all while
  * looking like it worked.
  */
 @Composable
-fun CopyPathButton(mode: OutputMode) {
-    val paths = OutputPaths.forMode(mode)
+fun CopyPathButton(layout: OutputLayout) {
+    val paths = OutputPaths.current(layout)
     val copyPath = app.cloudsaver.ui.components.rememberPathCopier()
     OutlinedButton(onClick = { copyPath(paths.joinToString("\n")) }) {
         Text(

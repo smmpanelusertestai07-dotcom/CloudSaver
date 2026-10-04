@@ -96,20 +96,24 @@ class OptionsEffectsTest {
 
     @Test
     fun outputFoldersAreUnderPicturesNeverDcim() {
-        assertEquals("Pictures/CloudSaver", Defaults.outFolderRelPath(OutFolder.SINGLE))
-        assertEquals("Pictures/CloudSaver/Photos", Defaults.outFolderRelPath(OutFolder.PHOTOS))
-        assertEquals("Pictures/CloudSaver/Videos", Defaults.outFolderRelPath(OutFolder.VIDEOS))
+        assertEquals("Pictures/CloudSaver", Defaults.legacyRelPath(OutFolder.SINGLE))
+        assertEquals("Pictures/CloudSaver/Photos", Defaults.legacyRelPath(OutFolder.PHOTOS))
+        assertEquals("Pictures/CloudSaver/Videos", Defaults.legacyRelPath(OutFolder.VIDEOS))
+        val layout = OutputLayout(OutputMode.SINGLE)
         for (folder in OutFolder.entries) {
-            assertTrue(!Defaults.outFolderRelPath(folder).startsWith("DCIM"))
+            assertTrue(layout.path(folder).startsWith("Pictures/"))
+            assertTrue(Defaults.legacyRelPath(folder).startsWith("Pictures/"))
         }
     }
 
     @Test
     fun onlyTheRealOutputFolderCountsAsOurs() {
+        val layout = OutputLayout(OutputMode.SINGLE)
         for (folder in OutFolder.entries) {
-            val path = Defaults.outFolderRelPath(folder)
-            assertTrue(Defaults.isOutputPath(path))
-            assertTrue(Defaults.isOutputPath("$path/"))
+            for (path in listOf(layout.path(folder), Defaults.legacyRelPath(folder))) {
+                assertTrue(Defaults.isOutputPath(path))
+                assertTrue(Defaults.isOutputPath("$path/"))
+            }
         }
         assertTrue(Defaults.isOutputPath("Pictures/CloudSaver/.cloudsaver/"))
 
@@ -122,10 +126,10 @@ class OptionsEffectsTest {
         assertFalse(Defaults.isOutputPath(""))
 
         // The SQL pattern must draw the same line.
-        assertEquals("Pictures/CloudSaver/%", Defaults.OUTPUT_DIR_LIKE)
-        assertTrue(sqlLike("Pictures/CloudSaver/", Defaults.OUTPUT_DIR_LIKE))
-        assertTrue(sqlLike("Pictures/CloudSaver/Photos/", Defaults.OUTPUT_DIR_LIKE))
-        assertFalse(sqlLike("Pictures/CloudSaverBackup/", Defaults.OUTPUT_DIR_LIKE))
+        assertEquals("Pictures/CloudSaver/%", Defaults.LEGACY_OUTPUT_DIR_LIKE)
+        assertTrue(sqlLike("Pictures/CloudSaver/", Defaults.LEGACY_OUTPUT_DIR_LIKE))
+        assertTrue(sqlLike("Pictures/CloudSaver/Photos/", Defaults.LEGACY_OUTPUT_DIR_LIKE))
+        assertFalse(sqlLike("Pictures/CloudSaverBackup/", Defaults.LEGACY_OUTPUT_DIR_LIKE))
     }
 
     /** Minimal stand-in for SQLite LIKE: only '%' is used in our patterns. */

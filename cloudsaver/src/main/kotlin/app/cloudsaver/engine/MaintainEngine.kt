@@ -14,7 +14,8 @@ import app.cloudsaver.core.logic.FirstChain
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
-import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputLayout
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.StallAlert
@@ -154,7 +155,7 @@ class MaintainEngine(private val context: Context) {
         // A null listing means MediaStore could not be read. Absence is
         // evidence here, so a failed read must not be mistaken for an empty
         // folder; skip the passes that interpret it and retry next hour.
-        val entries = inventory.query()
+        val entries = listOutputs(o)
         if (entries == null) {
             return summary
         }
@@ -162,6 +163,7 @@ class MaintainEngine(private val context: Context) {
         step { repairStalePending(now) }
         step { detectGone(o, now, entries, summary) }
         step { promoteGone(now) }
+        step { pruneRoots(o) }
         step { foreignFiles(o, entries) }
         step { pacedEvidence(o, now) }
         step { verifyBatches(o, now) }
@@ -214,7 +216,7 @@ class MaintainEngine(private val context: Context) {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
-        val entries = inventory.query() ?: return 0
+        val entries = listOutputs(o) ?: return 0
         step { repairStalePending(now) }
         step { detectGone(o, now, entries, summary) }
         step { promoteGone(now) }
@@ -237,8 +239,7 @@ class MaintainEngine(private val context: Context) {
         entries: List<OutputInventory.Entry>,
         summary: Summary
     ) {
-        val presentNames = entries.groupBy { normalizeRel(it.relPath) }
-            .mapValues { (_, v) -> v.map { it.name }.toHashSet() }
+        val presentNames = namesByFolder(entries)
         val confirmActive = o.confirmFlowStartedAt > 0 &&
             now - o.confirmFlowStartedAt <= Defaults.CONFIRM_WINDOW_MS
         val caps = watchdog.capsFor(o.cloudSingle)
@@ -249,8 +250,7 @@ class MaintainEngine(private val context: Context) {
         val txCache = HashMap<Long, Long>()
 
         for (row in db.items().released()) {
-            val folder = folderOf(row)
-            val names = presentNames[Defaults.outFolderRelPath(folder)] ?: emptySet<String>()
+            val names = presentNames[folderKey(pathOf(row))] ?: emptySet<String>()
             val outputName = row.outputName ?: continue
             if (outputName in names) continue
 
@@ -439,6 +439,42 @@ class MaintainEngine(private val context: Context) {
     private suspend fun promoteGone(now: Long) {
         for (row in db.items().gone()) {
             db.items().update(row.copy(state = ItemState.DONE.name, updatedAt = now))
+        }
+    }
+
+    /**
+     * Lets go of a folder the person moved away from, once no copy waits
+     * there any more.
+     *
+     * Until then it is listed on every pass like a current folder: a copy
+     * still waiting in it must be seen to leave, not be read as gone. Once
+     * the last one has gone the folder is no longer the app's business, and
+     * the person is told once that Ente can stop backing it up - leaving it
+     * on costs nothing, but it is one more folder in Ente's list to wonder
+     * about.
+     */
+    private suspend fun pruneRoots(o: Options) {
+        if (o.pastOutputRoots.isEmpty()) return
+        val inUse = o.layout.current + o.layout.otherMode
+        val emptied = o.pastOutputRoots.filter { root ->
+            val path = OutputRoots.normalize(root)
+            inUse.none { OutputRoots.same(it, path) } &&
+                db.items().releasedCountIn(path, OutputRoots.escapeLike(path) + "/%") == 0
+        }
+        if (emptied.isEmpty()) return
+        repo.removePastOutputRoots(emptied)
+        for (root in emptied) {
+            val path = OutputRoots.normalize(root)
+            activity.record(
+                ActivityLog.Kind.SETTINGS_CHANGED,
+                detail = context.getString(R.string.old_folder_empty_text, path)
+            )
+            Notifications.alert(
+                context, Notifications.ID_NOTE_FOLDER,
+                context.getString(R.string.old_folder_empty_title),
+                context.getString(R.string.old_folder_empty_text, path),
+                o, dedupKey = "oldfolder $path", route = "options"
+            )
         }
     }
 
@@ -725,15 +761,10 @@ class MaintainEngine(private val context: Context) {
 
         // Anchor rule / never-empty: if an active output folder has no files but
         // staged content exists for it, restore content immediately (no dummies).
-        val entries = inventory.query() ?: return
-        val byFolder = entries.groupBy { normalizeRel(it.relPath) }
-        val activeFolders = if (o.outputMode == OutputMode.SEPARATE) {
-            listOf(OutFolder.PHOTOS, OutFolder.VIDEOS)
-        } else {
-            listOf(OutFolder.SINGLE)
-        }
-        for (folder in activeFolders) {
-            val has = byFolder[Defaults.outFolderRelPath(folder)]?.isNotEmpty() == true
+        val entries = listOutputs(o) ?: return
+        val byFolder = namesByFolder(entries)
+        for (folder in OutputLayout.folders(o.outputMode)) {
+            val has = byFolder[folderKey(o.layout.path(folder))]?.isNotEmpty() == true
             if (!has) {
                 // Exactly one file, so the folder stops being empty without
                 // shipping the whole staging backlog past the daily cap the
@@ -801,13 +832,12 @@ class MaintainEngine(private val context: Context) {
             return
         }
 
-        val entries = inventory.query() ?: return
-        val presentNames = entries.groupBy { normalizeRel(it.relPath) }
-            .mapValues { (_, v) -> v.map { it.name }.toHashSet() }
+        val entries = listOutputs(o) ?: return
+        val presentNames = namesByFolder(entries)
         val copies = released.mapNotNull { row ->
             val name = row.outputName ?: return@mapNotNull null
             val folder = folderOf(row)
-            if (name !in (presentNames[Defaults.outFolderRelPath(folder)] ?: emptySet<String>())) {
+            if (name !in (presentNames[folderKey(pathOf(row))] ?: emptySet<String>())) {
                 return@mapNotNull null
             }
             DeletePlanner.Copy(
@@ -926,7 +956,27 @@ class MaintainEngine(private val context: Context) {
         row.outputFolder?.let { runCatching { OutFolder.valueOf(it) }.getOrNull() }
             ?: OutFolder.SINGLE
 
-    private fun evidenceOf(row: ItemRow): Evidence = Evidence.parse(row.evidence)
+    /**
+     * The folder this row's copy was released into. Every released row
+     * records it; one restored from a snapshot written before rows did went
+     * to the folder its layout named under the old name.
+     */
+    private fun pathOf(row: ItemRow): String =
+        row.outputRelPath ?: Defaults.legacyRelPath(folderOf(row))
 
-    private fun normalizeRel(rel: String): String = rel.trimEnd('/')
+    /**
+     * Every folder a copy may wait in, listed in one go - or null when any
+     * part of it could not be read, which callers treat as "learn nothing",
+     * never as "everything left".
+     */
+    private suspend fun listOutputs(o: Options): List<OutputInventory.Entry>? =
+        inventory.query(OutputRoots.watched(o.layout, o.pastOutputRoots, db.items().releasedRoots()))
+
+    private fun namesByFolder(entries: List<OutputInventory.Entry>): Map<String, Set<String>> =
+        entries.groupBy { folderKey(it.relPath) }.mapValues { (_, v) -> v.map { it.name }.toHashSet() }
+
+    /** One spelling per folder: MediaStore's paths end in a slash and FAT ignores case. */
+    private fun folderKey(rel: String): String = OutputRoots.normalize(rel).lowercase()
+
+    private fun evidenceOf(row: ItemRow): Evidence = Evidence.parse(row.evidence)
 }

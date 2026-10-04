@@ -19,7 +19,7 @@ object ScanSources {
 
     /** Folder names earlier versions of this app, and Ente, write copies to. */
     val LEGACY_OUTPUT_NAMES: Set<String> = setOf(
-        "EnteUpload", "GlassSaver", "LiteSaver", "CloudShrink", "CloudSaver"
+        "EnteUpload", "GlassSaver", "LiteSaver", "CloudShrink", "CloudSaver", "EnteSaver"
     )
 
     /**

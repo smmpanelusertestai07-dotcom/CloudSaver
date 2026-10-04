@@ -130,6 +130,15 @@ object Defaults {
     const val OUTPUT_DIR = "Pictures/CloudSaver"
 
     /**
+     * The folder every version before 11 released into. Still watched for as
+     * long as a copy waits there, and the name existing installs keep until
+     * the person moves to the new one themselves.
+     */
+    const val LEGACY_OUTPUT_DIR = "Pictures/CloudSaver"
+    const val LEGACY_OUTPUT_DIR_PHOTOS = "Pictures/CloudSaver/Photos"
+    const val LEGACY_OUTPUT_DIR_VIDEOS = "Pictures/CloudSaver/Videos"
+
+    /**
      * Where a "Replace with light copy" file lives.
      *
      * Deliberately outside the app's own folder and plainly named: these are
@@ -185,25 +194,22 @@ object Defaults {
     fun isHiddenSnapshotTarget(dir: String, name: String): Boolean =
         name.startsWith(".") || dir.split('/').any { it.startsWith(".") }
 
-    fun outFolderRelPath(folder: OutFolder): String = when (folder) {
-        OutFolder.SINGLE -> OUTPUT_DIR
-        OutFolder.PHOTOS -> OUTPUT_DIR_PHOTOS
-        OutFolder.VIDEOS -> OUTPUT_DIR_VIDEOS
+    /** Where a copy of this kind went before a row recorded its own folder. */
+    fun legacyRelPath(folder: OutFolder): String = when (folder) {
+        OutFolder.SINGLE -> LEGACY_OUTPUT_DIR
+        OutFolder.PHOTOS -> LEGACY_OUTPUT_DIR_PHOTOS
+        OutFolder.VIDEOS -> LEGACY_OUTPUT_DIR_VIDEOS
     }
 
     /**
-     * SQL pattern for "inside the output folder". The trailing slash matters:
-     * without it, an unrelated user folder such as Pictures/CloudSaverBackup
-     * would match too, and the app would treat those files as its own.
+     * SQL pattern for "inside the old output folder". The trailing slash
+     * matters: without it, an unrelated user folder such as
+     * Pictures/CloudSaverBackup would match too.
      */
-    const val OUTPUT_DIR_LIKE = "$OUTPUT_DIR/%"
+    const val LEGACY_OUTPUT_DIR_LIKE = "$LEGACY_OUTPUT_DIR/%"
 
-    /** True only for the output folder itself or something inside it. */
-    fun isOutputPath(relativePath: String?): Boolean {
-        if (relativePath.isNullOrEmpty()) return false
-        val path = relativePath.trimEnd('/')
-        return path == OUTPUT_DIR || path.startsWith("$OUTPUT_DIR/")
-    }
+    /** True for any folder light copies are released into, old or current. */
+    fun isOutputPath(relativePath: String?): Boolean = OutputRoots.isOwned(relativePath)
 
     /** True for the kept light copies album. */
     fun isKeptPath(relativePath: String?): Boolean {
