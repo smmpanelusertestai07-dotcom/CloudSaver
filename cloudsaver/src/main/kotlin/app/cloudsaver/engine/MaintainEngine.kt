@@ -254,6 +254,20 @@ class MaintainEngine(private val context: Context) {
             val outputName = row.outputName ?: continue
             if (outputName in names) continue
 
+            // Not in its folder is not the same as gone. A folder renamed or
+            // moved in a file manager takes the copy with it, and the copy
+            // still exists - so it is followed to where it is now and keeps
+            // waiting there, never counted as collected. Only a copy the
+            // gallery no longer has at all is judged below.
+            when (val place = whereNow(row)) {
+                is Whereabouts.Moved -> {
+                    db.items().update(row.copy(outputRelPath = place.relPath, outputName = place.name, updatedAt = now))
+                    continue
+                }
+                Whereabouts.Unknown -> continue
+                Whereabouts.Gone -> Unit
+            }
+
             val evidence = evidenceOf(row)
             val releasedAt = row.releasedAt ?: now
             val fileBytes = row.outputBytes ?: 0L
@@ -456,10 +470,10 @@ class MaintainEngine(private val context: Context) {
     private suspend fun pruneRoots(o: Options) {
         if (o.pastOutputRoots.isEmpty()) return
         val inUse = o.layout.current + o.layout.otherMode
+        val perFolder = db.items().releasedPerFolder().associate { it.outputRelPath to it.cnt }
         val emptied = o.pastOutputRoots.filter { root ->
             val path = OutputRoots.normalize(root)
-            inUse.none { OutputRoots.same(it, path) } &&
-                db.items().releasedCountIn(path, OutputRoots.escapeLike(path) + "/%") == 0
+            inUse.none { OutputRoots.same(it, path) } && OutputRoots.waitingIn(path, perFolder, inUse) == 0
         }
         if (emptied.isEmpty()) return
         repo.removePastOutputRoots(emptied)
@@ -831,10 +845,12 @@ class MaintainEngine(private val context: Context) {
 
         val entries = listOutputs(o) ?: return
         val presentNames = namesByFolder(entries)
+        val current = o.layout.current.map { folderKey(it) }.toSet()
         val copies = released.mapNotNull { row ->
             val name = row.outputName ?: return@mapNotNull null
             val folder = folderOf(row)
-            if (name !in (presentNames[folderKey(pathOf(row))] ?: emptySet<String>())) {
+            val place = folderKey(pathOf(row))
+            if (name !in (presentNames[place] ?: emptySet<String>())) {
                 return@mapNotNull null
             }
             DeletePlanner.Copy(
@@ -843,7 +859,9 @@ class MaintainEngine(private val context: Context) {
                 evidence = evidenceOf(row),
                 ageDays = ((now - (row.releasedAt ?: now)) / 86_400_000L).toInt(),
                 folder = folder,
-                captureAt = row.captureAt
+                captureAt = row.captureAt,
+                place = place,
+                anchorable = place in current
             )
         }
         val plan = DeletePlanner.plan(copies, bytesToFree)
@@ -973,6 +991,32 @@ class MaintainEngine(private val context: Context) {
 
     /** One spelling per folder: MediaStore's paths end in a slash and FAT ignores case. */
     private fun folderKey(rel: String): String = OutputRoots.normalize(rel).lowercase()
+
+    private sealed interface Whereabouts {
+        data class Moved(val relPath: String, val name: String) : Whereabouts
+        data object Gone : Whereabouts
+        /** The gallery could not be asked: learn nothing this pass. */
+        data object Unknown : Whereabouts
+    }
+
+    /** Where a copy missing from its folder is now, asked by its own address. */
+    private fun whereNow(row: ItemRow): Whereabouts {
+        val uri = row.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return Whereabouts.Gone
+        return try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME),
+                null, null, null
+            )?.use { c ->
+                if (!c.moveToFirst()) return Whereabouts.Gone
+                val rel = c.getString(0)
+                val name = c.getString(1)
+                if (rel.isNullOrEmpty() || name.isNullOrEmpty()) Whereabouts.Gone else Whereabouts.Moved(rel, name)
+            } ?: Whereabouts.Unknown
+        } catch (e: Exception) {
+            Whereabouts.Unknown
+        }
+    }
 
     private fun evidenceOf(row: ItemRow): Evidence = Evidence.parse(row.evidence)
 }

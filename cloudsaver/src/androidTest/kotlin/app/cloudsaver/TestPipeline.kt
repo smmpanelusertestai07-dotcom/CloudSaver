@@ -72,4 +72,5 @@ suspend fun OptionsRepo.useDefaultFolders() {
     setBool(OptionsRepo.K.FOLDERS_PINNED, true)
     setFolders(mapOf(OutFolder.SINGLE to "", OutFolder.PHOTOS to "", OutFolder.VIDEOS to ""))
     setStringSet(OptionsRepo.K.PAST_OUTPUT_ROOTS, emptySet())
+    setBool(OptionsRepo.K.NEW_FOLDER_PENDING, false)
 }

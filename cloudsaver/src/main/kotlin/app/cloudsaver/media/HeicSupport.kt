@@ -63,6 +63,11 @@ object HeicSupport {
     fun probeIfNeeded(context: Context, tempDir: File): State {
         val known = state(context)
         if (known != State.UNKNOWN) return known
+        // A fail is written down before the test, and on disk before it
+        // starts: a test that takes the whole app down with it throws
+        // nothing, and without this the next run would test again on its
+        // first photo - and go down again, every run, with nothing optimised.
+        record(context, State.FAIL, fails = 0, now = true)
         val result = if (EncoderCaps.hasHardwareHeic() && testEncode(tempDir)) State.OK else State.FAIL
         record(context, result, fails = 0)
         return result
@@ -75,8 +80,8 @@ object HeicSupport {
         record(context, if (fails >= FAILS_TO_DEMOTE) State.FAIL else state(context), fails)
     }
 
-    private fun record(context: Context, state: State, fails: Int) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+    private fun record(context: Context, state: State, fails: Int, now: Boolean = false) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = now) {
             putString(KEY_STAMP, stamp)
             putString(KEY_STATE, state.name)
             putInt(KEY_FAILS, fails)

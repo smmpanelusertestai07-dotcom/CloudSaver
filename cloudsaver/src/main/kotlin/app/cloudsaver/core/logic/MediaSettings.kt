@@ -154,12 +154,16 @@ object MediaSettings {
     }
 
     /**
-     * The settings an earlier version's single preset and codec stand for.
-     *
-     * The old default and the new one are the same encode, so nobody's
-     * photos or videos change size on upgrade by surprise. An explicit HEVC
-     * choice is kept as a Custom video setting with HEVC, because Auto would
-     * use H.264 on a phone without a hardware HEVC encoder.
+     * The settings an earlier version's single preset and codec stand for:
+     * the nearest of the new presets, not the same numbers. The old default
+     * lands on Balanced, with the same size and quality as before; the old
+     * smallest lands on Smallest, which goes a little further than it did;
+     * and on a phone that passes the HEIC test, Auto writes HEIC where JPEG
+     * was written before - the same photo in fewer bytes. The size estimates
+     * learned under the old settings start again under the new ones. An
+     * explicit HEVC choice is kept as a Custom video setting with HEVC,
+     * because Auto would use H.264 on a phone without a hardware HEVC
+     * encoder.
      */
     fun fromLegacy(preset: String?, codec: String?): Pair<PhotoSettings, VideoSettings> {
         val (photoPreset, videoPreset, legacy) = when (preset) {

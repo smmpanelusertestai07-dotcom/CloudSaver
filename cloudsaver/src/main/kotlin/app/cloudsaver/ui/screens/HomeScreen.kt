@@ -75,6 +75,7 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.HomeAction
 import app.cloudsaver.core.logic.KnownClouds
+import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Projection
@@ -276,7 +277,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    stringResource(R.string.move_body, Defaults.OUTPUT_DIR, Defaults.LEGACY_OUTPUT_DIR),
+                    stringResource(
+                        R.string.move_body,
+                        OutputPaths.joined(OutputLayout(options.layout.mode)),
+                        OutputPaths.joined(options.layout)
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
@@ -288,6 +293,28 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     TextButton(onClick = { vm.dismissMoveCard() }) {
                         Text(stringResource(R.string.move_later))
                     }
+                }
+            }
+        }
+        // Copies now go to a folder they did not go to before, and Ente
+        // backs up only the folders turned on in it. Until the person says
+        // it is done, the card names the folder and the way there - without
+        // it, new copies would wait in a folder Ente never looks at.
+        if (options.newFolderPending && !onOldFolder) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.new_folder_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.new_folder_body, OutputPaths.joined(options.layout)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                TextButton(onClick = { vm.dismissNewFolderCard() }) {
+                    Text(stringResource(R.string.new_folder_done))
                 }
             }
         }
@@ -305,11 +332,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     pluralStringResource(R.plurals.old_folder_body, old.waiting, old.waiting, old.path),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                Text(
-                    stringResource(R.string.old_folder_steps, OutputPaths.joined(options.layout)),
-                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }

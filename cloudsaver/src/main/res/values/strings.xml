@@ -521,7 +521,9 @@
         <item quantity="one">%1$d copy still waits in %2$s. Keep that folder on in Ente until it is empty; Ente Saver says when.</item>
         <item quantity="other">%1$d copies still wait in %2$s. Keep that folder on in Ente until it is empty; Ente Saver says when.</item>
     </plurals>
-    <string name="old_folder_steps">In Ente: Settings, Backup, Backed up folders. Turn on %1$s too.</string>
+    <string name="new_folder_title">Turn on the new folder in Ente</string>
+    <string name="new_folder_body">New copies now go to %1$s. Ente backs up only the folders turned on in it, so open Ente Photos: Settings, Backup, Backed up folders, and turn it on.</string>
+    <string name="new_folder_done">Done</string>
     <string name="folder_for_all">All copies</string>
     <string name="folder_for_photos">Photos</string>
     <string name="folder_for_videos">Videos</string>

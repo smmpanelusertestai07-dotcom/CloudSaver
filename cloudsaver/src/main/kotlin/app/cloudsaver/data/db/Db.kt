@@ -277,6 +277,9 @@ data class BatchRow(
 
 data class StateCount(val state: String, val cnt: Int)
 
+/** How many released copies wait in one folder. */
+data class FolderCount(val outputRelPath: String, val cnt: Int)
+
 /** Compression outcome sample for the cloud calculator. */
 data class RatioSample(val sizeBytes: Long, val outputBytes: Long, val durationMs: Long)
 
@@ -438,6 +441,13 @@ interface ItemDao {
             "WHERE state = 'RELEASED' AND outputRelPath IS NOT NULL"
     )
     suspend fun releasedRoots(): List<String>
+
+    /** Released copies still waiting, counted per folder. */
+    @Query(
+        "SELECT outputRelPath, COUNT(*) AS cnt FROM items " +
+            "WHERE state = 'RELEASED' AND outputRelPath IS NOT NULL GROUP BY outputRelPath"
+    )
+    suspend fun releasedPerFolder(): List<FolderCount>
 
     /** Copies still waiting in [relPath] or a folder inside it. */
     @Query(

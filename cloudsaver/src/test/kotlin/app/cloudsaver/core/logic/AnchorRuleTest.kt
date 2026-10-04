@@ -47,6 +47,27 @@ class AnchorRuleTest {
     }
 
     @Test
+    fun afterAFolderChangeTheAnchorSitsInTheNewFolder() {
+        // The old folder holds the newest capture, but it is meant to run
+        // empty: the new folder keeps its one copy, the old one keeps none.
+        val old = DeletePlanner.Copy(
+            1, 10_000_000, Evidence.CONFIRMED_EXACT, 30, OutFolder.SINGLE, captureAt = 90,
+            place = "pictures/cloudsaver", anchorable = false
+        )
+        val newer = DeletePlanner.Copy(
+            2, 10_000_000, Evidence.CONFIRMED_EXACT, 30, OutFolder.SINGLE, captureAt = 10,
+            place = "pictures/entesaver"
+        )
+        val newest = DeletePlanner.Copy(
+            3, 10_000_000, Evidence.CONFIRMED_EXACT, 30, OutFolder.SINGLE, captureAt = 20,
+            place = "pictures/entesaver"
+        )
+        assertEquals(setOf(3L), DeletePlanner.anchors(listOf(old, newer, newest)))
+        val plan = DeletePlanner.plan(listOf(old, newer, newest), bytesToFree = Long.MAX_VALUE / 2)
+        assertEquals(setOf(1L, 2L), plan.ids.toSet())
+    }
+
+    @Test
     fun singleFileFolderIsUntouchable() {
         val copies = listOf(copy(1, Evidence.CONFIRMED_EXACT, OutFolder.SINGLE, captureAt = 1))
         val plan = DeletePlanner.plan(copies, bytesToFree = Long.MAX_VALUE / 2)

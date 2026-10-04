@@ -188,8 +188,11 @@ object VideoCompressor {
             spec.hdr == HdrPolicy.KEEP_WHEN_POSSIBLE &&
             codec == VideoCodec.HEVC &&
             MediaTraits.deviceSupportsHdrHevcEncode()
-        val toneMap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // The phone's own decoder does it: lighter than a GL pass.
+        // The phone's own decoder does it where it can: lighter than a GL
+        // pass. Not every decoder that runs Android 12 will, though, and one
+        // that will not ends the export - so a rung that fails that way is
+        // run again through OpenGL, and every rung after it too.
+        var toneMap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC
         } else {
             Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
@@ -203,7 +206,10 @@ object VideoCompressor {
         var outOfTime = false
         var notSmaller = false
         var detail = ""
-        for (attempt in attemptsFor(codec)) {
+        val attempts = attemptsFor(codec)
+        var rung = 0
+        while (rung < attempts.size) {
+            val attempt = attempts[rung]
             // Keeping HDR is a promise about HEVC; the H.264 rung tone-maps.
             val hdrMode = when {
                 hdr == MediaTraits.Hdr.NONE -> Composition.HDR_MODE_KEEP_HDR
@@ -235,6 +241,11 @@ object VideoCompressor {
             } catch (e: Exception) {
                 detail = "${attempt.label}: ${e.javaClass.simpleName}"
                 null
+            }
+            if (export == null && hdrMode == Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_MEDIACODEC) {
+                outFile.delete()
+                toneMap = Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
+                continue
             }
             if (export != null && outFile.exists()) {
                 val outBytes = outFile.length()
@@ -273,6 +284,7 @@ object VideoCompressor {
                 }
             }
             outFile.delete()
+            rung++
         }
         val failReason = when {
             outOfTime -> "out_of_time"

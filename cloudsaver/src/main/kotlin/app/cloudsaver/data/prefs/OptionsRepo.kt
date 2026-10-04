@@ -54,6 +54,12 @@ data class Options(
     /** "Not now" on the card that offers the new folder. */
     val moveCardDismissed: Boolean = false,
     /**
+     * Copies go to a folder they did not go to before. Ente backs up only the
+     * folders turned on in it, so until the person says it is done, Home
+     * names the folder and where in Ente to turn it on.
+     */
+    val newFolderPending: Boolean = false,
+    /**
      * The cloud app an earlier version was set to. Ente Saver works with Ente
      * Photos only; anything else here means the person used another app
      * before 11, and Home says once what changed. Set to "ente" when read.
@@ -218,6 +224,7 @@ class OptionsRepo(private val context: Context) {
         val PAST_OUTPUT_ROOTS = stringSetPreferencesKey("pastOutputRoots")
         val FOLDERS_PINNED = booleanPreferencesKey("foldersPinned")
         val MOVE_CARD_DISMISSED = booleanPreferencesKey("moveCardDismissed")
+        val NEW_FOLDER_PENDING = booleanPreferencesKey("newFolderPending")
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
         val SPEED = stringPreferencesKey("speed")
         val DAILY_CAP_MB = intPreferencesKey("dailyCapMb")
@@ -299,6 +306,7 @@ class OptionsRepo(private val context: Context) {
             pastOutputRoots = p[K.PAST_OUTPUT_ROOTS] ?: emptySet(),
             foldersPinned = p[K.FOLDERS_PINNED] ?: false,
             moveCardDismissed = p[K.MOVE_CARD_DISMISSED] ?: false,
+            newFolderPending = p[K.NEW_FOLDER_PENDING] ?: false,
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
             speed = enumOr(p[K.SPEED], SpeedMode.SMART),
             // Snapped, so a limit stored by an older build still lands on one
@@ -405,17 +413,42 @@ class OptionsRepo(private val context: Context) {
      */
     suspend fun setFolders(changes: Map<OutFolder, String>) {
         write { p ->
-            val before = layoutOf(p)
-            for ((folder, value) in changes) {
-                // Only what the folder setting itself could produce.
-                if (FolderName.isStorable(value)) p[keyOf(folder)] = value
+            changeFolders(p) {
+                for ((folder, value) in changes) {
+                    // Only what the folder setting itself could produce.
+                    if (FolderName.isStorable(value)) p[keyOf(folder)] = value
+                }
             }
-            val after = layoutOf(p)
-            val inUse = after.current + after.otherMode
-            val left = (before.current + before.otherMode).filter { old -> inUse.none { OutputRoots.same(it, old) } }
-            val past = (p[K.PAST_OUTPUT_ROOTS] ?: emptySet())
-                .filter { kept -> inUse.none { OutputRoots.same(it, kept) } } + left.map { OutputRoots.normalize(it) }
-            p[K.PAST_OUTPUT_ROOTS] = past.toSet()
+        }
+    }
+
+    /** One folder for every copy, or separate ones for photos and videos. */
+    suspend fun setOutputMode(mode: OutputMode) {
+        write { p -> changeFolders(p) { p[K.OUTPUT_MODE] = mode.name } }
+    }
+
+    /**
+     * Runs [change] to where copies go, and keeps the books on it: a folder
+     * copies went to and no longer do joins the past ones, so Home can say
+     * what still waits there and when it may be turned off in Ente; one
+     * moved back to is current again; and when copies now go somewhere new,
+     * Home asks for that folder to be turned on in Ente. Only folders copies
+     * really went to are past ones - the unused half of the other
+     * arrangement is not, or every change would end in notes about folders
+     * nobody ever saw. Waiting copies stay watched through their own rows
+     * either way.
+     */
+    private fun changeFolders(p: MutablePreferences, change: () -> Unit) {
+        val before = layoutOf(p)
+        change()
+        val after = layoutOf(p)
+        val inUse = after.current + after.otherMode
+        val left = before.current.filter { old -> inUse.none { OutputRoots.same(it, old) } }
+        val past = (p[K.PAST_OUTPUT_ROOTS] ?: emptySet())
+            .filter { kept -> inUse.none { OutputRoots.same(it, kept) } } + left.map { OutputRoots.normalize(it) }
+        p[K.PAST_OUTPUT_ROOTS] = past.toSet()
+        if (after.current.any { now -> before.current.none { OutputRoots.same(it, now) } }) {
+            p[K.NEW_FOLDER_PENDING] = true
         }
     }
 
@@ -435,8 +468,8 @@ class OptionsRepo(private val context: Context) {
     /**
      * The photo setting as stored, each value checked against what the
      * screen offers. Nothing stored yet - every install before 11, and every
-     * new one - reads as what the old single preset stood for, so an upgrade
-     * changes nobody's encode by surprise and needs no write to do it.
+     * new one - reads as the nearest new preset to what the old single preset
+     * stood for (MediaSettings.fromLegacy), so an upgrade needs no write.
      */
     private fun photoOf(p: Preferences): PhotoSettings {
         val legacy = MediaSettings.fromLegacy(p[K.PRESET], p[K.CODEC]).first
@@ -624,12 +657,17 @@ class OptionsRepo(private val context: Context) {
             map["excludedBuckets"]?.let { s ->
                 p[K.EXCLUDED_BUCKETS] = s.split('|').filter { it.isNotEmpty() }.toSet()
             }
-            map["outputMode"]?.let { p[K.OUTPUT_MODE] = it }
-            // A folder of the person's own comes back only if it is one the
-            // folder setting itself could have produced.
-            map["folderSingle"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_SINGLE] = it }
-            map["folderPhotos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_PHOTOS] = it }
-            map["folderVideos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_VIDEOS] = it }
+            // Through the same books as a change in Settings: the folder left
+            // behind is watched and named, the new one is asked for in Ente.
+            changeFolders(p) {
+                map["outputMode"]?.takeIf { v -> OutputMode.entries.any { it.name == v } }
+                    ?.let { p[K.OUTPUT_MODE] = it }
+                // A folder of the person's own comes back only if it is one the
+                // folder setting itself could have produced.
+                map["folderSingle"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_SINGLE] = it }
+                map["folderPhotos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_PHOTOS] = it }
+                map["folderVideos"]?.takeIf { FolderName.isStorable(it) }?.let { p[K.FOLDER_VIDEOS] = it }
+            }
             // "cloud*" keys from backups made before 11 are ignored: Ente
             // Saver works with Ente Photos only.
             map["speed"]?.let { p[K.SPEED] = it }

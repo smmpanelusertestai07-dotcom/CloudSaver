@@ -77,4 +77,17 @@ class OutputRootsTest {
             OutputRoots.remember(OutputLayout(), emptyList())
         }
     }
+
+    @Test
+    fun `copies in a folder still in use are not counted as the old folder's`() {
+        val perFolder = mapOf(
+            "Pictures/EnteSaver/" to 4,
+            "Pictures/EnteSaver/Photos/" to 7,
+            "Pictures/Other/" to 2
+        )
+        val inUse = listOf("Pictures/EnteSaver/Photos", "Pictures/EnteSaver/Videos")
+        assertEquals(4, OutputRoots.waitingIn("Pictures/EnteSaver", perFolder, inUse))
+        assertEquals(0, OutputRoots.waitingIn("Pictures/CloudSaver", perFolder, inUse))
+        assertEquals(11, OutputRoots.waitingIn("Pictures/EnteSaver", perFolder, emptyList()))
+    }
 }

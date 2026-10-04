@@ -6,6 +6,12 @@ package app.cloudsaver.core.logic
  * oldest-first among CONFIRMED, then VERIFIED (age >= KEEP_MIN_DAYS), then AGED
  * (age >= AGED_DAYS). The newest remaining file of every output folder is the
  * anchor and is never deleted (folder never empty, no dummy files).
+ *
+ * "Folder" is the folder on the phone ([Copy.place]), not the kind of copy:
+ * after the person picks a new folder, an old one and the new one hold the
+ * same kind, and the anchor has to sit in the new one. A copy in a folder no
+ * longer in use is never an anchor ([Copy.anchorable]) - that folder is
+ * meant to run empty.
  */
 object DeletePlanner {
 
@@ -15,14 +21,17 @@ object DeletePlanner {
         val evidence: Evidence,
         val ageDays: Int,
         val folder: OutFolder,
-        val captureAt: Long
+        val captureAt: Long,
+        /** The folder on the phone it waits in; the kind of copy when unknown. */
+        val place: String = folder.name,
+        val anchorable: Boolean = true
     )
 
     data class Plan(val ids: List<Long>, val agedUsed: Boolean, val freedBytes: Long)
 
     /** The per-folder anchor ids: newest captureAt (ties: highest id). */
     fun anchors(copies: List<Copy>): Set<Long> =
-        copies.groupBy { it.folder }
+        copies.filter { it.anchorable }.groupBy { it.place }
             .mapNotNull { (_, list) ->
                 list.maxWithOrNull(compareBy({ it.captureAt }, { it.id }))?.id
             }

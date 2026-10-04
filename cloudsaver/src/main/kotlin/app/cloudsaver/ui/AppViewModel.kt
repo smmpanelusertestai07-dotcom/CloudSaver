@@ -27,6 +27,7 @@ import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.PhotoFormat
@@ -1306,7 +1307,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setOutputMode(v: OutputMode) {
-        setStr(OptionsRepo.K.OUTPUT_MODE, v.name)
+        viewModelScope.launch { repo.setOutputMode(v) }
         noteSettingChange(
             detail = ActivityWording.encode(ActivityWording.Setting.LAYOUT, v.name)
         )
@@ -1357,8 +1358,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshOldFolders() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
+            val perFolder = db.items().releasedPerFolder().associate { it.outputRelPath to it.cnt }
+            val inUse = o.layout.current + o.layout.otherMode
             oldFolders.value = OutputRoots.outermost(o.pastOutputRoots).mapNotNull { root ->
-                val n = db.items().releasedCountIn(root, OutputRoots.escapeLike(root) + "/%")
+                val n = OutputRoots.waitingIn(root, perFolder, inUse)
                 if (n > 0) OldFolder(root, n) else null
             }
         }
@@ -1372,8 +1375,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun moveToDefaultFolders() {
         viewModelScope.launch(Dispatchers.IO) {
             repo.setFolders(mapOf(OutFolder.SINGLE to "", OutFolder.PHOTOS to "", OutFolder.VIDEOS to ""))
-            noteSettingChange(detail = ActivityWording.encode(ActivityWording.Setting.FOLDER, Defaults.OUTPUT_DIR))
+            noteSettingChange(
+                detail = ActivityWording.encode(
+                    ActivityWording.Setting.FOLDER, OutputPaths.joined(repo.current().layout)
+                )
+            )
             refreshOldFolders()
+        }
+    }
+
+    /** "Done" on the card that asks for the new folder to be turned on in Ente. */
+    fun dismissNewFolderCard() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setBool(OptionsRepo.K.NEW_FOLDER_PENDING, false)
         }
     }
 

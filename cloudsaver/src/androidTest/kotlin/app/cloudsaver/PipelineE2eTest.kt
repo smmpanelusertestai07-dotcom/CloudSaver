@@ -1,5 +1,6 @@
 package app.cloudsaver
 
+import android.content.ContentValues
 import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -433,6 +434,42 @@ class PipelineE2eTest {
                 runCatching { context.contentResolver.delete(entry.uri, null, null) }
             }
             repo.useDefaultFolders()
+        }
+    }
+
+    /**
+     * A folder renamed in a file manager takes its copies with it. They are
+     * gone from the folder the app watches, but not gone: even inside the
+     * "back from Ente's Free up space" window, a copy that still exists is
+     * followed to where it is, never counted as collected.
+     */
+    @Test
+    fun aCopyMovedElsewhereIsFollowedNotCountedAsUploaded() = runBlockingTest {
+        val elsewhere = "Pictures/E2eRenamedByHand/"
+        val repo = OptionsRepo.get(context)
+        try {
+            MediaFixtures.insertPhoto(context, name = "e2e_moved_1.jpg", seed = 31, captureMillis = captureAt)
+            val db = AppDb.get(context)
+            MediaScanner(context, db).scan()
+            val options = repo.current()
+            val row = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_moved_1.jpg" }
+            assertTrue(Stager(context, db).stageOne(row, options))
+            assertEquals(1, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
+            val released = db.items().released().single { it.displayName == "e2e_moved_1.jpg" }
+
+            val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, elsewhere) }
+            assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
+
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            MaintainEngine(context).run()
+            val after = db.items().byId(released.id)!!
+            assertEquals("a moved copy is still waiting", ItemState.RELEASED.name, after.state)
+            assertEquals(elsewhere.trimEnd('/'), after.outputRelPath?.trimEnd('/'))
+        } finally {
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
+            for (entry in OutputInventory(context).query(listOf(elsewhere)).orEmpty()) {
+                runCatching { context.contentResolver.delete(entry.uri, null, null) }
+            }
         }
     }
 

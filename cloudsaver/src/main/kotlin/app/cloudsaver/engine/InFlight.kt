@@ -1,6 +1,7 @@
 package app.cloudsaver.engine
 
 import android.content.Context
+import android.os.Process
 import androidx.core.content.edit
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.AppDb
@@ -25,6 +26,7 @@ object InFlight {
 
     private const val PREFS = "inflight"
     private const val KEY_ID = "id"
+    private const val KEY_PID = "pid"
 
     const val STRIKES = 3
     const val REASON = "process_died"
@@ -35,6 +37,7 @@ object InFlight {
     fun begin(context: Context, rowId: Long) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = true) {
             putLong(KEY_ID, rowId)
+            putInt(KEY_PID, Process.myPid())
         }
     }
 
@@ -42,10 +45,17 @@ object InFlight {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { clear() }
     }
 
-    /** Reads a note left by a run that never came back. True when there was one. */
+    /**
+     * Reads a note left by a run that never came back. True when there was
+     * one. A note this same process wrote is not one: the file is still
+     * being optimised - by the trial run on Home, say - and has done nothing
+     * wrong.
+     */
     suspend fun recover(context: Context, db: AppDb): Boolean {
-        val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_ID, -1)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getLong(KEY_ID, -1)
         if (id < 0) return false
+        if (prefs.getInt(KEY_PID, -1) == Process.myPid()) return false
         end(context)
         val row = db.items().byId(id) ?: return true
         if (row.state != ItemState.NEW.name) return true

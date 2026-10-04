@@ -107,6 +107,18 @@ object OutputRoots {
     }
 
     /**
+     * Copies waiting in the old folder [root] or a folder inside it, given
+     * [perFolder] (folder to waiting copies). Copies in a folder still in use
+     * ([inUse]) are not the old folder's, even when it sits inside it -
+     * Pictures/EnteSaver/Photos inside an old Pictures/EnteSaver - or the old
+     * folder would never be let go.
+     */
+    fun waitingIn(root: String, perFolder: Map<String, Int>, inUse: Collection<String>): Int =
+        perFolder.entries.sumOf { (path, n) ->
+            if (isUnder(path, root) && inUse.none { isUnder(path, it) }) n else 0
+        }
+
+    /**
      * The fewest roots that still cover every folder: a folder inside another
      * one is listed by the outer folder's query already.
      */
