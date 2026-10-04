@@ -884,7 +884,7 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(percent = AdaptiveIconCornerPercent))
     ) {
         Image(
-            painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_background),
+            painter = painterResource(app.cloudsaver.R.drawable.ic_launcher_background),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -892,7 +892,7 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
                 .scale(AdaptiveIconScale)
         )
         Image(
-            painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_foreground),
+            painter = painterResource(app.cloudsaver.R.drawable.ic_launcher_foreground),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

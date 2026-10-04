@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The Ente Saver mark: a faint frame is the photo as it was, the solid
+    photo in its corner is the light copy, the arrow is the shrink between.
+    In Ente's green, for the light icon.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M40.5,31.5 h27 a9,9 0 0 1 9,9 v27 a9,9 0 0 1 -9,9 h-27 a9,9 0 0 1 -9,-9 v-27 a9,9 0 0 1 9,-9 Z"
+        android:strokeColor="#FF08C225"
+        android:strokeAlpha="0.55"
+        android:strokeWidth="3.4" />
+    <group
+        android:translateX="29.8"
+        android:translateY="54.7"
+        android:scaleX="0.84722"
+        android:scaleY="0.84722">
+        <path
+            android:fillColor="#FF08C225"
+            android:fillType="evenOdd"
+            android:pathData="M5.5,0 h25 a5.5,5.5 0 0 1 5.5,5.5 v16 a5.5,5.5 0 0 1 -5.5,5.5 h-25 a5.5,5.5 0 0 1 -5.5,-5.5 v-16 a5.5,5.5 0 0 1 5.5,-5.5 Z M5,23 L14,12.8 Q15,11.7 16,12.8 L22,19.4 L25.6,15.8 Q26.6,14.8 27.6,15.8 L31,19 L31,23 Z M25.005,8.200 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0 Z" />
+    </group>
+    <path
+        android:pathData="M72.2,35.8 L60.5,47.5 M60.5,39.6 L60.5,47.5 L68.4,47.5"
+        android:strokeColor="#FF08C225"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="4.4" />
+</vector>

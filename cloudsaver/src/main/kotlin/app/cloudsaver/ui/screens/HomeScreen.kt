@@ -72,8 +72,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.HomeAction
 import app.cloudsaver.core.logic.KnownClouds
+import app.cloudsaver.core.logic.OutputPaths
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.data.EnteApp
@@ -138,6 +141,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     var explain by remember { mutableStateOf<Int?>(null) }
     val projection by vm.projectedSavings.collectAsStateWithLifecycle()
     val detailKept by vm.detailKept.collectAsStateWithLifecycle()
+    val oldFolders by vm.oldFolders.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // The confirmed count, held for as long as its card is on screen.
@@ -156,6 +160,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         vm.refreshAsIs()
         vm.refreshSkipReasons()
         vm.refreshPowerRequirements()
+        vm.refreshOldFolders()
         vm.refreshProjection()
     }
 
@@ -253,6 +258,60 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                         Text(stringResource(R.string.ok))
                     }
                 }
+            }
+        }
+
+        // Version 11's folder is Pictures/EnteSaver. Someone who set the app
+        // up before stays on the old one until they choose to move, because
+        // Ente is backing up the old one; the card says what moving means and
+        // the one thing to change in Ente afterwards.
+        val onOldFolder = options.foldersPinned && options.layout.current.any {
+            OutputRoots.isUnder(it, Defaults.LEGACY_OUTPUT_DIR)
+        }
+        if (onOldFolder && !options.moveCardDismissed) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.move_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.move_body, Defaults.OUTPUT_DIR, Defaults.LEGACY_OUTPUT_DIR),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                FlowRow {
+                    TextButton(onClick = { vm.moveToDefaultFolders() }) {
+                        Text(stringResource(R.string.move_button))
+                    }
+                    TextButton(onClick = { vm.dismissMoveCard() }) {
+                        Text(stringResource(R.string.move_later))
+                    }
+                }
+            }
+        }
+        // After a move, the old folder still holds copies Ente has not
+        // collected. It has to stay on in Ente until it is empty; the card
+        // says how many are left and goes when the last one has.
+        for (old in oldFolders) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.old_folder_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    pluralStringResource(R.plurals.old_folder_body, old.waiting, old.waiting, old.path),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Text(
+                    stringResource(R.string.old_folder_steps, OutputPaths.joined(options.layout)),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
 

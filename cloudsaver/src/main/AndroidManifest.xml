@@ -60,31 +60,165 @@
         android:taskAffinity=""
         android:theme="@style/Theme.CloudSaver">
 
-        <!-- singleTop is what makes MainActivity.onNewIntent actually run. An
-             alert carries the screen it wants opened in an extra, and with the
-             default launch mode Android is free to hand that intent to a second
-             copy of the activity instead of the one already on screen - the
-             extra then arrives in a fresh onCreate, or is dropped entirely, and
-             the alert opens whatever was last shown.
+        <!-- The one screen host. singleTop is what makes onNewIntent actually
+             run: an alert carries the screen it wants opened in an extra, and
+             with the default launch mode Android is free to hand that intent to
+             a second copy of the activity instead of the one already on screen.
 
              fullUser, not portrait: the app follows the phone's own rotation
              lock and turns when the person turns it. Every screen here
              scrolls and is width-capped, so sideways costs nothing, while
              locking to portrait would fail WCAG 1.3.4 for anyone whose phone
              is mounted and cannot be turned - and Android 16 already ignores
-             such a lock on large screens, with the opt-out gone at API 37. -->
+             such a lock on large screens, with the opt-out gone at API 37.
+
+             It has no launcher entry of its own: the home-screen icon is one
+             of the aliases below, so the name and icon can be chosen in
+             Settings. -->
         <activity
-            android:name=".MainActivity"
+            android:name=".HostActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="fullUser"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- The icon every install has had: same component name since version 1, so the
+             home-screen icon and its shortcuts survive the update. Ente Saver, green. -->
+        <activity-alias
+            android:name=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:targetActivity=".HostActivity">
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- The other looks, chosen in Settings, Appearance (AppLooks). -->
+        <activity-alias
+            android:name=".AliasSaverGreen"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name_short"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AliasEnteSaverDark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_dark"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_dark"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AliasSaverDark"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_dark"
+            android:label="@string/app_name_short"
+            android:roundIcon="@mipmap/ic_launcher_dark"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AliasEnteSaverLight"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_light"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_light"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AliasSaverLight"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_light"
+            android:label="@string/app_name_short"
+            android:roundIcon="@mipmap/ic_launcher_light"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Opens Ente Photos from the "Photos" home-screen shortcut, or Ente
+             Saver's install buttons when Ente is not there. Shows nothing. -->
+        <activity
+            android:name=".OpenEnteActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Ente Saver's icon pack, found by launchers through these actions.
+             The pack itself is res/xml/appfilter.xml; this screen shows nothing. -->
+        <activity
+            android:name=".IconPackActivity"
+            android:exported="true"
+            android:icon="@drawable/iconpack_photos"
+            android:label="@string/icon_pack_name"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="org.adw.launcher.THEMES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.novalauncher.THEME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.teslacoilsw.launcher.THEME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.gau.go.launcherex.theme" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.anddoes.launcher.THEME" />
             </intent-filter>
         </activity>
 

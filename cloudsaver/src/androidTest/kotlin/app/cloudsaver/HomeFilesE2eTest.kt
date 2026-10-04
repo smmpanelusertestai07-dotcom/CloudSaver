@@ -143,7 +143,7 @@ class HomeFilesE2eTest {
     private val context: Context get() = instrumentation.targetContext
     private val db get() = AppDb.get(context)
 
-    private var scenario: ActivityScenario<MainActivity>? = null
+    private var scenario: ActivityScenario<HostActivity>? = null
 
     /** The album MediaFixtures writes into, as MediaStore labels it. */
     private val fixtureAlbum: String get() = MediaFixtures.TEST_ALBUM.substringAfterLast('/')
@@ -192,6 +192,7 @@ class HomeFilesE2eTest {
     private suspend fun resetOptions() {
         val repo = OptionsRepo.get(context)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+        repo.useDefaultFolders()
         repo.setBool(OptionsRepo.K.APP_LOCK, false)
         repo.setBool(OptionsRepo.K.PAUSE_ALL, false)
         repo.setBool(OptionsRepo.K.PLACEHOLDER_REMOVED, false)
@@ -312,9 +313,9 @@ class HomeFilesE2eTest {
     // ---- launching and navigating -----------------------------------------
 
     /** Starts the app and waits until Home has actually drawn. */
-    private fun launchHome(): ActivityScenario<MainActivity> {
+    private fun launchHome(): ActivityScenario<HostActivity> {
         scenario?.close()
-        val launched = ActivityScenario.launch(MainActivity::class.java)
+        val launched = ActivityScenario.launch(HostActivity::class.java)
         scenario = launched
         compose.waitForIdle()
         awaitNode(hasText(s(R.string.app_tagline)), "the Home screen")

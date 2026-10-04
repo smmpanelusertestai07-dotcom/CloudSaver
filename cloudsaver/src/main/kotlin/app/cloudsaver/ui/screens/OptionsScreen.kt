@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Bolt
@@ -89,6 +90,7 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
@@ -101,6 +103,8 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.EnteIcon
 import app.cloudsaver.ui.components.EnteInstallButtons
+import app.cloudsaver.ui.components.FolderChoiceRows
+import app.cloudsaver.ui.components.FolderDialog
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PasswordDialog
@@ -146,6 +150,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     // Changing the layout means the cloud app has to be pointed at a different
     // folder or the backup quietly stops covering new files. Confirmed, not
     // applied on a stray tap.
+    var changingFolder by remember { mutableStateOf<OutFolder?>(null) }
     var pendingLayout by remember { mutableStateOf<OutputMode?>(null) }
     // Moving to or from the SD card applies to new files only, and the ones
     // already written stay where they are. That is worth saying before the
@@ -276,6 +281,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             // is printed rather than described.
             FolderPaths(o.layout)
             CopyPathButton(o.layout)
+            // The default, or a folder of the person's own for each kind.
+            FolderChoiceRows(o.layout) { changingFolder = it }
+        }
+        changingFolder?.let { folder ->
+            FolderDialog(vm, o.layout, folder) { changingFolder = null }
         }
 
         // Ente Photos: the one app light copies are made for. Whether it is on
@@ -559,6 +569,10 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
 
         SectionHeader(stringResource(R.string.opt_group_appearance))
+        // Ente Saver's own name and icon on the home screen.
+        val look by vm.look.collectAsStateWithLifecycle()
+        LaunchedEffect(Unit) { vm.refreshLook() }
+        LooksCard(chosen = look, icon = IconLooks, onChoose = { vm.chooseLook(it) })
         // 10. Theme
         OptionCard(
             stringResource(R.string.opt_theme),
@@ -811,7 +825,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 askExportPassword = false
                 vm.backupPassword = password.ifEmpty { null }
                 exportLauncher.launch(
-                    if (password.isEmpty()) "cloudsaver-backup.json" else "cloudsaver-backup.csb"
+                    if (password.isEmpty()) "entesaver-backup.json" else "entesaver-backup.csb"
                 )
             }
         )
@@ -1214,6 +1228,7 @@ private val IconFree = Icons.Outlined.PhoneAndroid
 private val IconOwnSpace = Icons.Outlined.Storage
 private val IconVolume = Icons.Outlined.SdCard
 private val IconQuality = Icons.Outlined.Tune
+private val IconLooks = Icons.Outlined.Apps
 private val IconCodec = Icons.Outlined.Movie
 private val IconTheme = Icons.Outlined.Palette
 private val IconLock = Icons.Outlined.Lock

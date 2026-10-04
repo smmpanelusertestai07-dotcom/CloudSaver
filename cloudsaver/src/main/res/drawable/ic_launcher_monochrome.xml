@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Themed-icon layer (Android 13+) and the shape behind the notification
-    icon. One path with nonZero winding: the cloud subpaths run clockwise so
-    they union, the arrow subpaths run counter-clockwise so they cut a hole.
-    A vector rather than a PNG because the system tints this to a single
-    colour anyway, and it then stays crisp at every size.
+    Themed-icon layer (Android 13+): the same mark in one colour, which
+    the system tints. The frame keeps its lighter weight through its alpha.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -12,6 +9,24 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M40.08,58.64 L68.77,58.64 A6.75,6.75 0 0,1 75.52,65.39 L75.52,66.02 A6.75,6.75 0 0,1 68.77,72.77 L40.08,72.77 A6.75,6.75 0 0,1 33.33,66.02 L33.33,65.39 A6.75,6.75 0 0,1 40.08,58.64 Z M33.96,47.67 A16.45,16.45 0 1,1 66.87,47.67 A16.45,16.45 0 1,1 33.96,47.67 Z M55.27,53.58 A12.23,12.23 0 1,1 79.73,53.58 A12.23,12.23 0 1,1 55.27,53.58 Z M27.84,57.8 A10.12,10.12 0 1,1 48.09,57.8 A10.12,10.12 0 1,1 27.84,57.8 Z M54.0,41.77 L43.66,53.79 L64.34,53.79 Z M52.49,55.27 A2.0,2.0 0 0,0 50.49,57.27 L50.49,57.27 A2.0,2.0 0 0,0 52.49,59.27 L55.51,59.27 A2.0,2.0 0 0,0 57.51,57.27 L57.51,57.27 A2.0,2.0 0 0,0 55.51,55.27 Z M50.87,60.54 A2.0,2.0 0 0,0 48.87,62.54 L48.87,62.54 A2.0,2.0 0 0,0 50.87,64.55 L57.13,64.55 A2.0,2.0 0 0,0 59.13,62.54 L59.13,62.54 A2.0,2.0 0 0,0 57.13,60.54 Z M49.25,65.81 A2.0,2.0 0 0,0 47.25,67.82 L47.25,67.82 A2.0,2.0 0 0,0 49.25,69.82 L58.75,69.82 A2.0,2.0 0 0,0 60.75,67.82 L60.75,67.82 A2.0,2.0 0 0,0 58.75,65.81 Z" />
+        android:pathData="M40.5,31.5 h27 a9,9 0 0 1 9,9 v27 a9,9 0 0 1 -9,9 h-27 a9,9 0 0 1 -9,-9 v-27 a9,9 0 0 1 9,-9 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeAlpha="0.55"
+        android:strokeWidth="3.4" />
+    <group
+        android:translateX="29.8"
+        android:translateY="54.7"
+        android:scaleX="0.84722"
+        android:scaleY="0.84722">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M5.5,0 h25 a5.5,5.5 0 0 1 5.5,5.5 v16 a5.5,5.5 0 0 1 -5.5,5.5 h-25 a5.5,5.5 0 0 1 -5.5,-5.5 v-16 a5.5,5.5 0 0 1 5.5,-5.5 Z M5,23 L14,12.8 Q15,11.7 16,12.8 L22,19.4 L25.6,15.8 Q26.6,14.8 27.6,15.8 L31,19 L31,23 Z M25.005,8.200 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0 Z" />
+    </group>
+    <path
+        android:pathData="M72.2,35.8 L60.5,47.5 M60.5,39.6 L60.5,47.5 L68.4,47.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="4.4" />
 </vector>

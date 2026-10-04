@@ -11,6 +11,8 @@ import app.cloudsaver.core.logic.PhotoFormat
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.engine.InFlight
+import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
@@ -50,7 +52,8 @@ class Stager(private val context: Context, private val db: AppDb) {
         }
         val uri = Uri.parse(uriString)
         val tempDir = Storage.tempDir(context, options.storageVolume)
-        val photoSpec = options.photo.spec()
+        // Held to what this phone can decode without running out of memory.
+        val photoSpec = DeviceTier.fit(context, options.photo.spec())
         val videoSpec = options.video.spec()
         // HEIC only once this phone has passed its own test; the test runs
         // here, in background work, the first time a photo would want it.
@@ -68,6 +71,9 @@ class Stager(private val context: Context, private val db: AppDb) {
         runCatching {
             Process.setThreadPriority(tid, Process.THREAD_PRIORITY_BACKGROUND)
         }
+        // Written down first: an encode that takes the whole app down throws
+        // nothing, and the next run must still know which file it was.
+        InFlight.begin(context, row.id)
         val result = try {
             if (row.isVideo) {
                 VideoCompressor.compress(
@@ -93,6 +99,7 @@ class Stager(private val context: Context, private val db: AppDb) {
             fail(row, "out_of_memory")
             return false
         } finally {
+            InFlight.end(context)
             priorPriority?.let { runCatching { Process.setThreadPriority(tid, it) } }
         }
 

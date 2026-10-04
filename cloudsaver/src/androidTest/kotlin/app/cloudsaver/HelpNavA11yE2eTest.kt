@@ -76,6 +76,7 @@ class HelpNavA11yE2eTest {
         runBlocking {
             AppDb.get(target).clearAllTables()
             OptionsRepo.get(target).setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+            OptionsRepo.get(target).useDefaultFolders()
             // Several entries only appear once there is something behind
             // them, so the gallery has to be real before the tour starts.
             for (i in 1..3) {
@@ -200,7 +201,7 @@ class HelpNavA11yE2eTest {
             R.string.help_licenses,
             R.string.help_about
         )
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             openHelp()
             for (page in pages) {
                 compose.open(s(page))
@@ -217,7 +218,7 @@ class HelpNavA11yE2eTest {
     /** The four tabs, and the pages reached from them without any state. */
     @Test
     fun theRoutesThatNeedNoStateAreAllReachableByTapping() {
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             for (tab in listOf(
                 R.string.nav_files, R.string.nav_storage, R.string.nav_options, R.string.nav_home
             )) {
@@ -257,7 +258,7 @@ class HelpNavA11yE2eTest {
      */
     @Test
     fun aboutStatesTheAndroidItIsRunningOnAndPromisesNoNetwork() {
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             openHelp()
             compose.open(s(R.string.help_about))
 
@@ -318,7 +319,7 @@ class HelpNavA11yE2eTest {
     fun everyControlIsDescribedAndBigEnoughToHit() {
         val described = SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription)
         val labelled = SemanticsMatcher.keyIsDefined(SemanticsProperties.Text)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             for (tab in listOf(
                 R.string.nav_home, R.string.nav_files, R.string.nav_storage, R.string.nav_options
             )) {

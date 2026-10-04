@@ -65,6 +65,7 @@ class LockBackupE2eTest {
     fun setUp(): Unit = runBlocking {
         AppDb.get(target).clearAllTables()
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+        repo.useDefaultFolders()
         repo.setBool(OptionsRepo.K.APP_LOCK, false)
         backupFile().delete()
     }
@@ -87,7 +88,7 @@ class LockBackupE2eTest {
     @Test
     fun nothingOfTheAppIsReachableWhileItIsLocked(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.waitForIdle()
             // The options flow starts on defaults and the stored value lands a
             // frame or two later, so the bar is briefly on screen before the
@@ -145,7 +146,7 @@ class LockBackupE2eTest {
     @Test
     fun aLockNeverLeavesTheUserWithNoWayIn(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.waitForIdle()
             // One of two things must be true within a few seconds: the lock
             // screen is up with something to unlock it, or the app has turned
@@ -320,7 +321,7 @@ class LockBackupE2eTest {
     @Test
     fun theSaveBackupRowOpensThePasswordDialogAndCancellingChangesNothing(): Unit = runBlocking {
         val presetBefore = repo.current().photo.preset
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .performScrollTo().performClick()

@@ -19,12 +19,15 @@ import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeviceDefaults
 import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.Fingerprint
+import app.cloudsaver.core.logic.FolderName
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.KeptCopies
 import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.MediaProfile
+import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.OutputRoots
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.PhotoFormat
 import app.cloudsaver.core.logic.PhotoSettings
@@ -60,6 +63,7 @@ import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
+import app.cloudsaver.util.AppLooks
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Formats
@@ -1321,6 +1325,99 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissEnteOnlyNotice() {
         viewModelScope.launch(Dispatchers.IO) {
             repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
+        }
+    }
+
+    // ---- Ente Saver's own name and icon -----------------------------------------
+
+    val look = MutableStateFlow(AppLooks.DEFAULT)
+
+    fun refreshLook() {
+        viewModelScope.launch(Dispatchers.IO) { look.value = AppLooks.chosen(ctx) }
+    }
+
+    fun chooseLook(choice: AppLooks.Look) {
+        viewModelScope.launch(Dispatchers.IO) {
+            AppLooks.choose(ctx, choice)
+            look.value = AppLooks.chosen(ctx)
+        }
+    }
+
+    // ---- where copies go ------------------------------------------------------
+
+    /**
+     * An old folder that still holds copies waiting for Ente, and how many.
+     * Shown on Home until it runs empty, so the person knows to keep it on in
+     * Ente until then.
+     */
+    data class OldFolder(val path: String, val waiting: Int)
+
+    val oldFolders = MutableStateFlow<List<OldFolder>>(emptyList())
+
+    fun refreshOldFolders() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            oldFolders.value = OutputRoots.outermost(o.pastOutputRoots).mapNotNull { root ->
+                val n = db.items().releasedCountIn(root, OutputRoots.escapeLike(root) + "/%")
+                if (n > 0) OldFolder(root, n) else null
+            }
+        }
+    }
+
+    /**
+     * The person tapped Move: new copies go to the default folder from now on.
+     * Copies already waiting in the old one stay where they are and are
+     * watched there until Ente has them - nothing is moved, nothing is lost.
+     */
+    fun moveToDefaultFolders() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setFolders(mapOf(OutFolder.SINGLE to "", OutFolder.PHOTOS to "", OutFolder.VIDEOS to ""))
+            noteSettingChange(detail = ActivityWording.encode(ActivityWording.Setting.FOLDER, Defaults.OUTPUT_DIR))
+            refreshOldFolders()
+        }
+    }
+
+    fun dismissMoveCard() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setBool(OptionsRepo.K.MOVE_CARD_DISMISSED, true)
+        }
+    }
+
+    /** Why a typed folder name cannot be used, or null; [taken] counts the person's own files in it. */
+    data class FolderCheck(val problem: FolderName.Problem? = null, val taken: Int = 0) {
+        val ok: Boolean get() = problem == null && taken == 0
+    }
+
+    /**
+     * Checks a name typed for [folder]'s copies: the rules a folder name has
+     * to meet, and that the folder does not already hold photos or videos of
+     * the person's own - Ente Saver's copies must never be mixed in with them.
+     */
+    suspend fun checkFolderName(folder: OutFolder, name: String): FolderCheck =
+        withContext(Dispatchers.IO) {
+            val o = repo.current()
+            val other = when (folder) {
+                OutFolder.PHOTOS -> o.layout.path(OutFolder.VIDEOS)
+                OutFolder.VIDEOS -> o.layout.path(OutFolder.PHOTOS)
+                OutFolder.SINGLE -> null
+            }
+            FolderName.problem(name, other)?.let { return@withContext FolderCheck(it) }
+            val path = FolderName.pathOf(name)
+            val theirs = OutputInventory(ctx).query(listOf(path))
+                ?.count { !it.ownedByUs && !ScanSources.isPipelineName(it.name) } ?: 0
+            FolderCheck(taken = theirs)
+        }
+
+    /** [value] is "" for the default, or a path the folder check passed. */
+    fun setFolder(folder: OutFolder, value: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setFolders(mapOf(folder to value))
+            noteSettingChange(
+                detail = ActivityWording.encode(
+                    ActivityWording.Setting.FOLDER, repo.current().layout.path(folder)
+                )
+            )
+            refreshOldFolders()
         }
     }
     /**

@@ -546,7 +546,7 @@ fun Thumbnail(row: ItemRow) {
             )
         } else {
             Icon(
-                painterResource(R.drawable.ic_stat_cloud),
+                painterResource(R.drawable.ic_stat_saver),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)

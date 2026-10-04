@@ -78,7 +78,7 @@ class PowerPagesTest {
         for (id in readable) {
             val hint = PowerPages.pathHint(PowerPages.Vendor.COLOR_OS, id)
             assertTrue("$id has no path", !hint.isNullOrBlank())
-            assertTrue("$id must name the app", hint!!.contains("CloudSaver"))
+            assertTrue("$id must name the app", hint!!.contains("Ente Saver"))
             assertTrue("$id must be a path", hint.contains("›"))
         }
     }
@@ -109,7 +109,7 @@ class PowerPagesTest {
                 if (requirement.readable) continue
                 val hint = PowerPages.pathHint(vendor, requirement.id)
                 assertTrue("$vendor ${requirement.id} has no path", !hint.isNullOrBlank())
-                assertTrue("$vendor ${requirement.id} must name the app", hint!!.contains("CloudSaver"))
+                assertTrue("$vendor ${requirement.id} must name the app", hint!!.contains("Ente Saver"))
                 assertTrue("$vendor ${requirement.id} must be a path", hint.contains("›"))
             }
         }

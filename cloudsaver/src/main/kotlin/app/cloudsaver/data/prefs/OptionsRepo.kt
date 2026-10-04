@@ -15,6 +15,7 @@ import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.FolderName
 import app.cloudsaver.core.logic.MediaSettings
+import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputLayout
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.OutputRoots
@@ -48,6 +49,10 @@ data class Options(
      * one-time note that Ente can stop backing that folder up.
      */
     val pastOutputRoots: Set<String> = emptySet(),
+    /** An existing install's folders were checked against the new default. */
+    val foldersPinned: Boolean = false,
+    /** "Not now" on the card that offers the new folder. */
+    val moveCardDismissed: Boolean = false,
     /**
      * The cloud app an earlier version was set to. Ente Saver works with Ente
      * Photos only; anything else here means the person used another app
@@ -211,6 +216,8 @@ class OptionsRepo(private val context: Context) {
         val FOLDER_PHOTOS = stringPreferencesKey("folderPhotos")
         val FOLDER_VIDEOS = stringPreferencesKey("folderVideos")
         val PAST_OUTPUT_ROOTS = stringSetPreferencesKey("pastOutputRoots")
+        val FOLDERS_PINNED = booleanPreferencesKey("foldersPinned")
+        val MOVE_CARD_DISMISSED = booleanPreferencesKey("moveCardDismissed")
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
         val SPEED = stringPreferencesKey("speed")
         val DAILY_CAP_MB = intPreferencesKey("dailyCapMb")
@@ -290,6 +297,8 @@ class OptionsRepo(private val context: Context) {
             folderPhotos = p[K.FOLDER_PHOTOS] ?: "",
             folderVideos = p[K.FOLDER_VIDEOS] ?: "",
             pastOutputRoots = p[K.PAST_OUTPUT_ROOTS] ?: emptySet(),
+            foldersPinned = p[K.FOLDERS_PINNED] ?: false,
+            moveCardDismissed = p[K.MOVE_CARD_DISMISSED] ?: false,
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
             speed = enumOr(p[K.SPEED], SpeedMode.SMART),
             // Snapped, so a limit stored by an older build still lands on one
@@ -357,7 +366,70 @@ class OptionsRepo(private val context: Context) {
         ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }
     }
 
-    suspend fun current(): Options = flow.first()
+    suspend fun current(): Options {
+        val o = flow.first()
+        if (o.foldersPinned) return o
+        pinLegacyFolders()
+        return flow.first()
+    }
+
+    /**
+     * Keeps an install that was already in use on the folder it had.
+     *
+     * Version 11 makes copies in Pictures/EnteSaver by default, and Ente is
+     * backing up Pictures/CloudSaver for everyone who set the app up before.
+     * Moving them silently would send every new copy to a folder Ente does
+     * not know, where nothing would ever upload. So their folders are written
+     * down as the old ones, once, and they move only when they tap Move -
+     * which then tells them the one thing to change in Ente. An install that
+     * never started setup has no copies and no Ente folder, and takes the new
+     * default.
+     */
+    suspend fun pinLegacyFolders() {
+        write { p ->
+            if (p[K.FOLDERS_PINNED] == true) return@write
+            p[K.FOLDERS_PINNED] = true
+            val inUse = (p[K.ONBOARDING_DONE] ?: false) || (p[K.ONBOARDING_STEP] ?: 0) != 0
+            if (!inUse) return@write
+            if ((p[K.FOLDER_SINGLE] ?: "").isEmpty()) p[K.FOLDER_SINGLE] = Defaults.LEGACY_OUTPUT_DIR
+            if ((p[K.FOLDER_PHOTOS] ?: "").isEmpty()) p[K.FOLDER_PHOTOS] = Defaults.LEGACY_OUTPUT_DIR_PHOTOS
+            if ((p[K.FOLDER_VIDEOS] ?: "").isEmpty()) p[K.FOLDER_VIDEOS] = Defaults.LEGACY_OUTPUT_DIR_VIDEOS
+        }
+    }
+
+    /**
+     * New folders for copies, in one write: [changes] maps each kind to its
+     * new value ("" for the default). Every folder that stops being used is
+     * added to the past ones, so the copies still waiting in it are watched
+     * until Ente has them; a folder moved back to is current again.
+     */
+    suspend fun setFolders(changes: Map<OutFolder, String>) {
+        write { p ->
+            val before = layoutOf(p)
+            for ((folder, value) in changes) {
+                p[keyOf(folder)] = value
+            }
+            val after = layoutOf(p)
+            val inUse = after.current + after.otherMode
+            val left = (before.current + before.otherMode).filter { old -> inUse.none { OutputRoots.same(it, old) } }
+            val past = (p[K.PAST_OUTPUT_ROOTS] ?: emptySet())
+                .filter { kept -> inUse.none { OutputRoots.same(it, kept) } } + left.map { OutputRoots.normalize(it) }
+            p[K.PAST_OUTPUT_ROOTS] = past.toSet()
+        }
+    }
+
+    private fun keyOf(folder: OutFolder) = when (folder) {
+        OutFolder.SINGLE -> K.FOLDER_SINGLE
+        OutFolder.PHOTOS -> K.FOLDER_PHOTOS
+        OutFolder.VIDEOS -> K.FOLDER_VIDEOS
+    }
+
+    private fun layoutOf(p: Preferences) = OutputLayout(
+        enumOr(p[K.OUTPUT_MODE], OutputMode.SINGLE),
+        p[K.FOLDER_SINGLE] ?: "",
+        p[K.FOLDER_PHOTOS] ?: "",
+        p[K.FOLDER_VIDEOS] ?: ""
+    )
 
     /**
      * The photo setting as stored, each value checked against what the

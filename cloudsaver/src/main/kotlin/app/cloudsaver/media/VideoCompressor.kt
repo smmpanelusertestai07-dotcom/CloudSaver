@@ -117,6 +117,9 @@ object VideoCompressor {
      */
     const val MIN_TOTAL_MS = 5 * 60_000L
 
+    /** The long side every phone's hardware encoder takes. */
+    private const val FULL_HD_LONG_SIDE = 1920
+
     /** Below this there is no point starting another attempt at all. */
     private const val MIN_ATTEMPT_MS = 60_000L
 
@@ -150,10 +153,18 @@ object VideoCompressor {
         } else {
             probe.width to probe.height
         }
-        val (outW, outH) = BitrateCalc.outputDims(upright.first, upright.second, spec.longSideLimit)
         // An ordinary 60 fps clip is written at 30; slow motion keeps every frame.
         val cappedFps = MediaSettings.outputFps(probe.fps, spec.fpsCap)
         val outFps = cappedFps ?: probe.fps
+        var dims = BitrateCalc.outputDims(upright.first, upright.second, spec.longSideLimit)
+        // Above 1080p only where a hardware encoder takes it: a budget chip
+        // that stops at 1080p would otherwise encode in software, for hours.
+        if (maxOf(dims.first, dims.second) > FULL_HD_LONG_SIDE &&
+            !EncoderCaps.anyHardwareFits(dims.first, dims.second, outFps)
+        ) {
+            dims = BitrateCalc.outputDims(upright.first, upright.second, FULL_HD_LONG_SIDE)
+        }
+        val (outW, outH) = dims
         val codec = VideoCodecResolver.resolve(
             spec.codec, VideoCodecResolver.Hardware(hevcFits = EncoderCaps.hevcFits(outW, outH, outFps))
         )

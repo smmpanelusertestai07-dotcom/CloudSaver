@@ -43,6 +43,23 @@ object EncoderCaps {
             }.getOrDefault(false)
         }
 
+    /**
+     * True when some hardware video encoder - H.264 or HEVC - takes this size
+     * and frame rate. A budget phone's chip often stops at 1080p; asking it
+     * for more ends in a software encode or a failed one.
+     */
+    fun anyHardwareFits(width: Int, height: Int, fps: Float): Boolean =
+        listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MIME_HEVC).any { mime ->
+            hardwareEncoders(mime).any { info ->
+                runCatching {
+                    val video = info.getCapabilitiesForType(mime).videoCapabilities
+                    val rate = fps.toDouble().coerceAtLeast(1.0)
+                    video.areSizeAndRateSupported(width, height, rate) ||
+                        video.areSizeAndRateSupported(height, width, rate)
+                }.getOrDefault(false)
+            }
+        }
+
     /** A hardware encoder HEIC can be written with: a HEIC one, or HEVC. */
     fun hasHardwareHeic(): Boolean =
         hardwareEncoders(MIME_HEIC).isNotEmpty() || hardwareEncoders(MIME_HEVC).isNotEmpty()

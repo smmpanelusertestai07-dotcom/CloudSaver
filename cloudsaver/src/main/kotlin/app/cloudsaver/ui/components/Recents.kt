@@ -46,7 +46,7 @@ fun HideWhileLocked(enabled: Boolean) {
         if (!enabled) return@DisposableEffect onDispose { }
         // Nothing to hide behind: not "the lock is off", but a window this
         // composable cannot reach. It cannot happen inside this app, where
-        // the only host is MainActivity, and it is written separately so
+        // the only host is HostActivity, and it is written separately so
         // that it stays visible if one ever is added.
         val activity = context.findActivity() ?: return@DisposableEffect onDispose { }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

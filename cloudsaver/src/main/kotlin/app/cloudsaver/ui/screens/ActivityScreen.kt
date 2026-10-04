@@ -138,7 +138,7 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                         text = { Text(stringResource(R.string.activity_export)) },
                         onClick = {
                             menuOpen = false
-                            exportLauncher.launch("cloudsaver-activity.txt")
+                            exportLauncher.launch("entesaver-activity.txt")
                         }
                     )
                     DropdownMenuItem(
@@ -393,6 +393,7 @@ private fun settingSentence(detail: String?): String {
             ActivityWording.Setting.CODEC -> R.string.opt_videos
             ActivityWording.Setting.PHOTOS -> R.string.opt_photos
             ActivityWording.Setting.VIDEOS -> R.string.opt_videos
+            ActivityWording.Setting.FOLDER -> R.string.opt_output
             ActivityWording.Setting.THEME -> R.string.opt_theme
             ActivityWording.Setting.SCOPE -> R.string.opt_scope
             ActivityWording.Setting.SPACE -> R.string.opt_group_space
@@ -447,8 +448,8 @@ private fun settingValue(change: ActivityWording.Change): String {
             BackupScope.VIDEOS.name -> R.string.scope_videos
             else -> null
         }
-        // Cloud app and space store a label already fit to read.
-        ActivityWording.Setting.CLOUD_APP, ActivityWording.Setting.SPACE -> null
+        // Cloud app, space and folder store a label already fit to read.
+        ActivityWording.Setting.CLOUD_APP, ActivityWording.Setting.SPACE, ActivityWording.Setting.FOLDER -> null
     }
     return res?.let { stringResource(it) } ?: change.value
 }

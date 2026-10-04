@@ -126,8 +126,10 @@ object Defaults {
      */
     const val MB = 1_000_000L
 
-    // Pictures (never DCIM): keeps clouds with DCIM auto-backup from grabbing originals.
-    const val OUTPUT_DIR = "Pictures/CloudSaver"
+    // Pictures (never DCIM): keeps Ente's camera backup, if it is on, from
+    // grabbing originals. The default for a new install; someone upgrading
+    // stays on the folder they had until they move (OptionsRepo).
+    const val OUTPUT_DIR = "Pictures/EnteSaver"
 
     /**
      * The folder every version before 11 released into. Still watched for as
@@ -147,8 +149,8 @@ object Defaults {
      * the whole point is that they outlive it.
      */
     const val KEPT_DIR = "Pictures/Light copies"
-    const val OUTPUT_DIR_PHOTOS = "Pictures/CloudSaver/Photos"
-    const val OUTPUT_DIR_VIDEOS = "Pictures/CloudSaver/Videos"
+    const val OUTPUT_DIR_PHOTOS = "Pictures/EnteSaver/Photos"
+    const val OUTPUT_DIR_VIDEOS = "Pictures/EnteSaver/Videos"
     /**
      * Where the automatic snapshot lives.
      *

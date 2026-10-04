@@ -106,7 +106,7 @@ object Notifications {
     fun working(context: Context, text: String): Notification {
         val pi = contentIntent(context, null)
         return NotificationCompat.Builder(context, CH_WORKING)
-            .setSmallIcon(R.drawable.ic_stat_cloud)
+            .setSmallIcon(R.drawable.ic_stat_saver)
             .setContentTitle(context.getString(R.string.notif_working_title))
             .setContentText(text)
             .setOngoing(true)
@@ -243,7 +243,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val n = NotificationCompat.Builder(context, CH_ALERTS)
-            .setSmallIcon(R.drawable.ic_stat_cloud)
+            .setSmallIcon(R.drawable.ic_stat_saver)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

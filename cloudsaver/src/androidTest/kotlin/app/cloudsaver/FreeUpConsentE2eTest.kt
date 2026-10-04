@@ -144,6 +144,7 @@ class FreeUpConsentE2eTest {
             db.clearAllTables()
             val repo = OptionsRepo.get(target)
             repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+            repo.useDefaultFolders()
             repo.setBool(OptionsRepo.K.APP_LOCK, false)
             // The gate re-checks Ente at the moment of action, and no
             // emulator has Ente on it: the debug build's stand-in says it is.
@@ -180,7 +181,7 @@ class FreeUpConsentE2eTest {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(3, "refuse")
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -249,7 +250,7 @@ class FreeUpConsentE2eTest {
         val seeds = seedBackedUpOriginals(3, "accept")
         val expectedFreed = ROW_BYTES * seeds.size
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -334,7 +335,7 @@ class FreeUpConsentE2eTest {
         val chunk = ReclaimRules.MAX_URIS_PER_REQUEST
         val seeds = seedBackedUpOriginals(chunk + 1, "chunk")
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -422,7 +423,7 @@ class FreeUpConsentE2eTest {
         assumeTrue("no media trash before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(2, "restore")
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
@@ -529,7 +530,7 @@ class FreeUpConsentE2eTest {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val (keeper, extra) = seedIdenticalPair()
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openHubCard(R.string.find_duplicates)
             awaitRow(extra.name)
@@ -595,7 +596,7 @@ class FreeUpConsentE2eTest {
             leftover.setLastModified(System.currentTimeMillis() - 2 * 60 * 60 * 1000L)
         )
 
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(HostActivity::class.java).use {
             awaitAppOnScreen()
             openHub()
             awaitText(R.string.hub_leftovers)

@@ -109,7 +109,7 @@ class SettingsE2eTest {
 
     /**
      * Empty, because the activity has to be launched *after* the options have
-     * been seeded: MainActivity reads onboardingDone on its first frame, and a
+     * been seeded: HostActivity reads onboardingDone on its first frame, and a
      * rule that launches for us would launch before @Before runs.
      */
     @get:Rule
@@ -119,7 +119,7 @@ class SettingsE2eTest {
     private val context: Context get() = instrumentation.targetContext
     private val device: UiDevice get() = UiDevice.getInstance(instrumentation)
 
-    private var scenario: ActivityScenario<MainActivity>? = null
+    private var scenario: ActivityScenario<HostActivity>? = null
 
     // ---- lifecycle ---------------------------------------------------------
 
@@ -157,6 +157,7 @@ class SettingsE2eTest {
     private fun writeKnownOptions() = runBlocking {
         val repo = OptionsRepo.get(context)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+        repo.useDefaultFolders()
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
         repo.setString(OptionsRepo.K.SCOPE, BackupScope.ALL.name)
         repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
@@ -774,7 +775,7 @@ class SettingsE2eTest {
     /** Launches the app (once per test) and lands on the Settings tab. */
     private fun openSettings() {
         if (scenario == null) {
-            scenario = ActivityScenario.launch(MainActivity::class.java)
+            scenario = ActivityScenario.launch(HostActivity::class.java)
         }
         val tab = s(R.string.nav_options)
         compose.waitUntil(UI_TIMEOUT) {

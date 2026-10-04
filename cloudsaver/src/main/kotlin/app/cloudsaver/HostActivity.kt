@@ -13,9 +13,10 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import app.cloudsaver.ui.App
 import app.cloudsaver.ui.AppViewModel
+import app.cloudsaver.util.AppLooks
 import app.cloudsaver.util.Notifications
 
-class MainActivity : AppCompatActivity() {
+class HostActivity : AppCompatActivity() {
 
     private val vm: AppViewModel by viewModels()
 
@@ -73,5 +74,10 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             // ignore
         }
+        // A new home-screen name or icon is put on only now, with the app out
+        // of sight: switching the launcher entry the app was opened from can
+        // close it, which is no way to answer a tap in Settings. Not on a
+        // rotation, which stops and starts the same screen.
+        if (!isChangingConfigurations) AppLooks.applyPending(this)
     }
 }

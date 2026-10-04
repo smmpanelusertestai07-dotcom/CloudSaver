@@ -101,7 +101,7 @@ class ActivityLog(context: Context) {
     suspend fun exportText(): String {
         val rows = db.activity().recent(RETENTION_ROWS)
         return buildString {
-            appendLine("CloudSaver activity")
+            appendLine("Ente Saver activity")
             appendLine("Exported ${Formats.dateTime(System.currentTimeMillis())}")
             appendLine()
             for (row in rows) {

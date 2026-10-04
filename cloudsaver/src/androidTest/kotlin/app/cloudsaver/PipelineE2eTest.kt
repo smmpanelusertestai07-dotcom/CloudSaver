@@ -10,7 +10,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.FolderName
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.core.logic.VideoCodecChoice
 import app.cloudsaver.core.logic.VideoPreset
@@ -60,7 +62,10 @@ class PipelineE2eTest {
     fun setUp() {
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
-        runBlocking { AppDb.get(context).clearAllTables() }
+        runBlocking {
+            AppDb.get(context).clearAllTables()
+            OptionsRepo.get(context).useDefaultFolders()
+        }
     }
 
     @After
@@ -344,6 +349,85 @@ class PipelineE2eTest {
             }
         } finally {
             runCatching { ex.release() }
+        }
+    }
+
+    /**
+     * A copy that leaves the folders the app looks at is read as collected,
+     * and its original is offered for deletion. So when the person picks a
+     * new folder, the copies still waiting in the old one must stay watched:
+     * here maintenance runs while the "back from Ente's Free up space" window
+     * is open - the moment every missing copy counts as uploaded - and the
+     * waiting copies must still be seen. Only once they really leave are they
+     * confirmed, and only then is the old folder let go.
+     */
+    @Test
+    fun aNewFolderNeverMakesWaitingCopiesLookUploaded() = runBlockingTest {
+        val moved = FolderName.pathOf("E2eMovedFolder")
+        val repo = OptionsRepo.get(context)
+        try {
+            (1..2).forEach { i ->
+                MediaFixtures.insertPhoto(
+                    context,
+                    name = "e2e_move_$i.jpg",
+                    seed = 20 + i,
+                    captureMillis = captureAt
+                )
+            }
+            val db = AppDb.get(context)
+            MediaScanner(context, db).scan()
+            val stager = Stager(context, db)
+            val before = repo.current()
+            for (row in db.items().byState(ItemState.NEW.name).filter { it.displayName.startsWith("e2e_move_") }) {
+                assertTrue(stager.stageOne(row, before))
+            }
+            assertEquals(2, Releaser(context, db).releaseBatch(before, System.currentTimeMillis()))
+
+            repo.setFolders(mapOf(OutFolder.SINGLE to moved))
+            val after = repo.current()
+            assertTrue(
+                "the old folder must be remembered: ${after.pastOutputRoots}",
+                after.pastOutputRoots.any { it.trimEnd('/') == Defaults.OUTPUT_DIR }
+            )
+
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            MaintainEngine(context).run()
+            val waiting = db.items().released().filter { it.displayName.startsWith("e2e_move_") }
+            assertEquals("copies still in the old folder are still waiting", 2, waiting.size)
+            assertTrue(waiting.all { it.outputRelPath?.trimEnd('/') == Defaults.OUTPUT_DIR })
+
+            // A new copy goes to the new folder.
+            MediaFixtures.insertPhoto(context, name = "e2e_move_3.jpg", seed = 23, captureMillis = captureAt)
+            MediaScanner(context, db).scan()
+            val third = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_move_3.jpg" }
+            assertTrue(stager.stageOne(third, after))
+            assertEquals(1, Releaser(context, db).releaseBatch(after, System.currentTimeMillis()))
+            assertEquals(1, OutputInventory(context).query(listOf(moved)).orEmpty().size)
+            assertEquals(
+                moved,
+                db.items().released().single { it.displayName == "e2e_move_3.jpg" }.outputRelPath?.trimEnd('/')
+            )
+
+            // Ente collects the old folder's copies: now they are confirmed,
+            // and the emptied folder is let go.
+            for (entry in OutputInventory(context).query(listOf(Defaults.OUTPUT_DIR)).orEmpty()) {
+                context.contentResolver.delete(entry.uri, null, null)
+            }
+            MaintainEngine(context).run()
+            assertTrue(
+                "collected copies are no longer waiting",
+                db.items().released().none { it.displayName == "e2e_move_1.jpg" || it.displayName == "e2e_move_2.jpg" }
+            )
+            assertTrue(
+                "the emptied old folder is let go",
+                repo.current().pastOutputRoots.none { it.trimEnd('/') == Defaults.OUTPUT_DIR }
+            )
+        } finally {
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
+            for (entry in OutputInventory(context).query(listOf(moved)).orEmpty()) {
+                runCatching { context.contentResolver.delete(entry.uri, null, null) }
+            }
+            repo.useDefaultFolders()
         }
     }
 
