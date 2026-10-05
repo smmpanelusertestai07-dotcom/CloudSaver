@@ -1,5 +1,6 @@
 package app.cloudsaver.engine
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -36,6 +37,7 @@ import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.Volumes
 import java.io.File
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.withLock
 
 /**
@@ -56,6 +58,9 @@ class MaintainEngine(private val context: Context) {
          * looks stopped.
          */
         const val STALE_PENDING_MS = 15L * 60 * 1000
+
+        /** How long a copy that looks gone is given to turn up after a move. */
+        const val GONE_RECHECK_MS = 1_500L
     }
 
     private val db = AppDb.get(context)
@@ -249,25 +254,41 @@ class MaintainEngine(private val context: Context) {
         // identical binder calls in one pass.
         val txCache = HashMap<Long, Long>()
 
-        for (row in db.items().released()) {
-            val names = presentNames[folderKey(pathOf(row))] ?: emptySet<String>()
-            val outputName = row.outputName ?: continue
-            if (outputName in names) continue
-
-            // Not in its folder is not the same as gone. A folder renamed or
-            // moved in a file manager takes the copy with it, and the copy
-            // still exists - so it is followed to where it is now and keeps
-            // waiting there, never counted as collected. Only a copy the
-            // gallery no longer has at all is judged below.
-            when (val place = whereNow(row)) {
-                is Whereabouts.Moved -> {
-                    db.items().update(row.copy(outputRelPath = place.relPath, outputName = place.name, updatedAt = now))
-                    continue
-                }
-                Whereabouts.Unknown -> continue
-                Whereabouts.Gone -> Unit
+        // Not in its folder is not the same as gone. A folder renamed or
+        // moved in a file manager takes the copy with it, and the copy still
+        // exists - so it is followed to where it is now and keeps waiting
+        // there, never counted as collected. Only a copy the gallery no
+        // longer has at all is judged below.
+        suspend fun follow(row: ItemRow, place: Whereabouts): Boolean {
+            if (place is Whereabouts.Moved) {
+                db.items().update(
+                    row.copy(
+                        outputRelPath = place.relPath,
+                        outputName = place.name,
+                        outputUri = place.uri ?: row.outputUri,
+                        updatedAt = now
+                    )
+                )
             }
+            return place == Whereabouts.Gone
+        }
+        val missing = db.items().released().filter { row ->
+            val names = presentNames[folderKey(pathOf(row))] ?: emptySet<String>()
+            val outputName = row.outputName ?: return@filter false
+            outputName !in names && follow(row, whereNow(row))
+        }
+        // A move is finished by the gallery in its own time: for a moment the
+        // copy can answer neither at its old address nor at its new one. So
+        // whatever looks gone is asked once more, a moment later, before
+        // anything is judged - one short wait per pass, however many copies.
+        val gone = if (missing.isEmpty()) {
+            missing
+        } else {
+            delay(GONE_RECHECK_MS)
+            missing.filter { follow(it, whereNow(it)) }
+        }
 
+        for (row in gone) {
             val evidence = evidenceOf(row)
             val releasedAt = row.releasedAt ?: now
             val fileBytes = row.outputBytes ?: 0L
@@ -993,7 +1014,8 @@ class MaintainEngine(private val context: Context) {
     private fun folderKey(rel: String): String = OutputRoots.normalize(rel).lowercase()
 
     private sealed interface Whereabouts {
-        data class Moved(val relPath: String, val name: String) : Whereabouts
+        /** At [relPath] under [name]; [uri] is set when the gallery gave the copy a new address. */
+        data class Moved(val relPath: String, val name: String, val uri: String? = null) : Whereabouts
         data object Gone : Whereabouts
         /** The gallery could not be asked: learn nothing this pass. */
         data object Unknown : Whereabouts
@@ -1001,17 +1023,61 @@ class MaintainEngine(private val context: Context) {
 
     /** Where a copy missing from its folder is now, asked by its own address. */
     private fun whereNow(row: ItemRow): Whereabouts {
-        val uri = row.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return Whereabouts.Gone
+        val uri = row.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return byNameAndSize(row)
         return try {
             context.contentResolver.query(
                 uri,
                 arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME),
                 null, null, null
             )?.use { c ->
-                if (!c.moveToFirst()) return Whereabouts.Gone
+                if (!c.moveToFirst()) return byNameAndSize(row)
                 val rel = c.getString(0)
                 val name = c.getString(1)
-                if (rel.isNullOrEmpty() || name.isNullOrEmpty()) Whereabouts.Gone else Whereabouts.Moved(rel, name)
+                if (rel.isNullOrEmpty() || name.isNullOrEmpty()) byNameAndSize(row) else Whereabouts.Moved(rel, name)
+            } ?: Whereabouts.Unknown
+        } catch (e: Exception) {
+            Whereabouts.Unknown
+        }
+    }
+
+    /**
+     * A copy whose own address no longer answers, looked for by its name and
+     * size across the gallery. A file moved can come back under a new address
+     * once the media scanner has seen it (Android 12 does this), and judging
+     * it gone would count a copy that still exists as collected. Exactly one
+     * match that is not the original is followed; several are a question this
+     * pass cannot answer; none means the copy really is gone.
+     */
+    private fun byNameAndSize(row: ItemRow): Whereabouts {
+        val name = row.outputName ?: return Whereabouts.Gone
+        val size = row.outputBytes ?: return Whereabouts.Gone
+        val collection = if (row.isVideo) {
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        }
+        return try {
+            context.contentResolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH),
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.SIZE} = ?",
+                arrayOf(name, size.toString()),
+                null
+            )?.use { c ->
+                val found = ArrayList<Whereabouts.Moved>()
+                while (c.moveToNext()) {
+                    val id = c.getLong(0)
+                    // An as-is copy has the original's name and size; the
+                    // original itself is never taken for the copy.
+                    if (id == row.mediaStoreId) continue
+                    val rel = c.getString(1)?.takeIf { it.isNotEmpty() } ?: continue
+                    found += Whereabouts.Moved(rel, name, ContentUris.withAppendedId(collection, id).toString())
+                }
+                when (found.size) {
+                    0 -> Whereabouts.Gone
+                    1 -> found.single()
+                    else -> Whereabouts.Unknown
+                }
             } ?: Whereabouts.Unknown
         } catch (e: Exception) {
             Whereabouts.Unknown
