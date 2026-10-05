@@ -21,6 +21,7 @@ import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.SnapshotStore
+import app.cloudsaver.ui.Lock
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -87,38 +88,38 @@ class LockBackupE2eTest {
      */
     @Test
     fun nothingOfTheAppIsReachableWhileItIsLocked(): Unit = runBlocking {
+        // Decided by the phone, not by whichever frame the test samples. A
+        // phone with no screen lock gives the app nothing to verify against,
+        // so the lock screen asks once and the app turns its own lock off
+        // rather than trapping the user; sampling the lock title in the
+        // moment before that happens and then waiting for the tabs to vanish
+        // was a race the test could lose. That path has its own test below.
+        val canLock = Lock.canEnable(target)
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
         ActivityScenario.launch(HostActivity::class.java).use {
             compose.waitForIdle()
-            // The options flow starts on defaults and the stored value lands a
-            // frame or two later, so the bar is briefly on screen before the
-            // lock is even known about. Waiting for the state to settle is the
-            // difference between testing the lock and testing that first frame.
-            compose.waitUntil(timeoutMillis = 20_000) {
-                compose.onAllNodes(hasText(s(R.string.lock_title), substring = true))
-                    .fetchSemanticsNodes().isNotEmpty() ||
-                    !runBlocking { repo.current().appLock }
-            }
-            // Either the lock screen is up, or the phone had no screen lock
-            // and the app disabled the lock rather than trapping the user.
-            // Both are correct; a bar full of tabs over a locked app is not.
-            val locked = compose.onAllNodes(hasText(s(R.string.lock_title), substring = true))
-                .fetchSemanticsNodes().isNotEmpty()
-            if (!locked) {
+            if (!canLock) {
+                compose.waitUntil(timeoutMillis = 20_000) { !runBlocking { repo.current().appLock } }
                 assertFalse(
                     "with no screen lock the app must turn its own lock off",
                     repo.current().appLock
                 )
                 return@runBlocking
             }
+            // The options flow starts on defaults and the stored value lands a
+            // frame or two later, so the bar is briefly on screen before the
+            // lock is even known about. Waiting for the lock screen is the
+            // difference between testing the lock and testing that first frame.
+            compose.waitUntil(timeoutMillis = 20_000) {
+                compose.onAllNodes(hasText(s(R.string.lock_title), substring = true))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
             // The bar leaves through a transition, and Compose transitions do
             // not honour the system's animations-off switch - so for a few
             // frames after the lock title appears, the outgoing bar is still
             // in the tree. A frame of exit animation is not reachability;
             // what must be true is that the bar is gone once the lock has
-            // settled, which is the same settling this test already waits
-            // for above. On a slow emulator the old immediate count sampled
-            // exactly that frame.
+            // settled.
             val tabs = listOf(
                 R.string.nav_home, R.string.nav_files, R.string.nav_storage, R.string.nav_options
             )
