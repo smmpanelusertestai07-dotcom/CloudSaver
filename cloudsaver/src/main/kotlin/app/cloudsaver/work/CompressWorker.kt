@@ -79,8 +79,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     private suspend fun runOnce(): Result {
         val app = applicationContext
         val repo = OptionsRepo.get(app)
-        runCatching { SpaceLimits.refresh(app) }
-        val options = repo.current()
+        var options = repo.current()
         val manual = inputData.getBoolean(KEY_MANUAL, false)
 
         if (!options.onboardingDone) return Result.success()
@@ -99,6 +98,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             waitedOnPurpose(repo)
             reschedule(app, repo)
             return Result.success()
+        }
+        // Automatic limits follow the phone's storage as it is now.
+        if (options.spaceAuto) {
+            runCatching { SpaceLimits.refresh(app) }
+            options = repo.current()
         }
 
         val db = AppDb.get(app)
@@ -146,9 +150,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         // finish, instead of being cut off and starting them again every run.
         val deadline = startAt + if (foreground) min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft) else PLAIN_RUN_MS
         val deferred = HashSet<Long>()
-        var spaceShort = false
-        // The smallest phones make videos only while charging.
-        val tier = DeviceTier.tier(app)
         val profile = runCatching { ProfileBuilder(app).current(options) }
             .getOrDefault(MediaProfile.Profile())
         var processed = 0
@@ -197,35 +198,32 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     break@loop
                 }
 
-                val videosNow = power.plugged || tier != DeviceTier.Tier.VERY_LOW
                 val videoMaxMs = if (foreground) {
                     -1L
                 } else {
                     RunDecider.plainRunVideoMaxMs(deadline - now, VideoCompressor.MIN_TOTAL_MS)
                 }
-                // Files skipped for space this run are left out of the next
-                // query's results; past a couple of hundred of them the run
-                // has nothing useful left to try.
+                // Files skipped for space this run are left out of the query;
+                // past a couple of hundred of them the run has nothing useful
+                // left to try (and the list stays far under SQLite's limit).
                 if (deferred.size > MAX_DEFERRED) break@loop
-                val batch = nextItems(db, live, plan, videosNow, videoMaxMs, 5 + deferred.size)
-                    .filter { it.id !in deferred }
-                    .take(5)
+                val batch = nextItems(db, live, plan, videoMaxMs, deferred, 5)
                 if (batch.isEmpty()) {
-                    // Nothing left that this run can take. Whatever is still
-                    // waiting gets its reason on Home. Ticked albums only:
-                    // rows in excluded albums are not "waiting".
-                    val waiting = db.items().newInScopeCount(live.excludedBuckets) > 0
+                    // Nothing left that this run can take; whatever is still
+                    // waiting gets its reason on Home, found by asking again
+                    // without the limit that held it back.
                     val why = when {
-                        spaceShort -> RunDecider.Wait.NEXT_TOO_BIG
-                        !waiting -> null
-                        !plan.photos -> RunDecider.Wait.PHOTO_CAP
-                        !videosNow -> RunDecider.Wait.VIDEOS_CHARGING
-                        !foreground -> RunDecider.Wait.LONG_VIDEOS
+                        deferred.isNotEmpty() -> RunDecider.Wait.NEXT_TOO_BIG
+                        videoMaxMs >= 0 && nextItems(db, live, plan, -1L, deferred, 1).isNotEmpty() ->
+                            RunDecider.Wait.LONG_VIDEOS
+                        !plan.photos && db.items().newInScopeCount(live.excludedBuckets) > 0 ->
+                            RunDecider.Wait.PHOTO_CAP
                         else -> null
                     }
                     if (why != null) repo.setString(OptionsRepo.K.WAIT_REASON, why.name)
                     break@loop
                 }
+                var free = Storage.freeBytes(app, live.storageVolume)
                 for (row in batch) {
                     if (System.currentTimeMillis() >= deadline || isStopped) break@loop
                     val itemStart = System.currentTimeMillis()
@@ -243,9 +241,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     // take the phone below the space it keeps free. A
                     // smaller file may still fit.
                     val need = if (predicted > 0) predicted * 6 / 5 else row.sizeBytes
-                    if (Storage.freeBytes(app, live.storageVolume) - need < live.minFreeBytes) {
+                    if (free - need < live.minFreeBytes) {
                         deferred += row.id
-                        spaceShort = true
                         continue
                     }
                     // What is left of this run's deadline is handed to the
@@ -257,6 +254,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                         row, live, predicted, runRemainingMs = deadline - itemStart
                     )
                     val took = System.currentTimeMillis() - itemStart
+                    // Free space changes only when something was written.
+                    free = Storage.freeBytes(app, live.storageVolume)
                     if (ok) {
                         processed++
                         if (!power.plugged) {
@@ -364,6 +363,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
 
     private fun endOfRunNow(): Long = System.currentTimeMillis()
 
+    /** The smallest phones make videos only while charging; asked once per run. */
+    private val smallestPhone by lazy { DeviceTier.tier(applicationContext) == DeviceTier.Tier.VERY_LOW }
+
     private fun plan(
         o: Options,
         power: RunDecider.Power,
@@ -372,7 +374,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     ): RunDecider.Plan = if (manual) {
         RunDecider.decideManual(power)
     } else {
-        RunDecider.decide(o.speed, power, budget, paused = o.pauseAll)
+        RunDecider.decide(o.speed, power, budget, paused = o.pauseAll, videosNeedCharger = smallestPhone)
     }
 
     /** FAST re-arms its content trigger after every run (triggers are one-shot). */
@@ -397,13 +399,13 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         db: AppDb,
         o: Options,
         plan: RunDecider.Plan,
-        videosNow: Boolean,
         videoMaxMs: Long,
+        skip: Collection<Long>,
         limit: Int
     ): List<ItemRow> {
         // What the user asked for, narrowed to what this power state allows.
         val photos = plan.photos && o.scope != BackupScope.VIDEOS
-        val videos = plan.videos && videosNow && o.scope != BackupScope.PHOTOS
+        val videos = plan.videos && o.scope != BackupScope.PHOTOS
         if (!photos && !videos) return emptyList()
         return db.items().nextByPriority(
             photos = photos,
@@ -411,7 +413,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             excludedBuckets = o.excludedBuckets,
             freshAfter = System.currentTimeMillis() - FRESH_WINDOW_MS,
             limit = limit,
-            videoMaxMs = videoMaxMs
+            videoMaxMs = videoMaxMs,
+            skipIds = skip
         )
     }
 

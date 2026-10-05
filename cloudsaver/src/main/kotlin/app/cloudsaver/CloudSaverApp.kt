@@ -23,11 +23,12 @@ class CloudSaverApp : Application() {
         // Before any window exists: the first frame follows the theme the
         // person chose, not the phone's night setting (FirstFrame).
         FirstFrame.apply(this)
-        // Never a phone with Ente Saver installed and no icon to open it by.
-        AppLooks.ensureVisible(this)
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {
+            // Never a phone with Ente Saver installed and no icon to open it
+            // by. Package-manager calls, so off the main thread.
+            AppLooks.ensureVisible(this@CloudSaverApp)
             // Recovery first: after clear-data or a reinstall the database is
             // empty and the hidden snapshot is the only state there is, so it
             // has to be back before anything schedules work against it.

@@ -464,6 +464,8 @@
     <string name="opt_group_privacy">Alerts and privacy</string>
     <string name="opt_group_help">Help and info</string>
     <string name="help_entry">Guides, FAQs, privacy and what version you are on</string>
+    <string name="a11y_expanded">Open</string>
+    <string name="a11y_collapsed">Closed</string>
     <string name="opt_group_advanced">Advanced</string>
     <string name="opt_advanced_show">Show advanced settings</string>
     <string name="opt_advanced_hide">Hide advanced settings</string>
@@ -604,7 +606,6 @@
     <string name="space_max_extra_body">The optimised copies waiting to reach Ente. When this fills, the oldest confirmed copies are removed first.</string>
     <string name="space_now_free">Now free: %1$s</string>
     <string name="space_now_using">Now using: %1$s</string>
-    <string name="space_two_things">These are two different things: the first is about your phone, the second is about Ente Saver.</string>
     <string name="tag_recommended">Recommended</string>
     <string name="opt_volume">Storage location</string>
     <string name="opt_volume_hint">Where Ente Saver keeps its optimised copies and the upload folder.</string>

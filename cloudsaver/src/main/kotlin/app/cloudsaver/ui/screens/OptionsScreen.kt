@@ -39,6 +39,8 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
@@ -80,6 +82,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -300,12 +304,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                 )
             }
-            Text(
-                stringResource(R.string.folders_gap_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
+            ChoiceNote(stringResource(R.string.folders_gap_note))
         }
 
         // Photos and videos: two settings, because they are two
@@ -479,6 +478,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             title = stringResource(if (showAdvanced) R.string.opt_advanced_hide else R.string.opt_advanced_show),
             hint = stringResource(R.string.opt_advanced_hint),
             icon = IconAdvanced,
+            expanded = showAdvanced,
             onClick = { showAdvanced = !showAdvanced }
         )
         if (showAdvanced) {
@@ -491,17 +491,28 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 value = stringResource(if (o.spaceAuto) R.string.space_auto else R.string.space_custom)
             ) {
                 SwitchRow(stringResource(R.string.space_auto_switch), o.spaceAuto) { vm.setSpaceAuto(it) }
-                Text(
-                    stringResource(
-                        R.string.space_auto_line,
-                        capLabel(o.dailyCapMb),
-                        Formats.mbLabel(o.minFreeMb),
-                        capLabel(o.maxExtraMb)
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+
+                // Under Custom the three cards below say the same.
+
+                if (o.spaceAuto) {
+
+                    ChoiceNote(
+
+                        stringResource(
+
+                            R.string.space_auto_line,
+
+                            capLabel(o.dailyCapMb),
+
+                            Formats.mbLabel(o.minFreeMb),
+
+                            capLabel(o.maxExtraMb)
+
+                        )
+
+                    )
+
+                }
             }
             if (!o.spaceAuto) {
                 // How much new copies may add in a day
@@ -513,7 +524,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ) {
                     SegmentedChoice(
                         Defaults.DAILY_CAP_CHOICES_MB.map { mb ->
-                            mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
+                            mb.toString() to capLabel(mb)
                         },
                         o.dailyCapMb.toString()
                     ) { vm.setDailyCap(it.toInt()) }
@@ -577,7 +588,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ) {
                     SegmentedChoice(
                         Defaults.MAX_EXTRA_CHOICES_MB.map { mb ->
-                            mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
+                            mb.toString() to capLabel(mb)
                         },
                         o.maxExtraMb.toString()
                     ) { vm.setMaxExtra(it.toInt()) }
@@ -601,12 +612,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                         )
                     }
                 }
-                Text(
-                    stringResource(R.string.space_two_things),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                )
             }
             // What to back up. Leaving one kind out means Ente Saver never sends
             // it to Ente, which is worth a warning, not a quiet chip.
@@ -1250,7 +1255,7 @@ private fun themeLabel(theme: ThemeMode): String = stringResource(
 
 // Negative means no ceiling, and "Unlimited" is the word the chips use.
 @Composable
-private fun capLabel(mb: Int): String =
+internal fun capLabel(mb: Int): String =
     if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
 
 private val IconScope = Icons.Outlined.PhotoLibrary
@@ -1444,9 +1449,17 @@ private fun NavRow(
     hint: String,
     icon: ImageVector,
     dot: Boolean = false,
+    /** Set for a row that folds a section open in place rather than opening a screen. */
+    expanded: Boolean? = null,
     onClick: () -> Unit
 ) {
-    AppCard(modifier = Modifier.padding(vertical = 5.dp), onClick = onClick) {
+    val state = expanded?.let { stringResource(if (it) R.string.a11y_expanded else R.string.a11y_collapsed) }
+    AppCard(
+        modifier = Modifier
+            .padding(vertical = 5.dp)
+            .then(if (state != null) Modifier.semantics { stateDescription = state } else Modifier),
+        onClick = onClick
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 icon,
@@ -1486,7 +1499,11 @@ private fun NavRow(
                 )
             }
             Icon(
-                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                when (expanded) {
+                    null -> Icons.AutoMirrored.Outlined.KeyboardArrowRight
+                    true -> Icons.Outlined.ExpandLess
+                    false -> Icons.Outlined.ExpandMore
+                },
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )

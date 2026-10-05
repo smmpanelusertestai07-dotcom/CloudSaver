@@ -853,7 +853,7 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             // instead. Read off the phone, so it never claims a limit this
             // phone does not have.
             val limits by produceState<List<String>?>(null, options.minFreeBytes, options.storageVolume) {
-                value = withContext(Dispatchers.Default) {
+                value = withContext(Dispatchers.IO) {
                     PhoneLimits.lines(context, options.minFreeBytes, options.storageVolume)
                 }
             }
@@ -963,13 +963,11 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
-            Column {
-                TextButton(onClick = { OemPages.openWebPage(context, OemPages.RELEASES_URL) }) {
-                    Text(stringResource(R.string.about_source_open))
-                }
-                TextButton(onClick = { OemPages.openWebPage(context, OemPages.ISSUES_URL) }) {
-                    Text(stringResource(R.string.about_issue_open))
-                }
+            TextButton(onClick = { OemPages.openWebPage(context, OemPages.RELEASES_URL) }) {
+                Text(stringResource(R.string.about_source_open))
+            }
+            TextButton(onClick = { OemPages.openWebPage(context, OemPages.ISSUES_URL) }) {
+                Text(stringResource(R.string.about_issue_open))
             }
         }
 

@@ -235,6 +235,10 @@ class OptionsRepo(private val context: Context) {
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
         val SPEED = stringPreferencesKey("speed")
         val SPACE_AUTO = booleanPreferencesKey("spaceAuto")
+        /** What Automatic worked out last; the three keys below stay the person's own (Custom). */
+        val AUTO_DAILY_CAP_MB = intPreferencesKey("autoDailyCapMb")
+        val AUTO_MIN_FREE_MB = intPreferencesKey("autoMinFreeMb")
+        val AUTO_MAX_EXTRA_MB = intPreferencesKey("autoMaxExtraMb")
         val DAILY_CAP_MB = intPreferencesKey("dailyCapMb")
         val MIN_FREE_MB = intPreferencesKey("minFreeMb")
         val MAX_EXTRA_MB = intPreferencesKey("maxExtraMb")
@@ -321,13 +325,13 @@ class OptionsRepo(private val context: Context) {
             // Snapped, so a limit stored by an older build still lands on one
             // of the chips instead of leaving the control looking unset.
             dailyCapMb = Defaults.snapToChoice(
-                p[K.DAILY_CAP_MB] ?: Defaults.DAILY_CAP_MB, Defaults.DAILY_CAP_CHOICES_MB
+                limitOf(p, K.DAILY_CAP_MB, K.AUTO_DAILY_CAP_MB) ?: Defaults.DAILY_CAP_MB, Defaults.DAILY_CAP_CHOICES_MB
             ),
             minFreeMb = Defaults.snapToChoice(
-                p[K.MIN_FREE_MB] ?: Defaults.MIN_FREE_MB, Defaults.MIN_FREE_CHOICES_MB
+                limitOf(p, K.MIN_FREE_MB, K.AUTO_MIN_FREE_MB) ?: Defaults.MIN_FREE_MB, Defaults.MIN_FREE_CHOICES_MB
             ),
             maxExtraMb = Defaults.snapToChoice(
-                p[K.MAX_EXTRA_MB] ?: Defaults.MAX_EXTRA_MB, Defaults.MAX_EXTRA_CHOICES_MB
+                limitOf(p, K.MAX_EXTRA_MB, K.AUTO_MAX_EXTRA_MB) ?: Defaults.MAX_EXTRA_MB, Defaults.MAX_EXTRA_CHOICES_MB
             ),
             photo = photoOf(p),
             video = videoOf(p),
@@ -551,14 +555,32 @@ class OptionsRepo(private val context: Context) {
     private fun spaceAutoOf(p: Preferences): Boolean =
         p[K.SPACE_AUTO] ?: (p[K.DAILY_CAP_MB] == null && p[K.MIN_FREE_MB] == null && p[K.MAX_EXTRA_MB] == null)
 
-    /** While the limits are Automatic, sets all three in one write. */
+    /** A limit in force: Automatic's figure while Automatic is on (the person's own until there is one). */
+    private fun limitOf(p: Preferences, custom: Preferences.Key<Int>, auto: Preferences.Key<Int>): Int? =
+        if (spaceAutoOf(p)) p[auto] ?: p[custom] else p[custom]
+
+    /** Stores what Automatic works out for this phone now; the person's own figures are left alone. */
     suspend fun applyAutomaticSpace(limits: DeviceDefaults.Limits) {
         write { p ->
-            if (!spaceAutoOf(p)) return@write
-            p[K.SPACE_AUTO] = true
-            p[K.DAILY_CAP_MB] = limits.dailyCapMb
-            p[K.MIN_FREE_MB] = limits.minFreeMb
-            p[K.MAX_EXTRA_MB] = limits.maxExtraMb
+            p[K.AUTO_DAILY_CAP_MB] = limits.dailyCapMb
+            p[K.AUTO_MIN_FREE_MB] = limits.minFreeMb
+            p[K.AUTO_MAX_EXTRA_MB] = limits.maxExtraMb
+        }
+    }
+
+    /**
+     * Automatic or Custom. Custom picked for the first time starts from the
+     * figures Automatic was using, so nothing jumps; picked again later, it
+     * brings back the person's own.
+     */
+    suspend fun setSpaceAuto(on: Boolean) {
+        write { p ->
+            if (!on && p[K.DAILY_CAP_MB] == null && p[K.MIN_FREE_MB] == null && p[K.MAX_EXTRA_MB] == null) {
+                p[K.AUTO_DAILY_CAP_MB]?.let { p[K.DAILY_CAP_MB] = it }
+                p[K.AUTO_MIN_FREE_MB]?.let { p[K.MIN_FREE_MB] = it }
+                p[K.AUTO_MAX_EXTRA_MB]?.let { p[K.MAX_EXTRA_MB] = it }
+            }
+            p[K.SPACE_AUTO] = on
         }
     }
 

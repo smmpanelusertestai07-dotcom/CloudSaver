@@ -72,11 +72,10 @@ fun PhotoSettingsCard(
         ChoiceNote(
             stringResource(
                 R.string.photo_plan,
-                when {
-                    shown.maxMp <= 0 -> stringResource(R.string.photo_size_full)
-                    shown.maxMp != spec.maxMp && plan.photoCeilingIsPhones ->
-                        stringResource(R.string.photo_size_mp_phone, shown.maxMp)
-                    else -> stringResource(R.string.photo_size_mp, shown.maxMp)
+                if (shown.maxMp != spec.maxMp && plan.photoCeilingIsPhones) {
+                    stringResource(R.string.photo_size_mp_phone, shown.maxMp)
+                } else {
+                    photoLimitPhrase(shown)
                 },
                 formatLabel(plan.photoFormat),
                 spec.quality
@@ -158,15 +157,13 @@ fun VideoSettingsCard(
         }
         // The phone's own limit: the smallest phones, and video chips that
         // stop below 2160p.
-        val limit = plan.videoMaxLongSide
-        val side = if (limit > 0 && (spec.longSide <= 0 || spec.longSide > limit)) -limit else spec.longSide
         ChoiceNote(
             stringResource(
                 R.string.video_plan,
                 when {
-                    side < 0 -> stringResource(R.string.res_phone_cap, MediaSettings.pLabel(-side))
-                    side == 0 -> stringResource(R.string.res_keep)
-                    else -> MediaSettings.pLabel(side)
+                    plan.videoHeldTo > 0 -> stringResource(R.string.res_phone_cap, MediaSettings.pLabel(plan.videoHeldTo))
+                    spec.longSide <= 0 -> stringResource(R.string.res_keep)
+                    else -> MediaSettings.pLabel(spec.longSide)
                 },
                 codecLabel(plan.videoCodec),
                 if (spec.fpsCap <= 0) {

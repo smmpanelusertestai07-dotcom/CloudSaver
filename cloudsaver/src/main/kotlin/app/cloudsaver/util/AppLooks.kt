@@ -40,17 +40,9 @@ object AppLooks {
      * is switched back on. Cheap: two package-manager reads at start-up.
      */
     fun ensureVisible(context: Context) {
-        val pm = context.packageManager
-        val anyOn = Look.entries.any { look ->
-            when (runCatching { pm.getComponentEnabledSetting(component(context, look)) }.getOrNull()) {
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
-                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> look == DEFAULT
-                else -> false
-            }
-        }
-        if (anyOn) return
+        if (Look.entries.any { isOn(context, it) }) return
         runCatching {
-            pm.setComponentEnabledSetting(
+            context.packageManager.setComponentEnabledSetting(
                 component(context, DEFAULT),
                 PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
                 PackageManager.DONT_KILL_APP
@@ -58,17 +50,19 @@ object AppLooks {
         }
     }
 
+    /**
+     * Whether [look]'s alias is on the home screen: switched on, or left at
+     * the manifest's own state, which is on only for the default one.
+     */
+    private fun isOn(context: Context, look: Look): Boolean =
+        when (runCatching { context.packageManager.getComponentEnabledSetting(component(context, look)) }.getOrNull()) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> look == DEFAULT
+            else -> false
+        }
+
     /** The look the home screen shows now (before any pending switch). */
-    fun current(context: Context): Look {
-        val pm = context.packageManager
-        return Look.entries.firstOrNull { look ->
-            when (runCatching { pm.getComponentEnabledSetting(component(context, look)) }.getOrNull()) {
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
-                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> look == DEFAULT
-                else -> false
-            }
-        } ?: DEFAULT
-    }
+    fun current(context: Context): Look = Look.entries.firstOrNull { isOn(context, it) } ?: DEFAULT
 
     /** The look that will show after the app next goes to the background. */
     fun chosen(context: Context): Look = pending(context) ?: current(context)

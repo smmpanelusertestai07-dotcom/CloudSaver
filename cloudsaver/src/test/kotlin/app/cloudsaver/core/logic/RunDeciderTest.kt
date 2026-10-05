@@ -267,4 +267,19 @@ class RunDeciderTest {
         assertEquals(0L, RunDecider.plainRunVideoMaxMs(4 * 60_000L, min))
         assertEquals(4 * 60_000L, RunDecider.plainRunVideoMaxMs(7 * 60_000L, min))
     }
+
+    @Test
+    fun `the smallest phones make videos only while charging`() {
+        val battery = RunDecider.Power(
+            plugged = false, batteryPct = 90, saverOn = false, thermalThrottled = false,
+            batteryTempTenthsC = 250, screenInteractive = false, screenOffMs = 60 * 60_000L
+        )
+        val fresh = RunDecider.Budget(videoEncodeMs = 0, photosOnBattery = 0)
+        val small = RunDecider.decide(SpeedMode.SMART, battery, fresh, videosNeedCharger = true)
+        assertTrue(small.photos)
+        assertFalse(small.videos)
+        assertTrue(RunDecider.decide(SpeedMode.SMART, battery, fresh).videos)
+        // Plugged in, the smallest phone makes videos too.
+        assertTrue(RunDecider.decide(SpeedMode.SMART, battery.copy(plugged = true), fresh, videosNeedCharger = true).videos)
+    }
 }

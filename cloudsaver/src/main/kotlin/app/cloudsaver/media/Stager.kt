@@ -52,8 +52,9 @@ class Stager(private val context: Context, private val db: AppDb) {
         }
         val uri = Uri.parse(uriString)
         val tempDir = Storage.tempDir(context, options.storageVolume)
-        // Held to what this phone can decode without running out of memory.
-        val photoSpec = DeviceTier.fit(context, options.photo.spec())
+        // Held to what this phone can decode without running out of memory;
+        // asked only for a photo, since it reads the memory free right now.
+        val photoSpec = if (row.isVideo) options.photo.spec() else DeviceTier.fit(context, options.photo.spec())
         val videoSpec = options.video.spec()
         // HEIC only once this phone has passed its own test; the test runs
         // here, in background work, the first time a photo would want it.

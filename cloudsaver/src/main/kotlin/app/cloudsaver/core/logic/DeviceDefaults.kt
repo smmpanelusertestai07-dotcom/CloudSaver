@@ -70,11 +70,11 @@ object DeviceDefaults {
      * middle rather than a Wi-Fi share the app cannot measure.
      */
     fun automatic(totalBytes: Long, freeBytes: Long): Limits {
-        val cap = nearestChoice(dailyCapMb(totalBytes, freeBytes, 0.0), Defaults.DAILY_CAP_CHOICES_MB)
+        val cap = Defaults.snapToChoice(dailyCapMb(totalBytes, freeBytes, 0.0), Defaults.DAILY_CAP_CHOICES_MB)
         return Limits(
             dailyCapMb = cap,
             minFreeMb = floorChoice(autoReserveMb(totalBytes, freeBytes), Defaults.MIN_FREE_CHOICES_MB),
-            maxExtraMb = nearestChoice(ownLimitMb(freeBytes, cap), Defaults.MAX_EXTRA_CHOICES_MB)
+            maxExtraMb = Defaults.snapToChoice(ownLimitMb(freeBytes, cap), Defaults.MAX_EXTRA_CHOICES_MB)
         )
     }
 
@@ -84,7 +84,7 @@ object DeviceDefaults {
      * nearly full 128 GB phone would otherwise be told to keep 5 GB free when
      * it has 4 - and stop making copies on exactly the phone that needs them.
      */
-    fun autoReserveMb(totalBytes: Long, freeBytes: Long): Int {
+    private fun autoReserveMb(totalBytes: Long, freeBytes: Long): Int {
         val thirdOfFree = (freeBytes / 3 / Defaults.MB).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         return minOf(reserveMb(totalBytes), maxOf(1536, thirdOfFree))
     }
@@ -94,10 +94,6 @@ object DeviceDefaults {
         val steps = choices.filter { it > 0 }.sorted()
         return steps.lastOrNull { it <= value } ?: steps.firstOrNull() ?: value
     }
-
-    /** Settings offer fixed steps, so a computed figure has to land on one. */
-    fun nearestChoice(value: Int, choices: List<Int>): Int =
-        choices.filter { it > 0 }.minByOrNull { kotlin.math.abs(it - value) } ?: value
 
     /** True when a stored choice has drifted far enough to be worth a hint. */
     fun looksWrong(current: Int, recommended: Int): Boolean =

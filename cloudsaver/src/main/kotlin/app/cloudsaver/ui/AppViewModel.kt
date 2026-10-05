@@ -1133,17 +1133,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshRecommended() {
         viewModelScope.launch(Dispatchers.IO) {
-            val o = repo.current()
             val limits = SpaceLimits.refresh(ctx)
-            val cap = limits.dailyCapMb
-            val minFree = limits.minFreeMb
-            val maxExtra = limits.maxExtraMb
+            val o = repo.current()
             recommended.value = Recommended(
-                dailyCapMb = cap,
-                minFreeMb = minFree,
-                maxExtraMb = maxExtra,
-                capLooksWrong = DeviceDefaults.looksWrong(o.dailyCapMb, cap),
-                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, minFree),
+                dailyCapMb = limits.dailyCapMb,
+                minFreeMb = limits.minFreeMb,
+                maxExtraMb = limits.maxExtraMb,
+                capLooksWrong = DeviceDefaults.looksWrong(o.dailyCapMb, limits.dailyCapMb),
+                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, limits.minFreeMb),
                 computed = true
             )
         }
@@ -1477,28 +1474,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val hevcHardware: Boolean = false,
         /** This phone's photo ceiling in MP (its memory, and what it has taught the app). */
         val photoCeilingMp: Int = 0,
-        /** Whether that ceiling is this phone's own, rather than the 50 MP every phone has. */
-        val photoCeilingIsPhones: Boolean = false,
-        /** The longest video side this phone makes, or 0 for no limit of its own. */
-        val videoMaxLongSide: Int = 0
-    )
+        /** The long side this phone holds the video setting to, or 0 when it makes what is asked. */
+        val videoHeldTo: Int = 0
+    ) {
+        /** Whether the photo ceiling is this phone's own, rather than the 50 MP every phone has. */
+        val photoCeilingIsPhones: Boolean get() = photoCeilingMp in 1 until DeviceTier.ANY_PHONE_CEILING_MP
+    }
 
     val encodePlan = MutableStateFlow(EncodePlan())
 
     fun refreshEncodePlan() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
+            val video = o.video.spec()
+            val smallest = DeviceTier.tier(ctx) == DeviceTier.Tier.VERY_LOW
             encodePlan.value = EncodePlan(
                 heic = HeicSupport.state(ctx),
                 photoFormat = PlannedEncode.photoFormat(ctx, o.photo.spec()),
-                videoCodec = PlannedEncode.videoCodec(o.video.spec()),
+                videoCodec = PlannedEncode.videoCodec(video, smallest),
                 hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty(),
                 photoCeilingMp = DeviceTier.lastingCeilingMp(ctx),
-                photoCeilingIsPhones = DeviceTier.lastingCeilingMp(ctx) < DeviceTier.ANY_PHONE_CEILING_MP,
-                videoMaxLongSide = EncoderCaps.phoneLongSideCap(
-                    o.video.spec().longSide,
-                    smallestPhone = DeviceTier.tier(ctx) == DeviceTier.Tier.VERY_LOW
-                )
+                videoHeldTo = PlannedEncode.videoHeldTo(video, smallest)
             )
         }
     }
@@ -1515,7 +1511,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Automatic sets the three limits from this phone at once; Custom keeps them as they are. */
     fun setSpaceAuto(on: Boolean) {
         viewModelScope.launch {
-            repo.setBool(OptionsRepo.K.SPACE_AUTO, on)
+            repo.setSpaceAuto(on)
             refreshRecommended()
         }
     }

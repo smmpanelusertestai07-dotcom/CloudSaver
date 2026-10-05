@@ -45,27 +45,20 @@ object EncoderCaps {
         }
 
     /**
+     * Whether a video [width] x [height] at [fps] is made at 1080p instead:
+     * above 1080p only where a hardware encoder takes the size - a budget
+     * chip that stops at 1080p would otherwise encode in software, for hours
+     * - and never on the smallest phones ([smallestPhone]). The one rule the
+     * compressor applies and Settings and About describe.
+     */
+    fun holdsToFullHd(width: Int, height: Int, fps: Float, smallestPhone: Boolean): Boolean =
+        maxOf(width, height) > MediaSettings.FULL_HD && (smallestPhone || !anyHardwareFits(width, height, fps))
+
+    /**
      * True when some hardware video encoder - H.264 or HEVC - takes this size
      * and frame rate. A budget phone's chip often stops at 1080p; asking it
      * for more ends in a software encode or a failed one.
      */
-    /**
-     * The longest side this phone makes a video at when [requestedLongSide]
-     * is asked for (0 = keep the source's, up to 2160p), or 0 when the phone
-     * sets no limit of its own. The compressor's own rule: above 1080p only
-     * where a hardware encoder takes the size, and never on the smallest
-     * phones ([smallestPhone]).
-     */
-    fun phoneLongSideCap(requestedLongSide: Int, smallestPhone: Boolean): Int {
-        val asked = if (requestedLongSide <= 0) 3840 else requestedLongSide
-        return when {
-            asked <= MediaSettings.FULL_HD -> 0
-            smallestPhone -> MediaSettings.FULL_HD
-            anyHardwareFits(asked, asked * 9 / 16, 30f) -> 0
-            else -> MediaSettings.FULL_HD
-        }
-    }
-
     fun anyHardwareFits(width: Int, height: Int, fps: Float): Boolean =
         listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MIME_HEVC).any { mime ->
             hardwareEncoders(mime).any { info ->

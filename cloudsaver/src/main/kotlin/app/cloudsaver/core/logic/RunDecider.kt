@@ -104,11 +104,16 @@ object RunDecider {
         SpeedMode.CHARGING_ONLY -> 0L
     }
 
+    /**
+     * [videosNeedCharger]: the smallest phones (2.5 GB of memory or less)
+     * make videos only while charging; on battery they make photos.
+     */
     fun decide(
         mode: SpeedMode,
         power: Power,
         budget: Budget,
-        paused: Boolean = false
+        paused: Boolean = false,
+        videosNeedCharger: Boolean = false
     ): Plan {
         val floor = batteryFloor(mode)
         if (paused) return Plan(false, false, Wait.PAUSED, floor)
@@ -146,7 +151,7 @@ object RunDecider {
         val screenBlocked = screenWait > 0 &&
             (power.screenInteractive || power.screenOffMs < screenWait)
         val budgetBlocked = budget.videoEncodeMs >= videoBudgetMs(mode)
-        val videos = !screenBlocked && !budgetBlocked
+        val videos = !screenBlocked && !budgetBlocked && !videosNeedCharger
 
         if (photos || videos) return Plan(photos, videos, Wait.NONE, floor)
 
@@ -154,6 +159,7 @@ object RunDecider {
         val reason = when {
             budgetBlocked -> Wait.BUDGET_USED
             screenBlocked -> Wait.SCREEN_ON
+            videosNeedCharger -> Wait.VIDEOS_CHARGING
             else -> Wait.PHOTO_CAP
         }
         return Plan(false, false, reason, floor)

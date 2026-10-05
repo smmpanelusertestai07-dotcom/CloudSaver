@@ -155,14 +155,9 @@ object VideoCompressor {
         val cappedFps = MediaSettings.outputFps(probe.fps, spec.fpsCap)
         val outFps = cappedFps ?: probe.fps
         var dims = BitrateCalc.outputDims(upright.first, upright.second, spec.longSideLimit)
-        // Above 1080p only where a hardware encoder takes it: a budget chip
-        // that stops at 1080p would otherwise encode in software, for hours.
-        // The smallest phones (2.5 GB or less) stay at 1080p either way.
-        if (maxOf(dims.first, dims.second) > MediaSettings.FULL_HD &&
-            (
-                DeviceTier.tier(context) == DeviceTier.Tier.VERY_LOW ||
-                    !EncoderCaps.anyHardwareFits(dims.first, dims.second, outFps)
-                )
+        if (EncoderCaps.holdsToFullHd(
+                dims.first, dims.second, outFps, smallestPhone = DeviceTier.tier(context) == DeviceTier.Tier.VERY_LOW
+            )
         ) {
             dims = BitrateCalc.outputDims(upright.first, upright.second, MediaSettings.FULL_HD)
         }

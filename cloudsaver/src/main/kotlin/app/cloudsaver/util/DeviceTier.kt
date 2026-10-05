@@ -54,19 +54,29 @@ object DeviceTier {
         Tier.NORMAL -> ANY_PHONE_CEILING_MP
     }
 
-    private fun memoryInfo(context: Context): Pair<ActivityManager?, ActivityManager.MemoryInfo> {
-        val am = context.getSystemService(ActivityManager::class.java)
+    private fun memoryInfo(context: Context): ActivityManager.MemoryInfo {
         val info = ActivityManager.MemoryInfo()
-        runCatching { am?.getMemoryInfo(info) }
-        return am to info
+        runCatching { context.getSystemService(ActivityManager::class.java)?.getMemoryInfo(info) }
+        return info
+    }
+
+    /** The phone's memory and low-RAM flag never change, so they are asked once per process. */
+    @Volatile
+    private var fixed: Pair<Long, Boolean>? = null
+
+    private fun fixedFacts(context: Context): Pair<Long, Boolean> = fixed ?: run {
+        val am = context.getSystemService(ActivityManager::class.java)
+        val facts = memoryInfo(context).totalMem to (am?.isLowRamDevice == true)
+        if (facts.first > 0) fixed = facts
+        facts
     }
 
     /** The phone's memory, as Android reports it (a "4 GB" phone says about 3.7 GB). */
-    fun totalMemBytes(context: Context): Long = memoryInfo(context).second.totalMem
+    fun totalMemBytes(context: Context): Long = fixedFacts(context).first
 
     fun tier(context: Context): Tier {
-        val (am, info) = memoryInfo(context)
-        return tierFor(info.totalMem, am?.isLowRamDevice == true)
+        val (total, lowRam) = fixedFacts(context)
+        return tierFor(total, lowRam)
     }
 
     /** The lasting ceiling in megapixels: the phone's memory, then what this phone has taught the app. */
@@ -74,12 +84,6 @@ object DeviceTier {
         val learned = learnedCeilingMp(context)
         val base = baseCeilingMp(tier(context))
         return if (learned > 0) minOf(learned, base) else base
-    }
-
-    /** The ceiling for now: the lasting one, at 12 MP while Android says memory is critical. */
-    fun ceilingMp(context: Context): Int {
-        val ceiling = lastingCeilingMp(context)
-        return if (memoryCritical) minOf(ceiling, STEPS_MP.last()) else ceiling
     }
 
     /**
@@ -98,12 +102,18 @@ object DeviceTier {
         return STEPS_MP.firstOrNull { it < targetMp && fits(it) } ?: floor
     }
 
-    /** [spec] held to this phone's ceiling, and to the memory free right now. */
+    /**
+     * [spec] held to this phone's lasting ceiling, then to the memory free
+     * right now - which counts as short while Android has said memory is
+     * critical (before Android 14).
+     */
     fun fit(context: Context, spec: PhotoSpec): PhotoSpec {
-        val held = capped(spec, ceilingMp(context))
-        val (_, info) = memoryInfo(context)
-        if (info.totalMem <= 0) return held
-        return capped(held, fitToMemory(held.maxMp, info.availMem, info.threshold, info.lowMemory))
+        val held = capped(spec, lastingCeilingMp(context))
+        val info = memoryInfo(context)
+        if (info.totalMem <= 0) {
+            return if (memoryCritical) capped(held, STEPS_MP.last()) else held
+        }
+        return capped(held, fitToMemory(held.maxMp, info.availMem, info.threshold, info.lowMemory || memoryCritical))
     }
 
     fun capped(spec: PhotoSpec, ceiling: Int): PhotoSpec =
@@ -111,7 +121,7 @@ object DeviceTier {
 
     /** One step down after the app ran out of memory on a photo; never below 12 MP. */
     fun lowerCeiling(context: Context): Int {
-        val now = ceilingMp(context)
+        val now = lastingCeilingMp(context)
         val next = STEPS_MP.firstOrNull { it < now } ?: STEPS_MP.last()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putInt(KEY_CEILING, next) }
         return next

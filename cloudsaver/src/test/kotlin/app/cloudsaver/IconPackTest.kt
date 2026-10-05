@@ -1,6 +1,5 @@
 package app.cloudsaver
 
-import app.cloudsaver.R
 import app.cloudsaver.util.AppLooks
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
