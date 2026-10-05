@@ -54,7 +54,7 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .width(76.dp)
+                        .width(96.dp)
                         .clip(shape)
                         .selectable(selected = selected, role = Role.RadioButton) { onChoose(look) }
                         .then(
@@ -63,10 +63,14 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
                         .padding(6.dp)
                 ) {
                     LookIcon()
+                    // One line: a name broken mid-word ("CloudSave / r") reads
+                    // as a different name.
                     Text(
                         stringResource(look.nameRes),
                         style = MaterialTheme.typography.labelMedium,
                         textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
