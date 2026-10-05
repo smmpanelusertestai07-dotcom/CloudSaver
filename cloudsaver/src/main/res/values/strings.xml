@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Ente Saver</string>
-    <string name="app_name_short" translatable="false">Saver</string>
+    <string name="app_name_classic" translatable="false">CloudSaver</string>
 
     <!-- common -->
     <string name="ok">OK</string>

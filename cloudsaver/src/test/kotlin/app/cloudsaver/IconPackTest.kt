@@ -1,5 +1,6 @@
 package app.cloudsaver
 
+import app.cloudsaver.R
 import app.cloudsaver.util.AppLooks
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
@@ -96,6 +97,7 @@ class IconPackTest {
     @Test
     fun `Ente Saver has one icon, and only its name can change`() {
         assertEquals(listOf(".MainActivity", ".AliasSaver"), AppLooks.Look.entries.map { it.alias })
+        assertEquals(listOf(R.string.app_name, R.string.app_name_classic), AppLooks.Look.entries.map { it.nameRes })
         for (alias in aliases) {
             assertEquals("@mipmap/ic_launcher", alias.getAttribute("android:icon"))
         }

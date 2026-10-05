@@ -7,8 +7,9 @@ import androidx.core.content.edit
 import app.cloudsaver.R
 
 /**
- * The name Ente Saver wears on the home screen: "Ente Saver" or the shorter
- * "Saver", always with the one Ente Saver icon.
+ * The name Ente Saver wears on the home screen: "Ente Saver", or "CloudSaver"
+ * - the name earlier versions had, for anyone who knows it by that - always
+ * with the one Ente Saver icon.
  *
  * Each look is a launcher alias in the manifest; exactly one is switched on.
  * A switch is not made the moment it is chosen: turning off the alias the
@@ -20,7 +21,7 @@ object AppLooks {
 
     enum class Look(val alias: String, val nameRes: Int) {
         ENTE_SAVER(".MainActivity", R.string.app_name),
-        SAVER(".AliasSaver", R.string.app_name_short)
+        CLOUDSAVER(".AliasSaver", R.string.app_name_classic)
     }
 
     /** The look every install starts with: the one alias enabled in the manifest. */
@@ -31,6 +32,31 @@ object AppLooks {
 
     private fun component(context: Context, look: Look) =
         ComponentName(context.packageName, context.packageName + look.alias)
+
+    /**
+     * Makes sure the app has a home-screen icon at all. If every alias is
+     * switched off - a switch cut short by the app being stopped half-way,
+     * or a look from an older build that no longer exists - the default one
+     * is switched back on. Cheap: two package-manager reads at start-up.
+     */
+    fun ensureVisible(context: Context) {
+        val pm = context.packageManager
+        val anyOn = Look.entries.any { look ->
+            when (runCatching { pm.getComponentEnabledSetting(component(context, look)) }.getOrNull()) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> look == DEFAULT
+                else -> false
+            }
+        }
+        if (anyOn) return
+        runCatching {
+            pm.setComponentEnabledSetting(
+                component(context, DEFAULT),
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                PackageManager.DONT_KILL_APP
+            )
+        }
+    }
 
     /** The look the home screen shows now (before any pending switch). */
     fun current(context: Context): Look {

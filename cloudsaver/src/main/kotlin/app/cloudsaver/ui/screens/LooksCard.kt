@@ -30,7 +30,7 @@ import app.cloudsaver.R
 import app.cloudsaver.util.AppLooks
 
 /**
- * Ente Saver's name on the home screen: "Ente Saver" or the shorter "Saver",
+ * Ente Saver's name on the home screen: "Ente Saver", or "CloudSaver" as earlier versions were called,
  * with the one Ente Saver icon either way. The switch happens when the app
  * goes to the background, and launchers take a moment to redraw.
  */

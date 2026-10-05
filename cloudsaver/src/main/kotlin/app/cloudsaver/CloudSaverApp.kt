@@ -4,6 +4,7 @@ import android.app.Application
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.StartupRecovery
+import app.cloudsaver.util.AppLooks
 import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Notifications
@@ -22,6 +23,8 @@ class CloudSaverApp : Application() {
         // Before any window exists: the first frame follows the theme the
         // person chose, not the phone's night setting (FirstFrame).
         FirstFrame.apply(this)
+        // Never a phone with Ente Saver installed and no icon to open it by.
+        AppLooks.ensureVisible(this)
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {

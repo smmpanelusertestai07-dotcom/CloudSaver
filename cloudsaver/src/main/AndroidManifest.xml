@@ -100,13 +100,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        <!-- The shorter name, chosen in Settings, Appearance (AppLooks). -->
+        <!-- The name earlier versions had, chosen in Settings, Appearance
+             (AppLooks). The component keeps its old name so a choice made in
+             11.0.0 survives the update instead of leaving no icon at all. -->
         <activity-alias
             android:name=".AliasSaver"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name_short"
+            android:label="@string/app_name_classic"
             android:roundIcon="@mipmap/ic_launcher"
             android:targetActivity=".HostActivity">
             <meta-data
