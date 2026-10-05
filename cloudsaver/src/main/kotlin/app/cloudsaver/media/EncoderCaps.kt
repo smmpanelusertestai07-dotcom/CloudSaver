@@ -3,6 +3,7 @@ package app.cloudsaver.media
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import app.cloudsaver.core.logic.MediaSettings
 
 /**
  * What this phone's own encoder chips can do.
@@ -42,6 +43,16 @@ object EncoderCaps {
                     video.areSizeAndRateSupported(height, width, rate)
             }.getOrDefault(false)
         }
+
+    /**
+     * Whether a video [width] x [height] at [fps] is made at 1080p instead:
+     * above 1080p only where a hardware encoder takes the size - a budget
+     * chip that stops at 1080p would otherwise encode in software, for hours
+     * - and never on the smallest phones ([smallestPhone]). The one rule the
+     * compressor applies and Settings and About describe.
+     */
+    fun holdsToFullHd(width: Int, height: Int, fps: Float, smallestPhone: Boolean): Boolean =
+        maxOf(width, height) > MediaSettings.FULL_HD && (smallestPhone || !anyHardwareFits(width, height, fps))
 
     /**
      * True when some hardware video encoder - H.264 or HEVC - takes this size

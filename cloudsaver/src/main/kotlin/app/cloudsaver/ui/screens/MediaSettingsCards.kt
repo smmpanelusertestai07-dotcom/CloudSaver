@@ -27,6 +27,7 @@ import app.cloudsaver.core.logic.VideoSpec
 import app.cloudsaver.media.HeicSupport
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.SegmentedChoice
+import app.cloudsaver.util.DeviceTier
 
 /**
  * The Photos card: a preset, what it means on this phone in one line, and -
@@ -66,14 +67,15 @@ fun PhotoSettingsCard(
             )
         }
         // What this phone will actually do: the line a person can hold the
-        // app to.
+        // app to, with the phone's own memory ceiling applied.
+        val shown = DeviceTier.capped(spec, plan.photoCeilingMp)
         ChoiceNote(
             stringResource(
                 R.string.photo_plan,
-                if (spec.maxMp <= 0) {
-                    stringResource(R.string.photo_size_full)
+                if (shown.maxMp != spec.maxMp && plan.photoCeilingIsPhones) {
+                    stringResource(R.string.photo_size_mp_phone, shown.maxMp)
                 } else {
-                    stringResource(R.string.photo_size_mp, spec.maxMp)
+                    photoLimitPhrase(shown)
                 },
                 formatLabel(plan.photoFormat),
                 spec.quality
@@ -153,10 +155,16 @@ fun VideoSettingsCard(
                 )
             )
         }
+        // The phone's own limit: the smallest phones, and video chips that
+        // stop below 2160p.
         ChoiceNote(
             stringResource(
                 R.string.video_plan,
-                if (spec.longSide <= 0) stringResource(R.string.res_keep) else MediaSettings.pLabel(spec.longSide),
+                when {
+                    plan.videoHeldTo > 0 -> stringResource(R.string.res_phone_cap, MediaSettings.pLabel(plan.videoHeldTo))
+                    spec.longSide <= 0 -> stringResource(R.string.res_keep)
+                    else -> MediaSettings.pLabel(spec.longSide)
+                },
                 codecLabel(plan.videoCodec),
                 if (spec.fpsCap <= 0) {
                     stringResource(R.string.fps_keep)

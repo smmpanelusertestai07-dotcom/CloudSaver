@@ -236,7 +236,8 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                 title = stringResource(R.string.perm_usage),
                 status = stringResource(if (usage) R.string.perm_usage_on else R.string.perm_usage_off),
                 state = if (usage) State.OK else State.PROBLEM,
-                actionLabel = stringResource(R.string.perm_open)
+                actionLabel = stringResource(R.string.perm_open),
+                detail = if (!usage && Build.VERSION.SDK_INT >= 35) stringResource(R.string.usage_restricted) else null
             ) { OemPages.openUsageAccess(context) }
 
             SectionHeader(stringResource(R.string.perm_group_battery))

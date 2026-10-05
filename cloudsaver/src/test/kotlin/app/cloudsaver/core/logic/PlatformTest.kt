@@ -55,5 +55,8 @@ class PlatformTest {
     @Test
     fun `an unknown future version says the number rather than guessing`() {
         assertEquals("API 99", Platform.releaseName(99))
+        // The phone's own version string, when it has one.
+        assertEquals("18", Platform.releaseName(38, "18"))
+        assertEquals("17", Platform.releaseName(37))
     }
 }

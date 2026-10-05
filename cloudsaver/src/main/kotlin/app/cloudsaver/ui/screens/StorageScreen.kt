@@ -222,7 +222,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 Text(
                     stringResource(
                         R.string.storage_limit_line,
-                        Formats.mbLabel(options.maxExtraMb),
+                        capLabel(options.maxExtraMb),
                         Formats.bytes(stats.outputBytes + stats.stageBytes)
                     ),
                     style = MaterialTheme.typography.bodySmall.merge(TabularFigures),

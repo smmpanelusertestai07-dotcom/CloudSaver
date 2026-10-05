@@ -85,6 +85,9 @@ object MediaSettings {
     val PHOTO_MP_CHOICES = listOf(0, 24, 16, 12, 8)
     val PHOTO_QUALITY_CHOICES = listOf(90, 85, 82, 75)
     val VIDEO_LONG_SIDE_CHOICES = listOf(0, 3840, 2560, 1920, 1280)
+
+    /** 1080p's long side: what every phone's hardware encoder takes. */
+    const val FULL_HD = 1920
     val VIDEO_FPS_CHOICES = listOf(0, 30)
     val AUDIO_KBPS_CHOICES = listOf(128, 96, 64)
 

@@ -472,8 +472,10 @@ interface ItemDao {
      */
     @Query(
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
-            "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1)) " +
+            "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1 " +
+            "AND (:videoMaxMs < 0 OR durationMs BETWEEN 1 AND :videoMaxMs))) " +
             "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
+            "AND id NOT IN (:skipIds) " +
             "ORDER BY priorityAt DESC, (captureAt >= :freshAfter) DESC, " +
             "CASE WHEN captureAt >= :freshAfter THEN captureAt ELSE 0 END DESC, " +
             "CASE WHEN captureAt < :freshAfter THEN sizeBytes ELSE 0 END DESC " +
@@ -484,7 +486,11 @@ interface ItemDao {
         videos: Boolean,
         excludedBuckets: Collection<String>,
         freshAfter: Long,
-        limit: Int
+        limit: Int,
+        /** The longest video to take, in ms; negative for any length. */
+        videoMaxMs: Long,
+        /** Rows this run has already passed over. */
+        skipIds: Collection<Long>
     ): List<ItemRow>
 
     @Query(

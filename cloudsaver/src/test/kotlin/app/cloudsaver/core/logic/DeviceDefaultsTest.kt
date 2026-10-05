@@ -50,4 +50,27 @@ class DeviceDefaultsTest {
         // Unlimited (-1) is a deliberate choice, not a drifted value.
         assertFalse(DeviceDefaults.looksWrong(current = -1, recommended = 250))
     }
+
+    @Test
+    fun `Automatic lands every limit on a step Settings offers`() {
+        for ((total, free) in listOf(16 * gb to 1 * gb, 64 * gb to 20 * gb, 256 * gb to 150 * gb, Long.MAX_VALUE to Long.MAX_VALUE)) {
+            val l = DeviceDefaults.automatic(total, free)
+            assertTrue("$l", l.dailyCapMb in Defaults.DAILY_CAP_CHOICES_MB && l.dailyCapMb > 0)
+            assertTrue("$l", l.minFreeMb in Defaults.MIN_FREE_CHOICES_MB)
+            assertTrue("$l", l.maxExtraMb in Defaults.MAX_EXTRA_CHOICES_MB && l.maxExtraMb > 0)
+        }
+        // A small or nearly full phone gets the cautious daily amount.
+        assertEquals(250, DeviceDefaults.automatic(64 * gb, 2 * gb).dailyCapMb)
+    }
+
+    @Test
+    fun `Automatic never asks a nearly full phone to keep more free than it has`() {
+        // 128 GB with 4 GB free: a twentieth would be 6.4 GB, more than is free.
+        assertEquals(1500, DeviceDefaults.automatic(128 * gb, 4 * gb).minFreeMb)
+        // With room to spare, a big phone keeps more.
+        assertEquals(5000, DeviceDefaults.automatic(256 * gb, 100 * gb).minFreeMb)
+        // A step is never rounded up past the figure worked out.
+        assertEquals(1500, DeviceDefaults.floorChoice(2900, Defaults.MIN_FREE_CHOICES_MB))
+        assertEquals(1500, DeviceDefaults.floorChoice(100, Defaults.MIN_FREE_CHOICES_MB))
+    }
 }

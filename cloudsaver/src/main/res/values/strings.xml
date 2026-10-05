@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Ente Saver</string>
-    <string name="app_name_short" translatable="false">Saver</string>
+    <string name="app_name_classic" translatable="false">CloudSaver</string>
 
     <!-- common -->
     <string name="ok">OK</string>
@@ -17,7 +17,7 @@
     <string name="nav_help">Help</string>
 
     <!-- home -->
-    <string name="status_paused">Paused. Turn it back on in Settings.</string>
+    <string name="status_paused">Paused. Tap Resume to carry on.</string>
     <plurals name="status_working">
         <item quantity="one">%1$d file in the queue</item>
         <item quantity="other">%1$d files in the queue</item>
@@ -121,7 +121,9 @@
     <string name="section_progress">Backup progress</string>
     <string name="last_run">Last checked %1$s</string>
     <string name="btn_optimise_now">Optimise now</string>
-    <string name="btn_verify_link">Let Ente Saver check your uploads</string>
+    <string name="btn_pause">Pause</string>
+    <string name="btn_resume">Resume</string>
+    <string name="btn_verify_link">Confirm uploads in Ente</string>
     <string name="confirm_result_title">Backup verified</string>
     <plurals name="confirm_result_line">
         <item quantity="one">%1$d file confirmed as backed up</item>
@@ -455,16 +457,28 @@
     <string name="lock_unlock">Unlock</string>
 
     <!-- options -->
-    <string name="opt_group_backup">What gets backed up</string>
-    <string name="opt_group_schedule">When it runs</string>
+    <string name="opt_group_backup">Backup</string>
     <string name="opt_group_space">Space limits</string>
     <string name="opt_group_quality">Quality</string>
     <string name="opt_group_appearance">Appearance</string>
-    <string name="opt_group_privacy">Privacy and safety</string>
-    <string name="opt_group_backup_restore">Backup and restore</string>
+    <string name="opt_group_privacy">Alerts and privacy</string>
     <string name="opt_group_help">Help and info</string>
     <string name="help_entry">Guides, FAQs, privacy and what version you are on</string>
-    <string name="opt_scope">Media type</string>
+    <string name="a11y_expanded">Open</string>
+    <string name="a11y_collapsed">Closed</string>
+    <string name="opt_group_advanced">Advanced</string>
+    <string name="opt_advanced_show">Show advanced settings</string>
+    <string name="opt_advanced_hide">Hide advanced settings</string>
+    <string name="opt_advanced_hint">Space limits, what to copy, folders, SD card, upload proof and backups. The defaults suit nearly every phone.</string>
+    <string name="opt_space">Space limits</string>
+    <string name="opt_space_hint">How much Ente Saver adds in a day, how much space it keeps free on the phone, and how much it may use.</string>
+    <string name="space_auto">Automatic</string>
+    <string name="space_custom">Custom</string>
+    <string name="space_auto_switch">Automatic (recommended): follows this phone\u2019s storage</string>
+    <string name="space_auto_line">Now: up to %1$s of new copies a day, keeps %2$s free, uses at most %3$s.</string>
+    <string name="scope_left_out_warning">What is left out is never copied, so it reaches Ente only if you also back up its own folder in Ente.</string>
+    <string name="folders_gap_note">Unticked albums are not sent to Ente by Ente Saver. To back one up as it is, turn it on in Ente as well.</string>
+    <string name="opt_scope">What to copy</string>
     <string name="opt_scope_hint">Photos, videos, or both.</string>
     <string name="scope_all">Photos and videos</string>
     <!-- The segmented control gives each option a third of the row. The full
@@ -545,7 +559,7 @@
     </plurals>
     <string name="folder_change_note">After saving, turn the new folder on in Ente: Settings, Backup, Backed up folders. The old folder is watched until Ente has every copy in it.</string>
     <string name="folder_save">Save</string>
-    <string name="opt_looks">App name</string>
+    <string name="opt_looks">Home-screen name</string>
     <string name="opt_looks_hint">The name under Ente Saver\'s icon on your home screen.</string>
     <string name="looks_note">Changes when you leave the app. The home screen may take a minute to show it.</string>
     <string name="icon_pack_name">Ente Saver icons</string>
@@ -559,14 +573,14 @@
     <string name="shortcut_badge_note">Your phone asks before placing it. Some home screens add a small badge to shortcuts.</string>
     <string name="cloud_installed_mark">Installed on this phone</string>
     <string name="cloud_not_installed_mark">Not on this phone yet</string>
-    <string name="opt_speed">Speed</string>
-    <string name="opt_speed_hint">When the app is allowed to optimise.</string>
-    <string name="speed_smart">Smart</string>
+    <string name="opt_speed">When to work</string>
+    <string name="opt_speed_hint">When Ente Saver makes copies.</string>
+    <string name="speed_smart">Automatic</string>
     <string name="speed_charging">Charging only</string>
-    <string name="speed_fast">Fast</string>
-    <string name="speed_smart_note" formatted="false">While charging: no time limit. On battery: screen off, above 30%, up to 30 min of video work a day (resets at midnight - plug in to continue now). Photos also run with the screen on.</string>
-    <string name="speed_charging_note">Only while charging. No time limit. Zero battery use.</string>
-    <string name="speed_fast_note" formatted="false">Starts as soon as new files arrive. While charging: no time limit. On battery: above 25%, up to 60 min a day (resets at midnight - plug in to continue now). Uses a little more battery.</string>
+    <string name="speed_fast">Faster</string>
+    <string name="speed_smart_note" formatted="false">Mostly while charging. On battery: only above 30%, with the screen off, and up to 30 minutes of video a day. Plug in to carry on.</string>
+    <string name="speed_charging_note">Only while charging. No battery use.</string>
+    <string name="speed_fast_note" formatted="false">Starts as soon as new photos arrive. On battery: above 25%, and up to an hour of video a day. Uses more battery.</string>
 
     <!-- wait reasons shown on Home (13.G) -->
     <string name="wait_saver">Paused: Battery Saver is on</string>
@@ -578,18 +592,20 @@
     <string name="wait_photo_cap">Waiting: daily photo limit on battery reached - plug in to continue</string>
     <string name="wait_space_full">Waiting: the copies folder has reached the space you allowed - it clears as copies are collected or removed</string>
     <string name="wait_low_space">Waiting: the phone is below the free space you asked Ente Saver to keep</string>
+    <string name="wait_long_videos">Waiting: long videos finish while Ente Saver is open, or in the background once the battery is set to Unrestricted</string>
+    <string name="wait_next_too_big">Waiting: the next files need more room than the phone has above the free space Ente Saver keeps</string>
+    <string name="wait_videos_charging">Waiting for charger: on this phone videos are made only while charging</string>
     <string name="wait_volume_missing">Waiting: the storage location you chose is not available right now</string>
     <string name="opt_daily_cap">Daily limit for new copies</string>
     <string name="opt_daily_cap_hint">How much Ente Saver adds to the upload folder each day.</string>
     <string name="unlimited">Unlimited</string>
-    <string name="unlimited_warning">Note: unlimited can use much more data and battery.</string>
+    <string name="unlimited_warning">Note: no limit can use much more battery and storage.</string>
     <string name="space_min_free_title">Keep this much phone space free</string>
     <string name="space_min_free_body">Ente Saver stops working when your phone\'s free space drops below this. It protects the phone, not Ente Saver.</string>
     <string name="space_max_extra_title">Space Ente Saver may use for its own copies</string>
     <string name="space_max_extra_body">The optimised copies waiting to reach Ente. When this fills, the oldest confirmed copies are removed first.</string>
     <string name="space_now_free">Now free: %1$s</string>
     <string name="space_now_using">Now using: %1$s</string>
-    <string name="space_two_things">These are two different things: the first is about your phone, the second is about Ente Saver.</string>
     <string name="tag_recommended">Recommended</string>
     <string name="opt_volume">Storage location</string>
     <string name="opt_volume_hint">Where Ente Saver keeps its optimised copies and the upload folder.</string>
@@ -610,6 +626,8 @@
     <string name="photo_plan">On this phone: %1$s, %2$s, quality %3$d</string>
     <string name="photo_size_full">full size</string>
     <string name="photo_size_mp">up to %1$d MP</string>
+    <string name="photo_size_mp_phone">up to %1$d MP (this phone\u2019s memory)</string>
+    <string name="res_phone_cap">up to %1$s (this phone)</string>
     <string name="size_full_short">Full</string>
     <string name="size_mp_short">%1$d MP</string>
     <string name="format_auto">Auto</string>
@@ -685,8 +703,8 @@
     <string name="perm_usage_on">On \u2014 uploads can be confirmed by the amount Ente Photos sends</string>
     <string name="perm_usage_off">Off \u2014 an upload is confirmed only when its copy disappears from the folder</string>
     <string name="perm_battery">Battery optimisation</string>
-    <string name="perm_battery_on">No restrictions \u2014 runs are not held back on battery. Optional; change it back here any time.</string>
-    <string name="perm_battery_off">Optimised \u2014 Android\u2019s default. Ente Saver still works; a run may wait until the phone is charging. Allow \u201cNo restrictions\u201d only if runs keep stalling.</string>
+    <string name="perm_battery_on">Unrestricted \u2014 long videos can finish in the background. Change it back here any time.</string>
+    <string name="perm_battery_off">Optimised \u2014 Android\u2019s default. Ente Saver still works, but a long video may finish only while the app is open. Choose Unrestricted on the battery page so it can finish in the background.</string>
     <string name="perm_auto_launch">Auto-launch</string>
     <string name="perm_background">Background activity</string>
     <string name="perm_unknown">Android cannot report this one. Open the page and check the switch is on.</string>
@@ -738,21 +756,15 @@
     <string name="perm_name_foreground">Run while the screen is off</string>
     <string name="perm_purpose_foreground">So a run that started is allowed to finish rather than being cut off mid-file.</string>
     <string name="perm_name_foreground_type">What that run is for</string>
-    <string name="perm_purpose_foreground_type">Android 14 asks apps to declare it: processing your media and syncing a folder. It grants nothing extra.</string>
-    <string name="perm_name_battery">Ask to skip battery optimisation</string>
-    <string name="perm_purpose_battery">Only to show Android\u2019s own one-tap question when you choose to allow it, in setup or on this screen. The answer is yours and is shown above.</string>
+    <string name="perm_purpose_foreground_type">Android 14 and later ask apps to say what such a run does: on Android 14 it is syncing files, from Android 15 processing photos and videos, which Android allows for 6 hours a day. It grants nothing extra.</string>
     <string name="perm_name_usage">Usage access</string>
     <string name="perm_purpose_usage">To read how much data Ente Photos sent, so an upload can be confirmed by the amount. Read-only, on the phone. Off, uploads are confirmed only when a copy disappears from the folder.</string>
     <string name="perm_name_biometric">App lock (the phone\u2019s own unlock)</string>
     <string name="perm_purpose_biometric">Only to ask the phone to confirm it is you when the app lock is on. The check is the phone\u2019s own screen lock; nothing about it ever reaches this app.</string>
-    <string name="perm_name_fingerprint">App lock (older phones)</string>
-    <string name="perm_purpose_fingerprint">The same app-lock check on older Android versions. Added by the lock library; unused while the lock is off.</string>
     <string name="perm_name_wake">Keep the processor awake</string>
     <string name="perm_purpose_wake">So a file being written is finished before the phone sleeps. Held by the scheduling library that runs the work.</string>
     <string name="perm_name_boot">Notice a restart</string>
     <string name="perm_purpose_boot">So the schedule comes back after the phone restarts. Nothing runs at boot; the next run is simply put back on the calendar.</string>
-    <string name="perm_name_own_receiver">Talk to itself</string>
-    <string name="perm_purpose_own_receiver">A permission with this app\u2019s own name that only this app holds, so no other app can send it messages. Android\u2019s standard way of sealing that door.</string>
     <string name="never_internet">Internet</string>
     <string name="never_internet_why">Not held, and removed on purpose from every library that would add it. Nothing can leave this phone.</string>
     <string name="never_camera">Camera</string>
@@ -833,7 +845,7 @@
     <string name="calc_pace">Last 30 days: %1$s GB added.</string>
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
-    <string name="cl_ente">In Ente: Settings, Backup. Backed up folders: the Ente Saver folder (or folders) only, not Camera. Backup videos on. Backup over mobile data as you like.</string>
+    <string name="cl_ente">In Ente: Settings, Backup. Backed up folders: the Ente Saver folder (or folders) only, not Camera. Backup videos on. Backup over mobile data as you like. Now and then, Settings \u203a Free up space \u203a Free up device space: that is how Ente Saver knows your copies arrived.</string>
 
     <!-- onboarding -->
     <string name="app_tagline">Save space in Ente \u2014 light copies, untouched originals.</string>
@@ -889,11 +901,12 @@
     <string name="onb2_text">A quiet notification shows while Ente Saver is working, and a rare alert when something needs you \u2014 at most once a day, and less often if you leave it. Everything still works if you decline.</string>
     <string name="onb2_grant">Allow</string>
     <string name="onb3_title">Keep it running in the background</string>
-    <string name="onb3_text">Each row is one way this phone can stop background work. Android reports the first ones itself; the phone maker\u2019s own switches it cannot read, so those open the page for you to check. On Realme, Oppo, Xiaomi and Vivo, auto-launch is the one that matters most: without it the phone stops Ente Saver a day or so after setup. Battery optimisation is optional.</string>
+    <string name="onb3_text">Each row is one way this phone can stop background work. Android reports the first ones itself; the phone maker\u2019s own switches it cannot read, so those open the page for you to check. On Realme, Oppo, Xiaomi and Vivo, auto-launch is the one that matters most: without it the phone stops Ente Saver a day or so after setup. With the battery set to Unrestricted, long videos can finish in the background.</string>
     <string name="onb3_later">You can change any of these later in Settings › Permissions and battery, where each one shows its current state.</string>
     <string name="onb4_title">Usage access (recommended)</string>
     <string name="onb4_text">Lets Ente Saver see how much Ente Photos uploaded - used to verify uploads.</string>
     <string name="onb4_grant">Grant usage access</string>
+    <string name="usage_restricted">Switch greyed out? Android 15 and later protect it for apps installed from a file. Tap the switch once, then open App info \u203a \u22ee (top right) \u203a Allow restricted settings, and come back to turn it on.</string>
     <string name="onb4_granted">Usage access is on. Ente Saver can confirm uploads by the amount Ente Photos sends.</string>
     <string name="onb5_title">Back up with Ente Photos</string>
     <string name="onb5_open">Open %1$s</string>
@@ -902,11 +915,11 @@
     <!-- setup: cloud step, power, folders, promises -->
     <string name="onb5_found">Found: %1$s</string>
     <string name="onb5_check">Check the connection</string>
-    <string name="power_battery">Battery optimisation (optional)</string>
+    <string name="power_battery">Battery: Unrestricted (recommended)</string>
     <string name="power_auto_launch">Allow auto-launch</string>
     <string name="power_background">Allow background activity</string>
-    <string name="power_battery_on">No restrictions</string>
-    <string name="power_battery_off">Optimised \u2014 Android\u2019s default. It works; a run may wait for the charger.</string>
+    <string name="power_battery_on">Unrestricted</string>
+    <string name="power_battery_off">Optimised \u2014 it works, but a long video may finish only while the app is open.</string>
     <string name="power_keep_on">Kept, however long the app goes unopened</string>
     <string name="power_keep_off">Android may take them away after a few unused months</string>
     <string name="power_check">Android cannot report this one \u2014 open it and make sure it is on.</string>
@@ -932,7 +945,7 @@
     <string name="cloudhelp_detect_t">Everything in one place</string>
     <string name="cloudhelp_detect_b">Your whole library sits in one Ente account: one 24-word recovery key, one timeline. Ente\'s face recognition and magic search run on your phone, and they work on the copies too once machine learning is turned on in Ente (Settings \u203a Machine learning).</string>
     <string name="cloudhelp_proof_t">How Ente Saver knows a copy arrived</string>
-    <string name="cloudhelp_proof_b">When you use Free up device space in Ente (Settings \u203a Backup \u203a Free up device space), Ente removes the files it has already uploaded, including the copies in the Ente Saver folder. A copy disappearing that way is the proof. With Usage access on, Ente Saver can also measure how much Ente sent while a copy was waiting. Even with proof, an original is offered for removal only after a 30-day safety wait.</string>
+    <string name="cloudhelp_proof_b">When you use Free up device space in Ente (Settings \u203a Free up space \u203a Free up device space), Ente removes the files it has already uploaded, including the copies in the Ente Saver folder. A copy disappearing that way is the proof. With Usage access on, Ente Saver can also measure how much Ente sent while a copy was waiting. Even with proof, an original is offered for removal only after a 30-day safety wait.</string>
     <string name="cloudhelp_none_t">If Ente is not installed yet</string>
     <string name="cloudhelp_none_b">Everything still runs. Photos are optimised on the usual schedule and the copies wait in the folder, using the space you allowed. Once that space is full, Ente Saver stops making more and says so on Home. Nothing can be freed until Ente has the copies. Install Ente Photos from the Play Store, F-Droid or ente.com \u2014 Settings has the buttons \u2014 and the waiting copies go up on its next backup, with nothing redone.</string>
     <string name="cloudhelp_switch_t">If you used another cloud app before</string>
@@ -946,7 +959,7 @@
     <string name="gallery_icon_t">Ente\'s own icons</string>
     <string name="gallery_icon_b">Ente can change its own icon. In Ente, open Settings \u203a General \u203a Advanced \u203a App icon and pick one of several looks.</string>
     <string name="gallery_pack_t">Ente Saver\'s icon pack</string>
-    <string name="gallery_pack_b">Ente Saver includes an icon pack. In a launcher that supports icon packs, choose Ente Saver as the pack to give Ente a Photos icon, the same one the shortcut below uses. On Realme and Oppo phones it is under Home screen settings \u203a Icon style; Nova, Lawnchair and others have their own icon pack setting. The launcher may take a moment to update.</string>
+    <string name="gallery_pack_b">Ente Saver includes one icon for Ente: a photo with Ente\'s green heart, the same one the shortcut below uses. On Realme, Oppo and OnePlus phones, long-press Ente Photos on the home screen \u203a Edit, tap its icon and pick it under Ente Saver icons. Nova, Lawnchair and other launchers have their own icon pack or edit-icon setting. Keep Ente\'s own app icon on its green look, so every launcher finds it. The launcher may take a moment to update.</string>
     <string name="gallery_shortcut_t">A Photos shortcut</string>
     <string name="gallery_shortcut_b">Add a shortcut to your home screen that opens Ente, with a Photos icon and the name you pick: Photos, Gallery, Cloud Photos, or your own name of up to 12 letters. Some launchers show a small badge on shortcuts.</string>
     <string name="gallery_shortcut_button">Add Photos to home screen</string>
@@ -956,17 +969,21 @@
     <string name="gallery_ml_b">Turn on machine learning in Ente (Settings \u203a Machine learning) for face recognition and magic search. It runs on the phone itself, and it works on Ente Saver\'s copies too.</string>
     <string name="gallery_freeup_t">When copies leave the folder</string>
     <string name="gallery_freeup_b">Ente\'s Free up device space also removes Ente Saver\'s copies once they are uploaded. That is expected \u2014 it is exactly how Ente Saver knows they arrived.</string>
-    <string name="gallery_saver_t">Ente Saver\'s own name and icon</string>
-    <string name="gallery_saver_b">Ente Saver\'s name and icon can be changed too. Here, open Settings \u203a Appearance \u203a App name and icon, and choose \u201cEnte Saver\u201d or \u201cSaver\u201d, in green, dark or light.</string>
+    <string name="gallery_saver_t">Ente Saver\'s home-screen name</string>
+    <string name="gallery_saver_b">Ente Saver can also show on your home screen under the name earlier versions had. Here, open Settings \u203a Appearance \u203a Home-screen name. The icon stays the same.</string>
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>
     <string name="about_version_line">Version %1$s</string>
-    <string name="about_requires_title">Works on your phone</string>
+    <string name="about_requires_title">This phone</string>
     <string name="about_partner">Two apps do the job: Ente Saver makes the smaller copies and puts them in one folder; Ente Photos uploads that folder. Ente Saver never uploads anything and never deletes an original on its own.</string>
     <string name="cloud_none_body">Ente Saver will still optimise your photos and videos on its usual schedule, and the smaller copies will wait in the Ente Saver folder. Nothing is uploaded until you install Ente Photos and back up that folder in it. Until then the copies use the space you allowed, and no original can be offered for removal. You can finish setup now and install Ente Photos whenever you like.</string>
     <string name="onb_ready_cloud_none">Ente Photos, not installed yet</string>
     <string name="about_trademarks">Ente and Ente Photos belong to their owner and are named here only to say which app Ente Saver works with. Ente Saver is independent, and is not made by or connected with Ente.</string>
+    <string name="about_source_title">Source code and releases</string>
+    <string name="about_source_body">Every official build is published at github.com/smmpanelusertestai07-dotcom/CloudSaver, with its checksum. Something wrong? Report it there; the page opens in your browser, Ente Saver itself never goes online.</string>
+    <string name="about_source_open">Open releases</string>
+    <string name="about_issue_open">Report a problem</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_mission_title">Why Ente Saver exists</string>
     <string name="about_mission_body">Ente Photos keeps your photos private with end-to-end encryption, and it stores exactly what you hand it \u2014 it does not make a file smaller first. So a library of 4K video fills a plan quickly, and the only answer usually on offer is to buy more storage every year.\n\nEnte Saver is the step in between. It optimises your photos and videos on the phone itself, into one folder Ente backs up, so the same library reaches Ente in a fraction of the space \u2014 the free 10 GB or a small plan goes a great deal further.\n\nIt looks after the phone as well as the plan: it saves the heavy work for when the phone is charging, cool and idle, keeps the free space you asked it to keep, finds duplicate files and your largest ones, and never removes an original unless you confirm it yourself.</string>
@@ -1059,7 +1076,7 @@
         <item quantity="one">Kept automatically on this phone for %1$d day, up to %2$s entries. Nothing here is ever sent anywhere.</item>
         <item quantity="other">Kept automatically on this phone for %1$d days, up to %2$s entries. Nothing here is ever sent anywhere.</item>
     </plurals>
-    <string name="progress_none_yet">Nothing has run yet. The first check happens on its own within about half an hour, or tap Check now.</string>
+    <string name="progress_none_yet">Nothing has run yet. The first check happens on its own within about half an hour, or tap Optimise now.</string>
     <string name="progress_all_clear">Everything found so far has been backed up. New photos and videos are picked up automatically.</string>
     <string name="problem_snapshot_failed">Could not save the safety copy of your history (%1$s). If you uninstall now, Ente Saver would not be able to restore what it already knows.</string>
     <string name="activity_setting_changed">%1$s changed to %2$s</string>
@@ -1081,7 +1098,7 @@
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
     <string name="optimise_working">Working\u2026</string>
-    <string name="verify_link_hint">Turn on usage access and Ente Saver can confirm uploads by itself.</string>
+    <string name="verify_link_hint">Opens Ente: there, Settings \u203a Free up space \u203a Free up device space, then come back and Ente Saver counts what Ente took. Or turn on usage access and it confirms uploads by itself.</string>
     <string name="activity_started_by_you">Started by you</string>
     <string name="storage_group_phone">Your phone</string>
     <!-- Held for the moment between the screen opening and the phone's own
@@ -1193,7 +1210,7 @@
     <string name="faq_a5">Yes. Every copy carries the original\'s shooting date and camera details, and the file date is set to match. The GPS location comes too, as long as you allowed the location request during setup \u2014 Android hands apps a copy with the location removed unless that one is granted. Everything else is carried either way. That is why the copies land in the right place chronologically in Ente instead of all appearing as today. The file name keeps the original name with a short code added, so a copy can always be matched back to its original.</string>
 
     <string name="faq_q6">How does Ente Saver know a file reached Ente?</string>
-    <string name="faq_a6">Two ways, both watched automatically. When you use Free up device space in Ente (Settings \u203a Backup \u203a Free up device space), Ente removes the copies it has already uploaded from the folder; a copy that disappears without Ente Saver removing it is the proof. Ente Saver also adds copies a few at a time, and with Usage access on it watches how much data Ente Photos sends, so a matching amount right after one file goes out counts for that file. That weaker proof is used in Free up space only if you turn it on in Settings. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal. Even with proof, an original is offered only after a 30-day safety wait. The daily limit in Settings controls how much Ente Saver adds to the upload folder each day \u2014 which is what Ente Photos then uploads. Ente Saver cannot control when Ente uploads or which network it uses; set that inside Ente Photos.</string>
+    <string name="faq_a6">Two ways, both watched automatically. When you use Free up device space in Ente (Settings \u203a Free up space \u203a Free up device space), Ente removes the copies it has already uploaded from the folder; a copy that disappears without Ente Saver removing it is the proof. Ente Saver also adds copies a few at a time, and with Usage access on it watches how much data Ente Photos sends, so a matching amount right after one file goes out counts for that file. That weaker proof is used in Free up space only if you turn it on in Settings. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal. Even with proof, an original is offered only after a 30-day safety wait. The daily limit in Settings controls how much Ente Saver adds to the upload folder each day \u2014 which is what Ente Photos then uploads. Ente Saver cannot control when Ente uploads or which network it uses; set that inside Ente Photos.</string>
 
     <string name="faq_q7">How do I make Ente work like my phone\'s gallery?</string>
     <string name="faq_a7">Set Ente as the default gallery in Android Settings \u203a Apps \u203a Default apps, so photos you open from other apps show in Ente. Give it a gallery-style icon, either with Ente\'s own setting (Ente \u203a Settings \u203a General \u203a Advanced \u203a App icon) or with Ente Saver\'s icon pack in a launcher that supports icon packs. Or, from Help \u203a Make Ente your gallery, add a Photos shortcut to your home screen that opens Ente. Then turn on machine learning in Ente for face recognition and magic search. That help page walks through each step.</string>
@@ -1228,7 +1245,16 @@
     <string name="faq_a20">Ente Saver works in the background and waits for good moments on purpose, so a quiet hour is normal. When it waits longer, one of these is the reason, and Home says which. Battery Saver pauses it until Battery Saver is off (most phones switch it off while charging); Super power saving or Ultra battery saver stops every background app while it is on. Charging-only mode waits for the charger. On Realme, Oppo, Xiaomi and Vivo phones, auto-launch switched off is the usual reason it stops a day after setup \u2014 Settings \u203a Permissions and battery opens that page, with the path to it. Android also runs an app less often when it is rarely opened; opening Ente Saver now and then helps. Optimise now on Home runs it straight away, within the safety limits.</string>
     <string name="faq_q19">How do I know this copy of Ente Saver is the real one?</string>
     <string name="faq_a19">Every official build is published at github.com/smmpanelusertestai07-dotcom/CloudSaver, and each release prints two long codes: one for the file itself and one for the key it was signed with. The file\u2019s code changes with every build; the key\u2019s code is the same for every genuine Ente Saver there will ever be. Android checks that key for you: a build signed with a different one cannot install over this app at all. Installed on its own, after this one is removed, it would open and say so on Home, and it would keep deletion switched off. Installing from a file rather than a store is also why the phone shows a Play Protect warning the first time: \u201cMore details\u201d, then \u201cInstall anyway\u201d.</string>
-    <string name="about_running_full">Android %1$s \u2014 everything works.</string>
+    <string name="about_running_full">Android %1$s \u2014 supported.</string>
+    <string name="limit_memory">%1$s of memory: photo copies are made at up to %2$d MP, so the phone never runs out of memory mid-photo.</string>
+    <string name="limit_memory_small">%1$s of memory: photo copies are made at up to %2$d MP, and videos only while charging, at up to 1080p.</string>
+    <string name="limit_learned">A very large photo once ran this phone short of memory, so copies are now made at up to %1$d MP.</string>
+    <string name="limit_no_hevc">No HEVC video chip: videos are made as H.264, which is about a third larger.</string>
+    <string name="limit_video_chip">The video chip stops below 4K, so videos above 1080p are made at 1080p.</string>
+    <string name="limit_heic_fail">The photo chip did not pass the HEIC check, so photos are saved as JPEG.</string>
+    <string name="limit_battery">Battery optimisation is on: a long video finishes only while Ente Saver is open. Settings \u203a Permissions and battery changes it.</string>
+    <string name="limit_space">%1$s free, below the %2$s Ente Saver keeps free: new copies wait until there is room.</string>
+    <string name="limit_none">Nothing on this phone limits Ente Saver.</string>
     <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>
     <string name="about_network_title">Network access</string>
     <string name="about_network_none">None \u2014 the app does not have the internet permission.</string>

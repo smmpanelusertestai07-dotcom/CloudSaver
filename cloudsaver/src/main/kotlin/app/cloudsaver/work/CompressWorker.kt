@@ -27,8 +27,11 @@ import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.ReattachEngine
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.Stager
+import app.cloudsaver.media.VideoCompressor
+import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Permissions
+import app.cloudsaver.util.SpaceLimits
 import app.cloudsaver.util.Storage
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
@@ -76,7 +79,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     private suspend fun runOnce(): Result {
         val app = applicationContext
         val repo = OptionsRepo.get(app)
-        val options = repo.current()
+        var options = repo.current()
         val manual = inputData.getBoolean(KEY_MANUAL, false)
 
         if (!options.onboardingDone) return Result.success()
@@ -95,6 +98,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             waitedOnPurpose(repo)
             reschedule(app, repo)
             return Result.success()
+        }
+        // Automatic limits follow the phone's storage as it is now.
+        if (options.spaceAuto) {
+            runCatching { SpaceLimits.refresh(app) }
+            options = repo.current()
         }
 
         val db = AppDb.get(app)
@@ -121,21 +129,27 @@ class CompressWorker(context: Context, params: WorkerParameters) :
 
         val sessions = FgsBudget.decode(options.fgsSessions)
         val fgsLeft = FgsBudget.remaining(sessions, startAt)
-        if (fgsLeft < 5 * 60_000L) {
-            waitedOnPurpose(repo)
-            reschedule(app, repo)
-            return Result.success()
-        }
 
+        // With the day's foreground allowance spent, the run goes ahead as a
+        // plain job, which that allowance does not cover.
         var foreground = false
-        try {
-            setForeground(foregroundInfo(app))
-            foreground = true
-        } catch (e: Exception) {
-            // Background-start restrictions: run inside plain JobScheduler limits.
+        if (fgsLeft >= 5 * 60_000L) {
+            try {
+                setForeground(foregroundInfo(app))
+                foreground = true
+            } catch (e: Exception) {
+                // Background-start restrictions: run inside plain JobScheduler limits.
+            }
         }
 
-        val deadline = startAt + min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft)
+        // Android 12 and later refuse a foreground service to a run that
+        // starts in the background unless the battery is set to
+        // Unrestricted, and stop a plain job after about ten minutes. So a
+        // plain run stops taking files in time to finish its duplicate check
+        // and maintenance before that, and takes only the videos it can
+        // finish, instead of being cut off and starting them again every run.
+        val deadline = startAt + if (foreground) min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft) else PLAIN_RUN_MS
+        val deferred = HashSet<Long>()
         val profile = runCatching { ProfileBuilder(app).current(options) }
             .getOrDefault(MediaProfile.Profile())
         var processed = 0
@@ -184,22 +198,53 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     break@loop
                 }
 
-                val batch = nextItems(db, live, plan, 5)
+                val videoMaxMs = if (foreground) {
+                    -1L
+                } else {
+                    RunDecider.plainRunVideoMaxMs(deadline - now, VideoCompressor.MIN_TOTAL_MS)
+                }
+                // Files skipped for space this run are left out of the query;
+                // past a couple of hundred of them the run has nothing useful
+                // left to try (and the list stays far under SQLite's limit).
+                if (deferred.size > MAX_DEFERRED) break@loop
+                val batch = nextItems(db, live, plan, videoMaxMs, deferred, 5)
                 if (batch.isEmpty()) {
-                    // Nothing left that this power state allows. If photos are
-                    // the only thing waiting, say why they are not running.
-                    // Ticked albums only: rows in excluded albums are not
-                    // "waiting" and must not put up the photo-cap reason.
-                    if (!plan.photos && db.items().newInScopeCount(live.excludedBuckets) > 0) {
-                        repo.setString(OptionsRepo.K.WAIT_REASON, RunDecider.Wait.PHOTO_CAP.name)
+                    // Nothing left that this run can take; whatever is still
+                    // waiting gets its reason on Home, found by asking again
+                    // without the limit that held it back.
+                    val why = when {
+                        deferred.isNotEmpty() -> RunDecider.Wait.NEXT_TOO_BIG
+                        videoMaxMs >= 0 && nextItems(db, live, plan, -1L, deferred, 1).isNotEmpty() ->
+                            RunDecider.Wait.LONG_VIDEOS
+                        !plan.photos && db.items().newInScopeCount(live.excludedBuckets) > 0 ->
+                            RunDecider.Wait.PHOTO_CAP
+                        else -> null
                     }
+                    if (why != null) repo.setString(OptionsRepo.K.WAIT_REASON, why.name)
                     break@loop
                 }
+                var free = Storage.freeBytes(app, live.storageVolume)
                 for (row in batch) {
                     if (System.currentTimeMillis() >= deadline || isStopped) break@loop
                     val itemStart = System.currentTimeMillis()
+                    if (row.isVideo && !foreground &&
+                        !RunDecider.fitsPlainRun(row.durationMs, deadline - itemStart, VideoCompressor.MIN_TOTAL_MS)
+                    ) {
+                        // Time has moved on since the query; the next one
+                        // asks for shorter clips.
+                        continue
+                    }
                     val ratio = if (row.isVideo) profile.videos.ratio else profile.photos.ratio
                     val predicted = if (ratio > 0) (row.sizeBytes * ratio).toLong() else 0L
+                    // Checked for every file, not once per batch: the
+                    // biggest files come first, and one large copy must not
+                    // take the phone below the space it keeps free. A
+                    // smaller file may still fit.
+                    val need = if (predicted > 0) predicted * 6 / 5 else row.sizeBytes
+                    if (free - need < live.minFreeBytes) {
+                        deferred += row.id
+                        continue
+                    }
                     // What is left of this run's deadline is handed to the
                     // encoder, so a single stubborn video can no longer sit
                     // there for three twenty-minute attempts while the
@@ -209,6 +254,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                         row, live, predicted, runRemainingMs = deadline - itemStart
                     )
                     val took = System.currentTimeMillis() - itemStart
+                    // Free space changes only when something was written.
+                    free = Storage.freeBytes(app, live.storageVolume)
                     if (ok) {
                         processed++
                         if (!power.plugged) {
@@ -316,6 +363,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
 
     private fun endOfRunNow(): Long = System.currentTimeMillis()
 
+    /** The smallest phones make videos only while charging; asked once per run. */
+    private val smallestPhone by lazy { DeviceTier.tier(applicationContext) == DeviceTier.Tier.VERY_LOW }
+
     private fun plan(
         o: Options,
         power: RunDecider.Power,
@@ -324,7 +374,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     ): RunDecider.Plan = if (manual) {
         RunDecider.decideManual(power)
     } else {
-        RunDecider.decide(o.speed, power, budget, paused = o.pauseAll)
+        RunDecider.decide(o.speed, power, budget, paused = o.pauseAll, videosNeedCharger = smallestPhone)
     }
 
     /** FAST re-arms its content trigger after every run (triggers are one-shot). */
@@ -349,6 +399,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         db: AppDb,
         o: Options,
         plan: RunDecider.Plan,
+        videoMaxMs: Long,
+        skip: Collection<Long>,
         limit: Int
     ): List<ItemRow> {
         // What the user asked for, narrowed to what this power state allows.
@@ -360,7 +412,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             videos = videos,
             excludedBuckets = o.excludedBuckets,
             freshAfter = System.currentTimeMillis() - FRESH_WINDOW_MS,
-            limit = limit
+            limit = limit,
+            videoMaxMs = videoMaxMs,
+            skipIds = skip
         )
     }
 
@@ -374,6 +428,16 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         const val FRESH_WINDOW_MS = 30L * 86_400_000L
 
         const val KEY_MANUAL = "manual"
+
+        /**
+         * How long a run without a foreground service takes files for. Android
+         * stops a plain job after about ten minutes; the rest is for the
+         * duplicate check (up to a minute) and maintenance after the loop.
+         */
+        const val PLAIN_RUN_MS = 7 * 60_000L
+
+        /** Files skipped for space in one run before it stops looking. */
+        private const val MAX_DEFERRED = 200
 
         fun foregroundInfo(context: Context): ForegroundInfo {
             val notification = Notifications.working(

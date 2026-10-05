@@ -65,12 +65,14 @@ import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.util.AppLooks
+import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Locks
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
+import app.cloudsaver.util.SpaceLimits
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.TrialRecord
@@ -1131,27 +1133,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshRecommended() {
         viewModelScope.launch(Dispatchers.IO) {
+            val limits = SpaceLimits.refresh(ctx)
             val o = repo.current()
-            val total = Storage.totalBytes(ctx, o.storageVolume)
-            val free = Storage.freeBytes(ctx, o.storageVolume)
-            // No usage history to read offline, so assume the cautious middle
-            // rather than inventing a Wi-Fi share the app cannot measure.
-            val cap = nearestChoice(
-                DeviceDefaults.dailyCapMb(total, free, 0.0),
-                Defaults.DAILY_CAP_CHOICES_MB
-            )
-            val minFree = nearestChoice(
-                DeviceDefaults.reserveMb(total), Defaults.MIN_FREE_CHOICES_MB
-            )
-            val maxExtra = nearestChoice(
-                DeviceDefaults.ownLimitMb(free, cap), Defaults.MAX_EXTRA_CHOICES_MB
-            )
             recommended.value = Recommended(
-                dailyCapMb = cap,
-                minFreeMb = minFree,
-                maxExtraMb = maxExtra,
-                capLooksWrong = DeviceDefaults.looksWrong(o.dailyCapMb, cap),
-                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, minFree),
+                dailyCapMb = limits.dailyCapMb,
+                minFreeMb = limits.minFreeMb,
+                maxExtraMb = limits.maxExtraMb,
+                capLooksWrong = DeviceDefaults.looksWrong(o.dailyCapMb, limits.dailyCapMb),
+                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, limits.minFreeMb),
                 computed = true
             )
         }
@@ -1182,10 +1171,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             refreshRecommended()
         }
     }
-
-    /** Settings offer fixed steps, so a computed figure has to land on one. */
-    private fun nearestChoice(value: Int, choices: List<Int>): Int =
-        choices.filter { it > 0 }.minByOrNull { kotlin.math.abs(it - value) } ?: value
 
     fun cleanTemp() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1486,19 +1471,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val heic: HeicSupport.State = HeicSupport.State.UNKNOWN,
         val photoFormat: PhotoFormat = PhotoFormat.JPEG,
         val videoCodec: VideoCodec = VideoCodec.H264,
-        val hevcHardware: Boolean = false
-    )
+        val hevcHardware: Boolean = false,
+        /** This phone's photo ceiling in MP (its memory, and what it has taught the app). */
+        val photoCeilingMp: Int = 0,
+        /** The long side this phone holds the video setting to, or 0 when it makes what is asked. */
+        val videoHeldTo: Int = 0
+    ) {
+        /** Whether the photo ceiling is this phone's own, rather than the 50 MP every phone has. */
+        val photoCeilingIsPhones: Boolean get() = photoCeilingMp in 1 until DeviceTier.ANY_PHONE_CEILING_MP
+    }
 
     val encodePlan = MutableStateFlow(EncodePlan())
 
     fun refreshEncodePlan() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
+            val video = o.video.spec()
+            val smallest = DeviceTier.tier(ctx) == DeviceTier.Tier.VERY_LOW
             encodePlan.value = EncodePlan(
                 heic = HeicSupport.state(ctx),
                 photoFormat = PlannedEncode.photoFormat(ctx, o.photo.spec()),
-                videoCodec = PlannedEncode.videoCodec(o.video.spec()),
-                hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty()
+                videoCodec = PlannedEncode.videoCodec(video, smallest),
+                hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty(),
+                photoCeilingMp = DeviceTier.lastingCeilingMp(ctx),
+                videoHeldTo = PlannedEncode.videoHeldTo(video, smallest)
             )
         }
     }
@@ -1512,6 +1508,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
     fun setDynamicColor(v: Boolean) = setBool(OptionsRepo.K.DYNAMIC_COLOR, v)
+    /** Automatic sets the three limits from this phone at once; Custom keeps them as they are. */
+    fun setSpaceAuto(on: Boolean) {
+        viewModelScope.launch {
+            repo.setSpaceAuto(on)
+            refreshRecommended()
+        }
+    }
+
     fun setDailyCap(v: Int) = setInt(OptionsRepo.K.DAILY_CAP_MB, v)
     fun setMinFree(v: Int) = setInt(OptionsRepo.K.MIN_FREE_MB, v)
     fun setMaxExtra(v: Int) = setInt(OptionsRepo.K.MAX_EXTRA_MB, v)

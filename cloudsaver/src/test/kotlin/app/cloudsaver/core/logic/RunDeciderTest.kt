@@ -250,4 +250,36 @@ class RunDeciderTest {
         assertEquals(RunDecider.Wait.VOLUME_MISSING, RunDecider.waitForResource("volume_missing"))
         assertEquals(RunDecider.Wait.NONE, RunDecider.waitForResource("something_new"))
     }
+
+    @Test
+    fun `a run without a foreground service takes only the videos it can finish`() {
+        val min = 5 * 60_000L
+        val left = 7 * 60_000L
+        // A two-minute clip fits a seven-minute plain run...
+        assertTrue(RunDecider.fitsPlainRun(2 * 60_000L, left, min))
+        // ...a ten-minute one waits for a run that has the time...
+        assertFalse(RunDecider.fitsPlainRun(10 * 60_000L, left, min))
+        // ...and so does one whose length is not known.
+        assertFalse(RunDecider.fitsPlainRun(0L, left, min))
+        // With less left than the encoder's least budget, no clip starts at
+        // all: the encoder would run past the end of the run.
+        assertFalse(RunDecider.fitsPlainRun(30_000L, 4 * 60_000L, min))
+        assertEquals(0L, RunDecider.plainRunVideoMaxMs(4 * 60_000L, min))
+        assertEquals(4 * 60_000L, RunDecider.plainRunVideoMaxMs(7 * 60_000L, min))
+    }
+
+    @Test
+    fun `the smallest phones make videos only while charging`() {
+        val battery = RunDecider.Power(
+            plugged = false, batteryPct = 90, saverOn = false, thermalThrottled = false,
+            batteryTempTenthsC = 250, screenInteractive = false, screenOffMs = 60 * 60_000L
+        )
+        val fresh = RunDecider.Budget(videoEncodeMs = 0, photosOnBattery = 0)
+        val small = RunDecider.decide(SpeedMode.SMART, battery, fresh, videosNeedCharger = true)
+        assertTrue(small.photos)
+        assertFalse(small.videos)
+        assertTrue(RunDecider.decide(SpeedMode.SMART, battery, fresh).videos)
+        // Plugged in, the smallest phone makes videos too.
+        assertTrue(RunDecider.decide(SpeedMode.SMART, battery.copy(plugged = true), fresh, videosNeedCharger = true).videos)
+    }
 }

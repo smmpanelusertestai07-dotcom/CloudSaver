@@ -314,10 +314,14 @@ class UiWalkthroughTest {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             shoot("23-settings-top")
             // Scroll through the long settings list to catch layout problems.
-            compose.onAllNodes(hasText(s(R.string.opt_group_quality), substring = true)).onFirst()
+            compose.onAllNodes(hasText(s(R.string.opt_photos_hint))).onFirst()
                 .performScrollTo().assertIsDisplayed()
             shoot("24-settings-quality")
-            compose.onAllNodes(hasText(s(R.string.opt_group_backup_restore), substring = true)).onFirst()
+            compose.openRow(s(R.string.opt_advanced_show))
+            compose.onAllNodes(hasText(s(R.string.opt_space_hint))).onFirst()
+                .performScrollTo().assertIsDisplayed()
+            shoot("25a-settings-advanced")
+            compose.onAllNodes(hasText(s(R.string.transfer_export), substring = true)).onFirst()
                 .performScrollTo().assertIsDisplayed()
             shoot("25-settings-backup")
         }
@@ -379,6 +383,7 @@ class UiWalkthroughTest {
         setOnboardingDone(true)
         ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            compose.openRow(s(R.string.opt_advanced_show))
             compose.openRow(s(R.string.transfer_export))
             shoot("30-backup-password-dialog")
         }

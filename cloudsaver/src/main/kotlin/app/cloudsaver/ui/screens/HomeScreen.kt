@@ -38,7 +38,9 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
@@ -1082,6 +1084,28 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             HomeAction.Visibility.HIDDEN -> Unit
         }
 
+        // Pause and Resume live here as well as in Settings: it is the one
+        // switch people reach for often, and "turn it back on in Settings"
+        // sent them looking for it.
+        if (options.pauseAll) {
+            Button(
+                onClick = { vm.setPauseAll(false) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            ) {
+                Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.btn_resume))
+            }
+        } else {
+            TextButton(onClick = { vm.setPauseAll(true) }) {
+                Icon(Icons.Outlined.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.btn_pause))
+            }
+        }
+
         // Not a button, and not always present: this exists only where the
         // app cannot see the uploads for itself. With usage access granted
         // the check is automatic, and offering it anyway would imply the
@@ -1346,6 +1370,9 @@ private fun statusLine(
             RunDecider.Wait.SPACE_FULL -> stringResource(R.string.wait_space_full)
             RunDecider.Wait.LOW_SPACE -> stringResource(R.string.wait_low_space)
             RunDecider.Wait.VOLUME_MISSING -> stringResource(R.string.wait_volume_missing)
+            RunDecider.Wait.LONG_VIDEOS -> stringResource(R.string.wait_long_videos)
+            RunDecider.Wait.NEXT_TOO_BIG -> stringResource(R.string.wait_next_too_big)
+            RunDecider.Wait.VIDEOS_CHARGING -> stringResource(R.string.wait_videos_charging)
         }
         return reason ?: pluralStringResource(R.plurals.status_working, waiting, waiting)
     }

@@ -30,12 +30,30 @@ object PlannedEncode {
             is FormatResolver.Decision.AsIs -> PhotoFormat.JPEG
         }
 
-    fun videoCodec(spec: VideoSpec): VideoCodec {
-        val long = if (spec.longSide <= 0) 1920 else spec.longSide
-        val short = long * 9 / 16
-        val fps = if (spec.fpsCap > 0) spec.fpsCap.toFloat() else 30f
+    private fun plannedFps(spec: VideoSpec): Float = if (spec.fpsCap > 0) spec.fpsCap.toFloat() else 30f
+
+    /**
+     * The long side this phone holds [spec] to - 1080p's - or 0 when it makes
+     * what is asked. "Keep" is planned for a 2160p source, the largest a
+     * phone films.
+     */
+    fun videoHeldTo(spec: VideoSpec, smallestPhone: Boolean): Int {
+        val asked = if (spec.longSide <= 0) 3840 else spec.longSide
+        val held = EncoderCaps.holdsToFullHd(asked, asked * 9 / 16, plannedFps(spec), smallestPhone)
+        return if (held) MediaSettings.FULL_HD else 0
+    }
+
+    /** The codec an ordinary clip gets, at the size the phone actually makes it. */
+    fun videoCodec(spec: VideoSpec, smallestPhone: Boolean = false): VideoCodec {
+        val held = videoHeldTo(spec, smallestPhone)
+        val long = when {
+            held > 0 -> held
+            spec.longSide <= 0 -> 1920
+            else -> spec.longSide
+        }
         return VideoCodecResolver.resolve(
-            spec.codec, VideoCodecResolver.Hardware(hevcFits = EncoderCaps.hevcFits(long, short, fps))
+            spec.codec,
+            VideoCodecResolver.Hardware(hevcFits = EncoderCaps.hevcFits(long, long * 9 / 16, plannedFps(spec)))
         )
     }
 

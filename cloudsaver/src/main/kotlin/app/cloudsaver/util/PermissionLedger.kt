@@ -47,13 +47,10 @@ object PermissionLedger {
         Manifest.permission.FOREGROUND_SERVICE to (R.string.perm_name_foreground to R.string.perm_purpose_foreground),
         "android.permission.FOREGROUND_SERVICE_DATA_SYNC" to (R.string.perm_name_foreground_type to R.string.perm_purpose_foreground_type),
         "android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" to (R.string.perm_name_foreground_type to R.string.perm_purpose_foreground_type),
-        Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS to (R.string.perm_name_battery to R.string.perm_purpose_battery),
         Manifest.permission.PACKAGE_USAGE_STATS to (R.string.perm_name_usage to R.string.perm_purpose_usage),
         Manifest.permission.USE_BIOMETRIC to (R.string.perm_name_biometric to R.string.perm_purpose_biometric),
-        "android.permission.USE_FINGERPRINT" to (R.string.perm_name_fingerprint to R.string.perm_purpose_fingerprint),
         Manifest.permission.WAKE_LOCK to (R.string.perm_name_wake to R.string.perm_purpose_wake),
-        Manifest.permission.RECEIVE_BOOT_COMPLETED to (R.string.perm_name_boot to R.string.perm_purpose_boot),
-        "app.cloudsaver.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" to (R.string.perm_name_own_receiver to R.string.perm_purpose_own_receiver)
+        Manifest.permission.RECEIVE_BOOT_COMPLETED to (R.string.perm_name_boot to R.string.perm_purpose_boot)
     )
 
     /**

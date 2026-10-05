@@ -26,8 +26,11 @@ class BrandingTest {
 
     @Test
     fun `no text a person reads still says CloudSaver`() {
-        val offenders = Regex("""<(string|item)[^>]*>([^<]*)</\1>""").findAll(strings)
-            .map { it.groupValues[2] }
+        // One string says CloudSaver on purpose: the name earlier versions
+        // had, offered as a home-screen name for anyone who knows it by that.
+        val offenders = Regex("""<(string|item)([^>]*)>([^<]*)</\1>""").findAll(strings)
+            .filterNot { it.groupValues[2].contains("""name="app_name_classic"""") }
+            .map { it.groupValues[3] }
             .filter { text -> stillReal.fold(text) { left, real -> left.replace(real, "") }.contains("CloudSaver") }
             .toList()
         assertEquals(emptyList<String>(), offenders)

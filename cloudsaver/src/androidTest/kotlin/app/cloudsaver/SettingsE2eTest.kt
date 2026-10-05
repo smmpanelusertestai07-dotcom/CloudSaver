@@ -164,6 +164,9 @@ class SettingsE2eTest {
         repo.setString(OptionsRepo.K.OUTPUT_MODE, OutputMode.SINGLE.name)
         repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
         repo.setString(OptionsRepo.K.SPEED, SpeedMode.SMART.name)
+        // Custom, so the three figures are on screen to be changed; the test
+        // of Automatic switches it on itself.
+        repo.setBool(OptionsRepo.K.SPACE_AUTO, false)
         repo.setInt(OptionsRepo.K.DAILY_CAP_MB, Defaults.DAILY_CAP_MB)
         repo.setInt(OptionsRepo.K.MIN_FREE_MB, Defaults.MIN_FREE_MB)
         repo.setInt(OptionsRepo.K.MAX_EXTRA_MB, Defaults.MAX_EXTRA_MB)
@@ -190,6 +193,7 @@ class SettingsE2eTest {
     @Test
     fun mediaTypeAndAlbumSelectionChangeAndSurviveRecreate() {
         openSettings()
+        showAdvanced()
         val hint = s(R.string.opt_scope_hint)
 
         assertCardValue(hint, s(R.string.scope_all))
@@ -200,6 +204,8 @@ class SettingsE2eTest {
         tap(segment(hint, s(R.string.scope_photos)))
         awaitOption("media type") { it.scope == BackupScope.PHOTOS }
         assertCardValue(hint, s(R.string.scope_photos))
+        // Leaving one kind out says what that means for Ente.
+        compose.onNodeWithText(s(R.string.scope_left_out_warning)).performScrollTo().assertIsDisplayed()
 
         // Albums. The button prints the current selection, so it is both the
         // control and the read-out.
@@ -224,6 +230,7 @@ class SettingsE2eTest {
         compose.onNodeWithText(oneOut).performScrollTo().assertIsDisplayed()
 
         recreateAndOpenSettings()
+        showAdvanced()
         assertEquals(PHOTOS_SHOULD_SURVIVE, BackupScope.PHOTOS, options().scope)
         assertEquals("the excluded album was lost", setOf(excluded), options().excludedBuckets)
         assertCardValue(hint, s(R.string.scope_photos))
@@ -244,6 +251,7 @@ class SettingsE2eTest {
     @Test
     fun folderLayoutIsConfirmedBeforeItChanges() {
         openSettings()
+        showAdvanced()
         val hint = s(R.string.opt_output_hint)
 
         compose.onNodeWithText(s(R.string.folder_pick_one)).performScrollTo().assertIsDisplayed()
@@ -289,6 +297,7 @@ class SettingsE2eTest {
         )
 
         recreateAndOpenSettings()
+        showAdvanced()
         assertEquals(OutputMode.SEPARATE, options().outputMode)
         compose.onNodeWithText(s(R.string.folder_pick_two)).performScrollTo().assertIsDisplayed()
     }
@@ -337,6 +346,7 @@ class SettingsE2eTest {
         compose.onNodeWithText(s(R.string.speed_fast_note)).performScrollTo().assertIsDisplayed()
 
         // A named figure first...
+        showAdvanced()
         val oneGb = Formats.mbLabel(1000)
         tap(segment(capHint, oneGb))
         awaitOption("daily limit") { it.dailyCapMb == 1000 }
@@ -350,6 +360,7 @@ class SettingsE2eTest {
             .assertIsDisplayed()
 
         recreateAndOpenSettings()
+        showAdvanced()
         assertEquals(SpeedMode.FAST, options().speed)
         assertEquals(-1, options().dailyCapMb)
         assertCardValue(speedHint, s(R.string.speed_fast))
@@ -360,6 +371,7 @@ class SettingsE2eTest {
     @Test
     fun bothSpaceLimitsChangeIndependentlyAndSurviveRecreate() {
         openSettings()
+        showAdvanced()
         val freeHint = s(R.string.space_min_free_body)
         val extraHint = s(R.string.space_max_extra_body)
 
@@ -394,10 +406,42 @@ class SettingsE2eTest {
             .assertExists()
 
         recreateAndOpenSettings()
+        showAdvanced()
         assertEquals(free, options().minFreeMb)
         assertEquals(extra, options().maxExtraMb)
         assertCardValue(freeHint, Formats.mbLabel(free))
         assertCardValue(extraHint, Formats.mbLabel(extra))
+    }
+
+    /** 7a. Space limits follow the phone until someone picks their own. */
+    @Test
+    fun spaceLimitsFollowThePhoneUntilSetByHand() {
+        runBlocking { OptionsRepo.get(context).setBool(OptionsRepo.K.SPACE_AUTO, true) }
+        openSettings()
+        showAdvanced()
+        val hint = s(R.string.opt_space_hint)
+        val switchLabel = s(R.string.space_auto_switch)
+
+        // Automatic: nothing to pick, and the figures are the app's own.
+        assertCardValue(hint, s(R.string.space_auto))
+        switchNear(switchLabel).assertIsOn()
+        compose.onNodeWithText(s(R.string.opt_daily_cap_hint)).assertDoesNotExist()
+
+        // Custom puts the three figures on screen.
+        tap(switchNear(switchLabel))
+        awaitOption("space limits") { !it.spaceAuto }
+        assertCardValue(hint, s(R.string.space_custom))
+        awaitNode(hasText(s(R.string.opt_daily_cap_hint)), "Custom did not show the daily amount")
+
+        recreateAndOpenSettings()
+        showAdvanced()
+        assertFalse("Custom was lost", options().spaceAuto)
+        switchNear(switchLabel).assertIsOff()
+
+        // And back to Automatic, through the same switch.
+        tap(switchNear(switchLabel))
+        awaitOption("space limits") { it.spaceAuto }
+        awaitNodeGone(hasText(s(R.string.opt_daily_cap_hint)), "Automatic left the custom figures up")
     }
 
     /**
@@ -410,6 +454,7 @@ class SettingsE2eTest {
     fun storageLocationIsOfferedOnlyWhenThereIsAChoice() {
         val volumes = Volumes.list(context)
         openSettings()
+        showAdvanced()
 
         if (volumes.size <= 1) {
             compose.onNodeWithText(s(R.string.opt_volume)).assertDoesNotExist()
@@ -672,6 +717,7 @@ class SettingsE2eTest {
             )
         }
         openSettings()
+        showAdvanced()
 
         val hint = s(R.string.never_optimise_hint)
         compose.onNodeWithText(s(R.string.never_optimise_title)).performScrollTo()
@@ -692,6 +738,7 @@ class SettingsE2eTest {
         )
 
         recreateAndOpenSettings()
+        showAdvanced()
         compose.onNodeWithText(s(R.string.never_optimise_title)).assertDoesNotExist()
     }
 
@@ -704,6 +751,7 @@ class SettingsE2eTest {
     @Test
     fun savingABackupAsksForAPasswordAndCanBeAbandoned() {
         openSettings()
+        showAdvanced()
 
         compose.onNodeWithText(s(R.string.transfer_import)).performScrollTo().assertIsEnabled()
         compose.onNodeWithText(s(R.string.transfer_export)).performScrollTo().performClick()
@@ -746,10 +794,10 @@ class SettingsE2eTest {
 
         awaitNode(hasText(s(R.string.help_faq)), "the Help row did not open Help")
         compose.onNodeWithText(s(R.string.help_deleted)).performScrollTo().assertIsDisplayed()
-        awaitNodeGone(hasText(s(R.string.opt_scope_hint)), "Settings stayed under Help")
+        awaitNodeGone(hasText(s(R.string.opt_photos_hint)), "Settings stayed under Help")
 
         compose.onNodeWithContentDescription(s(R.string.back)).performClick()
-        awaitNode(hasText(s(R.string.opt_scope_hint)), "Back did not return to Settings")
+        awaitNode(hasText(s(R.string.opt_photos_hint)), "Back did not return to Settings")
         compose.onNodeWithText(s(R.string.options_footer)).performScrollTo().assertIsDisplayed()
     }
 
@@ -763,10 +811,10 @@ class SettingsE2eTest {
             hasText(s(R.string.activity_filter_all)),
             "the Activity row did not open Activity"
         )
-        awaitNodeGone(hasText(s(R.string.opt_scope_hint)), "Settings stayed under Activity")
+        awaitNodeGone(hasText(s(R.string.opt_photos_hint)), "Settings stayed under Activity")
 
         device.pressBack()
-        awaitNode(hasText(s(R.string.opt_scope_hint)), "Back did not return to Settings")
+        awaitNode(hasText(s(R.string.opt_photos_hint)), "Back did not return to Settings")
         compose.onNodeWithText(s(R.string.options_footer)).performScrollTo().assertIsDisplayed()
     }
 
@@ -782,7 +830,15 @@ class SettingsE2eTest {
             compose.onAllNodes(NavTabs.matcher(tab)).fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNode(NavTabs.matcher(tab)).performClick()
-        awaitNode(hasText(s(R.string.opt_scope_hint)), "the Settings screen never appeared")
+        awaitNode(hasText(s(R.string.opt_photos_hint)), "the Settings screen never appeared")
+    }
+
+    /** Unfolds Advanced, where the settings most people never change live; nothing if it is open. */
+    private fun showAdvanced() {
+        if (compose.onAllNodes(hasText(s(R.string.opt_advanced_hide))).fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithText(s(R.string.opt_advanced_show)).performScrollTo().performClick()
+        }
+        awaitNode(hasText(s(R.string.opt_space_hint)), "Advanced did not open")
     }
 
     /** Destroys and rebuilds the activity, then comes back to Settings. */

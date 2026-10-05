@@ -43,7 +43,13 @@ object RunDecider {
         /** The phone is below the free space the user asked to keep. */
         LOW_SPACE,
         /** The chosen storage location (an SD card) is not mounted. */
-        VOLUME_MISSING
+        VOLUME_MISSING,
+        /** Long videos need a run with a foreground service (app open, or battery Unrestricted). */
+        LONG_VIDEOS,
+        /** The next files would take the phone below the free space it keeps. */
+        NEXT_TOO_BIG,
+        /** On the smallest phones videos are made only while charging. */
+        VIDEOS_CHARGING
     }
 
     /**
@@ -98,11 +104,16 @@ object RunDecider {
         SpeedMode.CHARGING_ONLY -> 0L
     }
 
+    /**
+     * [videosNeedCharger]: the smallest phones (2.5 GB of memory or less)
+     * make videos only while charging; on battery they make photos.
+     */
     fun decide(
         mode: SpeedMode,
         power: Power,
         budget: Budget,
-        paused: Boolean = false
+        paused: Boolean = false,
+        videosNeedCharger: Boolean = false
     ): Plan {
         val floor = batteryFloor(mode)
         if (paused) return Plan(false, false, Wait.PAUSED, floor)
@@ -140,7 +151,7 @@ object RunDecider {
         val screenBlocked = screenWait > 0 &&
             (power.screenInteractive || power.screenOffMs < screenWait)
         val budgetBlocked = budget.videoEncodeMs >= videoBudgetMs(mode)
-        val videos = !screenBlocked && !budgetBlocked
+        val videos = !screenBlocked && !budgetBlocked && !videosNeedCharger
 
         if (photos || videos) return Plan(photos, videos, Wait.NONE, floor)
 
@@ -148,10 +159,26 @@ object RunDecider {
         val reason = when {
             budgetBlocked -> Wait.BUDGET_USED
             screenBlocked -> Wait.SCREEN_ON
+            videosNeedCharger -> Wait.VIDEOS_CHARGING
             else -> Wait.PHOTO_CAP
         }
         return Plan(false, false, reason, floor)
     }
+
+    /**
+     * The longest video a run without a foreground service can take on with
+     * [remainingMs] left, or 0 for none. Android stops such a run after about
+     * ten minutes. Encoding on a budget phone runs at about real time, so a
+     * clip needs its own length and a half plus a minute to read and write
+     * it; and the encoder is never handed less than [minBudgetMs], so less
+     * than that left means no video at all. A clip of unknown length waits
+     * for a run that has the time.
+     */
+    fun plainRunVideoMaxMs(remainingMs: Long, minBudgetMs: Long): Long =
+        if (remainingMs < minBudgetMs) 0L else ((remainingMs - 60_000L) * 2 / 3).coerceAtLeast(0L)
+
+    fun fitsPlainRun(durationMs: Long, remainingMs: Long, minBudgetMs: Long): Boolean =
+        durationMs in 1..plainRunVideoMaxMs(remainingMs, minBudgetMs)
 
     /**
      * "Run now" is user-initiated, so only hard safety limits apply:

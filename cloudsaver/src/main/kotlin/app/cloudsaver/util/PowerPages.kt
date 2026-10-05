@@ -270,16 +270,15 @@ object PowerPages {
         start(context, AUTO_LAUNCH[vendor()].orEmpty()) || OemPages.openAppInfo(context)
 
     fun open(context: Context, requirementId: String): Boolean = when (requirementId) {
-        // Android finishes the "ignore optimisations" dialog silently when
-        // the app is already exempt - so on the one phone this chip was
-        // written for (battery unrestricted, the maker's own switch still
-        // killing the app) the tap did nothing. Already exempt, the tap
-        // goes to the page that holds the other switch instead.
+        // From Android 12 the switch is on the app's own battery page
+        // (Unrestricted), which is the maker's per-app page or app info. On
+        // 10 and 11 it is Android's optimisation list. Already exempt, the
+        // tap goes to the page that holds the maker's other switches.
         ID_BATTERY_UNRESTRICTED ->
-            if (Permissions.isIgnoringBatteryOptimizations(context)) {
+            if (Build.VERSION.SDK_INT >= 31 || Permissions.isIgnoringBatteryOptimizations(context)) {
                 openBackgroundActivity(context)
             } else {
-                OemPages.requestIgnoreBatteryOptimizations(context)
+                OemPages.openBatteryOptimization(context)
             }
         ID_AUTO_LAUNCH -> openAutoLaunch(context)
         ID_BACKGROUND_ACTIVITY -> openBackgroundActivity(context)

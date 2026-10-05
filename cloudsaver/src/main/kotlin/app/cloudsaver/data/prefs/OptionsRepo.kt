@@ -13,6 +13,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.DeviceDefaults
 import app.cloudsaver.core.logic.FolderName
 import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.core.logic.OutFolder
@@ -66,6 +67,12 @@ data class Options(
      */
     val cloudSingle: String = "ente",
     val speed: SpeedMode = SpeedMode.SMART,
+    /**
+     * The three space limits below follow the phone's storage (the default),
+     * or hold the person's own figures. An install from before 11.1 that never
+     * set one counts as Automatic.
+     */
+    val spaceAuto: Boolean = true,
     val dailyCapMb: Int = Defaults.DAILY_CAP_MB,
     val minFreeMb: Int = Defaults.MIN_FREE_MB,
     val maxExtraMb: Int = Defaults.MAX_EXTRA_MB,
@@ -227,6 +234,11 @@ class OptionsRepo(private val context: Context) {
         val NEW_FOLDER_PENDING = booleanPreferencesKey("newFolderPending")
         val CLOUD_SINGLE = stringPreferencesKey("cloudSingle")
         val SPEED = stringPreferencesKey("speed")
+        val SPACE_AUTO = booleanPreferencesKey("spaceAuto")
+        /** What Automatic worked out last; the three keys below stay the person's own (Custom). */
+        val AUTO_DAILY_CAP_MB = intPreferencesKey("autoDailyCapMb")
+        val AUTO_MIN_FREE_MB = intPreferencesKey("autoMinFreeMb")
+        val AUTO_MAX_EXTRA_MB = intPreferencesKey("autoMaxExtraMb")
         val DAILY_CAP_MB = intPreferencesKey("dailyCapMb")
         val MIN_FREE_MB = intPreferencesKey("minFreeMb")
         val MAX_EXTRA_MB = intPreferencesKey("maxExtraMb")
@@ -309,16 +321,17 @@ class OptionsRepo(private val context: Context) {
             newFolderPending = p[K.NEW_FOLDER_PENDING] ?: false,
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
             speed = enumOr(p[K.SPEED], SpeedMode.SMART),
+            spaceAuto = spaceAutoOf(p),
             // Snapped, so a limit stored by an older build still lands on one
             // of the chips instead of leaving the control looking unset.
             dailyCapMb = Defaults.snapToChoice(
-                p[K.DAILY_CAP_MB] ?: Defaults.DAILY_CAP_MB, Defaults.DAILY_CAP_CHOICES_MB
+                limitOf(p, K.DAILY_CAP_MB, K.AUTO_DAILY_CAP_MB) ?: Defaults.DAILY_CAP_MB, Defaults.DAILY_CAP_CHOICES_MB
             ),
             minFreeMb = Defaults.snapToChoice(
-                p[K.MIN_FREE_MB] ?: Defaults.MIN_FREE_MB, Defaults.MIN_FREE_CHOICES_MB
+                limitOf(p, K.MIN_FREE_MB, K.AUTO_MIN_FREE_MB) ?: Defaults.MIN_FREE_MB, Defaults.MIN_FREE_CHOICES_MB
             ),
             maxExtraMb = Defaults.snapToChoice(
-                p[K.MAX_EXTRA_MB] ?: Defaults.MAX_EXTRA_MB, Defaults.MAX_EXTRA_CHOICES_MB
+                limitOf(p, K.MAX_EXTRA_MB, K.AUTO_MAX_EXTRA_MB) ?: Defaults.MAX_EXTRA_MB, Defaults.MAX_EXTRA_CHOICES_MB
             ),
             photo = photoOf(p),
             video = videoOf(p),
@@ -538,6 +551,39 @@ class OptionsRepo(private val context: Context) {
         context.dataStore.edit { edit(it) }
     }
 
+    /** Automatic unless set, or unless an earlier version stored a limit of the person's own. */
+    private fun spaceAutoOf(p: Preferences): Boolean =
+        p[K.SPACE_AUTO] ?: (p[K.DAILY_CAP_MB] == null && p[K.MIN_FREE_MB] == null && p[K.MAX_EXTRA_MB] == null)
+
+    /** A limit in force: Automatic's figure while Automatic is on (the person's own until there is one). */
+    private fun limitOf(p: Preferences, custom: Preferences.Key<Int>, auto: Preferences.Key<Int>): Int? =
+        if (spaceAutoOf(p)) p[auto] ?: p[custom] else p[custom]
+
+    /** Stores what Automatic works out for this phone now; the person's own figures are left alone. */
+    suspend fun applyAutomaticSpace(limits: DeviceDefaults.Limits) {
+        write { p ->
+            p[K.AUTO_DAILY_CAP_MB] = limits.dailyCapMb
+            p[K.AUTO_MIN_FREE_MB] = limits.minFreeMb
+            p[K.AUTO_MAX_EXTRA_MB] = limits.maxExtraMb
+        }
+    }
+
+    /**
+     * Automatic or Custom. Custom picked for the first time starts from the
+     * figures Automatic was using, so nothing jumps; picked again later, it
+     * brings back the person's own.
+     */
+    suspend fun setSpaceAuto(on: Boolean) {
+        write { p ->
+            if (!on && p[K.DAILY_CAP_MB] == null && p[K.MIN_FREE_MB] == null && p[K.MAX_EXTRA_MB] == null) {
+                p[K.AUTO_DAILY_CAP_MB]?.let { p[K.DAILY_CAP_MB] = it }
+                p[K.AUTO_MIN_FREE_MB]?.let { p[K.MIN_FREE_MB] = it }
+                p[K.AUTO_MAX_EXTRA_MB]?.let { p[K.MAX_EXTRA_MB] = it }
+            }
+            p[K.SPACE_AUTO] = on
+        }
+    }
+
     suspend fun setString(key: Preferences.Key<String>, value: String) {
         write { it[key] = value }
     }
@@ -621,6 +667,7 @@ class OptionsRepo(private val context: Context) {
             "folderPhotos" to o.folderPhotos,
             "folderVideos" to o.folderVideos,
             "speed" to o.speed.name,
+            "spaceAuto" to o.spaceAuto.toString(),
             "dailyCapMb" to o.dailyCapMb.toString(),
             "minFreeMb" to o.minFreeMb.toString(),
             "maxExtraMb" to o.maxExtraMb.toString(),
@@ -674,6 +721,15 @@ class OptionsRepo(private val context: Context) {
             // Only values the UI itself offers. A hand-edited backup could
             // otherwise set an absurd minimum-free figure, which makes the
             // resource gate refuse to run for good.
+            // A backup from before 11.1 has no choice stored: its limits
+            // were the person's own, so they come back as Custom rather than
+            // being replaced by Automatic on the next run.
+            val autoInFile = map["spaceAuto"]?.toBooleanStrictOrNull()
+            val limitsInFile = listOf("dailyCapMb", "minFreeMb", "maxExtraMb").any { it in map }
+            when {
+                autoInFile != null -> p[K.SPACE_AUTO] = autoInFile
+                limitsInFile -> p[K.SPACE_AUTO] = false
+            }
             map["dailyCapMb"]?.toIntOrNull()
                 ?.takeIf { it in Defaults.DAILY_CAP_CHOICES_MB }
                 ?.let { p[K.DAILY_CAP_MB] = it }

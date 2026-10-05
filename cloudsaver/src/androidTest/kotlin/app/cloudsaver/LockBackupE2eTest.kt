@@ -316,6 +316,19 @@ class LockBackupE2eTest {
         assertEquals(before, repo.current().photo.preset)
     }
 
+    @Test
+    fun aBackupFromBeforeAutomaticLimitsKeepsItsOwnLimits(): Unit = runBlocking {
+        // 11.1 stores Automatic once Settings has been opened; a backup made
+        // by 11.0 carries the person's own figures and no choice at all.
+        repo.setBool(OptionsRepo.K.SPACE_AUTO, true)
+        repo.importMap(mapOf("dailyCapMb" to "2000", "minFreeMb" to "5000"))
+        val o = repo.current()
+        assertFalse("the restored limits would be replaced on the next run", o.spaceAuto)
+        assertEquals(2000, o.dailyCapMb)
+        assertEquals(5000, o.minFreeMb)
+        repo.setBool(OptionsRepo.K.SPACE_AUTO, true)
+    }
+
     // ---- the dialog that asks for the password -------------------------------
 
     @Test
@@ -323,6 +336,9 @@ class LockBackupE2eTest {
         val presetBefore = repo.current().photo.preset
         ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            // Backups sit under Advanced, folded away by default.
+            compose.onNodeWithText(s(R.string.opt_advanced_show)).performScrollTo().performClick()
+            compose.waitForIdle()
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .performScrollTo().performClick()
             compose.waitForIdle()

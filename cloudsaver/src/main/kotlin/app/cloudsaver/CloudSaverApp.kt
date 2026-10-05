@@ -4,6 +4,7 @@ import android.app.Application
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.StartupRecovery
+import app.cloudsaver.util.AppLooks
 import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Notifications
@@ -25,6 +26,9 @@ class CloudSaverApp : Application() {
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {
+            // Never a phone with Ente Saver installed and no icon to open it
+            // by. Package-manager calls, so off the main thread.
+            AppLooks.ensureVisible(this@CloudSaverApp)
             // Recovery first: after clear-data or a reinstall the database is
             // empty and the hidden snapshot is the only state there is, so it
             // has to be back before anything schedules work against it.

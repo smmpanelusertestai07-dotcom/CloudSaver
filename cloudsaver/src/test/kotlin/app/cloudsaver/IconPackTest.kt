@@ -59,18 +59,24 @@ class IconPackTest {
     }
 
     @Test
-    fun `every Ente icon in every build gets the gallery icon`() {
+    fun `the pack offers Ente exactly one icon, also on Realme and Oppo`() {
         val res = File("src/main/res/xml/appfilter.xml").readText()
         assertEquals("launchers read either copy", res, File("src/main/assets/appfilter.xml").readText())
         val components = xml("src/main/res/xml/appfilter.xml").children("item").map { it.getAttribute("component") }
-        val packages = listOf("io.ente.photos", "io.ente.photos.independent", "io.ente.photos.fdroid")
-        val classes = listOf("io.ente.photos.MainActivity") +
-            listOf("IconGreen", "IconLight", "IconDark", "IconOG", "IconDuckyHuggingE").map { "PKG.$it" }
-        val expected = packages.flatMap { pkg ->
-            classes.map { "ComponentInfo{$pkg/${it.replace("PKG", pkg)}}" }
+        // Ente's launcher entry is its enabled alias (IconGreen by default);
+        // release builds take the LAUNCHER category off MainActivity.
+        assertEquals(listOf("ComponentInfo{io.ente.photos/io.ente.photos.IconGreen}"), components)
+
+        // The ColorOS / Realme UI / OxygenOS 13-15 launcher's per-app editor
+        // lists one icon per component key plus one per package, and drops the
+        // last one. 18 entries once showed as 20 copies of the same picture.
+        val keys = mutableSetOf<String>()
+        for (c in components) {
+            val inner = c.removePrefix("ComponentInfo{").removeSuffix("}").lowercase()
+            keys += inner
+            keys += inner.substringBefore('/')
         }
-        assertEquals(expected.toSet(), components.toSet())
-        assertEquals(18, components.size)
+        assertEquals("Realme and Oppo show (keys - 1) icons: exactly one", 2, keys.size)
     }
 
     @Test
@@ -96,6 +102,7 @@ class IconPackTest {
     @Test
     fun `Ente Saver has one icon, and only its name can change`() {
         assertEquals(listOf(".MainActivity", ".AliasSaver"), AppLooks.Look.entries.map { it.alias })
+        assertEquals(listOf(R.string.app_name, R.string.app_name_classic), AppLooks.Look.entries.map { it.nameRes })
         for (alias in aliases) {
             assertEquals("@mipmap/ic_launcher", alias.getAttribute("android:icon"))
         }
