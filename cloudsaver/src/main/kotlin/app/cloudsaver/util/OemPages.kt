@@ -85,6 +85,14 @@ object OemPages {
             .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CH_ALERTS)
     ) || openNotificationSettings(context)
 
+    /** Where every official build is published, and where problems are reported. */
+    const val RELEASES_URL = "https://github.com/smmpanelusertestai07-dotcom/CloudSaver/releases"
+    const val ISSUES_URL = "https://github.com/smmpanelusertestai07-dotcom/CloudSaver/issues"
+
+    /** A web page, in the phone's browser; the app itself never goes online. */
+    fun openWebPage(context: Context, url: String): Boolean =
+        go(context, Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
     /** This app's own Usage access switch, or the list that holds it. */
     fun openUsageAccess(context: Context): Boolean =
         go(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}"))) ||

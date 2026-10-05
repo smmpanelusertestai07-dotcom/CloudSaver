@@ -44,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,6 +82,7 @@ import app.cloudsaver.ui.components.ShortcutDialog
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.PhoneLimits
 import app.cloudsaver.util.PhotosShortcut
 import kotlin.math.roundToInt
@@ -945,6 +947,30 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 4.dp)
             )
+        }
+
+        // Where the app comes from and where to say something is wrong: the
+        // two questions an About page is opened for, after "what is this".
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            Text(
+                stringResource(R.string.about_source_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(R.string.about_source_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            Column {
+                TextButton(onClick = { OemPages.openWebPage(context, OemPages.RELEASES_URL) }) {
+                    Text(stringResource(R.string.about_source_open))
+                }
+                TextButton(onClick = { OemPages.openWebPage(context, OemPages.ISSUES_URL) }) {
+                    Text(stringResource(R.string.about_issue_open))
+                }
+            }
         }
 
         AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.goTo(Routes.HELP_PRIVACY) }) {

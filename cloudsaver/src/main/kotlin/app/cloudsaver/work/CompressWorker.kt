@@ -30,6 +30,7 @@ import app.cloudsaver.media.Stager
 import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Permissions
+import app.cloudsaver.util.SpaceLimits
 import app.cloudsaver.util.Storage
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
@@ -77,6 +78,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     private suspend fun runOnce(): Result {
         val app = applicationContext
         val repo = OptionsRepo.get(app)
+        runCatching { SpaceLimits.refresh(app) }
         val options = repo.current()
         val manual = inputData.getBoolean(KEY_MANUAL, false)
 

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.SdCard
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -67,6 +68,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -147,6 +149,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     }
 
     var showFolders by remember { mutableStateOf(false) }
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
     // Changing the layout means the cloud app has to be pointed at a different
     // folder or the backup quietly stops covering new files. Confirmed, not
     // applied on a stray tap.
@@ -210,84 +213,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         Spacer(Modifier.height(10.dp))
 
         SectionHeader(stringResource(R.string.opt_group_backup))
-        // 1. What to back up
-        OptionCard(
-            stringResource(R.string.opt_scope),
-            stringResource(R.string.opt_scope_hint),
-            icon = IconScope,
-            value = scopeLabel(o.scope)
-        ) {
-            SegmentedChoice(
-                listOf(
-                    BackupScope.ALL.name to stringResource(R.string.scope_all_short),
-                    BackupScope.PHOTOS.name to stringResource(R.string.scope_photos),
-                    BackupScope.VIDEOS.name to stringResource(R.string.scope_videos)
-                ),
-                o.scope.name
-            ) { vm.setScope(BackupScope.valueOf(it)) }
-        }
-
-        // 2. Folders
-        OptionCard(
-            stringResource(R.string.opt_folders),
-            stringResource(R.string.opt_folders_hint),
-            icon = IconAlbums
-        ) {
-            // Counted from the albums on the phone, not from the stored list
-            // of exclusions: that list also holds the app's own output
-            // folders and albums since deleted, so "3 albums excluded" could
-            // sit above a picker with one box unticked.
-            val phoneAlbums by vm.buckets.collectAsStateWithLifecycle()
-            // Listing albums reads the whole gallery, so once; opening the
-            // picker reads it again, and that keeps the count current.
-            LaunchedEffect(Unit) { if (!vm.bucketsLoaded.value) vm.loadBuckets() }
-            val included = phoneAlbums.count { it !in o.excludedBuckets }
-            OutlinedButton(onClick = { vm.loadBuckets(); showFolders = true }) {
-                Text(
-                    when {
-                        phoneAlbums.isNotEmpty() && included == phoneAlbums.size ->
-                            stringResource(R.string.folders_all)
-                        phoneAlbums.isNotEmpty() -> pluralStringResource(
-                            R.plurals.folders_included,
-                            phoneAlbums.size,
-                            included,
-                            phoneAlbums.size
-                        )
-                        o.excludedBuckets.isEmpty() -> stringResource(R.string.folders_all)
-                        else -> pluralStringResource(
-                            R.plurals.folders_excluded,
-                            o.excludedBuckets.size,
-                            o.excludedBuckets.size
-                        )
-                    }
-                )
-            }
-        }
-
-        // 3. Output folders
-        OptionCard(
-            stringResource(R.string.opt_output),
-            stringResource(R.string.opt_output_hint),
-            icon = IconLayout
-        ) {
-            SegmentedChoice(
-                listOf(
-                    OutputMode.SINGLE.name to stringResource(R.string.output_single),
-                    OutputMode.SEPARATE.name to stringResource(R.string.output_separate)
-                ),
-                o.outputMode.name
-            ) { pendingLayout = OutputMode.valueOf(it) }
-            // The user has to pick this exact string inside another app, so it
-            // is printed rather than described - once, beside the kind of copy
-            // it is for, with the default or a folder of the person's own.
-            FolderPaths(o.layout, showPaths = false)
-            FolderChoiceRows(o.layout) { changingFolder = it }
-            CopyPathButton(o.layout)
-        }
-        changingFolder?.let { folder ->
-            FolderDialog(vm, o.layout, folder) { changingFolder = null }
-        }
-
         // Ente Photos: the one app light copies are made for. Whether it is on
         // the phone is asked again whenever Settings comes back, so someone
         // sent off to install it returns to a card that already knows.
@@ -340,9 +265,70 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
+        // Albums
+        OptionCard(
+            stringResource(R.string.opt_folders),
+            stringResource(R.string.opt_folders_hint),
+            icon = IconAlbums
+        ) {
+            // Counted from the albums on the phone, not from the stored list
+            // of exclusions: that list also holds the app's own output
+            // folders and albums since deleted, so "3 albums excluded" could
+            // sit above a picker with one box unticked.
+            val phoneAlbums by vm.buckets.collectAsStateWithLifecycle()
+            // Listing albums reads the whole gallery, so once; opening the
+            // picker reads it again, and that keeps the count current.
+            LaunchedEffect(Unit) { if (!vm.bucketsLoaded.value) vm.loadBuckets() }
+            val included = phoneAlbums.count { it !in o.excludedBuckets }
+            OutlinedButton(onClick = { vm.loadBuckets(); showFolders = true }) {
+                Text(
+                    when {
+                        phoneAlbums.isNotEmpty() && included == phoneAlbums.size ->
+                            stringResource(R.string.folders_all)
+                        phoneAlbums.isNotEmpty() -> pluralStringResource(
+                            R.plurals.folders_included,
+                            phoneAlbums.size,
+                            included,
+                            phoneAlbums.size
+                        )
+                        o.excludedBuckets.isEmpty() -> stringResource(R.string.folders_all)
+                        else -> pluralStringResource(
+                            R.plurals.folders_excluded,
+                            o.excludedBuckets.size,
+                            o.excludedBuckets.size
+                        )
+                    }
+                )
+            }
+            Text(
+                stringResource(R.string.folders_gap_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
 
-        SectionHeader(stringResource(R.string.opt_group_schedule))
-        // 5. Speed
+        // Photos and videos: two settings, because they are two
+        // trade-offs. The note under each says what this phone will actually
+        // do, which depends on its encoder chips - asked once per visit.
+        val plan by vm.encodePlan.collectAsStateWithLifecycle()
+        LaunchedEffect(o.photo, o.video) { vm.refreshEncodePlan() }
+        PhotoSettingsCard(
+            photo = o.photo,
+            plan = plan,
+            icon = IconQuality,
+            onChange = { vm.setPhoto(it) },
+            onInfo = { nav.goTo(Routes.HELP_QUALITY) }
+        )
+        VideoSettingsCard(
+            video = o.video,
+            plan = plan,
+            icon = IconCodec,
+            onChange = { vm.setVideo(it) },
+            onInfo = { nav.goTo(Routes.HELP_QUALITY) }
+        )
+
+        // When to work
         OptionCard(
             stringResource(R.string.opt_speed),
             stringResource(R.string.opt_speed_hint),
@@ -369,211 +355,19 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
-        // 6. Daily cap
-        OptionCard(
-            stringResource(R.string.opt_daily_cap),
-            stringResource(R.string.opt_daily_cap_hint),
-            icon = IconLimit,
-            value = capLabel(o.dailyCapMb)
-        ) {
-            SegmentedChoice(
-                Defaults.DAILY_CAP_CHOICES_MB.map { mb ->
-                    mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
-                },
-                o.dailyCapMb.toString()
-            ) { vm.setDailyCap(it.toInt()) }
-            // Z10.5: what this limit controls, and what it cannot. The upload
-            // itself belongs to the cloud app; only the feed rate is ours.
-            Text(
-                stringResource(R.string.daily_limit_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-            if (o.dailyCapMb < 0) WarningText(stringResource(R.string.unlimited_warning))
-            if (recommended.computed) {
-                RecommendationNote(
-                    text = stringResource(
-                        R.string.recommend_cap,
-                        Formats.mbLabel(recommended.dailyCapMb)
-                    ),
-                    onApply = if (o.dailyCapMb != recommended.dailyCapMb) {
-                        { vm.applyRecommendedCap() }
-                    } else {
-                        null
-                    },
-                    warning = recommended.capLooksWrong
-                )
-            }
-        }
-
-
-        SectionHeader(stringResource(R.string.opt_group_space))
-        // 7. Two limits that sound alike and mean opposite things, so each
-        // gets its own card, its own sentence, and its own live number.
-        OptionCard(
-            stringResource(R.string.space_min_free_title),
-            stringResource(R.string.space_min_free_body),
-            icon = IconFree,
-            value = Formats.mbLabel(o.minFreeMb)
-        ) {
-            SegmentedChoice(
-                Defaults.MIN_FREE_CHOICES_MB.map { it.toString() to Formats.mbLabel(it) },
-                o.minFreeMb.toString()
-            ) { vm.setMinFree(it.toInt()) }
-            LiveValue(stringResource(R.string.space_now_free, Formats.bytes(deviceFree)))
-            if (recommended.computed) {
-                RecommendationNote(
-                    text = stringResource(
-                        R.string.recommend_space, Formats.mbLabel(recommended.minFreeMb)
-                    ),
-                    onApply = if (o.minFreeMb != recommended.minFreeMb) {
-                        { vm.applyRecommendedMinFree() }
-                    } else {
-                        null
-                    },
-                    warning = recommended.freeLooksWrong
-                )
-            }
-        }
-        OptionCard(
-            stringResource(R.string.space_max_extra_title),
-            stringResource(R.string.space_max_extra_body),
-            icon = IconOwnSpace,
-            value = capLabel(o.maxExtraMb)
-        ) {
-            SegmentedChoice(
-                Defaults.MAX_EXTRA_CHOICES_MB.map { mb ->
-                    mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
-                },
-                o.maxExtraMb.toString()
-            ) { vm.setMaxExtra(it.toInt()) }
-            LiveValue(
-                stringResource(
-                    R.string.space_now_using,
-                    Formats.bytes(storage.stageBytes + storage.outputBytes)
-                )
-            )
-            if (o.maxExtraMb < 0) WarningText(stringResource(R.string.unlimited_warning))
-            if (recommended.computed) {
-                RecommendationNote(
-                    text = stringResource(
-                        R.string.recommend_extra, Formats.mbLabel(recommended.maxExtraMb)
-                    ),
-                    onApply = if (o.maxExtraMb != recommended.maxExtraMb) {
-                        { vm.applyRecommendedMaxExtra() }
-                    } else {
-                        null
-                    }
-                )
-            }
-        }
-        Text(
-            stringResource(R.string.space_two_things),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-        )
-
-        // 7b. Storage location (13.D; shown only when an SD card exists).
-        // BB2.2: a card that fails the writability probe is absent from the
-        // choices - not greyed - and one line says why. Greyed would invite
-        // "why not?"; absent-with-the-reason answers it.
-        val offerable = volumes.filter {
-            it.isPrimary || it.mediaVolumeName in writableVolumes
-        }
-        val sdBlocked = volumes.size > offerable.size
-        if (volumes.size > 1 || o.storageVolume.isNotEmpty()) {
-            OptionCard(
-                    stringResource(R.string.opt_volume),
-                    stringResource(R.string.opt_volume_hint),
-                    icon = IconVolume
-                ) {
-                if (sdBlocked) {
-                    Text(
-                        stringResource(R.string.volume_sd_unwritable),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                SegmentedChoice(
-                    offerable.map { vol ->
-                        val value = if (vol.isPrimary) "" else vol.mediaVolumeName
-                        value to if (vol.isPrimary) {
-                            stringResource(R.string.volume_internal)
-                        } else {
-                            stringResource(R.string.volume_sd)
-                        }
-                    },
-                    o.storageVolume
-                ) { pendingVolume = it }
-                // Only the chosen volume's capacity belongs here; the Storage
-                // tab is where every volume is listed.
-                val chosen = volumes.firstOrNull { vol ->
-                    if (o.storageVolume.isEmpty()) vol.isPrimary
-                    else vol.mediaVolumeName == o.storageVolume
-                }
-                if (chosen != null) {
-                    // The same figures as the Storage screen and the phone's
-                    // own Settings, so no two screens disagree about one phone.
-                    val used = (chosen.shownTotalBytes - chosen.shownFreeBytes).coerceAtLeast(0)
-                    val fraction = if (chosen.shownTotalBytes > 0) {
-                        used.toFloat() / chosen.shownTotalBytes
-                    } else {
-                        0f
-                    }
-                    MeterBar(
-                        fraction = fraction,
-                        warn = fraction > 0.9f,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
-                    Text(
-                        stringResource(
-                            R.string.volume_free_line, Formats.bytes(chosen.shownFreeBytes)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                } else if (o.storageVolume.isNotEmpty()) {
-                    WarningText(stringResource(R.string.volume_missing_warning))
-                }
-                if (o.storageVolume.isNotEmpty()) {
-                    WarningNote(stringResource(R.string.volume_sd_note))
-                }
-            }
-        }
-
-
-        SectionHeader(stringResource(R.string.opt_group_quality))
-        // 8. Photos and 9. Videos: two settings, because they are two
-        // trade-offs. The note under each says what this phone will actually
-        // do, which depends on its encoder chips - asked once per visit.
-        val plan by vm.encodePlan.collectAsStateWithLifecycle()
-        LaunchedEffect(o.photo, o.video) { vm.refreshEncodePlan() }
-        PhotoSettingsCard(
-            photo = o.photo,
-            plan = plan,
-            icon = IconQuality,
-            onChange = { vm.setPhoto(it) },
-            onInfo = { nav.goTo(Routes.HELP_QUALITY) }
-        )
-        VideoSettingsCard(
-            video = o.video,
-            plan = plan,
-            icon = IconCodec,
-            onChange = { vm.setVideo(it) },
-            onInfo = { nav.goTo(Routes.HELP_QUALITY) }
-        )
-
+        SwitchCard(
+            title = stringResource(R.string.opt_pause),
+            hint = stringResource(R.string.opt_pause_hint),
+            icon = IconPause,
+            checked = o.pauseAll
+        ) { vm.setPauseAll(it) }
 
         SectionHeader(stringResource(R.string.opt_group_appearance))
         // Ente Saver's own name and icon on the home screen.
         val look by vm.look.collectAsStateWithLifecycle()
         LaunchedEffect(Unit) { vm.refreshLook() }
         LooksCard(chosen = look, icon = IconLooks, onChoose = { vm.chooseLook(it) })
-        // 10. Theme
+        // Theme
         OptionCard(
             stringResource(R.string.opt_theme),
             stringResource(R.string.opt_theme_hint),
@@ -677,115 +471,358 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 }
             }
         }
-        // The rule this switch turns on has always been written down - a
-        // day's byte total says a day's photographs went out, not that this
-        // photograph did, so it counts "only behind an explicit opt-in". The
-        // opt-in was stored, had a setter, and no screen anywhere reached it,
-        // while the Free-up screen offered those files regardless. Now the
-        // switch exists and the answer is the user's, off by default: an
-        // original is offered on per-file proof unless they say otherwise.
-        SwitchCard(
-            title = stringResource(R.string.opt_verified30),
-            hint = stringResource(R.string.opt_verified30_hint),
-            icon = IconProof,
-            checked = o.freeUpAllowVerified30
-        ) { vm.setFreeUpVerified30(it) }
-        SwitchCard(
-            title = stringResource(R.string.opt_pause),
-            hint = stringResource(R.string.opt_pause_hint),
-            icon = IconPause,
-            checked = o.pauseAll
-        ) { vm.setPauseAll(it) }
 
-        // The list of files the user said never to touch belongs with the
-        // other safety settings, not among the colours.
-        val excludedFiles by vm.neverOptimiseCount.collectAsStateWithLifecycle()
-        if (excludedFiles > 0) {
-            OptionCard(
-                stringResource(R.string.never_optimise_title),
-                stringResource(R.string.never_optimise_hint),
-                icon = IconExcluded,
-                value = Formats.count(excludedFiles)
-            ) {
-                Text(
-                    pluralStringResource(
-                        R.plurals.never_optimise_count, excludedFiles, excludedFiles
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                TextButton(onClick = { vm.clearNeverOptimise() }) {
-                    Text(stringResource(R.string.never_optimise_clear))
-                }
-            }
-        }
-
-
-        SectionHeader(stringResource(R.string.opt_group_backup_restore))
-        // The history already looks after itself; that has to be the first
-        // thing this section says, because a section named "Backup" reads as
-        // a chore - and someone who never does the chore must not spend a
-        // reinstall believing their record is gone.
-        Text(
-            stringResource(R.string.opt_history_auto),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp)
+        // Everything most people never need, behind one row: the defaults
+        // suit nearly every phone, and each of these says what it changes.
+        SectionHeader(stringResource(R.string.opt_group_advanced))
+        NavRow(
+            title = stringResource(if (showAdvanced) R.string.opt_advanced_hide else R.string.opt_advanced_show),
+            hint = stringResource(R.string.opt_advanced_hint),
+            icon = IconAdvanced,
+            onClick = { showAdvanced = !showAdvanced }
         )
-        // 17. Export / Import
-        OptionCard(
-            stringResource(R.string.opt_transfer),
-            stringResource(R.string.opt_transfer_hint),
-            icon = IconTransfer
-        ) {
-            // Two buttons side by side is the arrangement that breaks first:
-            // on a 320 dp phone at the largest accessibility font there is not
-            // room for both, and a plain Row would push the second one off the
-            // edge of the card. Flowing, the second simply drops underneath.
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        if (showAdvanced) {
+            // Space limits: Automatic follows this phone's storage and needs no
+            // decision at all; Custom shows the three figures to pick.
+            OptionCard(
+                stringResource(R.string.opt_space),
+                stringResource(R.string.opt_space_hint),
+                icon = IconLimit,
+                value = stringResource(if (o.spaceAuto) R.string.space_auto else R.string.space_custom)
             ) {
-                OutlinedButton(
-                    enabled = !transferBusy,
-                    onClick = { askExportPassword = true }
-                ) {
-                    Text(
-                        stringResource(R.string.transfer_export),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                OutlinedButton(
-                    enabled = !transferBusy,
-                    onClick = { importLauncher.launch(arrayOf("*/*")) }
-                ) {
-                    Text(
-                        stringResource(R.string.transfer_import),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            if (transferBusy) {
+                SwitchRow(stringResource(R.string.space_auto_switch), o.spaceAuto) { vm.setSpaceAuto(it) }
                 Text(
-                    stringResource(R.string.transfer_working),
+                    stringResource(
+                        R.string.space_auto_line,
+                        capLabel(o.dailyCapMb),
+                        Formats.mbLabel(o.minFreeMb),
+                        capLabel(o.maxExtraMb)
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
-            transferMessage?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-        }
+            if (!o.spaceAuto) {
+                // How much new copies may add in a day
+                OptionCard(
+                    stringResource(R.string.opt_daily_cap),
+                    stringResource(R.string.opt_daily_cap_hint),
+                    icon = IconLimit,
+                    value = capLabel(o.dailyCapMb)
+                ) {
+                    SegmentedChoice(
+                        Defaults.DAILY_CAP_CHOICES_MB.map { mb ->
+                            mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
+                        },
+                        o.dailyCapMb.toString()
+                    ) { vm.setDailyCap(it.toInt()) }
+                    // Z10.5: what this limit controls, and what it cannot. The upload
+                    // itself belongs to the cloud app; only the feed rate is ours.
+                    Text(
+                        stringResource(R.string.daily_limit_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    if (o.dailyCapMb < 0) WarningText(stringResource(R.string.unlimited_warning))
+                    if (recommended.computed) {
+                        RecommendationNote(
+                            text = stringResource(
+                                R.string.recommend_cap,
+                                Formats.mbLabel(recommended.dailyCapMb)
+                            ),
+                            onApply = if (o.dailyCapMb != recommended.dailyCapMb) {
+                                { vm.applyRecommendedCap() }
+                            } else {
+                                null
+                            },
+                            warning = recommended.capLooksWrong
+                        )
+                    }
+                }
 
+                // Two limits that sound alike and mean opposite things, so each
+                // gets its own card, its own sentence, and its own live number.
+                OptionCard(
+                    stringResource(R.string.space_min_free_title),
+                    stringResource(R.string.space_min_free_body),
+                    icon = IconFree,
+                    value = Formats.mbLabel(o.minFreeMb)
+                ) {
+                    SegmentedChoice(
+                        Defaults.MIN_FREE_CHOICES_MB.map { it.toString() to Formats.mbLabel(it) },
+                        o.minFreeMb.toString()
+                    ) { vm.setMinFree(it.toInt()) }
+                    LiveValue(stringResource(R.string.space_now_free, Formats.bytes(deviceFree)))
+                    if (recommended.computed) {
+                        RecommendationNote(
+                            text = stringResource(
+                                R.string.recommend_space, Formats.mbLabel(recommended.minFreeMb)
+                            ),
+                            onApply = if (o.minFreeMb != recommended.minFreeMb) {
+                                { vm.applyRecommendedMinFree() }
+                            } else {
+                                null
+                            },
+                            warning = recommended.freeLooksWrong
+                        )
+                    }
+                }
+                OptionCard(
+                    stringResource(R.string.space_max_extra_title),
+                    stringResource(R.string.space_max_extra_body),
+                    icon = IconOwnSpace,
+                    value = capLabel(o.maxExtraMb)
+                ) {
+                    SegmentedChoice(
+                        Defaults.MAX_EXTRA_CHOICES_MB.map { mb ->
+                            mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
+                        },
+                        o.maxExtraMb.toString()
+                    ) { vm.setMaxExtra(it.toInt()) }
+                    LiveValue(
+                        stringResource(
+                            R.string.space_now_using,
+                            Formats.bytes(storage.stageBytes + storage.outputBytes)
+                        )
+                    )
+                    if (o.maxExtraMb < 0) WarningText(stringResource(R.string.unlimited_warning))
+                    if (recommended.computed) {
+                        RecommendationNote(
+                            text = stringResource(
+                                R.string.recommend_extra, Formats.mbLabel(recommended.maxExtraMb)
+                            ),
+                            onApply = if (o.maxExtraMb != recommended.maxExtraMb) {
+                                { vm.applyRecommendedMaxExtra() }
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                }
+                Text(
+                    stringResource(R.string.space_two_things),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+            }
+            // What to back up. Leaving one kind out means Ente Saver never sends
+            // it to Ente, which is worth a warning, not a quiet chip.
+            OptionCard(
+                stringResource(R.string.opt_scope),
+                stringResource(R.string.opt_scope_hint),
+                icon = IconScope,
+                value = scopeLabel(o.scope)
+            ) {
+                SegmentedChoice(
+                    listOf(
+                        BackupScope.ALL.name to stringResource(R.string.scope_all_short),
+                        BackupScope.PHOTOS.name to stringResource(R.string.scope_photos),
+                        BackupScope.VIDEOS.name to stringResource(R.string.scope_videos)
+                    ),
+                    o.scope.name
+                ) { vm.setScope(BackupScope.valueOf(it)) }
+                if (o.scope != BackupScope.ALL) WarningText(stringResource(R.string.scope_left_out_warning))
+            }
+
+            // Upload folders
+            OptionCard(
+                stringResource(R.string.opt_output),
+                stringResource(R.string.opt_output_hint),
+                icon = IconLayout
+            ) {
+                SegmentedChoice(
+                    listOf(
+                        OutputMode.SINGLE.name to stringResource(R.string.output_single),
+                        OutputMode.SEPARATE.name to stringResource(R.string.output_separate)
+                    ),
+                    o.outputMode.name
+                ) { pendingLayout = OutputMode.valueOf(it) }
+                // The user has to pick this exact string inside another app, so it
+                // is printed rather than described - once, beside the kind of copy
+                // it is for, with the default or a folder of the person's own.
+                FolderPaths(o.layout, showPaths = false)
+                FolderChoiceRows(o.layout) { changingFolder = it }
+                CopyPathButton(o.layout)
+            }
+            changingFolder?.let { folder ->
+                FolderDialog(vm, o.layout, folder) { changingFolder = null }
+            }
+
+            // 7b. Storage location (13.D; shown only when an SD card exists).
+            // BB2.2: a card that fails the writability probe is absent from the
+            // choices - not greyed - and one line says why. Greyed would invite
+            // "why not?"; absent-with-the-reason answers it.
+            val offerable = volumes.filter {
+                it.isPrimary || it.mediaVolumeName in writableVolumes
+            }
+            val sdBlocked = volumes.size > offerable.size
+            if (volumes.size > 1 || o.storageVolume.isNotEmpty()) {
+                OptionCard(
+                        stringResource(R.string.opt_volume),
+                        stringResource(R.string.opt_volume_hint),
+                        icon = IconVolume
+                    ) {
+                    if (sdBlocked) {
+                        Text(
+                            stringResource(R.string.volume_sd_unwritable),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    SegmentedChoice(
+                        offerable.map { vol ->
+                            val value = if (vol.isPrimary) "" else vol.mediaVolumeName
+                            value to if (vol.isPrimary) {
+                                stringResource(R.string.volume_internal)
+                            } else {
+                                stringResource(R.string.volume_sd)
+                            }
+                        },
+                        o.storageVolume
+                    ) { pendingVolume = it }
+                    // Only the chosen volume's capacity belongs here; the Storage
+                    // tab is where every volume is listed.
+                    val chosen = volumes.firstOrNull { vol ->
+                        if (o.storageVolume.isEmpty()) vol.isPrimary
+                        else vol.mediaVolumeName == o.storageVolume
+                    }
+                    if (chosen != null) {
+                        // The same figures as the Storage screen and the phone's
+                        // own Settings, so no two screens disagree about one phone.
+                        val used = (chosen.shownTotalBytes - chosen.shownFreeBytes).coerceAtLeast(0)
+                        val fraction = if (chosen.shownTotalBytes > 0) {
+                            used.toFloat() / chosen.shownTotalBytes
+                        } else {
+                            0f
+                        }
+                        MeterBar(
+                            fraction = fraction,
+                            warn = fraction > 0.9f,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                        Text(
+                            stringResource(
+                                R.string.volume_free_line, Formats.bytes(chosen.shownFreeBytes)
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    } else if (o.storageVolume.isNotEmpty()) {
+                        WarningText(stringResource(R.string.volume_missing_warning))
+                    }
+                    if (o.storageVolume.isNotEmpty()) {
+                        WarningNote(stringResource(R.string.volume_sd_note))
+                    }
+                }
+            }
+
+            // The rule this switch turns on has always been written down - a
+            // day's byte total says a day's photographs went out, not that this
+            // photograph did, so it counts "only behind an explicit opt-in". The
+            // opt-in was stored, had a setter, and no screen anywhere reached it,
+            // while the Free-up screen offered those files regardless. Now the
+            // switch exists and the answer is the user's, off by default: an
+            // original is offered on per-file proof unless they say otherwise.
+            SwitchCard(
+                title = stringResource(R.string.opt_verified30),
+                hint = stringResource(R.string.opt_verified30_hint),
+                icon = IconProof,
+                checked = o.freeUpAllowVerified30
+            ) { vm.setFreeUpVerified30(it) }
+            // The list of files the user said never to touch belongs with the
+            // other safety settings, not among the colours.
+            val excludedFiles by vm.neverOptimiseCount.collectAsStateWithLifecycle()
+            if (excludedFiles > 0) {
+                OptionCard(
+                    stringResource(R.string.never_optimise_title),
+                    stringResource(R.string.never_optimise_hint),
+                    icon = IconExcluded,
+                    value = Formats.count(excludedFiles)
+                ) {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.never_optimise_count, excludedFiles, excludedFiles
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    TextButton(onClick = { vm.clearNeverOptimise() }) {
+                        Text(stringResource(R.string.never_optimise_clear))
+                    }
+                }
+            }
+
+            // Backup and restore.
+            // The history already looks after itself; that has to be the first
+            // thing this section says, because a section named "Backup" reads as
+            // a chore - and someone who never does the chore must not spend a
+            // reinstall believing their record is gone.
+            Text(
+                stringResource(R.string.opt_history_auto),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            // 17. Export / Import
+            OptionCard(
+                stringResource(R.string.opt_transfer),
+                stringResource(R.string.opt_transfer_hint),
+                icon = IconTransfer
+            ) {
+                // Two buttons side by side is the arrangement that breaks first:
+                // on a 320 dp phone at the largest accessibility font there is not
+                // room for both, and a plain Row would push the second one off the
+                // edge of the card. Flowing, the second simply drops underneath.
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        enabled = !transferBusy,
+                        onClick = { askExportPassword = true }
+                    ) {
+                        Text(
+                            stringResource(R.string.transfer_export),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    OutlinedButton(
+                        enabled = !transferBusy,
+                        onClick = { importLauncher.launch(arrayOf("*/*")) }
+                    ) {
+                        Text(
+                            stringResource(R.string.transfer_import),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (transferBusy) {
+                    Text(
+                        stringResource(R.string.transfer_working),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+                transferMessage?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
+
+        }
 
         SectionHeader(stringResource(R.string.opt_group_help))
         // 18. Help and Activity. Both used to hang off Home, where they
@@ -1180,7 +1217,6 @@ private fun RecommendationNote(
     }
 }
 
-
 // Material Symbols, one set app-wide. A settings screen without icons is a
 // form; with them it can be scanned.
 // The collapsed row has to say what the setting is currently set to, so the
@@ -1202,7 +1238,6 @@ private fun speedLabel(speed: SpeedMode): String = stringResource(
         SpeedMode.FAST -> R.string.speed_fast
     }
 )
-
 
 @Composable
 private fun themeLabel(theme: ThemeMode): String = stringResource(
@@ -1239,6 +1274,7 @@ private val IconProof = Icons.Outlined.VerifiedUser
 private val IconTransfer = Icons.Outlined.Backup
 private val IconHelp = Icons.AutoMirrored.Outlined.HelpOutline
 private val IconActivity = Icons.Outlined.History
+private val IconAdvanced = Icons.Outlined.Settings
 
 private val InfoIcon = Icons.Outlined.Info
 

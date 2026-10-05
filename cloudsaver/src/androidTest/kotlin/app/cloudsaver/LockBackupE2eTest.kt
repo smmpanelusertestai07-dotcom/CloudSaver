@@ -323,6 +323,9 @@ class LockBackupE2eTest {
         val presetBefore = repo.current().photo.preset
         ActivityScenario.launch(HostActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            // Backups sit under Advanced, folded away by default.
+            compose.onNodeWithText(s(R.string.opt_advanced_show)).performScrollTo().performClick()
+            compose.waitForIdle()
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .performScrollTo().performClick()
             compose.waitForIdle()

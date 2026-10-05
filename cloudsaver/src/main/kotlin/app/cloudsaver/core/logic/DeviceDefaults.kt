@@ -6,8 +6,9 @@ package app.cloudsaver.core.logic
  *
  * A 64 GB phone and a 512 GB phone should not reserve the same headroom, and
  * a daily upload cap that suits a metered connection is wrong for someone on
- * Wi-Fi all week. These are recommendations only: a value the user picked is
- * never overwritten.
+ * Wi-Fi all week. Settings applies them by itself while the limits are
+ * Automatic, the default; a value the user picked under Custom is never
+ * overwritten.
  */
 object DeviceDefaults {
 
@@ -58,6 +59,28 @@ object DeviceDefaults {
             else -> 500
         }
     }
+
+    /** The three space limits for one phone, each on a step Settings offers. */
+    data class Limits(val dailyCapMb: Int, val minFreeMb: Int, val maxExtraMb: Int)
+
+    /**
+     * What "Automatic" sets: the reserve, the daily amount and the app's own
+     * space, worked out from the phone's storage as it is now. There is no
+     * usage history to read offline, so the daily amount takes the cautious
+     * middle rather than a Wi-Fi share the app cannot measure.
+     */
+    fun automatic(totalBytes: Long, freeBytes: Long): Limits {
+        val cap = nearestChoice(dailyCapMb(totalBytes, freeBytes, 0.0), Defaults.DAILY_CAP_CHOICES_MB)
+        return Limits(
+            dailyCapMb = cap,
+            minFreeMb = nearestChoice(reserveMb(totalBytes), Defaults.MIN_FREE_CHOICES_MB),
+            maxExtraMb = nearestChoice(ownLimitMb(freeBytes, cap), Defaults.MAX_EXTRA_CHOICES_MB)
+        )
+    }
+
+    /** Settings offer fixed steps, so a computed figure has to land on one. */
+    fun nearestChoice(value: Int, choices: List<Int>): Int =
+        choices.filter { it > 0 }.minByOrNull { kotlin.math.abs(it - value) } ?: value
 
     /** True when a stored choice has drifted far enough to be worth a hint. */
     fun looksWrong(current: Int, recommended: Int): Boolean =

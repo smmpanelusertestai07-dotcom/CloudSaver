@@ -50,4 +50,16 @@ class DeviceDefaultsTest {
         // Unlimited (-1) is a deliberate choice, not a drifted value.
         assertFalse(DeviceDefaults.looksWrong(current = -1, recommended = 250))
     }
+
+    @Test
+    fun `Automatic lands every limit on a step Settings offers`() {
+        for ((total, free) in listOf(16 * gb to 1 * gb, 64 * gb to 20 * gb, 256 * gb to 150 * gb, Long.MAX_VALUE to Long.MAX_VALUE)) {
+            val l = DeviceDefaults.automatic(total, free)
+            assertTrue("$l", l.dailyCapMb in Defaults.DAILY_CAP_CHOICES_MB && l.dailyCapMb > 0)
+            assertTrue("$l", l.minFreeMb in Defaults.MIN_FREE_CHOICES_MB)
+            assertTrue("$l", l.maxExtraMb in Defaults.MAX_EXTRA_CHOICES_MB && l.maxExtraMb > 0)
+        }
+        // A small or nearly full phone gets the cautious daily amount.
+        assertEquals(250, DeviceDefaults.automatic(64 * gb, 2 * gb).dailyCapMb)
+    }
 }

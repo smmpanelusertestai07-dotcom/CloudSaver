@@ -1134,20 +1134,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshRecommended() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
-            val total = Storage.totalBytes(ctx, o.storageVolume)
-            val free = Storage.freeBytes(ctx, o.storageVolume)
-            // No usage history to read offline, so assume the cautious middle
-            // rather than inventing a Wi-Fi share the app cannot measure.
-            val cap = nearestChoice(
-                DeviceDefaults.dailyCapMb(total, free, 0.0),
-                Defaults.DAILY_CAP_CHOICES_MB
+            val limits = DeviceDefaults.automatic(
+                Storage.totalBytes(ctx, o.storageVolume),
+                Storage.freeBytes(ctx, o.storageVolume)
             )
-            val minFree = nearestChoice(
-                DeviceDefaults.reserveMb(total), Defaults.MIN_FREE_CHOICES_MB
-            )
-            val maxExtra = nearestChoice(
-                DeviceDefaults.ownLimitMb(free, cap), Defaults.MAX_EXTRA_CHOICES_MB
-            )
+            if (o.spaceAuto) repo.applyAutomaticSpace(limits)
+            val cap = limits.dailyCapMb
+            val minFree = limits.minFreeMb
+            val maxExtra = limits.maxExtraMb
             recommended.value = Recommended(
                 dailyCapMb = cap,
                 minFreeMb = minFree,
@@ -1184,10 +1178,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             refreshRecommended()
         }
     }
-
-    /** Settings offer fixed steps, so a computed figure has to land on one. */
-    private fun nearestChoice(value: Int, choices: List<Int>): Int =
-        choices.filter { it > 0 }.minByOrNull { kotlin.math.abs(it - value) } ?: value
 
     fun cleanTemp() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1525,6 +1515,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
     fun setDynamicColor(v: Boolean) = setBool(OptionsRepo.K.DYNAMIC_COLOR, v)
+    /** Automatic sets the three limits from this phone at once; Custom keeps them as they are. */
+    fun setSpaceAuto(on: Boolean) {
+        viewModelScope.launch {
+            repo.setBool(OptionsRepo.K.SPACE_AUTO, on)
+            refreshRecommended()
+        }
+    }
+
     fun setDailyCap(v: Int) = setInt(OptionsRepo.K.DAILY_CAP_MB, v)
     fun setMinFree(v: Int) = setInt(OptionsRepo.K.MIN_FREE_MB, v)
     fun setMaxExtra(v: Int) = setInt(OptionsRepo.K.MAX_EXTRA_MB, v)

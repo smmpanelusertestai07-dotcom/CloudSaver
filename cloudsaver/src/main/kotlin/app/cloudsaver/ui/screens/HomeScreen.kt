@@ -38,7 +38,9 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
@@ -1080,6 +1082,28 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
 
             HomeAction.Visibility.HIDDEN -> Unit
+        }
+
+        // Pause and Resume live here as well as in Settings: it is the one
+        // switch people reach for often, and "turn it back on in Settings"
+        // sent them looking for it.
+        if (options.pauseAll) {
+            Button(
+                onClick = { vm.setPauseAll(false) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            ) {
+                Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.btn_resume))
+            }
+        } else {
+            TextButton(onClick = { vm.setPauseAll(true) }) {
+                Icon(Icons.Outlined.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.btn_pause))
+            }
         }
 
         // Not a button, and not always present: this exists only where the
