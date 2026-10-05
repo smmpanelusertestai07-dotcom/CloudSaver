@@ -545,7 +545,7 @@
     </plurals>
     <string name="folder_change_note">After saving, turn the new folder on in Ente: Settings, Backup, Backed up folders. The old folder is watched until Ente has every copy in it.</string>
     <string name="folder_save">Save</string>
-    <string name="opt_looks">App name</string>
+    <string name="opt_looks">Home-screen name</string>
     <string name="opt_looks_hint">The name under Ente Saver\'s icon on your home screen.</string>
     <string name="looks_note">Changes when you leave the app. The home screen may take a minute to show it.</string>
     <string name="icon_pack_name">Ente Saver icons</string>
@@ -946,7 +946,7 @@
     <string name="gallery_icon_t">Ente\'s own icons</string>
     <string name="gallery_icon_b">Ente can change its own icon. In Ente, open Settings \u203a General \u203a Advanced \u203a App icon and pick one of several looks.</string>
     <string name="gallery_pack_t">Ente Saver\'s icon pack</string>
-    <string name="gallery_pack_b">Ente Saver includes an icon pack. In a launcher that supports icon packs, choose Ente Saver as the pack to give Ente a Photos icon, the same one the shortcut below uses. On Realme and Oppo phones it is under Home screen settings \u203a Icon style; Nova, Lawnchair and others have their own icon pack setting. The launcher may take a moment to update.</string>
+    <string name="gallery_pack_b">Ente Saver includes one icon for Ente: a photo with Ente\'s green heart, the same one the shortcut below uses. On Realme, Oppo and OnePlus phones, long-press Ente Photos on the home screen \u203a Edit, tap its icon and pick it under Ente Saver icons. Nova, Lawnchair and other launchers have their own icon pack or edit-icon setting. Keep Ente\'s own app icon on its green look, so every launcher finds it. The launcher may take a moment to update.</string>
     <string name="gallery_shortcut_t">A Photos shortcut</string>
     <string name="gallery_shortcut_b">Add a shortcut to your home screen that opens Ente, with a Photos icon and the name you pick: Photos, Gallery, Cloud Photos, or your own name of up to 12 letters. Some launchers show a small badge on shortcuts.</string>
     <string name="gallery_shortcut_button">Add Photos to home screen</string>
@@ -956,8 +956,8 @@
     <string name="gallery_ml_b">Turn on machine learning in Ente (Settings \u203a Machine learning) for face recognition and magic search. It runs on the phone itself, and it works on Ente Saver\'s copies too.</string>
     <string name="gallery_freeup_t">When copies leave the folder</string>
     <string name="gallery_freeup_b">Ente\'s Free up device space also removes Ente Saver\'s copies once they are uploaded. That is expected \u2014 it is exactly how Ente Saver knows they arrived.</string>
-    <string name="gallery_saver_t">Ente Saver\'s own name and icon</string>
-    <string name="gallery_saver_b">Ente Saver\'s name and icon can be changed too. Here, open Settings \u203a Appearance \u203a App name and icon, and choose \u201cEnte Saver\u201d or \u201cSaver\u201d, in green, dark or light.</string>
+    <string name="gallery_saver_t">Ente Saver\'s home-screen name</string>
+    <string name="gallery_saver_b">Ente Saver can also show on your home screen under the name earlier versions had. Here, open Settings \u203a Appearance \u203a Home-screen name. The icon stays the same.</string>
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>

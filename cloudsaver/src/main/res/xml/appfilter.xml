@@ -1,30 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Ente Saver's icon pack: gives Ente Photos a gallery-style icon in any
-    launcher that takes icon packs, so the photo app on the home screen looks
-    like a gallery. Every launcher entry Ente has is listed - its main
-    activity and each of its own icon choices - in all three builds (Play
-    Store, ente.com, F-Droid). The same icon is listed in drawable.xml for
-    launchers that let a person pick per app. No icon back or mask is set, so
-    every other app keeps its own icon.
+    Ente Saver's icon pack: one gallery-style icon for Ente Photos.
+
+    Exactly ONE item, on purpose. The Realme / Oppo / OnePlus launcher
+    (ColorOS 13-15, Realme UI 4-6, OxygenOS 13-15) lists every appfilter
+    entry, plus one more per package, as a separate icon when a person edits
+    one app's icon - 18 entries showed up as 20 copies of the same picture.
+    That launcher also matches by package, so this one line themes the Play
+    Store build of Ente whatever icon Ente itself is set to. Other launchers
+    (Nova, Lawnchair, Kvaesitso...) offer the single icon in drawable.xml.
 -->
 <resources>
-    <item component="ComponentInfo{io.ente.photos/io.ente.photos.MainActivity}" drawable="iconpack_photos" />
     <item component="ComponentInfo{io.ente.photos/io.ente.photos.IconGreen}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos/io.ente.photos.IconLight}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos/io.ente.photos.IconDark}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos/io.ente.photos.IconOG}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos/io.ente.photos.IconDuckyHuggingE}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.independent/io.ente.photos.MainActivity}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.independent/io.ente.photos.independent.IconGreen}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.independent/io.ente.photos.independent.IconLight}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.independent/io.ente.photos.independent.IconDark}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.independent/io.ente.photos.independent.IconOG}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.independent/io.ente.photos.independent.IconDuckyHuggingE}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.fdroid/io.ente.photos.MainActivity}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.fdroid/io.ente.photos.fdroid.IconGreen}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.fdroid/io.ente.photos.fdroid.IconLight}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.fdroid/io.ente.photos.fdroid.IconDark}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.fdroid/io.ente.photos.fdroid.IconOG}" drawable="iconpack_photos" />
-    <item component="ComponentInfo{io.ente.photos.fdroid/io.ente.photos.fdroid.IconDuckyHuggingE}" drawable="iconpack_photos" />
 </resources>
