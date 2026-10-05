@@ -4,7 +4,9 @@ import android.content.ContentValues
 import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Environment
 import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.core.app.ApplicationProvider
@@ -28,6 +30,8 @@ import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
 import app.cloudsaver.media.VideoCompressor
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -458,6 +462,11 @@ class PipelineE2eTest {
             assertEquals(1, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
             val released = db.items().released().single { it.displayName == "e2e_moved_1.jpg" }
 
+            // A person renames a folder long after a release; here it is the
+            // very next moment, while the release's own gallery nudge may still
+            // be rescanning the folder. A rescan that read the copy before the
+            // move and writes after it puts the copy's row back where it was.
+            awaitGalleryRescan(released.outputRelPath!!)
             val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, elsewhere) }
             assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
 
@@ -509,6 +518,19 @@ class PipelineE2eTest {
         context.contentResolver.query(
             uri, arrayOf(MediaStore.MediaColumns.DATE_TAKEN), null, null, null
         )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
+
+    /**
+     * Returns once every gallery rescan this process has asked for so far is
+     * done. Rescans run one after another on the process's one background
+     * thread, so a rescan of our own, queued behind them, ends after they do.
+     */
+    private fun awaitGalleryRescan(relPath: String) {
+        val done = CountDownLatch(1)
+        MediaScannerConnection.scanFile(
+            context, arrayOf("${Environment.getExternalStorageDirectory()}/$relPath"), null
+        ) { _, _ -> done.countDown() }
+        assertTrue("the gallery rescan did not finish", done.await(60, TimeUnit.SECONDS))
+    }
 
     private fun clearOutputFolder() {
         for (entry in OutputInventory(context).query().orEmpty()) {
