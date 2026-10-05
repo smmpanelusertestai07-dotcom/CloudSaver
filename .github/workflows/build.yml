@@ -123,6 +123,9 @@ jobs:
           # shifts an entry cannot land a shared library on a 4 KiB-but-not-
           # 16 KiB boundary without the build going red.
           "$BT/zipalign" -c -P 16 -v 4 "$APK_NAME" > /dev/null
+          # zipalign only checks where each library starts in the archive; a
+          # library linked for 4 KiB pages inside it still needs this.
+          python3 .github/scripts/check-elf-16k.py "$APK_NAME"
           echo "16 KiB page alignment verified on $APK_NAME"
 
       - name: Size gate (max 15 MB)
@@ -166,7 +169,8 @@ jobs:
           only be migrated - never rebuilt - so the record of what already
           reached Ente cannot be lost.
 
-          Install: download ${APK_NAME} below and open it on your phone.
+          Needs Android 10 or newer. Install: download ${APK_NAME} below and
+          open it on your phone.
           Play Protect may warn about a sideloaded APK - choose "More details" ->
           "Install anyway". The app holds no INTERNET permission.
 

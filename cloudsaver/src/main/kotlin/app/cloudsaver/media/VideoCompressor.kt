@@ -35,6 +35,7 @@ import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.core.logic.VideoCodecResolver
 import app.cloudsaver.core.logic.VideoSpec
+import app.cloudsaver.util.DeviceTier
 import com.google.common.collect.ImmutableList
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -117,9 +118,6 @@ object VideoCompressor {
      */
     const val MIN_TOTAL_MS = 5 * 60_000L
 
-    /** The long side every phone's hardware encoder takes. */
-    private const val FULL_HD_LONG_SIDE = 1920
-
     /** Below this there is no point starting another attempt at all. */
     private const val MIN_ATTEMPT_MS = 60_000L
 
@@ -159,10 +157,14 @@ object VideoCompressor {
         var dims = BitrateCalc.outputDims(upright.first, upright.second, spec.longSideLimit)
         // Above 1080p only where a hardware encoder takes it: a budget chip
         // that stops at 1080p would otherwise encode in software, for hours.
-        if (maxOf(dims.first, dims.second) > FULL_HD_LONG_SIDE &&
-            !EncoderCaps.anyHardwareFits(dims.first, dims.second, outFps)
+        // The smallest phones (2.5 GB or less) stay at 1080p either way.
+        if (maxOf(dims.first, dims.second) > MediaSettings.FULL_HD &&
+            (
+                DeviceTier.tier(context) == DeviceTier.Tier.VERY_LOW ||
+                    !EncoderCaps.anyHardwareFits(dims.first, dims.second, outFps)
+                )
         ) {
-            dims = BitrateCalc.outputDims(upright.first, upright.second, FULL_HD_LONG_SIDE)
+            dims = BitrateCalc.outputDims(upright.first, upright.second, MediaSettings.FULL_HD)
         }
         val (outW, outH) = dims
         val codec = VideoCodecResolver.resolve(

@@ -154,6 +154,17 @@ object RunDecider {
     }
 
     /**
+     * Whether a video [durationMs] long can be made in the [remainingMs] left
+     * of a run that has no foreground service, which Android stops after
+     * about ten minutes. Encoding on a budget phone runs at about real time,
+     * so the clip's own length and a half, plus a minute to read and write
+     * it, is what it needs. A clip of unknown length waits for a run that has
+     * the time.
+     */
+    fun fitsPlainRun(durationMs: Long, remainingMs: Long): Boolean =
+        durationMs > 0 && durationMs * 3 / 2 + 60_000L <= remainingMs
+
+    /**
      * "Run now" is user-initiated, so only hard safety limits apply:
      * charging or at least 15%, and not too hot.
      */

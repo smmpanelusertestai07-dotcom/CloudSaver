@@ -27,6 +27,7 @@ import app.cloudsaver.core.logic.VideoSpec
 import app.cloudsaver.media.HeicSupport
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.SegmentedChoice
+import app.cloudsaver.util.DeviceTier
 
 /**
  * The Photos card: a preset, what it means on this phone in one line, and -
@@ -66,14 +67,15 @@ fun PhotoSettingsCard(
             )
         }
         // What this phone will actually do: the line a person can hold the
-        // app to.
+        // app to, with the phone's own memory ceiling applied.
+        val shown = DeviceTier.capped(spec, plan.photoCeilingMp)
         ChoiceNote(
             stringResource(
                 R.string.photo_plan,
-                if (spec.maxMp <= 0) {
-                    stringResource(R.string.photo_size_full)
-                } else {
-                    stringResource(R.string.photo_size_mp, spec.maxMp)
+                when {
+                    shown.maxMp <= 0 -> stringResource(R.string.photo_size_full)
+                    shown.maxMp != spec.maxMp -> stringResource(R.string.photo_size_mp_phone, shown.maxMp)
+                    else -> stringResource(R.string.photo_size_mp, shown.maxMp)
                 },
                 formatLabel(plan.photoFormat),
                 spec.quality
@@ -153,10 +155,18 @@ fun VideoSettingsCard(
                 )
             )
         }
+        // The phone's own limit: the smallest phones, and video chips that
+        // stop below 2160p.
+        val limit = plan.videoMaxLongSide
+        val side = if (limit > 0 && (spec.longSide <= 0 || spec.longSide > limit)) -limit else spec.longSide
         ChoiceNote(
             stringResource(
                 R.string.video_plan,
-                if (spec.longSide <= 0) stringResource(R.string.res_keep) else MediaSettings.pLabel(spec.longSide),
+                when {
+                    side < 0 -> stringResource(R.string.res_phone_cap, MediaSettings.pLabel(-side))
+                    side == 0 -> stringResource(R.string.res_keep)
+                    else -> MediaSettings.pLabel(side)
+                },
                 codecLabel(plan.videoCodec),
                 if (spec.fpsCap <= 0) {
                     stringResource(R.string.fps_keep)

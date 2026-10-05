@@ -49,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,8 +81,11 @@ import app.cloudsaver.ui.components.ShortcutDialog
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.PhoneLimits
 import app.cloudsaver.util.PhotosShortcut
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun HelpPage(
@@ -749,6 +753,7 @@ fun HelpLicensesScreen(nav: NavHostController) {
 @Composable
 fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     HelpPage(nav, stringResource(R.string.help_about)) {
         AppCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -817,7 +822,7 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            val release = Platform.releaseName(Build.VERSION.SDK_INT)
+            val release = Platform.releaseName(Build.VERSION.SDK_INT, Build.VERSION.RELEASE)
             val full = Platform.supportFor(Build.VERSION.SDK_INT) ==
                 Platform.Support.FULL
             // What the app needs, then what this particular phone gets. The
@@ -842,6 +847,24 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 },
                 modifier = Modifier.padding(top = 6.dp)
             )
+            // Only what limits Ente Saver here, each with what it does
+            // instead. Read off the phone, so it never claims a limit this
+            // phone does not have.
+            val limits by produceState<List<String>?>(null, options.minFreeBytes, options.storageVolume) {
+                value = withContext(Dispatchers.Default) {
+                    PhoneLimits.lines(context, options.minFreeBytes, options.storageVolume)
+                }
+            }
+            limits?.let { lines ->
+                for (line in lines.ifEmpty { listOf(stringResource(R.string.limit_none)) }) {
+                    Text(
+                        "\u2022 $line",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
         }
 
         // What it may access, said on the page where someone checks. A

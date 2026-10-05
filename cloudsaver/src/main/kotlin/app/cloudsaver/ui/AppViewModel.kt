@@ -25,6 +25,7 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.KeptCopies
 import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.MediaProfile
+import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.OutputPaths
@@ -65,6 +66,7 @@ import app.cloudsaver.media.PlannedEncode
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.util.AppLooks
+import app.cloudsaver.util.DeviceTier
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Formats
@@ -1486,7 +1488,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val heic: HeicSupport.State = HeicSupport.State.UNKNOWN,
         val photoFormat: PhotoFormat = PhotoFormat.JPEG,
         val videoCodec: VideoCodec = VideoCodec.H264,
-        val hevcHardware: Boolean = false
+        val hevcHardware: Boolean = false,
+        /** This phone's photo ceiling in MP (its memory, and what it has taught the app). */
+        val photoCeilingMp: Int = 0,
+        /** The longest video side this phone makes, or 0 for no limit of its own. */
+        val videoMaxLongSide: Int = 0
     )
 
     val encodePlan = MutableStateFlow(EncodePlan())
@@ -1498,7 +1504,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 heic = HeicSupport.state(ctx),
                 photoFormat = PlannedEncode.photoFormat(ctx, o.photo.spec()),
                 videoCodec = PlannedEncode.videoCodec(o.video.spec()),
-                hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty()
+                hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty(),
+                photoCeilingMp = DeviceTier.ceilingMp(ctx),
+                videoMaxLongSide = when {
+                    DeviceTier.tier(ctx) == DeviceTier.Tier.VERY_LOW -> MediaSettings.FULL_HD
+                    EncoderCaps.anyHardwareFits(3840, 2160, 30f) -> 0
+                    EncoderCaps.anyHardwareFits(2560, 1440, 30f) -> 2560
+                    else -> MediaSettings.FULL_HD
+                }
             )
         }
     }

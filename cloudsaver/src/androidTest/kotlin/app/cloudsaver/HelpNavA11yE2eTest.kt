@@ -267,7 +267,7 @@ class HelpNavA11yE2eTest {
 
             // Android 10 is supported but cannot trash, and the page must say
             // so rather than claiming everything works.
-            val release = Platform.releaseName(Build.VERSION.SDK_INT)
+            val release = Platform.releaseName(Build.VERSION.SDK_INT, Build.VERSION.RELEASE)
             val expected = if (Platform.canTrash(Build.VERSION.SDK_INT)) {
                 target.getString(R.string.about_running_full, release)
             } else {

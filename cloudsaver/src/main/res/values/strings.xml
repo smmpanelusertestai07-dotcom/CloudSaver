@@ -610,6 +610,8 @@
     <string name="photo_plan">On this phone: %1$s, %2$s, quality %3$d</string>
     <string name="photo_size_full">full size</string>
     <string name="photo_size_mp">up to %1$d MP</string>
+    <string name="photo_size_mp_phone">up to %1$d MP (this phone\u2019s memory)</string>
+    <string name="res_phone_cap">up to %1$s (this phone)</string>
     <string name="size_full_short">Full</string>
     <string name="size_mp_short">%1$d MP</string>
     <string name="format_auto">Auto</string>
@@ -957,7 +959,7 @@
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>
     <string name="about_version_line">Version %1$s</string>
-    <string name="about_requires_title">Works on your phone</string>
+    <string name="about_requires_title">This phone</string>
     <string name="about_partner">Two apps do the job: Ente Saver makes the smaller copies and puts them in one folder; Ente Photos uploads that folder. Ente Saver never uploads anything and never deletes an original on its own.</string>
     <string name="cloud_none_body">Ente Saver will still optimise your photos and videos on its usual schedule, and the smaller copies will wait in the Ente Saver folder. Nothing is uploaded until you install Ente Photos and back up that folder in it. Until then the copies use the space you allowed, and no original can be offered for removal. You can finish setup now and install Ente Photos whenever you like.</string>
     <string name="onb_ready_cloud_none">Ente Photos, not installed yet</string>
@@ -1223,7 +1225,16 @@
     <string name="faq_a20">Ente Saver works in the background and waits for good moments on purpose, so a quiet hour is normal. When it waits longer, one of these is the reason, and Home says which. Battery Saver pauses it until Battery Saver is off (most phones switch it off while charging); Super power saving or Ultra battery saver stops every background app while it is on. Charging-only mode waits for the charger. On Realme, Oppo, Xiaomi and Vivo phones, auto-launch switched off is the usual reason it stops a day after setup \u2014 Settings \u203a Permissions and battery opens that page, with the path to it. Android also runs an app less often when it is rarely opened; opening Ente Saver now and then helps. Optimise now on Home runs it straight away, within the safety limits.</string>
     <string name="faq_q19">How do I know this copy of Ente Saver is the real one?</string>
     <string name="faq_a19">Every official build is published at github.com/smmpanelusertestai07-dotcom/CloudSaver, and each release prints two long codes: one for the file itself and one for the key it was signed with. The file\u2019s code changes with every build; the key\u2019s code is the same for every genuine Ente Saver there will ever be. Android checks that key for you: a build signed with a different one cannot install over this app at all. Installed on its own, after this one is removed, it would open and say so on Home, and it would keep deletion switched off. Installing from a file rather than a store is also why the phone shows a Play Protect warning the first time: \u201cMore details\u201d, then \u201cInstall anyway\u201d.</string>
-    <string name="about_running_full">Android %1$s \u2014 everything works.</string>
+    <string name="about_running_full">Android %1$s \u2014 supported.</string>
+    <string name="limit_memory">%1$s of memory: photo copies are made at up to %2$d MP, so the phone never runs out of memory mid-photo.</string>
+    <string name="limit_memory_small">%1$s of memory: photo copies are made at up to %2$d MP, and videos only while charging, at up to 1080p.</string>
+    <string name="limit_learned">A very large photo once ran this phone short of memory, so copies are now made at up to %1$d MP.</string>
+    <string name="limit_no_hevc">No HEVC video chip: videos are made as H.264, which is about a third larger.</string>
+    <string name="limit_video_chip">The video chip stops at %1$s, so videos are made at %1$s at most.</string>
+    <string name="limit_heic_fail">The photo chip did not pass the HEIC check, so photos are saved as JPEG.</string>
+    <string name="limit_battery">Battery optimisation is on: a long video finishes only while Ente Saver is open. Settings \u203a Permissions and battery changes it.</string>
+    <string name="limit_space">%1$s free, below the %2$s Ente Saver keeps free: new copies wait until there is room.</string>
+    <string name="limit_none">Nothing on this phone limits Ente Saver.</string>
     <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>
     <string name="about_network_title">Network access</string>
     <string name="about_network_none">None \u2014 the app does not have the internet permission.</string>

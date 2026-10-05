@@ -41,10 +41,11 @@ object Platform {
     fun canBatchDelete(sdkInt: Int): Boolean = sdkInt >= TRASH_SDK
 
     /**
-     * The Android release name for an API level, for the About page. Unknown
-     * levels answer with the number rather than a guessed name.
+     * The Android release name for an API level, for the About page. A level
+     * newer than this table answers with the phone's own [release] string,
+     * or the number when there is none, rather than a guessed name.
      */
-    fun releaseName(sdkInt: Int): String = when (sdkInt) {
+    fun releaseName(sdkInt: Int, release: String = ""): String = when (sdkInt) {
         29 -> "10"
         30 -> "11"
         31 -> "12"
@@ -53,6 +54,7 @@ object Platform {
         34 -> "14"
         35 -> "15"
         36 -> "16"
-        else -> "API $sdkInt"
+        37 -> "17"
+        else -> release.trim().ifEmpty { "API $sdkInt" }
     }
 }
