@@ -69,39 +69,42 @@ object DeviceTier {
         return tierFor(info.totalMem, am?.isLowRamDevice == true)
     }
 
-    /** The decode ceiling in megapixels: the phone's memory, then what this phone has taught the app. */
-    fun ceilingMp(context: Context): Int {
-        val learned = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_CEILING, 0)
+    /** The lasting ceiling in megapixels: the phone's memory, then what this phone has taught the app. */
+    fun lastingCeilingMp(context: Context): Int {
+        val learned = learnedCeilingMp(context)
         val base = baseCeilingMp(tier(context))
-        val ceiling = if (learned > 0) minOf(learned, base) else base
+        return if (learned > 0) minOf(learned, base) else base
+    }
+
+    /** The ceiling for now: the lasting one, at 12 MP while Android says memory is critical. */
+    fun ceilingMp(context: Context): Int {
+        val ceiling = lastingCeilingMp(context)
         return if (memoryCritical) minOf(ceiling, STEPS_MP.last()) else ceiling
     }
 
     /**
-     * The ceiling for the photo about to be made, given the memory free right
-     * now: decoding and encoding hold about two bitmaps of the output size,
-     * and Android's own low-memory line must stay clear of that.
+     * The size the photo about to be made at [targetMp] can have, given the
+     * memory free right now: decoding and encoding hold about two bitmaps of
+     * the output size, and Android's own low-memory line must stay clear of
+     * that. A step at a time (24, 16, 12), never below 12 MP.
      */
-    fun fitToMemory(ceilingMp: Int, availBytes: Long, thresholdBytes: Long, lowMemory: Boolean): Int {
-        if (ceilingMp <= STEPS_MP.last()) return ceilingMp
-        val need = 2L * ceilingMp * 1_000_000L * 4L
-        return if (lowMemory || availBytes - thresholdBytes < need) STEPS_MP.last() else ceilingMp
+    fun fitToMemory(targetMp: Int, availBytes: Long, thresholdBytes: Long, lowMemory: Boolean): Int {
+        val floor = STEPS_MP.last()
+        if (targetMp <= floor) return targetMp
+        if (lowMemory) return floor
+        val room = availBytes - thresholdBytes
+        fun fits(mp: Int) = 2L * mp * 1_000_000L * 4L <= room
+        if (fits(targetMp)) return targetMp
+        return STEPS_MP.firstOrNull { it < targetMp && fits(it) } ?: floor
     }
 
     /** [spec] held to this phone's ceiling, and to the memory free right now. */
     fun fit(context: Context, spec: PhotoSpec): PhotoSpec {
+        val held = capped(spec, ceilingMp(context))
         val (_, info) = memoryInfo(context)
-        val ceiling = ceilingMp(context)
-        val now = if (info.totalMem > 0) {
-            fitToMemory(ceiling, info.availMem, info.threshold, info.lowMemory)
-        } else {
-            ceiling
-        }
-        return capped(spec, now)
+        if (info.totalMem <= 0) return held
+        return capped(held, fitToMemory(held.maxMp, info.availMem, info.threshold, info.lowMemory))
     }
-
-    /** [spec] held to this phone's lasting ceiling, for what Settings promises. */
-    fun planned(context: Context, spec: PhotoSpec): PhotoSpec = capped(spec, ceilingMp(context))
 
     fun capped(spec: PhotoSpec, ceiling: Int): PhotoSpec =
         if (ceiling > 0 && (spec.maxMp <= 0 || spec.maxMp > ceiling)) spec.copy(maxMp = ceiling) else spec

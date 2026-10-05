@@ -29,7 +29,9 @@ def load_aligns(data):
 def main(apk):
     bad = 0
     with zipfile.ZipFile(apk) as z:
-        libs = [n for n in z.namelist() if n.startswith("lib/") and n.endswith(".so")]
+        # 16 KiB pages exist only on 64-bit devices; 32-bit libraries may stay at 4 KiB.
+        libs = [n for n in z.namelist()
+                if n.startswith(("lib/arm64-v8a/", "lib/x86_64/")) and n.endswith(".so")]
         for name in sorted(libs):
             aligns = load_aligns(z.read(name))
             ok = all(a >= 16384 for a in aligns)

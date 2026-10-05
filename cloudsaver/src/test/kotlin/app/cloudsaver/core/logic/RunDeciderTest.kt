@@ -253,14 +253,18 @@ class RunDeciderTest {
 
     @Test
     fun `a run without a foreground service takes only the videos it can finish`() {
-        val left = 9 * 60_000L
-        // A two-minute clip fits a nine-minute plain run...
-        assertTrue(RunDecider.fitsPlainRun(2 * 60_000L, left))
+        val min = 5 * 60_000L
+        val left = 7 * 60_000L
+        // A two-minute clip fits a seven-minute plain run...
+        assertTrue(RunDecider.fitsPlainRun(2 * 60_000L, left, min))
         // ...a ten-minute one waits for a run that has the time...
-        assertFalse(RunDecider.fitsPlainRun(10 * 60_000L, left))
+        assertFalse(RunDecider.fitsPlainRun(10 * 60_000L, left, min))
         // ...and so does one whose length is not known.
-        assertFalse(RunDecider.fitsPlainRun(0L, left))
-        // Late in the run even a short clip waits.
-        assertFalse(RunDecider.fitsPlainRun(60_000L, 90_000L))
+        assertFalse(RunDecider.fitsPlainRun(0L, left, min))
+        // With less left than the encoder's least budget, no clip starts at
+        // all: the encoder would run past the end of the run.
+        assertFalse(RunDecider.fitsPlainRun(30_000L, 4 * 60_000L, min))
+        assertEquals(0L, RunDecider.plainRunVideoMaxMs(4 * 60_000L, min))
+        assertEquals(4 * 60_000L, RunDecider.plainRunVideoMaxMs(7 * 60_000L, min))
     }
 }

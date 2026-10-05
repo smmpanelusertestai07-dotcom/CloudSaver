@@ -73,9 +73,26 @@ object DeviceDefaults {
         val cap = nearestChoice(dailyCapMb(totalBytes, freeBytes, 0.0), Defaults.DAILY_CAP_CHOICES_MB)
         return Limits(
             dailyCapMb = cap,
-            minFreeMb = nearestChoice(reserveMb(totalBytes), Defaults.MIN_FREE_CHOICES_MB),
+            minFreeMb = floorChoice(autoReserveMb(totalBytes, freeBytes), Defaults.MIN_FREE_CHOICES_MB),
             maxExtraMb = nearestChoice(ownLimitMb(freeBytes, cap), Defaults.MAX_EXTRA_CHOICES_MB)
         )
+    }
+
+    /**
+     * The reserve Automatic keeps: a twentieth of the phone, but never more
+     * than a third of what is free right now, and never under the floor. A
+     * nearly full 128 GB phone would otherwise be told to keep 5 GB free when
+     * it has 4 - and stop making copies on exactly the phone that needs them.
+     */
+    fun autoReserveMb(totalBytes: Long, freeBytes: Long): Int {
+        val thirdOfFree = (freeBytes / 3 / Defaults.MB).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        return minOf(reserveMb(totalBytes), maxOf(1536, thirdOfFree))
+    }
+
+    /** The largest step at or under [value], or the smallest step. */
+    fun floorChoice(value: Int, choices: List<Int>): Int {
+        val steps = choices.filter { it > 0 }.sorted()
+        return steps.lastOrNull { it <= value } ?: steps.firstOrNull() ?: value
     }
 
     /** Settings offer fixed steps, so a computed figure has to land on one. */

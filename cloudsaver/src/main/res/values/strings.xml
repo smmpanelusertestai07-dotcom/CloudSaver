@@ -590,6 +590,9 @@
     <string name="wait_photo_cap">Waiting: daily photo limit on battery reached - plug in to continue</string>
     <string name="wait_space_full">Waiting: the copies folder has reached the space you allowed - it clears as copies are collected or removed</string>
     <string name="wait_low_space">Waiting: the phone is below the free space you asked Ente Saver to keep</string>
+    <string name="wait_long_videos">Waiting: long videos finish while Ente Saver is open, or in the background once the battery is set to Unrestricted</string>
+    <string name="wait_next_too_big">Waiting: the next files need more room than the phone has above the free space Ente Saver keeps</string>
+    <string name="wait_videos_charging">Waiting for charger: on this phone videos are made only while charging</string>
     <string name="wait_volume_missing">Waiting: the storage location you chose is not available right now</string>
     <string name="opt_daily_cap">Daily limit for new copies</string>
     <string name="opt_daily_cap_hint">How much Ente Saver adds to the upload folder each day.</string>
@@ -1246,7 +1249,7 @@
     <string name="limit_memory_small">%1$s of memory: photo copies are made at up to %2$d MP, and videos only while charging, at up to 1080p.</string>
     <string name="limit_learned">A very large photo once ran this phone short of memory, so copies are now made at up to %1$d MP.</string>
     <string name="limit_no_hevc">No HEVC video chip: videos are made as H.264, which is about a third larger.</string>
-    <string name="limit_video_chip">The video chip stops at %1$s, so videos are made at %1$s at most.</string>
+    <string name="limit_video_chip">The video chip stops below 4K, so videos above 1080p are made at 1080p.</string>
     <string name="limit_heic_fail">The photo chip did not pass the HEIC check, so photos are saved as JPEG.</string>
     <string name="limit_battery">Battery optimisation is on: a long video finishes only while Ente Saver is open. Settings \u203a Permissions and battery changes it.</string>
     <string name="limit_space">%1$s free, below the %2$s Ente Saver keeps free: new copies wait until there is room.</string>

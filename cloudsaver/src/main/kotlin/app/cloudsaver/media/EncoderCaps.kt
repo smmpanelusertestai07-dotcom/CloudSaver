@@ -3,6 +3,7 @@ package app.cloudsaver.media
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import app.cloudsaver.core.logic.MediaSettings
 
 /**
  * What this phone's own encoder chips can do.
@@ -48,6 +49,23 @@ object EncoderCaps {
      * and frame rate. A budget phone's chip often stops at 1080p; asking it
      * for more ends in a software encode or a failed one.
      */
+    /**
+     * The longest side this phone makes a video at when [requestedLongSide]
+     * is asked for (0 = keep the source's, up to 2160p), or 0 when the phone
+     * sets no limit of its own. The compressor's own rule: above 1080p only
+     * where a hardware encoder takes the size, and never on the smallest
+     * phones ([smallestPhone]).
+     */
+    fun phoneLongSideCap(requestedLongSide: Int, smallestPhone: Boolean): Int {
+        val asked = if (requestedLongSide <= 0) 3840 else requestedLongSide
+        return when {
+            asked <= MediaSettings.FULL_HD -> 0
+            smallestPhone -> MediaSettings.FULL_HD
+            anyHardwareFits(asked, asked * 9 / 16, 30f) -> 0
+            else -> MediaSettings.FULL_HD
+        }
+    }
+
     fun anyHardwareFits(width: Int, height: Int, fps: Float): Boolean =
         listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MIME_HEVC).any { mime ->
             hardwareEncoders(mime).any { info ->

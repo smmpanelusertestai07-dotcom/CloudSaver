@@ -25,7 +25,6 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.KeptCopies
 import app.cloudsaver.core.logic.KnownClouds
 import app.cloudsaver.core.logic.MediaProfile
-import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.OutputPaths
@@ -73,6 +72,7 @@ import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Locks
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
+import app.cloudsaver.util.SpaceLimits
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.TrialRecord
@@ -1134,11 +1134,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshRecommended() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
-            val limits = DeviceDefaults.automatic(
-                Storage.totalBytes(ctx, o.storageVolume),
-                Storage.freeBytes(ctx, o.storageVolume)
-            )
-            if (o.spaceAuto) repo.applyAutomaticSpace(limits)
+            val limits = SpaceLimits.refresh(ctx)
             val cap = limits.dailyCapMb
             val minFree = limits.minFreeMb
             val maxExtra = limits.maxExtraMb
@@ -1481,6 +1477,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val hevcHardware: Boolean = false,
         /** This phone's photo ceiling in MP (its memory, and what it has taught the app). */
         val photoCeilingMp: Int = 0,
+        /** Whether that ceiling is this phone's own, rather than the 50 MP every phone has. */
+        val photoCeilingIsPhones: Boolean = false,
         /** The longest video side this phone makes, or 0 for no limit of its own. */
         val videoMaxLongSide: Int = 0
     )
@@ -1495,13 +1493,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 photoFormat = PlannedEncode.photoFormat(ctx, o.photo.spec()),
                 videoCodec = PlannedEncode.videoCodec(o.video.spec()),
                 hevcHardware = EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isNotEmpty(),
-                photoCeilingMp = DeviceTier.ceilingMp(ctx),
-                videoMaxLongSide = when {
-                    DeviceTier.tier(ctx) == DeviceTier.Tier.VERY_LOW -> MediaSettings.FULL_HD
-                    EncoderCaps.anyHardwareFits(3840, 2160, 30f) -> 0
-                    EncoderCaps.anyHardwareFits(2560, 1440, 30f) -> 2560
-                    else -> MediaSettings.FULL_HD
-                }
+                photoCeilingMp = DeviceTier.lastingCeilingMp(ctx),
+                photoCeilingIsPhones = DeviceTier.lastingCeilingMp(ctx) < DeviceTier.ANY_PHONE_CEILING_MP,
+                videoMaxLongSide = EncoderCaps.phoneLongSideCap(
+                    o.video.spec().longSide,
+                    smallestPhone = DeviceTier.tier(ctx) == DeviceTier.Tier.VERY_LOW
+                )
             )
         }
     }

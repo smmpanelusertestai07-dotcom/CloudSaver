@@ -43,7 +43,13 @@ object RunDecider {
         /** The phone is below the free space the user asked to keep. */
         LOW_SPACE,
         /** The chosen storage location (an SD card) is not mounted. */
-        VOLUME_MISSING
+        VOLUME_MISSING,
+        /** Long videos need a run with a foreground service (app open, or battery Unrestricted). */
+        LONG_VIDEOS,
+        /** The next files would take the phone below the free space it keeps. */
+        NEXT_TOO_BIG,
+        /** On the smallest phones videos are made only while charging. */
+        VIDEOS_CHARGING
     }
 
     /**
@@ -154,15 +160,19 @@ object RunDecider {
     }
 
     /**
-     * Whether a video [durationMs] long can be made in the [remainingMs] left
-     * of a run that has no foreground service, which Android stops after
-     * about ten minutes. Encoding on a budget phone runs at about real time,
-     * so the clip's own length and a half, plus a minute to read and write
-     * it, is what it needs. A clip of unknown length waits for a run that has
-     * the time.
+     * The longest video a run without a foreground service can take on with
+     * [remainingMs] left, or 0 for none. Android stops such a run after about
+     * ten minutes. Encoding on a budget phone runs at about real time, so a
+     * clip needs its own length and a half plus a minute to read and write
+     * it; and the encoder is never handed less than [minBudgetMs], so less
+     * than that left means no video at all. A clip of unknown length waits
+     * for a run that has the time.
      */
-    fun fitsPlainRun(durationMs: Long, remainingMs: Long): Boolean =
-        durationMs > 0 && durationMs * 3 / 2 + 60_000L <= remainingMs
+    fun plainRunVideoMaxMs(remainingMs: Long, minBudgetMs: Long): Long =
+        if (remainingMs < minBudgetMs) 0L else ((remainingMs - 60_000L) * 2 / 3).coerceAtLeast(0L)
+
+    fun fitsPlainRun(durationMs: Long, remainingMs: Long, minBudgetMs: Long): Boolean =
+        durationMs in 1..plainRunVideoMaxMs(remainingMs, minBudgetMs)
 
     /**
      * "Run now" is user-initiated, so only hard safety limits apply:

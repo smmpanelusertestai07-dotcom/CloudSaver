@@ -12,15 +12,15 @@ import app.cloudsaver.data.prefs.OptionsRepo
  */
 object SpaceLimits {
 
-    suspend fun refresh(context: Context) {
+    /** Works out this phone's limits, applies them while Automatic, and returns them. */
+    suspend fun refresh(context: Context): DeviceDefaults.Limits {
         val repo = OptionsRepo.get(context)
         val o = repo.current()
-        if (!o.spaceAuto) return
-        repo.applyAutomaticSpace(
-            DeviceDefaults.automatic(
-                Storage.totalBytes(context, o.storageVolume),
-                Storage.freeBytes(context, o.storageVolume)
-            )
+        val limits = DeviceDefaults.automatic(
+            Storage.totalBytes(context, o.storageVolume),
+            Storage.freeBytes(context, o.storageVolume)
         )
+        if (o.spaceAuto) repo.applyAutomaticSpace(limits)
+        return limits
     }
 }

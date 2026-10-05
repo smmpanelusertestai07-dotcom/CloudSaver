@@ -3,7 +3,6 @@ package app.cloudsaver.util
 import android.content.Context
 import android.os.Build
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.MediaSettings
 import app.cloudsaver.media.EncoderCaps
 import app.cloudsaver.media.HeicSupport
 import java.util.Locale
@@ -32,9 +31,8 @@ object PhoneLimits {
         if (EncoderCaps.hardwareEncoders(EncoderCaps.MIME_HEVC).isEmpty()) {
             out += context.getString(R.string.limit_no_hevc)
         }
-        if (tier != DeviceTier.Tier.VERY_LOW && !EncoderCaps.anyHardwareFits(3840, 2160, 30f)) {
-            val top = if (EncoderCaps.anyHardwareFits(2560, 1440, 30f)) 2560 else MediaSettings.FULL_HD
-            out += context.getString(R.string.limit_video_chip, MediaSettings.pLabel(top))
+        if (tier != DeviceTier.Tier.VERY_LOW && EncoderCaps.phoneLongSideCap(0, smallestPhone = false) > 0) {
+            out += context.getString(R.string.limit_video_chip)
         }
         if (HeicSupport.state(context) == HeicSupport.State.FAIL) out += context.getString(R.string.limit_heic_fail)
         if (Build.VERSION.SDK_INT >= 31 && !Permissions.isIgnoringBatteryOptimizations(context)) {

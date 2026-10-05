@@ -1370,6 +1370,9 @@ private fun statusLine(
             RunDecider.Wait.SPACE_FULL -> stringResource(R.string.wait_space_full)
             RunDecider.Wait.LOW_SPACE -> stringResource(R.string.wait_low_space)
             RunDecider.Wait.VOLUME_MISSING -> stringResource(R.string.wait_volume_missing)
+            RunDecider.Wait.LONG_VIDEOS -> stringResource(R.string.wait_long_videos)
+            RunDecider.Wait.NEXT_TOO_BIG -> stringResource(R.string.wait_next_too_big)
+            RunDecider.Wait.VIDEOS_CHARGING -> stringResource(R.string.wait_videos_charging)
         }
         return reason ?: pluralStringResource(R.plurals.status_working, waiting, waiting)
     }

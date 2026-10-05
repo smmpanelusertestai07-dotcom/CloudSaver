@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +54,7 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .width(96.dp)
+                        .widthIn(min = 76.dp)
                         .clip(shape)
                         .selectable(selected = selected, role = Role.RadioButton) { onChoose(look) }
                         .then(
@@ -63,15 +63,14 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
                         .padding(6.dp)
                 ) {
                     LookIcon()
-                    // One line: a name broken mid-word ("CloudSave / r") reads
-                    // as a different name.
+                    // The choice widens to fit its name instead of breaking it
+                    // mid-word ("CloudSave / r"), which reads as a different
+                    // name. The row wraps when two no longer fit side by side.
                     Text(
                         stringResource(look.nameRes),
                         style = MaterialTheme.typography.labelMedium,
                         textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
                     )
                 }
             }

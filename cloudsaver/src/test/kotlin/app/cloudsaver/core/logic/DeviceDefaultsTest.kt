@@ -62,4 +62,15 @@ class DeviceDefaultsTest {
         // A small or nearly full phone gets the cautious daily amount.
         assertEquals(250, DeviceDefaults.automatic(64 * gb, 2 * gb).dailyCapMb)
     }
+
+    @Test
+    fun `Automatic never asks a nearly full phone to keep more free than it has`() {
+        // 128 GB with 4 GB free: a twentieth would be 6.4 GB, more than is free.
+        assertEquals(1500, DeviceDefaults.automatic(128 * gb, 4 * gb).minFreeMb)
+        // With room to spare, a big phone keeps more.
+        assertEquals(5000, DeviceDefaults.automatic(256 * gb, 100 * gb).minFreeMb)
+        // A step is never rounded up past the figure worked out.
+        assertEquals(1500, DeviceDefaults.floorChoice(2900, Defaults.MIN_FREE_CHOICES_MB))
+        assertEquals(1500, DeviceDefaults.floorChoice(100, Defaults.MIN_FREE_CHOICES_MB))
+    }
 }

@@ -699,7 +699,15 @@ class OptionsRepo(private val context: Context) {
             // Only values the UI itself offers. A hand-edited backup could
             // otherwise set an absurd minimum-free figure, which makes the
             // resource gate refuse to run for good.
-            map["spaceAuto"]?.toBooleanStrictOrNull()?.let { p[K.SPACE_AUTO] = it }
+            // A backup from before 11.1 has no choice stored: its limits
+            // were the person's own, so they come back as Custom rather than
+            // being replaced by Automatic on the next run.
+            val autoInFile = map["spaceAuto"]?.toBooleanStrictOrNull()
+            val limitsInFile = listOf("dailyCapMb", "minFreeMb", "maxExtraMb").any { it in map }
+            when {
+                autoInFile != null -> p[K.SPACE_AUTO] = autoInFile
+                limitsInFile -> p[K.SPACE_AUTO] = false
+            }
             map["dailyCapMb"]?.toIntOrNull()
                 ?.takeIf { it in Defaults.DAILY_CAP_CHOICES_MB }
                 ?.let { p[K.DAILY_CAP_MB] = it }

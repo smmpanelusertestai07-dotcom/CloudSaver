@@ -74,7 +74,8 @@ fun PhotoSettingsCard(
                 R.string.photo_plan,
                 when {
                     shown.maxMp <= 0 -> stringResource(R.string.photo_size_full)
-                    shown.maxMp != spec.maxMp -> stringResource(R.string.photo_size_mp_phone, shown.maxMp)
+                    shown.maxMp != spec.maxMp && plan.photoCeilingIsPhones ->
+                        stringResource(R.string.photo_size_mp_phone, shown.maxMp)
                     else -> stringResource(R.string.photo_size_mp, shown.maxMp)
                 },
                 formatLabel(plan.photoFormat),

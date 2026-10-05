@@ -59,7 +59,12 @@ class DeviceTierTest {
         assertEquals(24, DeviceTier.fitToMemory(24, availBytes = 1500 * mb, thresholdBytes = 200 * mb, lowMemory = false))
         // A 24 MP bitmap is 96 MB, and two of them must fit above Android's own line.
         assertEquals(24, DeviceTier.fitToMemory(24, availBytes = 400 * mb, thresholdBytes = 200 * mb, lowMemory = false))
-        assertEquals(12, DeviceTier.fitToMemory(24, availBytes = 350 * mb, thresholdBytes = 200 * mb, lowMemory = false))
+        // Not enough for 24 MP: one step down, to 16, which fits...
+        assertEquals(16, DeviceTier.fitToMemory(24, availBytes = 350 * mb, thresholdBytes = 200 * mb, lowMemory = false))
+        // ...and 12 when not even that does.
+        assertEquals(12, DeviceTier.fitToMemory(24, availBytes = 250 * mb, thresholdBytes = 200 * mb, lowMemory = false))
+        // The size asked for is what is checked, not the phone's ceiling.
+        assertEquals(16, DeviceTier.fitToMemory(16, availBytes = 350 * mb, thresholdBytes = 200 * mb, lowMemory = false))
         assertEquals(12, DeviceTier.fitToMemory(50, availBytes = 4000 * mb, thresholdBytes = 200 * mb, lowMemory = true))
         // Never raised, and 12 MP is the floor.
         assertEquals(12, DeviceTier.fitToMemory(12, availBytes = 10 * mb, thresholdBytes = 200 * mb, lowMemory = true))
