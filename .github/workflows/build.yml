@@ -298,6 +298,24 @@ jobs:
         with:
           name: EnteSaver-release.apk
 
+      # Google's download of the system image is sometimes cut short ("Error
+      # on ZipFile unknown archive"), and the emulator step then fails before
+      # a single test runs. Fetch it here, a few tries apart; the next step
+      # finds it installed and moves on.
+      - name: Install the system image
+        run: |
+          image="android-${{ matrix.image || matrix.api }}"
+          for try in 1 2 3; do
+            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+                 "system-images;$image;google_apis;x86_64" > /dev/null \
+               && [ -d "$ANDROID_HOME/system-images/$image/google_apis/x86_64" ]; then
+              exit 0
+            fi
+            echo "Download $try of the $image image failed; trying again."
+            sleep 20
+          done
+          exit 1
+
       - name: Run instrumented suite + live install on a real emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
