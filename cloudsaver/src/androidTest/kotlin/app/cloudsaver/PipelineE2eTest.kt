@@ -29,6 +29,7 @@ import app.cloudsaver.media.Stager
 import app.cloudsaver.media.VideoCompressor
 import java.io.File
 import kotlin.math.abs
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -461,9 +462,18 @@ class PipelineE2eTest {
             assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
 
             repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
-            MaintainEngine(context).run()
-            val after = db.items().byId(released.id)!!
-            assertEquals("a moved copy is still waiting", ItemState.RELEASED.name, after.state)
+            // The gallery finishes a move in its own time - Android 12 may
+            // even give the file a new address - so the pass runs as the app
+            // runs it, again and again, until the copy has been followed. At
+            // no pass may it be counted as collected: it still exists.
+            var after = db.items().byId(released.id)!!
+            for (pass in 1..10) {
+                MaintainEngine(context).run()
+                after = db.items().byId(released.id)!!
+                assertEquals("a moved copy is still waiting (pass $pass)", ItemState.RELEASED.name, after.state)
+                if (after.outputRelPath?.trimEnd('/') == elsewhere.trimEnd('/')) break
+                delay(500)
+            }
             assertEquals(elsewhere.trimEnd('/'), after.outputRelPath?.trimEnd('/'))
         } finally {
             repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
