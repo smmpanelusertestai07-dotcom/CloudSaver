@@ -1,6 +1,5 @@
 package app.cloudsaver.util
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -9,8 +8,8 @@ import android.provider.Settings
 
 /**
  * The system pages the app sends the person to: app info, notifications,
- * usage access, Battery Saver and Android's own battery-optimisation question,
- * each with the page that holds the same switch as its fallback. The phone
+ * usage access, Battery Saver and Android's battery-optimisation list, each
+ * with the page that holds the same switch as its fallback. The phone
  * makers' own pages are in [PowerPages].
  */
 object OemPages {
@@ -31,22 +30,14 @@ object OemPages {
     }
 
     /**
-     * CloudSaver is a background media pipeline the user explicitly sets up;
-     * that is the accepted use case for this dialog.
+     * Android's list of apps whose battery use is optimised, where the switch
+     * for this app sits. Android 10 and 11 have no per-app battery page, so
+     * this is where the switch is there. The one-tap question
+     * (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) is not used: it needs a
+     * permission of its own and, without it, closes without asking anything.
      */
-    @SuppressLint("BatteryLife")
-    fun requestIgnoreBatteryOptimizations(context: Context): Boolean =
-        go(
-            context,
-            Intent(
-                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                Uri.parse("package:${context.packageName}")
-            )
-        ) ||
-            // Some skins strip the per-app dialog; the system's own list of
-            // optimised apps still exists everywhere and is one tap from the
-            // switch, which app info is not.
-            go(context, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) ||
+    fun openBatteryOptimization(context: Context): Boolean =
+        go(context, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) ||
             openAppInfo(context)
 
     fun openAppInfo(context: Context): Boolean = go(
@@ -94,6 +85,8 @@ object OemPages {
             .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CH_ALERTS)
     ) || openNotificationSettings(context)
 
+    /** This app's own Usage access switch, or the list that holds it. */
     fun openUsageAccess(context: Context): Boolean =
-        go(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        go(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}"))) ||
+            go(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
 }

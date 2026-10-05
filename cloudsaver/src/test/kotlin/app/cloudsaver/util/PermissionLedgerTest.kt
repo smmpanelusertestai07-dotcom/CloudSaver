@@ -32,15 +32,33 @@ class PermissionLedgerTest {
 
     @Test
     fun `the permissions libraries merge in are explained too`() {
-        // These are in the built APK and not in this manifest: the scheduler,
-        // the lock library and Android's own sealed-receiver permission add
-        // them. A ledger built from the manifest that shipped shows them, so
-        // they need words rather than an Android name.
-        for (merged in listOf(
-            "WAKE_LOCK", "RECEIVE_BOOT_COMPLETED", "USE_FINGERPRINT",
-            "DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-        )) {
+        // These are in the built APK and not in this manifest: the scheduler
+        // adds them. A ledger built from the manifest that shipped shows
+        // them, so they need words rather than an Android name.
+        for (merged in listOf("WAKE_LOCK", "RECEIVE_BOOT_COMPLETED")) {
             assertTrue("$merged must be explained", ledger.contains(merged))
+        }
+    }
+
+    @Test
+    fun `what the app can work without is not asked for at all`() {
+        // Libraries merge these for older Android or for calls the app never
+        // makes, and battery optimisation is switched off on Android's own
+        // page, which needs no permission.
+        for (name in listOf(
+            "android.permission.USE_FINGERPRINT",
+            "\${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        )) {
+            val removal = Regex("""<uses-permission\s+android:name="${Regex.escape(name)}"\s+tools:node="remove"""")
+            assertTrue("$name must be removed in the manifest", removal.containsMatchIn(manifest))
+        }
+        assertTrue(
+            Regex("""<permission\s+android:name="\$\{applicationId\}\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"\s+tools:node="remove"""")
+                .containsMatchIn(manifest)
+        )
+        assertFalse(manifest.contains("REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"))
+        for (gone in listOf("USE_FINGERPRINT", "DYNAMIC_RECEIVER", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS")) {
+            assertFalse("$gone must not be in the ledger", ledger.contains(gone))
         }
     }
 

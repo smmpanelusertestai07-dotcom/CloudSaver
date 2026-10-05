@@ -9,6 +9,19 @@
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
+    <!-- Libraries add these for older Android or for calls this app never
+         makes: USE_FINGERPRINT (androidx.biometric) is for Android 6-8, below
+         minSdk, and the receiver-permission pair (androidx.core) is only for
+         ContextCompat.registerReceiver(..., RECEIVER_NOT_EXPORTED). -->
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"
+        tools:node="remove" />
+    <permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+    <uses-permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
 
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -21,7 +34,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Granted only by the user through the system Usage Access screen; used for
          upload verification via NetworkStatsManager (read-only, on-device). -->
     <uses-permission
@@ -166,6 +178,16 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync|mediaProcessing"
             tools:node="merge" />
+
+        <!-- Library parts this app never uses: Room's cross-process
+             invalidation (one process here) and WorkManager's adb-only
+             diagnostics receiver. -->
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            tools:node="remove" />
+        <receiver
+            android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver"
+            tools:node="remove" />
 
         <!-- "Mute for 7 days" on an alert. Not exported: only our own
              PendingIntent ever fires it. -->

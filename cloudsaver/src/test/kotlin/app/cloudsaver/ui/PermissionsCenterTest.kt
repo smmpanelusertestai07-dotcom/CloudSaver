@@ -1,7 +1,6 @@
 package app.cloudsaver.ui
 
 import java.io.File
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -98,26 +97,26 @@ class PermissionsCenterTest {
     }
 
     @Test
-    fun `the battery row still has somewhere to go once Android's own switch is set`() {
-        // Android closes the "ignore optimisations" dialog silently when the
-        // app is already exempt, so on the one phone this row was written for
-        // the tap did nothing. Already exempt, it opens the maker's page.
+    fun `the battery row opens the page with the switch, with no permission of its own`() {
+        // Android's one-tap "ignore optimisations" question needs
+        // REQUEST_IGNORE_BATTERY_OPTIMIZATIONS and, without it, closes
+        // without asking - so the row opens the page that holds the switch.
+        // From Android 12 that is the app's own battery page (the maker's
+        // per-app page or app info); on 10 and 11 Android's list. Already
+        // exempt, it opens the maker's page for the other switches.
         val power = File(main, "util/PowerPages.kt").readText()
             .substringAfter("fun open(context: Context, requirementId: String)")
         val branch = power.substringAfter("ID_BATTERY_UNRESTRICTED ->").substringBefore("ID_AUTO_LAUNCH ->")
-        assertTrue(branch.contains("if (Permissions.isIgnoringBatteryOptimizations(context))"))
+        assertTrue(branch.contains("Build.VERSION.SDK_INT >= 31 || Permissions.isIgnoringBatteryOptimizations(context)"))
         assertTrue(branch.contains("openBackgroundActivity(context)"))
-        assertTrue(branch.contains("OemPages.requestIgnoreBatteryOptimizations(context)"))
-        // And the request itself never dead-ends: settings page, then app info.
+        assertTrue(branch.contains("OemPages.openBatteryOptimization(context)"))
         val oem = File(main, "util/OemPages.kt").readText()
-            .substringAfter("fun requestIgnoreBatteryOptimizations(")
-        assertTrue(oem.contains("Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS"))
-        assertEquals(
-            "the per-app page is offered before the whole list",
-            true,
-            oem.indexOf("ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS") <
-                oem.indexOf("ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS")
-        )
+        assertFalse(oem.contains("Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"))
+        val list = oem.substringAfter("fun openBatteryOptimization(").substringBefore("fun openAppInfo(")
+        assertTrue(list.contains("Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS"))
+        assertTrue("and app info if a skin dropped the list", list.contains("openAppInfo(context)"))
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertFalse(manifest.contains("REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"))
     }
 
     @Test

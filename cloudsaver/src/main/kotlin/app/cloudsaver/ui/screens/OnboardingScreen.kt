@@ -598,9 +598,16 @@ fun OnboardingScreen(vm: AppViewModel) {
                         onButton = { go(Step.CLOUD) }
                     )
                 } else {
+                    // Android 15 greys the switch out for an app installed
+                    // from a file, which is how Ente Saver arrives.
+                    val text = stringResource(R.string.onb4_text)
                     StepCard(
                         title = stringResource(R.string.onb4_title),
-                        text = stringResource(R.string.onb4_text),
+                        text = if (Build.VERSION.SDK_INT >= 35) {
+                            text + "\n\n" + stringResource(R.string.usage_restricted)
+                        } else {
+                            text
+                        },
                         buttonLabel = stringResource(R.string.onb4_grant),
                         onButton = { OemPages.openUsageAccess(context) },
                         onSkip = { go(Step.CLOUD) }
