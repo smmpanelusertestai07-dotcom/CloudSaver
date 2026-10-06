@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -599,7 +600,13 @@ fun ListScreenScaffold(
     intro: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit
 ) {
-    Column(Modifier.fillMaxWidth()) {
+    // The search box sits at the top, clear of the keyboard, but the list
+    // and its action bar do not: without this the last rows, and the bar's
+    // button, stayed under the keyboard while a search was being typed.
+    // From Android 11 only; below it adjustResize already shrinks the window,
+    // and padding as well takes the keyboard's height out twice.
+    val keyboard = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Modifier.imePadding() else Modifier
+    Column(Modifier.fillMaxWidth().then(keyboard)) {
         if (selection.active) {
             SelectionTopBar(
                 selectedCount = selection.size,
