@@ -1,0 +1,560 @@
+package app.entesaver.engine
+
+import android.content.ContentUris
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.room.withTransaction
+import app.entesaver.R
+import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.Evidence
+import app.entesaver.core.logic.GoneReason
+import app.entesaver.core.logic.ItemState
+import app.entesaver.core.logic.OutFolder
+import app.entesaver.core.logic.SecureBackup
+import app.entesaver.core.logic.SnapshotCodec
+import app.entesaver.data.db.AppDb
+import app.entesaver.data.db.BatchRow
+import app.entesaver.data.db.ItemRow
+import app.entesaver.data.db.LedgerRow
+import app.entesaver.data.prefs.OptionsRepo
+import app.entesaver.media.OutputInventory
+import app.entesaver.util.Locks
+import app.entesaver.util.Permissions
+import java.io.File
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * State durability. Room is the source of truth; the daily history file
+ * exists so a new install - after an uninstall, "Clear data" or on a new
+ * phone - can pick up where the old one stopped (see Defaults.HISTORY_DIR for
+ * why it is a visible file). The same format is what Settings, Backup and
+ * restore saves and opens.
+ *
+ * Items imported without upload evidence become UNKNOWN until their copy is
+ * found in the Ente Saver folder (ReattachRules); they are never freed on a
+ * file's say-so.
+ */
+class SnapshotStore(
+    private val context: Context,
+    private val db: AppDb,
+    private val optionsRepo: OptionsRepo
+) {
+
+    companion object {
+        private val FOLDER_KEYS = setOf("folderSingle", "folderPhotos", "folderVideos")
+
+        /**
+         * How many rebuildable item rows a snapshot carries.
+         *
+         * The whole snapshot is encoded as one JSON document held in memory,
+         * so an unbounded gallery means an unbounded allocation in a
+         * background worker - and the failure is silent, because the daily
+         * pass catches it and simply writes nothing. A phone that grows to
+         * fifty thousand photos would quietly stop having a snapshot at all,
+         * which is only discovered on the reinstall that needed it.
+         *
+         * Nothing safety-critical is ever dropped: rows that carry evidence
+         * or a delivered copy are always written, whatever the count, because
+         * losing one of those could let a file be sent to the cloud twice.
+         * The rest are queue state, and a scan rebuilds them.
+         */
+        const val MAX_REBUILDABLE_ITEMS = 5_000
+    }
+
+    suspend fun build(): SnapshotCodec.Snapshot {
+        val rows = db.items().all()
+        // Anything the cloud has already seen, or that holds a copy, is
+        // irreplaceable knowledge; everything else can be scanned again.
+        val (critical, rebuildable) = rows.partition {
+            it.outputSha256 != null || Evidence.parse(it.evidence) != Evidence.NONE
+        }
+        val kept = if (rebuildable.size <= MAX_REBUILDABLE_ITEMS) {
+            rows
+        } else {
+            critical + rebuildable
+                .sortedByDescending { it.updatedAt }
+                .take(MAX_REBUILDABLE_ITEMS)
+        }
+        val items = kept.map { row ->
+            SnapshotCodec.SnapItem(
+                fingerprint = row.fingerprint,
+                displayName = row.displayName,
+                sizeBytes = row.sizeBytes,
+                dateModified = row.dateModified,
+                captureAt = row.captureAt,
+                mimeType = row.mimeType,
+                isVideo = row.isVideo,
+                state = enumOr(row.state, ItemState.UNKNOWN),
+                evidence = Evidence.parse(row.evidence),
+                goneReason = enumOrNull<GoneReason>(row.goneReason),
+                skipReason = row.skipReason,
+                outputName = row.outputName,
+                outputBytes = row.outputBytes,
+                outputSha256 = row.outputSha256,
+                outputFolder = enumOrNull<OutFolder>(row.outputFolder),
+                releasedAt = row.releasedAt,
+                confirmedAt = row.confirmedAt,
+                keptUri = row.keptUri,
+                neverOptimise = row.neverOptimise,
+                outputRelPath = row.outputRelPath
+            )
+        }
+        val batches = db.batches().all().map { b ->
+            SnapshotCodec.SnapBatch(
+                releasedAt = b.releasedAt,
+                totalBytes = b.totalBytes,
+                folder = enumOr(b.folder, OutFolder.SINGLE),
+                cloudPackage = b.cloudPackage,
+                verifiedAt = b.verifiedAt
+            )
+        }
+        val ledger = db.ledger().all().map { l ->
+            SnapshotCodec.SnapLedger(
+                outputSha256 = l.outputSha256,
+                fingerprint = l.fingerprint,
+                displayName = l.displayName,
+                outputBytes = l.outputBytes,
+                evidence = Evidence.parse(l.evidence),
+                confirmedAt = l.confirmedAt
+            )
+        }
+        val access = Permissions.mediaAccess(context).name
+        return SnapshotCodec.Snapshot(
+            version = SnapshotCodec.VERSION,
+            exportedAt = System.currentTimeMillis(),
+            options = optionsRepo.exportMap(),
+            items = items,
+            batches = batches,
+            ledger = ledger,
+            mediaAccess = access
+        )
+    }
+
+    /**
+     * Writes the daily history file (CC9.1/CC9.3).
+     *
+     * Two copies, deliberately: history.json in the shared folder, which
+     * survives an uninstall and travels to a new phone with the person's
+     * files, and one inside the app's own files directory that survives
+     * nothing but is always writable.
+     *
+     * Returns true when the shared copy was written. A failure there is a
+     * Problem the user is told about, in words: it means an uninstall would
+     * lose their history.
+     */
+    suspend fun writeSafetySnapshot(): Boolean {
+        // CC9.1: a fresh install that never finished setup leaves nothing
+        // behind. Before onboarding completes there is no state worth a file
+        // in the user's Documents folder.
+        if (!optionsRepo.current().onboardingDone) return false
+        val json = SnapshotCodec.encode(build())
+        val written = Defaults.SNAPSHOT_TARGETS.any { (dir, name) -> writeTo(json, dir, name) }
+        // Always kept, whatever the shared write did.
+        writePrivate(json)
+
+        if (written) {
+            removePrevious()
+        } else {
+            ActivityLog(context).record(
+                ActivityLog.Kind.PROBLEM,
+                detail = context.getString(
+                    R.string.problem_snapshot_failed,
+                    Defaults.SNAPSHOT_TARGETS.joinToString(", ") { (dir, name) -> "$dir/$name" }
+                )
+            )
+        }
+        return written
+    }
+
+    /**
+     * Empties the hidden folders builds before 12.0 wrote to. Android had
+     * renamed each one ("_.cloudsaver") and the app, never finding its file
+     * again, added a new one every pass - so there can be many. Only this
+     * install's own files are removed; one left by an install since removed
+     * is not this app's to delete without asking. Each folder goes too once
+     * nothing is left in it.
+     */
+    private fun removePrevious() {
+        val resolver = context.contentResolver
+        for (dir in Defaults.PREVIOUS_SNAPSHOT_DIRS) {
+            for (row in ownFiles(dir)) {
+                runCatching { resolver.delete(row.uri, null, null) }
+            }
+            @Suppress("DEPRECATION")
+            runCatching { File(Environment.getExternalStorageDirectory(), dir).delete() }
+        }
+    }
+
+    /** The copy inside the app's own storage. Cheap, and always permitted. */
+    private fun writePrivate(json: String): Boolean = try {
+        File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
+            .writeText(json, Charsets.UTF_8)
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun readPrivate(): String? = try {
+        val file = File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
+        if (file.isFile) file.readText(Charsets.UTF_8) else null
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Whether the shared history file is where it should be (CC9.3).
+     *
+     * A user tidying Documents can delete it; the next maintenance pass sees
+     * the gap here and rewrites silently - no chip, no alert, because a file
+     * the app can recreate in full is not a problem, only a chore.
+     */
+    fun sharedTargetsPresent(): Boolean = Defaults.SNAPSHOT_TARGETS.any { (dir, name) ->
+        ownFiles(dir, name).isNotEmpty()
+    }
+
+    /**
+     * Reads back the newest snapshot that passes its integrity check, from
+     * every place this install can see one. A corrupted or hand-edited copy
+     * is skipped rather than trusted - it could otherwise promote evidence
+     * and put an original in front of the user for deletion.
+     *
+     * After an uninstall or "Clear data", Android shows the new install none
+     * of the shared files the old one wrote; then only Restore, with the
+     * person picking history.json, brings the history back.
+     */
+    suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
+        var best: SnapshotCodec.Snapshot? = null
+        fun consider(json: String?) {
+            if (json == null) return
+            val snapshot = try {
+                SnapshotCodec.decode(json)
+            } catch (e: Exception) {
+                return
+            }
+            if (best == null || snapshot.exportedAt > best!!.exportedAt) best = snapshot
+        }
+        for ((dir, name) in Defaults.SNAPSHOT_TARGETS + Defaults.LEGACY_SNAPSHOT_TARGETS) {
+            for (row in ownFiles(dir, name)) consider(read(row.uri))
+        }
+        for (dir in Defaults.PREVIOUS_SNAPSHOT_DIRS) {
+            for (row in ownFiles(dir)) consider(read(row.uri))
+        }
+        consider(readPrivate())
+        return best
+    }
+
+    private data class SharedFile(val uri: Uri, val name: String, val modified: Long)
+
+    /**
+     * This install's files in [relativeDir], newest first: all of them, or
+     * only those named like [name] - "history.json", or the "history (1).json"
+     * Android makes when a file of that name is already there.
+     *
+     * By owner, because that is all Android shows an app of the non-media
+     * files in shared storage: the ones this install wrote.
+     */
+    private fun ownFiles(relativeDir: String, name: String? = null): List<SharedFile> {
+        val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        var selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND " +
+            "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
+        val args = mutableListOf("$relativeDir/", context.packageName)
+        if (name != null) {
+            val base = name.substringBeforeLast('.')
+            val ext = name.substringAfterLast('.', "")
+            selection += " AND (${MediaStore.MediaColumns.DISPLAY_NAME} = ? OR " +
+                "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)"
+            args += name
+            args += "$base (%).$ext"
+        }
+        return try {
+            val out = mutableListOf<SharedFile>()
+            context.contentResolver.query(
+                files,
+                arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.DATE_MODIFIED
+                ),
+                selection, args.toTypedArray(), null
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    out += SharedFile(
+                        ContentUris.withAppendedId(files, c.getLong(0)),
+                        c.getString(1).orEmpty(),
+                        c.getLong(2)
+                    )
+                }
+            }
+            out.sortedByDescending { it.modified }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun read(uri: Uri): String? = try {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Writes [name] in [relativeDir] through MediaStore: over this install's
+     * own file when there is one, so there is only ever one, and as a new
+     * file otherwise. Any second copy of its own - two passes that raced -
+     * is removed.
+     */
+    private fun writeTo(json: String, relativeDir: String, name: String): Boolean {
+        val resolver = context.contentResolver
+        return try {
+            val own = ownFiles(relativeDir, name)
+            val target = own.firstOrNull()?.uri ?: run {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDir/")
+                }
+                // Android 10 takes a non-media file under Download only
+                // through the Downloads collection.
+                val collection = if (relativeDir.startsWith("${Environment.DIRECTORY_DOWNLOADS}/")) {
+                    MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                }
+                resolver.insert(collection, values)
+            } ?: return false
+            resolver.openOutputStream(target, "wt")?.use { out ->
+                out.write(json.toByteArray(Charsets.UTF_8))
+            } ?: return false
+            for (extra in own.drop(1)) runCatching { resolver.delete(extra.uri, null, null) }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Manual export to a user-chosen location. With a password the file is
+     * encrypted on-device (AES-256-GCM); without one it is plain JSON.
+     */
+    suspend fun exportTo(uri: Uri, password: String?): Boolean = try {
+        val json = SnapshotCodec.encode(build()).toByteArray(Charsets.UTF_8)
+        val payload = if (password.isNullOrEmpty()) {
+            json
+        } else {
+            SecureBackup.encrypt(json, password.toCharArray())
+        }
+        context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+            out.write(payload)
+        } != null
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Outcome of an import attempt, so the UI can ask for a password. */
+    sealed interface ImportResult {
+        data class Success(val imported: Int) : ImportResult
+        data object NeedsPassword : ImportResult
+        data object WrongPassword : ImportResult
+        data object Unreadable : ImportResult
+    }
+
+    /** Import from a chosen file; handles both plain and encrypted backups. */
+    suspend fun importFrom(uri: Uri, password: String?): ImportResult {
+        val bytes = try {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return ImportResult.Unreadable
+        } catch (e: Exception) {
+            return ImportResult.Unreadable
+        }
+        val json = if (SecureBackup.isEncrypted(bytes)) {
+            if (password.isNullOrEmpty()) return ImportResult.NeedsPassword
+            try {
+                SecureBackup.decrypt(bytes, password.toCharArray()).toString(Charsets.UTF_8)
+            } catch (e: SecureBackup.WrongPasswordException) {
+                return ImportResult.WrongPassword
+            } catch (e: Exception) {
+                return ImportResult.Unreadable
+            }
+        } else {
+            bytes.toString(Charsets.UTF_8)
+        }
+        return try {
+            ImportResult.Success(merge(SnapshotCodec.decode(json)))
+        } catch (e: Exception) {
+            ImportResult.Unreadable
+        }
+    }
+
+    /**
+     * Merges a snapshot: never downgrades existing rows, applies UNKNOWN rules.
+     *
+     * [importOptions] carries the snapshot's settings across too. It is what
+     * the user asks for when they restore a backup by hand, and what an
+     * untouched install wants after a reinstall - but it must be off wherever
+     * this install already holds choices of its own, because importing then
+     * silently overwrites them.
+     *
+     * [onlyIfSetupUntouched] asks again at the moment of writing. The row
+     * merge can take a while on a large history, and the person may have
+     * started setup in the meantime - ticking albums the import would then
+     * have put back the way the old phone had them.
+     */
+    suspend fun merge(
+        snapshot: SnapshotCodec.Snapshot,
+        importOptions: Boolean = true,
+        onlyIfSetupUntouched: Boolean = false
+    ): Int = Locks.ledger.withLock { mergeLocked(snapshot, importOptions, onlyIfSetupUntouched) }
+
+    private suspend fun mergeLocked(
+        snapshot: SnapshotCodec.Snapshot,
+        importOptions: Boolean,
+        onlyIfSetupUntouched: Boolean
+    ): Int {
+        // BB1.5: a snapshot exported under partial access is a fragment, not
+        // an inventory. Merging stays safe because it only ever adds rows or
+        // raises evidence, and the next scan - which only runs under full
+        // access - fills in what the fragment lacks.
+        // Every row lands in one transaction, or none does.
+        //
+        // The rows used to go in one commit at a time, and the first launch
+        // after a reinstall starts this before setup is finished - the one
+        // moment a person is most likely to swipe the app away, and a phone
+        // that is nearly full (this app's whole audience) is the one most
+        // likely to throw mid-way. Whatever had landed stayed, and the next
+        // launch saw a table that was not empty, wrote RESTORE_DONE and
+        // never looked at the snapshot again: a half-restored history with
+        // no ledger, taken for a finished one. A transaction either lands
+        // the whole snapshot or leaves the table empty for the next launch
+        // to try again. Settings go in after it - they live in DataStore,
+        // which has no part in a Room transaction.
+        val imported = db.withTransaction { mergeRows(snapshot) }
+        // Restored rows are matched to the copies still in the folder on the
+        // next run (ReattachEngine), however long this install has been
+        // running - a restore picked by hand comes after its first. That
+        // includes rows already here that this history only gave evidence.
+        if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
+            optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
+        }
+        if (importOptions && snapshot.options.isNotEmpty()) {
+            optionsRepo.importMap(withoutForeignFolders(snapshot.options), onlyIfSetupUntouched)
+        }
+        return imported
+    }
+
+    /**
+     * A backup's own folder names, less any that now hold photos or videos of
+     * the person's own - or that could not be checked. A backup file is
+     * found by name and can be written by anything, so a folder it names is
+     * held to the same check as one typed in Settings; a dropped one leaves
+     * the default in place.
+     */
+    private fun withoutForeignFolders(options: Map<String, String>): Map<String, String> {
+        val inventory = OutputInventory(context)
+        return options.filterNot { (key, value) ->
+            key in FOLDER_KEYS && value.isNotEmpty() && inventory.othersIn(value) != 0
+        }
+    }
+
+    private suspend fun mergeRows(snapshot: SnapshotCodec.Snapshot): Int {
+        var imported = 0
+        val now = System.currentTimeMillis()
+        for (raw in snapshot.items) {
+            val mapped = SnapshotCodec.applyImportMapping(raw)
+            val existing = db.items().byFingerprint(mapped.fingerprint)
+            if (existing == null) {
+                val row = ItemRow(
+                    fingerprint = mapped.fingerprint,
+                    displayName = mapped.displayName,
+                    sizeBytes = mapped.sizeBytes,
+                    dateModified = mapped.dateModified,
+                    captureAt = mapped.captureAt,
+                    mimeType = mapped.mimeType,
+                    isVideo = mapped.isVideo,
+                    state = mapped.state.name,
+                    evidence = mapped.evidence.name,
+                    goneReason = raw.goneReason?.name,
+                    skipReason = mapped.skipReason,
+                    outputName = mapped.outputName,
+                    outputBytes = mapped.outputBytes,
+                    outputSha256 = mapped.outputSha256,
+                    outputFolder = mapped.outputFolder?.name,
+                    outputRelPath = mapped.outputRelPath
+                        ?: mapped.outputFolder?.takeIf { mapped.releasedAt != null }
+                            ?.let { Defaults.legacyRelPath(it) },
+                    releasedAt = mapped.releasedAt,
+                    confirmedAt = mapped.confirmedAt,
+                    keptUri = mapped.keptUri,
+                    neverOptimise = mapped.neverOptimise,
+                    fromImport = true,
+                    updatedAt = now
+                )
+                if (db.items().insert(row) != -1L) imported++
+            } else {
+                // Upgrade evidence only; never downgrade local knowledge. A
+                // "never optimise" in the snapshot is honoured too: it only
+                // ever makes the app do less to a file, which is the one
+                // direction an import may move a choice on its own.
+                val existingEv = Evidence.parse(existing.evidence)
+                val betterEvidence = mapped.evidence.ordinal > existingEv.ordinal
+                val newlyExcluded = mapped.neverOptimise && !existing.neverOptimise
+                if (betterEvidence || newlyExcluded) {
+                    db.items().update(
+                        existing.copy(
+                            evidence = if (betterEvidence) mapped.evidence.name else existing.evidence,
+                            confirmedAt = if (betterEvidence) {
+                                mapped.confirmedAt ?: existing.confirmedAt
+                            } else {
+                                existing.confirmedAt
+                            },
+                            neverOptimise = existing.neverOptimise || mapped.neverOptimise,
+                            updatedAt = now
+                        )
+                    )
+                }
+            }
+        }
+        // The ledger goes in before anything else can act on it: a restored
+        // install must know what the cloud already has before it decides
+        // anything is missing.
+        for (l in snapshot.ledger) {
+            if (l.outputSha256.isEmpty()) continue
+            db.ledger().insert(
+                LedgerRow(
+                    outputSha256 = l.outputSha256,
+                    fingerprint = l.fingerprint,
+                    displayName = l.displayName,
+                    outputBytes = l.outputBytes,
+                    evidence = l.evidence.name,
+                    confirmedAt = l.confirmedAt
+                )
+            )
+        }
+        for (b in snapshot.batches) {
+            db.batches().insert(
+                BatchRow(
+                    releasedAt = b.releasedAt,
+                    totalBytes = b.totalBytes,
+                    folder = b.folder.name,
+                    cloudPackage = b.cloudPackage,
+                    verifiedAt = b.verifiedAt
+                )
+            )
+        }
+        return imported
+    }
+
+    private inline fun <reified T : Enum<T>> enumOr(value: String?, fallback: T): T =
+        enumOrNull<T>(value) ?: fallback
+
+    private inline fun <reified T : Enum<T>> enumOrNull(value: String?): T? {
+        if (value.isNullOrEmpty()) return null
+        return try {
+            enumValueOf<T>(value)
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+    }
+}

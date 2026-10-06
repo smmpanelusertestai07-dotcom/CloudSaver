@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 100% offline: make sure no permission for network ever merges in. -->
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+    <!-- Libraries add these for older Android or for calls this app never
+         makes: USE_FINGERPRINT (androidx.biometric) is for Android 6-8, below
+         minSdk, and the receiver-permission pair (androidx.core) is only for
+         ContextCompat.registerReceiver(..., RECEIVER_NOT_EXPORTED). -->
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"
+        tools:node="remove" />
+    <permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+    <uses-permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <!-- Granted only by the user through the system Usage Access screen; used for
+         upload verification via NetworkStatsManager (read-only, on-device). -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!-- Ente Photos, in its three builds: needed to find it, open it and
+         measure its uploads. No other app is looked up. -->
+    <queries>
+        <package android:name="io.ente.photos" />
+        <package android:name="io.ente.photos.independent" />
+        <package android:name="io.ente.photos.fdroid" />
+    </queries>
+
+    <!-- Android's own Auto Backup would copy this app's database and settings
+         to the account holder's Google Drive - without needing the internet
+         permission, because the system does the sending. For an app whose
+         first promise is that nothing leaves the phone, that is the promise
+         broken by a default. allowBackup="false" switches that off, and the
+         rules files exclude everything from a phone-to-phone transfer too, so
+         a new phone starts this app empty and is set up from the history file
+         (Documents/Ente Saver/history.json) through Restore.
+
+         hasFragileUserData: uninstalling asks "Keep app data?", so someone
+         who uninstalls by mistake and installs again keeps everything the app
+         knows. -->
+    <application
+        android:name=".EnteSaverApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:hasFragileUserData="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:taskAffinity=""
+        android:theme="@style/Theme.EnteSaver">
+
+        <!-- The one screen host. singleTop is what makes onNewIntent actually
+             run: an alert carries the screen it wants opened in an extra, and
+             with the default launch mode Android is free to hand that intent to
+             a second copy of the activity instead of the one already on screen.
+
+             fullUser, not portrait: the app follows the phone's own rotation
+             lock and turns when the person turns it. Every screen here
+             scrolls and is width-capped, so sideways costs nothing, while
+             locking to portrait would fail WCAG 1.3.4 for anyone whose phone
+             is mounted and cannot be turned - and Android 16 already ignores
+             such a lock on large screens, with the opt-out gone at API 37.
+
+             It has no launcher entry of its own: the home-screen icon is one
+             of the aliases below, so the name and icon can be chosen in
+             Settings. -->
+        <activity
+            android:name=".HostActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="fullUser"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- The components launchers remember. A launcher keeps a home-screen
+             icon, a pinned shortcut or a chosen icon pack by the component's
+             full name, so these keep the names they were first published
+             under - in the app's permanent id (app/build.gradle.kts), not the
+             code's package - and an update never leaves an icon behind.
+
+             The icon every install has had: same component name since
+             version 1, so the home-screen icon and its shortcuts survive the
+             update. Ente Saver, green. -->
+        <activity-alias
+            android:name="app.cloudsaver.MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- The name earlier versions had, chosen in Settings, Appearance
+             (AppLooks). The component keeps its old name so a choice made in
+             11.0.0 survives the update instead of leaving no icon at all. -->
+        <activity-alias
+            android:name="app.cloudsaver.AliasSaver"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name_classic"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Opens Ente Photos from the "Photos" home-screen shortcut, or Ente
+             Saver's install buttons when Ente is not there. Shows nothing. -->
+        <activity
+            android:name=".OpenEnteActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- The same, under the name a "Photos" shortcut pinned before 12.0
+             points at. -->
+        <activity-alias
+            android:name="app.cloudsaver.OpenEnteActivity"
+            android:exported="true"
+            android:targetActivity=".OpenEnteActivity" />
+
+        <!-- Ente Saver's icon pack. The pack itself is res/xml/appfilter.xml;
+             this screen shows nothing. Launchers find it through the actions
+             on the alias below, which keeps the name it was first published
+             under, so a pack icon chosen before 12.0 stays chosen. -->
+        <activity
+            android:name=".IconPackActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+        <activity-alias
+            android:name="app.cloudsaver.IconPackActivity"
+            android:exported="true"
+            android:icon="@drawable/iconpack_photos"
+            android:label="@string/icon_pack_name"
+            android:targetActivity=".IconPackActivity">
+            <intent-filter>
+                <action android:name="org.adw.launcher.THEMES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.novalauncher.THEME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.teslacoilsw.launcher.THEME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.gau.go.launcherex.theme" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.anddoes.launcher.THEME" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- WorkManager foreground service used while compressing.
+             mediaProcessing on API 35+, dataSync on API 34, no type needed below. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync|mediaProcessing"
+            tools:node="merge" />
+
+        <!-- WorkManager is started by the app itself (EnteSaverApp), with a
+             worker factory that knows the workers' names from before 12.0. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <!-- Library parts this app never uses: Room's cross-process
+             invalidation (one process here) and WorkManager's adb-only
+             diagnostics receiver. -->
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            tools:node="remove" />
+        <receiver
+            android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver"
+            tools:node="remove" />
+
+        <!-- "Mute for 7 days" on an alert. Not exported: only our own
+             PendingIntent ever fires it. -->
+        <receiver
+            android:name=".util.AlertActions"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.entesaver.MUTE_ALERTS" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

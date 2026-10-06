@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup and transfer rules: nothing goes, either way.
+  allowBackup="false" switches off the cloud backup, but on some phones it
+  does not stop a phone-to-phone transfer from copying an app's private
+  files, so every place this app keeps anything is excluded here as well.
+  A transferred database would point at the old phone's files; a new phone
+  is set up from the history file instead (Documents/Ente Saver/history.json,
+  which a transfer copies along with the person's other documents) through
+  Restore on the first setup screen.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

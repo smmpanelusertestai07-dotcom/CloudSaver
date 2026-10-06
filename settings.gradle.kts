@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CloudSaver"
-include(":cloudsaver")
+rootProject.name = "EnteSaver"
+include(":app")

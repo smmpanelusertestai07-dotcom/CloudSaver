@@ -1,0 +1,77 @@
+package app.entesaver.media
+
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
+import android.media.MediaFormat
+import app.entesaver.core.logic.MediaSettings
+
+/**
+ * What this phone's own encoder chips can do.
+ *
+ * Only hardware encoders count. A software encoder can produce the same file,
+ * but on a budget phone it takes many times longer and runs the phone hot,
+ * and this app's first promise is that nobody notices it working.
+ */
+object EncoderCaps {
+
+    const val MIME_HEVC = MediaFormat.MIMETYPE_VIDEO_HEVC
+    const val MIME_HEIC = MediaFormat.MIMETYPE_IMAGE_ANDROID_HEIC
+
+    private val codecs: List<MediaCodecInfo> by lazy {
+        runCatching { MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.toList() }
+            .getOrDefault(emptyList())
+    }
+
+    /** Hardware encoders for [mime], best first as the phone lists them. */
+    fun hardwareEncoders(mime: String): List<MediaCodecInfo> = codecs.filter { info ->
+        info.isEncoder &&
+            info.supportedTypes.any { it.equals(mime, ignoreCase = true) } &&
+            runCatching { info.isHardwareAccelerated && !info.isSoftwareOnly }.getOrDefault(false)
+    }
+
+    /**
+     * True when a hardware HEVC encoder takes a video of this size and frame
+     * rate. Either orientation is accepted: encoders often state limits for
+     * landscape only and rotate a portrait frame themselves.
+     */
+    fun hevcFits(width: Int, height: Int, fps: Float): Boolean =
+        hardwareEncoders(MIME_HEVC).any { info ->
+            runCatching {
+                val video = info.getCapabilitiesForType(MIME_HEVC).videoCapabilities
+                val rate = fps.toDouble().coerceAtLeast(1.0)
+                video.areSizeAndRateSupported(width, height, rate) ||
+                    video.areSizeAndRateSupported(height, width, rate)
+            }.getOrDefault(false)
+        }
+
+    /**
+     * Whether a video [width] x [height] at [fps] is made at 1080p instead:
+     * above 1080p only where a hardware encoder takes the size - a budget
+     * chip that stops at 1080p would otherwise encode in software, for hours
+     * - and never on the smallest phones ([smallestPhone]). The one rule the
+     * compressor applies and Settings and About describe.
+     */
+    fun holdsToFullHd(width: Int, height: Int, fps: Float, smallestPhone: Boolean): Boolean =
+        maxOf(width, height) > MediaSettings.FULL_HD && (smallestPhone || !anyHardwareFits(width, height, fps))
+
+    /**
+     * True when some hardware video encoder - H.264 or HEVC - takes this size
+     * and frame rate. A budget phone's chip often stops at 1080p; asking it
+     * for more ends in a software encode or a failed one.
+     */
+    fun anyHardwareFits(width: Int, height: Int, fps: Float): Boolean =
+        listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MIME_HEVC).any { mime ->
+            hardwareEncoders(mime).any { info ->
+                runCatching {
+                    val video = info.getCapabilitiesForType(mime).videoCapabilities
+                    val rate = fps.toDouble().coerceAtLeast(1.0)
+                    video.areSizeAndRateSupported(width, height, rate) ||
+                        video.areSizeAndRateSupported(height, width, rate)
+                }.getOrDefault(false)
+            }
+        }
+
+    /** A hardware encoder HEIC can be written with: a HEIC one, or HEVC. */
+    fun hasHardwareHeic(): Boolean =
+        hardwareEncoders(MIME_HEIC).isNotEmpty() || hardwareEncoders(MIME_HEVC).isNotEmpty()
+}
