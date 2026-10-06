@@ -7,9 +7,9 @@ import androidx.core.content.edit
 import app.entesaver.R
 
 /**
- * The name Ente Saver wears on the home screen: "Ente Saver", or "CloudSaver"
- * - the name earlier versions had, for anyone who knows it by that - always
- * with the one Ente Saver icon.
+ * The name Ente Saver wears on the home screen: "Ente Saver", or a plain
+ * description of what it does - "Storage Saver", "Cloud Saver", "Photo
+ * Saver" - always with the one Ente Saver icon.
  *
  * Each look is a launcher alias in the manifest; exactly one is switched on.
  * A switch is not made the moment it is chosen: turning off the alias the
@@ -19,9 +19,16 @@ import app.entesaver.R
  */
 object AppLooks {
 
-    enum class Look(val alias: String, val nameRes: Int) {
-        ENTE_SAVER(".MainActivity", R.string.app_name),
-        CLASSIC(".AliasSaver", R.string.app_name_classic)
+    /**
+     * [component] is the alias's full class name, exactly as the manifest
+     * declares it. Launchers hold these names, so none ever changes; the two
+     * published before 12.0 are in the app's permanent id.
+     */
+    enum class Look(val component: String, val nameRes: Int) {
+        ENTE_SAVER("app.cloudsaver.MainActivity", R.string.app_name),
+        STORAGE_SAVER("app.entesaver.AliasStorageSaver", R.string.app_name_storage),
+        CLOUD_SAVER("app.cloudsaver.AliasSaver", R.string.app_name_cloud),
+        PHOTO_SAVER("app.entesaver.AliasPhotoSaver", R.string.app_name_photo)
     }
 
     /** The look every install starts with: the one alias enabled in the manifest. */
@@ -30,8 +37,7 @@ object AppLooks {
     private const val PREFS = "looks"
     private const val KEY_PENDING = "pending"
 
-    private fun component(context: Context, look: Look) =
-        ComponentName(context.packageName, context.packageName + look.alias)
+    private fun component(context: Context, look: Look) = ComponentName(context.packageName, look.component)
 
     /**
      * Makes sure the app has a home-screen icon at all. If every alias is

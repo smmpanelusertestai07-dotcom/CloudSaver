@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -26,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -44,16 +42,15 @@ private val SHORTCUT_LABELS = listOf(
 
 /**
  * The gallery icon Ente is given - by the icon pack and by the shortcut
- * alike, so the two never disagree about what Ente looks like.
+ * alike, so the two never disagree about what Ente looks like. The picture
+ * is round with clear corners already, so it is shown as it is.
  */
 @Composable
 fun PhotosIcon(size: Dp = 52.dp) {
     Image(
         painterResource(R.drawable.iconpack_photos),
         contentDescription = null,
-        modifier = Modifier
-            .size(size)
-            .clip(RoundedCornerShape(percent = 24))
+        modifier = Modifier.size(size)
     )
 }
 

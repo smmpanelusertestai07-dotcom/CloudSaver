@@ -1,13 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Background of the Photos icon: Ente Photos' flat green, #08C225.
+    Background of the Photos icon (the home-screen shortcut, and the icon
+    pack's picture): Ente Photos' green, #08C225, lit from the top left like
+    Ente Saver's own icon.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF08C225"
-        android:pathData="M0,0h108v108h-108z" />
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="30"
+                android:startY="14"
+                android:endX="80"
+                android:endY="96">
+                <item android:offset="0" android:color="#FF22D84B" />
+                <item android:offset="0.5" android:color="#FF08C225" />
+                <item android:offset="1" android:color="#FF06A51F" />
+            </gradient>
+        </aapt:attr>
+    </path>
 </vector>

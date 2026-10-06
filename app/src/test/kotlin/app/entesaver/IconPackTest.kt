@@ -1,7 +1,11 @@
 package app.entesaver
 
 import app.entesaver.util.AppLooks
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
 import java.io.File
+import java.nio.ByteBuffer
+import java.util.zip.Inflater
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -39,7 +43,7 @@ class IconPackTest {
     @Test
     fun `every look is a launcher alias of the one real activity`() {
         assertEquals(
-            AppLooks.Look.entries.map { appId + it.alias }.toSet(),
+            AppLooks.Look.entries.map { it.component }.toSet(),
             lookAliases.map { it.getAttribute("android:name") }.toSet()
         )
         for (alias in lookAliases) {
@@ -53,10 +57,10 @@ class IconPackTest {
     @Test
     fun `a fresh install shows exactly one icon - the default look, under the old name`() {
         val enabled = lookAliases.filter { it.getAttribute("android:enabled") != "false" }
-        assertEquals(listOf(appId + AppLooks.DEFAULT.alias), enabled.map { it.getAttribute("android:name") })
+        assertEquals(listOf(AppLooks.DEFAULT.component), enabled.map { it.getAttribute("android:name") })
         // The old activity name: home screen icons and shortcuts made before
         // the update keep pointing at something that exists.
-        assertEquals(".MainActivity", AppLooks.DEFAULT.alias)
+        assertEquals("$appId.MainActivity", AppLooks.DEFAULT.component)
     }
 
     @Test
@@ -115,6 +119,23 @@ class IconPackTest {
             File("src/main/res/xml/drawable.xml").readText(),
             File("src/main/assets/drawable.xml").readText()
         )
+    }
+
+    @Test
+    fun `the pack's Ente icon is round, at the size icon packs ship`() {
+        // One PNG, unscaled (drawable-nodpi), 256 px square: crisp at the
+        // largest launcher icon size, and a launcher scales it down.
+        val icon = Rgba.read(File("src/main/res/drawable-nodpi/iconpack_photos.png"))
+        assertEquals(256, icon.width)
+        assertEquals(256, icon.height)
+        fun alpha(x: Int, y: Int) = icon.alpha(x, y)
+        // Round: clear corners, a solid disc, edge to edge but for a thin margin.
+        for ((x, y) in listOf(0 to 0, 255 to 0, 0 to 255, 255 to 255, 30 to 30, 225 to 225)) {
+            assertEquals("corner ($x, $y) must be clear", 0, alpha(x, y))
+        }
+        for ((x, y) in listOf(128 to 128, 128 to 12, 12 to 128, 243 to 128, 128 to 243)) {
+            assertEquals("disc ($x, $y) must be solid", 255, alpha(x, y))
+        }
         val keep = File("src/main/res/raw/keep.xml").readText()
         assertTrue(keep.contains("@drawable/iconpack_*"))
         assertTrue(keep.contains("@xml/appfilter"))
@@ -123,11 +144,105 @@ class IconPackTest {
 
     @Test
     fun `Ente Saver has one icon, and only its name can change`() {
-        assertEquals(listOf(".MainActivity", ".AliasSaver"), AppLooks.Look.entries.map { it.alias })
-        assertEquals(listOf(R.string.app_name, R.string.app_name_classic), AppLooks.Look.entries.map { it.nameRes })
+        assertEquals(
+            listOf(R.string.app_name, R.string.app_name_storage, R.string.app_name_cloud, R.string.app_name_photo),
+            AppLooks.Look.entries.map { it.nameRes }
+        )
+        // A name chosen before 12.1 keeps its component: "CloudSaver" became "Cloud Saver".
+        assertEquals("$appId.AliasSaver", AppLooks.Look.CLOUD_SAVER.component)
         for (alias in lookAliases) {
             assertEquals("@mipmap/ic_launcher", alias.getAttribute("android:icon"))
+            assertEquals("@mipmap/ic_launcher_round", alias.getAttribute("android:roundIcon"))
         }
         assertTrue(File("src/main/res/mipmap-anydpi/ic_shortcut_photos.xml").isFile)
+    }
+
+    @Test
+    fun `every icon is drawn to its platform size`() {
+        fun vector(name: String) = xml("src/main/res/drawable/$name.xml")
+        // Adaptive-icon layers: the 108 dp canvas the launcher masks.
+        for (layer in listOf(
+            "ic_launcher_background", "ic_launcher_foreground", "ic_launcher_monochrome",
+            "shortcut_photos_background", "shortcut_photos_foreground",
+            "shortcut_glyph_background", "shortcut_free_up_foreground", "shortcut_activity_foreground"
+        )) {
+            val v = vector(layer)
+            assertEquals(layer, "108dp", v.getAttribute("android:width"))
+            assertEquals(layer, "108dp", v.getAttribute("android:height"))
+        }
+        // The status-bar icon: 24 dp, in white for the system to tint.
+        val stat = vector("ic_stat_saver")
+        assertEquals("24dp", stat.getAttribute("android:width"))
+        assertEquals("24dp", stat.getAttribute("android:height"))
+        // Launcher icons, round ones included, and the long-press shortcuts
+        // are adaptive, so each launcher gives them its own shape.
+        for (icon in listOf("ic_launcher", "ic_launcher_round", "ic_shortcut_photos", "ic_shortcut_free_up", "ic_shortcut_activity")) {
+            assertEquals(icon, "adaptive-icon", xml("src/main/res/mipmap-anydpi/$icon.xml").tagName)
+        }
+        val shortcuts = File("src/main/res/xml/shortcuts.xml").readText()
+        assertTrue(shortcuts.contains("@mipmap/ic_shortcut_free_up"))
+        assertTrue(shortcuts.contains("@mipmap/ic_shortcut_activity"))
+    }
+}
+
+/**
+ * Just enough PNG to read an 8-bit RGBA picture's transparency: the platform
+ * image readers are not on a unit test's classpath.
+ */
+private class Rgba(val width: Int, val height: Int, private val pixels: ByteArray) {
+
+    fun alpha(x: Int, y: Int): Int = pixels[(y * width + x) * 4 + 3].toInt() and 0xFF
+
+    companion object {
+        fun read(file: File): Rgba {
+            val input = DataInputStream(file.inputStream().buffered())
+            input.skipBytes(8)
+            var width = 0
+            var height = 0
+            val data = ByteArrayOutputStream()
+            while (true) {
+                val length = input.readInt()
+                val type = String(ByteArray(4).also { input.readFully(it) }, Charsets.US_ASCII)
+                val body = ByteArray(length).also { input.readFully(it) }
+                input.readInt()
+                when (type) {
+                    "IHDR" -> {
+                        width = ByteBuffer.wrap(body, 0, 4).int
+                        height = ByteBuffer.wrap(body, 4, 4).int
+                        check(body[8].toInt() == 8 && body[9].toInt() == 6) { "8-bit RGBA expected" }
+                    }
+                    "IDAT" -> data.write(body)
+                    "IEND" -> break
+                }
+            }
+            val stride = width * 4
+            val raw = ByteArray((stride + 1) * height)
+            Inflater().apply { setInput(data.toByteArray()); inflate(raw); end() }
+            val out = ByteArray(stride * height)
+            for (y in 0 until height) {
+                val filter = raw[y * (stride + 1)].toInt()
+                for (i in 0 until stride) {
+                    val x = raw[y * (stride + 1) + 1 + i].toInt() and 0xFF
+                    val a = if (i >= 4) out[y * stride + i - 4].toInt() and 0xFF else 0
+                    val b = if (y > 0) out[(y - 1) * stride + i].toInt() and 0xFF else 0
+                    val c = if (i >= 4 && y > 0) out[(y - 1) * stride + i - 4].toInt() and 0xFF else 0
+                    val value = when (filter) {
+                        0 -> x
+                        1 -> x + a
+                        2 -> x + b
+                        3 -> x + (a + b) / 2
+                        else -> {
+                            val p = a + b - c
+                            val pa = Math.abs(p - a)
+                            val pb = Math.abs(p - b)
+                            val pc = Math.abs(p - c)
+                            x + if (pa <= pb && pa <= pc) a else if (pb <= pc) b else c
+                        }
+                    }
+                    out[y * stride + i] = value.toByte()
+                }
+            }
+            return Rgba(width, height, out)
+        }
     }
 }

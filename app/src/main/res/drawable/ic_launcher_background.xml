@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Launcher background: Ente Photos' own green, #08C225, lit from above -
-    a touch lighter at the top (#09D328) and a touch deeper at the bottom
-    (#07B122), so the white cloud sits on it the way a sticker sits on paper.
+    Launcher background: Ente's green (#0BB842 at the middle), lit from the
+    top left - a fresher #1AD457 there, a deeper #078F35 at the bottom right -
+    so the white mark sits on it with some depth instead of on a flat sheet.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -14,12 +14,13 @@
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="54"
-                android:startY="18"
-                android:endX="54"
-                android:endY="90">
-                <item android:offset="0" android:color="#FF09D328" />
-                <item android:offset="1" android:color="#FF07B122" />
+                android:startX="30"
+                android:startY="14"
+                android:endX="80"
+                android:endY="96">
+                <item android:offset="0" android:color="#FF1AD457" />
+                <item android:offset="0.55" android:color="#FF0BB842" />
+                <item android:offset="1" android:color="#FF078F35" />
             </gradient>
         </aapt:attr>
     </path>
