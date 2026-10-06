@@ -426,6 +426,8 @@
     <string name="history_permanent">Deleted permanently - cannot be restored</string>
     <string name="history_restore">Restore these</string>
     <string name="history_unknown">Check your gallery\'s trash</string>
+    <string name="history_show_files">Show files</string>
+    <string name="history_hide_files">Hide files</string>
 
     <!-- kept light copies -->
     <string name="kept_title">Kept light copies</string>
@@ -464,8 +466,9 @@
     <string name="opt_group_privacy">Alerts and privacy</string>
     <string name="opt_group_help">Help and info</string>
     <string name="help_entry">Guides, FAQs, privacy and what version you are on</string>
-    <string name="a11y_expanded">Open</string>
-    <string name="a11y_collapsed">Closed</string>
+    <string name="a11y_expanded">Expanded</string>
+    <string name="a11y_collapsed">Collapsed</string>
+    <string name="a11y_needs_attention">Needs attention</string>
     <string name="opt_group_advanced">Advanced</string>
     <string name="opt_advanced_show">Show advanced settings</string>
     <string name="opt_advanced_hide">Hide advanced settings</string>
@@ -897,6 +900,7 @@
     <string name="onb1_text">Ente Saver needs to read your gallery to find photos and videos. Choose \&quot;Allow all\&quot;.</string>
     <string name="onb1_grant">Grant permission</string>
     <string name="onb1_appinfo">Not asking? Open app info</string>
+    <string name="onb1_blocked">Android will not ask again. Allow photos and videos in app info, then come back here.</string>
     <string name="onb2_title">Notifications</string>
     <string name="onb2_text">A quiet notification shows while Ente Saver is working, and a rare alert when something needs you \u2014 at most once a day, and less often if you leave it. Everything still works if you decline.</string>
     <string name="onb2_grant">Allow</string>
@@ -1126,6 +1130,7 @@
     <string name="list_sort_oldest">Oldest</string>
     <string name="list_sort_saved">Most saved</string>
     <string name="list_exit_selection">Stop selecting</string>
+    <string name="list_select">Select</string>
     <string name="list_selected_count">%1$d selected</string>
     <string name="list_select_all_matching">Select all (%1$d)</string>
     <string name="list_deselect_all">Deselect all</string>

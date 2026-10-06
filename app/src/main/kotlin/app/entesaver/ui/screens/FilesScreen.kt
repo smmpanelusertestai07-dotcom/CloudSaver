@@ -48,6 +48,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -668,14 +670,22 @@ private fun FilesRow(
             .padding(vertical = 5.dp)
             .combinedClickable(
                 onClick = { if (selected != null) onToggle() else onOpenDetail() },
+                // Said aloud by a screen reader, so the gesture that starts a
+                // selection is offered rather than left to be discovered.
+                onLongClickLabel = stringResource(R.string.list_select),
                 onLongClick = onLongPress
             )
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (selected != null) {
+                // Named after the file it selects, as on every other list. An
+                // unlabelled checkbox in a column of them is read out as
+                // "checkbox, not ticked" again and again, with nothing to say
+                // which photo it means.
                 Checkbox(
                     checked = selected,
-                    onCheckedChange = { onToggle() }
+                    onCheckedChange = { onToggle() },
+                    modifier = Modifier.semantics { contentDescription = row.displayName }
                 )
                 Spacer(Modifier.width(4.dp))
             }

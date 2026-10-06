@@ -387,8 +387,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Which of the three groups the Activity screen is showing. */
     val activityFilter = MutableStateFlow<ActivityLog.Group?>(null)
 
+    /**
+     * Null until the database has answered for the first time. The screen
+     * opened on "Nothing logged yet" for the moment the read took - the one
+     * thing it must never say to someone looking for what happened overnight.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val activityRows: StateFlow<List<ActivityRow>> = activityFilter
+    val activityRows: StateFlow<List<ActivityRow>?> = activityFilter
         .flatMapLatest { group ->
             if (group == null) {
                 db.activity().recentFlow(ActivityLog.RETENTION_ROWS)
@@ -409,7 +414,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 atMsOf = { it.atMs }
             )
         }
-        .stateIn(viewModelScope, screenLocal, emptyList())
+        .stateIn(viewModelScope, screenLocal, null)
 
     /** Unread dot on Home: anything logged since the screen was last opened. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -1053,7 +1058,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- kept light copies (v2.4 J2) ----------------------------------------
 
-    val keptCopies = MutableStateFlow<List<ItemRow>>(emptyList())
+    /**
+     * Null until the first read has answered, so the screen can show its
+     * loading rows rather than "No kept copies" for the moment the read takes.
+     */
+    val keptCopies = MutableStateFlow<List<ItemRow>?>(null)
 
     fun loadKeptCopies() {
         viewModelScope.launch(Dispatchers.IO) {

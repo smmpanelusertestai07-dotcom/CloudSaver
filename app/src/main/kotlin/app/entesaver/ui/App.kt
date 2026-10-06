@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
@@ -38,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -352,6 +355,7 @@ private fun MainNav(vm: AppViewModel) {
             LockedScreen(
                 modifier = Modifier
                     .padding(padding)
+                    .consumeWindowInsets(padding)
                     .then(cutoutSides)
                     .fillMaxSize()
                     .wrapContentWidth()
@@ -377,8 +381,15 @@ private fun MainNav(vm: AppViewModel) {
                 // turned sideways it stops a line of text running the full
                 // width of the glass, which is unreadable and is the one way
                 // the same app looks like a different app on a bigger screen.
+                //
+                // The Scaffold's padding is consumed as well as applied. Only
+                // applied, the insets it stands for were still unclaimed below
+                // it, so a screen that pads for the keyboard with imePadding
+                // counted the navigation bar a second time on top of it, and
+                // its field sat a bar's height higher than the keyboard.
                 modifier = Modifier
                     .padding(padding)
+                    .consumeWindowInsets(padding)
                     .then(cutoutSides)
                     .fillMaxSize()
                     .wrapContentWidth()
@@ -428,9 +439,13 @@ private fun RowScope.TabItem(
     labelRes: Int,
     badge: Boolean = false
 ) {
+    // The dot was drawn and never said. A screen reader heard "Settings, tab"
+    // whether or not something there needed fixing.
+    val attention = stringResource(R.string.a11y_needs_attention)
     NavigationBarItem(
         selected = current == route,
         onClick = { nav.goTo(route) },
+        modifier = if (badge) Modifier.semantics { stateDescription = attention } else Modifier,
         colors = NavigationBarItemDefaults.colors(
             selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
             selectedTextColor = MaterialTheme.colorScheme.onSurface,

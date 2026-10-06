@@ -22,6 +22,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +44,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +73,7 @@ import app.entesaver.ui.components.ListActionBar
 import app.entesaver.ui.components.ListFilter
 import app.entesaver.ui.components.ListOption
 import app.entesaver.ui.components.ListScreenScaffold
+import app.entesaver.ui.components.ListSkeleton
 import app.entesaver.ui.components.ListTags
 import app.entesaver.ui.components.RemovalWarningCard
 import app.entesaver.ui.components.SearchEmptyState
@@ -111,7 +117,9 @@ private fun Page(
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() }
             )
         }
         content()
@@ -879,9 +887,15 @@ private fun detailLine(row: ItemRow): String {
  */
 @Composable
 fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
-    val batches by rvm.history.collectAsStateWithLifecycle(emptyList())
+    // Null until the database has answered. Starting from an empty list drew
+    // "Nothing freed up yet" for the moment the read took, under the eyes of
+    // someone who had come here precisely because they had freed something up.
+    val loaded by rvm.history.collectAsStateWithLifecycle(null)
     val items by rvm.historyItems.collectAsStateWithLifecycle()
     val pending by rvm.pendingIntent.collectAsStateWithLifecycle()
+    // Which batch has its files showing. One at a time, because the view
+    // model holds the files of one batch at a time.
+    var openBatch by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -891,6 +905,11 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
     }
 
     Page(nav, stringResource(R.string.reclaim_history)) {
+        val batches = loaded
+        if (batches == null) {
+            ListSkeleton(modifier = Modifier.padding(16.dp), rows = 3)
+            return@Page
+        }
         if (batches.isEmpty()) {
             // Nothing here scrolled before. The mark, the heading and the
             // body with their padding are taller than a phone held sideways
@@ -918,9 +937,26 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                 .testTag(ListTags.ROWS)
         ) {
             items(batches, key = { it.id }) { batch ->
+                val open = openBatch == batch.id
+                val state = stringResource(if (open) R.string.a11y_expanded else R.string.a11y_collapsed)
+                // The files and the Restore button live inside the card, and
+                // nothing on a closed card said so: it read as a finished
+                // line of history, and the one way to put a batch back was
+                // behind a tap nobody had a reason to make. The card now says
+                // it opens, in words and with the same chevron as every other
+                // row that folds open, and says which way it is to TalkBack.
                 AppCard(
-                    modifier = Modifier.padding(vertical = 5.dp),
-                    onClick = { rvm.loadBatch(batch) }
+                    modifier = Modifier
+                        .padding(vertical = 5.dp)
+                        .semantics { stateDescription = state },
+                    onClick = {
+                        if (open) {
+                            openBatch = null
+                        } else {
+                            openBatch = batch.id
+                            rvm.loadBatch(batch)
+                        }
+                    }
                 ) {
                     Text(
                         Formats.dateTime(batch.atMs),
@@ -954,11 +990,30 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                         },
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            stringResource(
+                                if (open) R.string.history_hide_files else R.string.history_show_files
+                            ),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Icon(
+                            if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
                     // Every visible card filtered the whole loaded batch list
                     // again on every recomposition; it changes only when the
                     // loaded items do.
-                    val shown = remember(items, batch.id) {
-                        items.filter { it.batchId == batch.id }
+                    val shown = remember(items, batch.id, open) {
+                        if (open) items.filter { it.batchId == batch.id } else emptyList()
                     }
                     for (item in shown) {
                         KeyValueRow(

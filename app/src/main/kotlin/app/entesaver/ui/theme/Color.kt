@@ -18,13 +18,28 @@ import androidx.compose.ui.graphics.Color
  * Content colours for the brand gradient.
  *
  * The hero banner is the one surface whose colour does not change with the
- * theme, so its foreground cannot come from the colour scheme. These three
- * live here rather than as Color.White literals inside screens, so the app
- * has exactly one file that names a colour.
+ * theme, so its foreground cannot come from the colour scheme. These live
+ * here rather than as Color.White literals inside screens, so the app has
+ * exactly one file that names a colour.
+ *
+ * The muted white carries small supporting lines, so it has to clear 4.5:1
+ * once it is blended over the lighter end of the gradient. At 90% it came to
+ * 4.45:1 - a label that looked fine and was just under what small text
+ * needs. The faint one is for icons only, which need 3:1.
  */
 val OnBrand = Color(0xFFFFFFFF)
-val OnBrandMuted = Color(0xE6FFFFFF)
+val OnBrandMuted = Color(0xF0FFFFFF)
 val OnBrandFaint = Color(0xBFFFFFFF)
+
+/**
+ * The fill behind a tile or a badge inside the hero banner.
+ *
+ * Darker than the banner, not lighter. A white wash at 14 to 18% lifted the
+ * green under the figures towards the white text on it, and the pair fell to
+ * under 4:1; a light shade of black deepens it instead, so the white words on
+ * the tile read better than the ones beside it rather than worse.
+ */
+val BrandTile = Color(0x26000000)
 
 /**
  * Ente's own green, for Ente's tile while Ente is not on the phone - once it

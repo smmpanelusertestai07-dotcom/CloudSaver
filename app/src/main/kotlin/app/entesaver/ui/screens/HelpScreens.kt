@@ -60,6 +60,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -118,7 +121,9 @@ internal fun HelpPage(
                 title,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() }
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -259,8 +264,15 @@ fun HelpFaqScreen(nav: NavHostController) {
                 targetValue = if (expanded) 0f else -90f,
                 label = "faqArrow"
             )
+            // The turning arrow is the only sign an answer is open, and a
+            // screen reader cannot see it turn: a question read the same
+            // before and after the tap, with the answer arriving unannounced
+            // underneath it.
+            val state = stringResource(if (expanded) R.string.a11y_expanded else R.string.a11y_collapsed)
             AppCard(
-                modifier = Modifier.padding(vertical = 4.dp),
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .semantics { stateDescription = state },
                 onClick = { open = if (expanded) -1 else index }
             ) {
                 Row(

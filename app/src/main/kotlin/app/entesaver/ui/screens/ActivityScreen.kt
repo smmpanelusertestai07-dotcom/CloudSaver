@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,6 +68,7 @@ import app.entesaver.ui.AppViewModel
 import app.entesaver.ui.Routes
 import app.entesaver.ui.components.AppCard
 import app.entesaver.ui.components.EmptyState
+import app.entesaver.ui.components.ListSkeleton
 import app.entesaver.ui.components.ListTags
 import app.entesaver.ui.components.SegmentedChoice
 import app.entesaver.ui.goTo
@@ -81,7 +84,9 @@ import app.entesaver.util.Formats
  */
 @Composable
 fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
-    val rows by vm.activityRows.collectAsStateWithLifecycle()
+    // Null until the log has been read once; see the loading rows below.
+    val loaded by vm.activityRows.collectAsStateWithLifecycle()
+    val rows = loaded.orEmpty()
     val filter by vm.activityFilter.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
 
@@ -111,7 +116,9 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                 stringResource(R.string.nav_activity),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() }
             )
             // Export and Clear belong in an overflow: they are occasional, and
             // as buttons they sat above the list competing with it.
@@ -210,7 +217,11 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                 )
             }
 
-            if (rows.isEmpty()) {
+            if (loaded == null) {
+                // Not read yet. The empty state here would be a claim -
+                // "Nothing logged yet" - made before the log was opened.
+                item(key = "loading") { ListSkeleton(rows = 4) }
+            } else if (rows.isEmpty()) {
                 item(key = "empty") {
                     // An empty list means two completely different things here
                     // and only one of them was ever said. With a group chosen,

@@ -55,7 +55,11 @@ import app.entesaver.util.Formats
  */
 @Composable
 fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
-    val rows by vm.keptCopies.collectAsStateWithLifecycle()
+    // Null is "not read yet", drawn as the loading rows. Read as an empty
+    // list, it put "No kept copies" on screen for the moment the database
+    // took to answer, in front of someone who had just kept some.
+    val loaded by vm.keptCopies.collectAsStateWithLifecycle()
+    val rows = loaded.orEmpty()
     val options by vm.options.collectAsStateWithLifecycle()
     var confirm by remember { mutableStateOf<ItemRow?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -103,7 +107,7 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
                 onAction = { confirmMany = true }
             )
         },
-        loading = false,
+        loading = loaded == null,
         isEmpty = shown.isEmpty(),
         emptyContent = {
             // An empty list is the one state with no list to scroll, and the

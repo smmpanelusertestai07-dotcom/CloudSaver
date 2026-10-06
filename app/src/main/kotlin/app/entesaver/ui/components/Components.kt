@@ -59,6 +59,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -530,7 +531,12 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
         text,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 4.dp, top = 8.dp, bottom = 6.dp)
+        modifier = modifier
+            .padding(start = 4.dp, top = 8.dp, bottom = 6.dp)
+            // A heading to a screen reader as well as to the eye, so someone
+            // using TalkBack can jump from group to group instead of reading
+            // every row of a long settings page to find the one they want.
+            .semantics { heading() }
     )
 }
 
@@ -789,7 +795,10 @@ fun StateBadge(text: String, tone: BadgeTone, modifier: Modifier = Modifier) {
         BadgeTone.NEUTRAL -> scheme.surfaceContainerHighest to scheme.onSurfaceVariant
         BadgeTone.PROGRESS -> scheme.primaryContainer to scheme.onPrimaryContainer
         BadgeTone.SUCCESS -> scheme.secondaryContainer to scheme.onSecondaryContainer
-        BadgeTone.MUTED -> scheme.surfaceContainerHigh to scheme.outline
+        // The outline colour is a rule's colour, not a word's: on this fill it
+        // was 3.7:1, under what text this small needs. Muted is said by the
+        // paler pill; the words on it stay readable.
+        BadgeTone.MUTED -> scheme.surfaceContainerHigh to scheme.onSurfaceVariant
     }
     Text(
         text = text,

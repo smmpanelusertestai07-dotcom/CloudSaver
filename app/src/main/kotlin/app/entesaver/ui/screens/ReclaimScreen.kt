@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,12 +51,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,6 +77,7 @@ import app.entesaver.ui.AppViewModel
 import app.entesaver.ui.ReclaimViewModel
 import app.entesaver.ui.Routes
 import app.entesaver.ui.components.AppCard
+import app.entesaver.ui.components.CardShape
 import app.entesaver.ui.components.EmptyState
 import app.entesaver.ui.components.KeyValueRow
 import app.entesaver.ui.components.ListFilter
@@ -86,6 +92,7 @@ import app.entesaver.ui.components.albumFilter
 import app.entesaver.ui.components.sizeFilter
 import app.entesaver.ui.components.typeFilter
 import app.entesaver.ui.goTo
+import app.entesaver.ui.theme.Dimens
 import app.entesaver.ui.theme.TabularFigures
 import app.entesaver.util.Formats
 
@@ -188,7 +195,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 stringResource(R.string.freeup_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() }
             )
         }
 
@@ -357,18 +366,25 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 if (key.isNotEmpty()) {
                     item("h-$key") {
                         Column(Modifier.padding(top = 16.dp)) {
+                            // A finger's height at least: the box and one
+                            // line of title came to about 24 dp, and this tap
+                            // ticks every file in the album at once.
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.toggleable(
-                                    value = rows.all { it.id in selected },
-                                    onValueChange = { rvm.selectGroup(key) },
-                                    role = Role.Checkbox
-                                )
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = Dimens.TouchTarget)
+                                    .toggleable(
+                                        value = rows.all { it.id in selected },
+                                        onValueChange = { rvm.selectGroup(key) },
+                                        role = Role.Checkbox
+                                    )
                             ) {
                                 Checkbox(
                                     checked = rows.all { it.id in selected },
                                     onCheckedChange = null
                                 )
+                                Spacer(Modifier.width(12.dp))
                                 Text(
                                     pluralStringResource(
                                         R.plurals.reclaim_group_header,
@@ -429,18 +445,24 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             ) {
                 AppCard(modifier = Modifier.padding(12.dp)) {
                     if (!understood) {
+                        // The tick that unlocks removal, so it gets a whole
+                        // finger's height rather than the 24 dp of its box.
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.toggleable(
-                                value = false,
-                                onValueChange = {
-                                    justUnderstood = true
-                                    vm.setReclaimUnderstood(true)
-                                },
-                                role = Role.Checkbox
-                            )
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = Dimens.TouchTarget)
+                                .toggleable(
+                                    value = false,
+                                    onValueChange = {
+                                        justUnderstood = true
+                                        vm.setReclaimUnderstood(true)
+                                    },
+                                    role = Role.Checkbox
+                                )
                         ) {
                             Checkbox(checked = false, onCheckedChange = null)
+                            Spacer(Modifier.width(12.dp))
                             Text(
                                 stringResource(R.string.reclaim_understand),
                                 style = MaterialTheme.typography.bodySmall,
@@ -874,16 +896,35 @@ private fun ModePicker(
     Column(Modifier.padding(top = 8.dp)) {
         for (option in ReclaimRules.Mode.entries) {
             val saving = ReclaimRules.savedBytes(selected, option)
+            // Which mode is chosen was said by the card's tint alone, so a
+            // screen reader read three identical cards and someone who does
+            // not see the green well could not tell either. The card is a
+            // radio button now, and draws one. Clipped to the card's outline
+            // before the gesture, so the press does not paint a square past
+            // the rounded corners.
             AppCard(
-                modifier = Modifier.padding(vertical = 4.dp),
-                tonal = option == mode,
-                onClick = { rvm.setMode(option) }
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .clip(CardShape)
+                    .selectable(
+                        selected = option == mode,
+                        role = Role.RadioButton,
+                        onClick = { rvm.setMode(option) }
+                    ),
+                tonal = option == mode
             ) {
-                Text(
-                    modeTitle(option),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
+                // The dot sits with the title only, so the explanation under
+                // it keeps the card's full width on a narrow phone.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = option == mode, onClick = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        modeTitle(option),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 Text(
                     modeBody(option),
                     style = MaterialTheme.typography.bodySmall,
@@ -984,10 +1025,23 @@ private fun ReclaimRow(
     onToggle: () -> Unit,
     onCompare: () -> Unit
 ) {
-    AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onToggle) {
+    // The card is the checkbox, as the album header above it already is: one
+    // node that says "ticked" or "not ticked" and reads the file it means.
+    // A tap on the card and a tap on the box used to be two separate controls,
+    // and the box was announced with no name at all.
+    AppCard(
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .clip(CardShape)
+            .toggleable(
+                value = checked,
+                role = Role.Checkbox,
+                onValueChange = { onToggle() }
+            )
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = checked, onCheckedChange = { onToggle() })
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
+            Checkbox(checked = checked, onCheckedChange = null)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(
                     entry.row.displayName,
                     style = MaterialTheme.typography.bodyLarge,
