@@ -30,9 +30,10 @@ import app.entesaver.R
 import app.entesaver.util.AppLooks
 
 /**
- * Ente Saver's name on the home screen: "Ente Saver", or "CloudSaver" as earlier versions were called,
- * with the one Ente Saver icon either way. The switch happens when the app
- * goes to the background, and launchers take a moment to redraw.
+ * Ente Saver's name on the home screen - "Ente Saver", "Storage Saver",
+ * "Cloud Saver" or "Photo Saver" - with the one Ente Saver icon whichever is
+ * chosen. The switch happens when the app goes to the background, and
+ * launchers take a moment to redraw.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -64,7 +65,7 @@ fun LooksCard(chosen: AppLooks.Look, icon: ImageVector, onChoose: (AppLooks.Look
                 ) {
                     LookIcon()
                     // The choice widens to fit its name instead of breaking it
-                    // mid-word ("CloudSave / r"), which reads as a different
+                    // mid-word ("Storage Save / r"), which reads as a different
                     // name. The row wraps when two no longer fit side by side.
                     Text(
                         stringResource(look.nameRes),

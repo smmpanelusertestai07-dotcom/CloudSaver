@@ -36,9 +36,11 @@ class BrandingTest {
         Regex("""\bDocuments/CloudSaver\b"""),
         Regex("""\.cloudsaver\b"""),
         Regex("""\bcloudsaver_keep\b"""),
-        // The old name as a name: the home-screen choice, and old folder names.
+        // The old name as a name: the "Cloud Saver" home-screen choice, and
+        // old folder names.
         Regex(""""CloudSaver\w*""""),
-        Regex(""">CloudSaver</string>"""),
+        Regex(""""Cloud Saver""""),
+        Regex(""">Cloud Saver</string>"""),
         // The alias inside the release key, which is part of the key.
         Regex("""SECRET_KEY_ALIAS:-cloudsaver\b"""),
     )

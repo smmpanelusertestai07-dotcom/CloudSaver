@@ -112,7 +112,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:targetActivity=".HostActivity">
             <meta-data
                 android:name="android.app.shortcuts"
@@ -122,16 +122,52 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        <!-- The name earlier versions had, chosen in Settings, Appearance
-             (AppLooks). The component keeps its old name so a choice made in
-             11.0.0 survives the update instead of leaving no icon at all. -->
+        <!-- The other home-screen names, chosen in Settings, Appearance
+             (AppLooks); always the one Ente Saver icon. A launcher keeps a
+             chosen one by its component name, so these names are permanent
+             too. "Storage Saver": -->
+        <activity-alias
+            android:name="app.entesaver.AliasStorageSaver"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name_storage"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- "Cloud Saver". Its component keeps the name it had when this
+             choice read "CloudSaver" (11.0.0), so that choice survives. -->
         <activity-alias
             android:name="app.cloudsaver.AliasSaver"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name_classic"
-            android:roundIcon="@mipmap/ic_launcher"
+            android:label="@string/app_name_cloud"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- "Photo Saver". -->
+        <activity-alias
+            android:name="app.entesaver.AliasPhotoSaver"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name_photo"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:targetActivity=".HostActivity">
             <meta-data
                 android:name="android.app.shortcuts"

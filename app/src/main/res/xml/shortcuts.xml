@@ -12,7 +12,7 @@
     <shortcut
         android:shortcutId="free_up"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher_monochrome"
+        android:icon="@mipmap/ic_shortcut_free_up"
         android:shortcutShortLabel="@string/shortcut_free_up"
         android:shortcutLongLabel="@string/shortcut_free_up">
         <intent
@@ -25,7 +25,7 @@
     <shortcut
         android:shortcutId="activity"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher_monochrome"
+        android:icon="@mipmap/ic_shortcut_activity"
         android:shortcutShortLabel="@string/shortcut_activity"
         android:shortcutLongLabel="@string/shortcut_activity">
         <intent
