@@ -155,8 +155,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     // The count is cleared the instant OK is tapped, but the card is still
     // shrinking away at that point and was reading the live value: its last
     // frames announced a result of zero files, which is the one number that
-    // would mean the check had found nothing.
-    var lastConfirm by remember { mutableIntStateOf(0) }
+    // would mean the check had found nothing. It starts from the live value,
+    // or the card's first frame after a rotation said nothing was confirmed.
+    var lastConfirm by remember { mutableIntStateOf(confirmResult ?: 0) }
     LaunchedEffect(confirmResult) { confirmResult?.let { lastConfirm = it } }
 
     LaunchedEffect(Unit) {

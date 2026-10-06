@@ -177,20 +177,27 @@ fun OnboardingScreen(vm: AppViewModel) {
     // Refused twice, Android stops showing the question and answers every
     // later request with an instant no - so "Grant permission" became a
     // button that did nothing at all, and setup could not be finished from
-    // the step it was stuck on. The same check the Permissions screen makes:
-    // still short of full access, with Android no longer willing to explain
-    // why it is asking, means it has stopped asking. The button then says so
-    // and goes to app info, where the switch still is.
+    // the step it was stuck on. Still short of full access, with Android no
+    // longer willing to explain why it is asking, means it has stopped asking
+    // - but only once it had been willing before, or after a second no: the
+    // first question closed with Back reads exactly the same, and Android
+    // would still ask again. The button then says so and goes to app info,
+    // where the switch still is.
     val activity = LocalActivity.current
     var mediaPromptBlocked by rememberSaveable { mutableStateOf(false) }
+    var mediaRationaleBefore by rememberSaveable { mutableStateOf(false) }
+    var mediaRefusals by rememberSaveable { mutableIntStateOf(0) }
+    fun mediaRationale(): Boolean = activity != null &&
+        Permissions.mediaPermissionsToRequest().any {
+            ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
+        }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         val full = Permissions.mediaAccess(context) == Permissions.MediaAccess.FULL
-        mediaPromptBlocked = !full && activity != null &&
-            Permissions.mediaPermissionsToRequest().none {
-                ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
-            }
+        if (!full) mediaRefusals++
+        mediaPromptBlocked = !full && activity != null && !mediaRationale() &&
+            (mediaRationaleBefore || mediaRefusals >= 2)
         go(if (full) Step.ALBUMS else Step.MEDIA)
     }
 
@@ -368,9 +375,10 @@ fun OnboardingScreen(vm: AppViewModel) {
                             // the only way left once Android stops asking.
                             access == Permissions.MediaAccess.PARTIAL || blocked ->
                                 OemPages.openAppInfo(context)
-                            else -> permissionLauncher.launch(
-                                Permissions.mediaPermissionsToRequest()
-                            )
+                            else -> {
+                                mediaRationaleBefore = mediaRationale()
+                                permissionLauncher.launch(Permissions.mediaPermissionsToRequest())
+                            }
                         }
                     }
                 ) {

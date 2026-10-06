@@ -1,7 +1,9 @@
 package app.entesaver.engine
 
 import android.content.Context
+import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.Fingerprint
+import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputPaths
 import app.entesaver.core.logic.OutputRoots
@@ -39,8 +41,9 @@ class ReattachEngine(private val context: Context) {
         val o = repo.current()
         val layout = o.layout
         val entries = OutputInventory(context)
-            .query(OutputRoots.watched(layout, o.pastOutputRoots, emptyList())) ?: return
+            .query(OutputRoots.watched(layout, o.pastOutputRoots, db.items().restoredRoots())) ?: return
 
+        val now = System.currentTimeMillis()
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
             val row = db.items().byFingerprint(fp) ?: continue
@@ -50,21 +53,37 @@ class ReattachEngine(private val context: Context) {
             // found; leaving it would count twice against the space limit.
             row.stagePath?.let { runCatching { File(it).delete() } }
 
+            val restored = row.state == ItemState.UNKNOWN.name
+            val sameCopy = restored && entry.name == row.outputName && entry.bytes == row.outputBytes
+            val evidence = ReattachRules.evidenceAfterAdopt(row.state, Evidence.parse(row.evidence), sameCopy)
             db.items().update(
                 row.copy(
                     state = ReattachRules.state.name,
-                    evidence = ReattachRules.evidence.name,
+                    evidence = evidence.name,
+                    goneReason = null,
+                    confirmedAt = if (evidence == Evidence.NONE) null else row.confirmedAt,
                     outputUri = entry.uri.toString(),
                     outputName = entry.name,
                     outputBytes = entry.bytes,
+                    outputSha256 = if (restored && !sameCopy) null else row.outputSha256,
                     outputFolder = OutputPaths.folderFor(entry.relPath, layout)?.name
                         ?: row.outputFolder
                         ?: (if (entry.isVideo) OutFolder.VIDEOS else OutFolder.PHOTOS).name,
                     outputRelPath = OutputRoots.normalize(entry.relPath),
                     stagePath = null,
-                    releasedAt = row.releasedAt ?: System.currentTimeMillis()
+                    // A restored copy is watched from now, like a new one: Ente's
+                    // traffic before this install says nothing about it.
+                    releasedAt = if (restored) now else row.releasedAt ?: now,
+                    updatedAt = now
                 )
             )
+        }
+
+        // Restored with evidence, and its copy is in none of the folders
+        // (the ones found are RELEASED by now): Ente had it.
+        for (row in db.items().restoredWithEvidence()) {
+            val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence))
+            if (state.name != row.state) db.items().update(row.copy(state = state.name, updatedAt = now))
         }
 
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)

@@ -896,6 +896,14 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
     // Which batch has its files showing. One at a time, because the view
     // model holds the files of one batch at a time.
     var openBatch by rememberSaveable { mutableStateOf<Long?>(null) }
+    // The open batch's files, loaded here rather than on the tap: the open
+    // batch outlives the process, the files the view model held do not.
+    LaunchedEffect(openBatch, loaded) {
+        val id = openBatch ?: return@LaunchedEffect
+        val batches = loaded ?: return@LaunchedEffect
+        val batch = batches.firstOrNull { it.id == id }
+        if (batch == null) openBatch = null else rvm.loadBatch(batch)
+    }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -954,7 +962,6 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                             openBatch = null
                         } else {
                             openBatch = batch.id
-                            rvm.loadBatch(batch)
                         }
                     }
                 ) {

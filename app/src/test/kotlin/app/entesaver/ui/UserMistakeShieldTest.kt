@@ -58,9 +58,20 @@ class UserMistakeShieldTest {
         // i.e. the user's own file) landed in the Remove-button card.
         assertTrue(
             "only pipeline-named files may be offered for cleanup",
-            vm.contains("fp != null && fp !in knownFps")
+            vm.contains(".mapNotNull { entry -> Fingerprint.fpFromOutputName(entry.name)?.let { entry to it } }")
         )
-        assertFalse(vm.contains("fp == null || fp !in knownFps"))
+        assertFalse(vm.contains("fp == null ||"))
+    }
+
+    @Test
+    fun `a copy the ledger knows is never offered as a leftover`() {
+        val vm = File("src/main/kotlin/app/entesaver/ui/AppViewModel.kt").readText()
+        // A copy restored from a history file can still be waiting for Ente
+        // in any state; removing it as a leftover means Ente never gets it.
+        assertTrue(vm.contains("db.items().knownFingerprints(it)"))
+        assertTrue(vm.contains("named.filter { it.second !in known }"))
+        // And nothing is a leftover before the first run has matched copies up.
+        assertTrue(vm.contains("if (o.oldFilesCleaned || !o.copiesReattached)"))
     }
 
     // ---- the free-up blind spot (DD2.2) -------------------------------------

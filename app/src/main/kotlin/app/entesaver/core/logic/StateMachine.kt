@@ -3,7 +3,7 @@ package app.entesaver.core.logic
 /**
  * Pipeline state machine:
  * NEW -> STAGED -> RELEASED -> GONE(CONFIRMED | APP_DELETED | USER_DELETED) -> DONE
- * plus SKIP(reason), FREED (original deleted via tool), UNKNOWN (recovered without evidence).
+ * plus SKIP(reason), FREED (original deleted via tool), UNKNOWN (restored from a history file, not yet matched to its copy).
  */
 object StateMachine {
 
@@ -45,17 +45,22 @@ object StateMachine {
     /**
      * Snapshot import mapping (fresh install / clear-data recovery):
      * - FREED stays FREED
-     * - RELEASED/GONE/DONE with NO evidence -> UNKNOWN (never freed; back under
-     *   watch as RELEASED once its copy is found in the folder, ReattachRules)
-     * - RELEASED/GONE/DONE with evidence -> DONE, evidence kept
+     * - RELEASED -> UNKNOWN, evidence kept: its copy was still waiting for
+     *   Ente, so it goes back under watch once the copy is found in the
+     *   folder, or to DONE if the copy is gone (ReattachRules)
+     * - GONE/DONE with NO evidence -> UNKNOWN (never freed; back under watch
+     *   as RELEASED once its copy is found in the folder)
+     * - GONE/DONE with evidence -> DONE, evidence kept
      * - SKIP stays SKIP; NEW/STAGED -> NEW (stage files do not survive reinstall)
      */
     fun importedState(state: ItemState, evidence: Evidence): Pair<ItemState, Evidence> = when (state) {
         // Both reclaimed states are terminal on import: the original is gone
         // from the phone, so there is nothing left to reprocess either way.
         ItemState.FREED, ItemState.FREED_KEPT -> state to evidence
-        ItemState.UNKNOWN -> ItemState.UNKNOWN to evidence
-        ItemState.RELEASED, ItemState.GONE, ItemState.DONE ->
+        // A copy that had only waited 10 days (AGED) used to come back as
+        // DONE: nothing watched it again, and it read as a leftover to remove.
+        ItemState.UNKNOWN, ItemState.RELEASED -> ItemState.UNKNOWN to evidence
+        ItemState.GONE, ItemState.DONE ->
             if (evidence == Evidence.NONE) ItemState.UNKNOWN to Evidence.NONE
             else ItemState.DONE to evidence
         ItemState.SKIP -> ItemState.SKIP to Evidence.NONE

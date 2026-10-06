@@ -2187,23 +2187,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun detectLeftoverFiles() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
-            if (o.oldFilesCleaned) {
+            // Until the first run has matched copies to their originals, every
+            // copy of an earlier install looks like a leftover - including the
+            // ones still waiting for Ente.
+            if (o.oldFilesCleaned || !o.copiesReattached) {
                 leftoverUris.value = emptyList()
                 return@launch
             }
-            val knownFps = db.items().waitingFingerprints().toHashSet()
-            val leftovers = (OutputInventory(ctx).query() ?: emptyList()).filter { entry ->
-                if (entry.ownedByUs) return@filter false
-                // Only a file named the way this pipeline names its output
-                // can be an earlier install's leftover. Anything else in the
-                // folder is the user's own file: this card used to sweep
-                // those up too, and its Remove button would then have offered
-                // the user's own photo for deletion under the label
-                // "leftover". The user's files get a notice, never a button.
-                val fp = Fingerprint.fpFromOutputName(entry.name)
-                fp != null && fp !in knownFps
-            }
-            leftoverUris.value = leftovers.map { it.uri }
+            // Only a file named the way this pipeline names its output can be
+            // an earlier install's leftover. Anything else in the folder is
+            // the user's own file: this card used to sweep those up too, and
+            // its Remove button would then have offered the user's own photo
+            // for deletion under the label "leftover". The user's files get a
+            // notice, never a button.
+            val named = (OutputInventory(ctx).query() ?: emptyList())
+                .filterNot { it.ownedByUs }
+                .mapNotNull { entry -> Fingerprint.fpFromOutputName(entry.name)?.let { entry to it } }
+            // A copy whose original the ledger knows is never a leftover,
+            // whatever its state: one restored from a history file may still
+            // be waiting for Ente, and removing it would mean Ente never gets it.
+            val known = named.map { it.second }.distinct().chunked(500)
+                .flatMap { db.items().knownFingerprints(it) }.toHashSet()
+            leftoverUris.value = named.filter { it.second !in known }.map { it.first.uri }
         }
     }
 

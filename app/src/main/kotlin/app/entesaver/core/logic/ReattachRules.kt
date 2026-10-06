@@ -20,12 +20,11 @@ object ReattachRules {
      * about its copy, and rows further along carry upload evidence that a
      * filename match is not entitled to overwrite.
      *
-     * UNKNOWN is a row restored from a history file without proof that Ente
-     * ever had it. Its copy still waiting in the folder means it is waiting
-     * for Ente exactly like a released one, so it goes back under watch -
-     * still with no proof. Left UNKNOWN, nothing would ever look at it again,
-     * and the copy would read as an earlier install's leftover. Its output
-     * fields describe the copy the old install made, so they do not count.
+     * UNKNOWN is a row restored from a history file that is not matched to
+     * its copy yet. Its copy still waiting in the folder means it is waiting
+     * for Ente exactly like a released one, so it goes back under watch.
+     * Left UNKNOWN, nothing would ever look at it again. Its output fields
+     * describe the copy the old install made, so they do not count.
      */
     fun canAdopt(state: String, hasOutput: Boolean): Boolean = when (state) {
         ItemState.UNKNOWN.name -> true
@@ -42,6 +41,24 @@ object ReattachRules {
      * this whole app is built to avoid.
      */
     val evidence: Evidence = Evidence.NONE
+
+    /**
+     * The evidence a row keeps once it adopts a copy. A queued row never had
+     * any. A restored row keeps what its history file recorded - the app's
+     * own record of what Ente did with that copy - but only when the copy
+     * found is that very copy ([sameCopy]: same name and size). Otherwise the
+     * record was about some other file, and the filename match adds nothing.
+     */
+    fun evidenceAfterAdopt(state: String, recorded: Evidence, sameCopy: Boolean): Evidence =
+        if (state == ItemState.UNKNOWN.name && sameCopy) recorded else evidence
+
+    /**
+     * Where a restored row goes when its copy is in none of the output
+     * folders: with evidence from its history file, to DONE (Ente had it,
+     * and the copy has since gone); without, it stays UNKNOWN.
+     */
+    fun stateWhenCopyMissing(recorded: Evidence): ItemState =
+        if (recorded == Evidence.NONE) ItemState.UNKNOWN else ItemState.DONE
 
     /** The state an adopted row lands in. */
     val state: ItemState = ItemState.RELEASED

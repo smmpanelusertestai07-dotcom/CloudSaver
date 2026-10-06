@@ -431,10 +431,13 @@ class SnapshotStore(
         // to try again. Settings go in after it - they live in DataStore,
         // which has no part in a Room transaction.
         val imported = db.withTransaction { mergeRows(snapshot) }
-        // Rows restored without proof are matched to the copies still in the
-        // folder on the next run (ReattachEngine), however long this install
-        // has been running - a restore picked by hand comes after its first.
-        if (imported > 0) optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
+        // Restored rows are matched to the copies still in the folder on the
+        // next run (ReattachEngine), however long this install has been
+        // running - a restore picked by hand comes after its first. That
+        // includes rows already here that this history only gave evidence.
+        if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
+            optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
+        }
         if (importOptions && snapshot.options.isNotEmpty()) {
             optionsRepo.importMap(withoutForeignFolders(snapshot.options), onlyIfSetupUntouched)
         }

@@ -457,6 +457,20 @@ interface ItemDao {
     )
     suspend fun releasedRoots(): List<String>
 
+    /** Every folder a row restored from a history file says its copy was in. */
+    @Query(
+        "SELECT DISTINCT outputRelPath FROM items " +
+            "WHERE state = 'UNKNOWN' AND outputRelPath IS NOT NULL"
+    )
+    suspend fun restoredRoots(): List<String>
+
+    /** Rows restored from a history file that came with some upload evidence. */
+    @Query(
+        "SELECT * FROM items WHERE state = 'UNKNOWN' " +
+            "AND evidence IS NOT NULL AND evidence NOT IN ('', 'NONE')"
+    )
+    suspend fun restoredWithEvidence(): List<ItemRow>
+
     /** Released copies still waiting, counted per folder. */
     @Query(
         "SELECT outputRelPath, COUNT(*) AS cnt FROM items " +
@@ -671,15 +685,9 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = 'GONE'")
     suspend fun gone(): List<ItemRow>
 
-    /**
-     * Fingerprints of every file whose copy may be waiting in the upload
-     * folder: released ones, and ones restored from a history file without
-     * proof (UNKNOWN), whose copy is still waiting for Ente until a run
-     * matches it up again. A copy of either is never an earlier install's
-     * leftover.
-     */
-    @Query("SELECT fingerprint FROM items WHERE state IN ('RELEASED', 'UNKNOWN')")
-    suspend fun waitingFingerprints(): List<String>
+    /** Which of [fps] the ledger has a row for, in any state. */
+    @Query("SELECT fingerprint FROM items WHERE fingerprint IN (:fps)")
+    suspend fun knownFingerprints(fps: List<String>): List<String>
 
     @Query("SELECT COUNT(*) FROM items WHERE state = :state")
     suspend fun countByState(state: String): Int

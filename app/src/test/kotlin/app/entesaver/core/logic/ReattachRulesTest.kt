@@ -22,7 +22,7 @@ class ReattachRulesTest {
     @Test
     fun `a row restored without proof goes back under watch when its copy is still there`() {
         // Its output fields describe the old install's copy, so they do not
-        // stop it; adoption still claims nothing (see the evidence test).
+        // stop it; it keeps only what its history recorded about that copy.
         assertTrue(ReattachRules.canAdopt(ItemState.UNKNOWN.name, hasOutput = true))
         assertTrue(ReattachRules.canAdopt(ItemState.UNKNOWN.name, hasOutput = false))
     }
@@ -46,6 +46,39 @@ class ReattachRulesTest {
         assertEquals(Evidence.NONE, ReattachRules.evidence)
         assertFalse(ReattachRules.evidence.isPerFile)
         assertEquals(ItemState.RELEASED, ReattachRules.state)
+    }
+
+    @Test
+    fun `a restored row keeps its recorded evidence only for that very copy`() {
+        val unknown = ItemState.UNKNOWN.name
+        assertEquals(
+            Evidence.AGED,
+            ReattachRules.evidenceAfterAdopt(unknown, Evidence.AGED, sameCopy = true)
+        )
+        assertEquals(
+            Evidence.CONFIRMED_PACED,
+            ReattachRules.evidenceAfterAdopt(unknown, Evidence.CONFIRMED_PACED, sameCopy = true)
+        )
+        // A different file under the same fingerprint: the record was not about it.
+        assertEquals(
+            Evidence.NONE,
+            ReattachRules.evidenceAfterAdopt(unknown, Evidence.CONFIRMED_PACED, sameCopy = false)
+        )
+        // A queued row has no record to keep, whatever the filename says.
+        for (state in listOf(ItemState.NEW, ItemState.STAGED)) {
+            assertEquals(
+                Evidence.NONE,
+                ReattachRules.evidenceAfterAdopt(state.name, Evidence.CONFIRMED_EXACT, sameCopy = true)
+            )
+        }
+    }
+
+    @Test
+    fun `a restored row whose copy is gone is done only with evidence`() {
+        assertEquals(ItemState.UNKNOWN, ReattachRules.stateWhenCopyMissing(Evidence.NONE))
+        for (evidence in Evidence.entries - Evidence.NONE) {
+            assertEquals(ItemState.DONE, ReattachRules.stateWhenCopyMissing(evidence))
+        }
     }
 
     @Test

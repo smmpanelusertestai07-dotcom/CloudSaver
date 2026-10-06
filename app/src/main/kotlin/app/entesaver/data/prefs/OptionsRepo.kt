@@ -281,7 +281,9 @@ class OptionsRepo(private val context: Context) {
         val SAFETY_WARNED_AT = longPreferencesKey("safetyPauseWarnedAt")
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
         val OLD_FILES_CLEANED = booleanPreferencesKey("oldFilesCleaned")
-        val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached")
+        // Renamed in 12.0 so that every phone matches its copies up once
+        // more: rows restored earlier without proof were never looked at again.
+        val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached12")
         val COPIES_NEED_CONSENT = stringSetPreferencesKey("copiesNeedConsent")
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
         val RELEASED_SINCE_SAMPLE = intPreferencesKey("releasedSinceSample")

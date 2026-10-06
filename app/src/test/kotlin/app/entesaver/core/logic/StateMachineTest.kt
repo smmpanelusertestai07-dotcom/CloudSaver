@@ -62,10 +62,22 @@ class StateMachineTest {
     }
 
     @Test
+    fun importMappingKeepsAReleasedCopyWaitingWithItsEvidence() {
+        // Its copy was still in the folder for Ente. As DONE nothing would
+        // watch it again, and an AGED one read as a leftover to remove.
+        for (evidence in Evidence.entries) {
+            assertEquals(
+                ItemState.UNKNOWN to evidence,
+                StateMachine.importedState(ItemState.RELEASED, evidence)
+            )
+        }
+    }
+
+    @Test
     fun importMappingKeepsEvidenceAndTerminalStates() {
         assertEquals(
             ItemState.DONE to Evidence.CONFIRMED_EXACT,
-            StateMachine.importedState(ItemState.RELEASED, Evidence.CONFIRMED_EXACT)
+            StateMachine.importedState(ItemState.GONE, Evidence.CONFIRMED_EXACT)
         )
         assertEquals(
             ItemState.DONE to Evidence.VERIFIED,

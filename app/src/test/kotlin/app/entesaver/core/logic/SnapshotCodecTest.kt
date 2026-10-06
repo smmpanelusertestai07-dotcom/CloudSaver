@@ -104,10 +104,20 @@ class SnapshotCodecTest {
     @Test
     fun importMappingKeepsConfirmed() {
         val mapped = SnapshotCodec.applyImportMapping(
-            item("dddddddddddddddd", ItemState.RELEASED, Evidence.CONFIRMED_EXACT)
+            item("dddddddddddddddd", ItemState.DONE, Evidence.CONFIRMED_EXACT)
         )
         assertEquals(ItemState.DONE, mapped.state)
         assertEquals(Evidence.CONFIRMED_EXACT, mapped.evidence)
+    }
+
+    @Test
+    fun importMappingKeepsAWaitingCopyWaiting() {
+        // Matched to its copy on the next run (ReattachEngine), evidence and all.
+        val mapped = SnapshotCodec.applyImportMapping(
+            item("dddddddddddddddd", ItemState.RELEASED, Evidence.AGED)
+        )
+        assertEquals(ItemState.UNKNOWN, mapped.state)
+        assertEquals(Evidence.AGED, mapped.evidence)
     }
 
     @Test
