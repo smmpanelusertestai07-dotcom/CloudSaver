@@ -44,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,6 +64,7 @@ import app.entesaver.ui.components.HeroCard
 import app.entesaver.ui.components.MetricGrid
 import app.entesaver.ui.components.MetricTile
 import app.entesaver.ui.components.SectionHeader
+import app.entesaver.ui.theme.BrandTile
 import app.entesaver.ui.theme.Dimens
 import app.entesaver.ui.theme.MetricTextStyle
 import app.entesaver.ui.theme.OnBrand
@@ -153,33 +156,15 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                 stringResource(R.string.calc_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() }
             )
         }
 
         Column(Modifier.padding(horizontal = Dimens.Screen)) {
             // 1. The one thing the app cannot know.
             AppCard {
-                // The icon marks the start of the label, so it belongs beside
-                // the label's first line. "Free space in your cloud (GB)" takes
-                // two or three lines at the largest font, and centred against
-                // them the cloud icon was drawn level with the middle of the
-                // phrase - close enough to the field below to look like it had
-                // come adrift from the heading it belongs to.
-                Row(verticalAlignment = Alignment.Top) {
-                    Icon(
-                        Icons.Outlined.CloudQueue,
-                        contentDescription = null,
-                        tint = scheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        stringResource(R.string.calc_input_label),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
                 // Only a number can ever be in here.
                 //
                 // Decimal is a keyboard hint and nothing more: it asks the
@@ -192,15 +177,21 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                 // what had just been typed. Filtering as it is typed means
                 // the unusable character never lands: what appears in the
                 // field is always something the calculator can answer.
+                //
+                // The field carries its own name. The words used to sit above
+                // it as a separate line, so a screen reader landed on an edit
+                // box called nothing at all - on the one screen whose whole
+                // question is what to type into it. As the label they are the
+                // field's name, and they stay on it once a number is typed.
                 OutlinedTextField(
                     value = freeText,
                     onValueChange = { freeText = numericOnly(it) },
                     singleLine = true,
+                    label = { Text(stringResource(R.string.calc_input_label)) },
+                    leadingIcon = { Icon(Icons.Outlined.CloudQueue, contentDescription = null) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
                 // The six common plan sizes, flowing rather than scrolling
                 // sideways. As a horizontal scroller the last three were off
@@ -296,8 +287,10 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                 // basis line at the foot. A big number read alone is taken as
                 // fact; the qualifier has to travel with it.
                 Spacer(Modifier.height(10.dp))
+                // A shade darker than the banner, not a white wash: white words
+                // on a white wash over green came to under 4:1.
                 Surface(
-                    color = OnBrand.copy(alpha = 0.18f),
+                    color = BrandTile,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(

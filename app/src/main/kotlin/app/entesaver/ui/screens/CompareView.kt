@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.asImageBitmap
@@ -71,15 +73,22 @@ fun CompareSheet(
     val context = LocalContext.current
     var split by remember { mutableFloatStateOf(0.5f) }
 
-    val original by produceState<Bitmap?>(null, row.contentUri) {
-        value = loadThumb(context, row.contentUri)
+    // Null while a picture is still being read, and a Loaded - holding a
+    // picture or nothing - once the read has answered. The two used to be one
+    // null, so for the moment the thumbnails took to arrive the sheet said the
+    // copy "is already in Ente and no longer on the phone", about a copy that
+    // was sitting right there, and then swapped that for the pictures.
+    val original by produceState<Loaded?>(null, row.contentUri) {
+        value = Loaded(loadThumb(context, row.contentUri))
     }
     // A copy that is only staged - the trial's, or one waiting for its
     // pacing slot - has no gallery address yet; it is a file inside the app,
     // and the comparison reads it from there.
-    val optimised by produceState<Bitmap?>(null, row.outputUri, row.keptUri, row.stagePath) {
-        value = loadThumb(context, row.outputUri ?: row.keptUri)
-            ?: loadFileThumb(row.stagePath)
+    val optimised by produceState<Loaded?>(null, row.outputUri, row.keptUri, row.stagePath) {
+        value = Loaded(
+            loadThumb(context, row.outputUri ?: row.keptUri)
+                ?: loadFileThumb(row.stagePath)
+        )
     }
 
     AlertDialog(
@@ -110,9 +119,24 @@ fun CompareSheet(
                 // about the read after it, and the two !! that followed were
                 // the only thing standing between a thumbnail arriving late
                 // and a crash on the screen that is meant to reassure people.
-                val before = original
-                val after = optimised
-                if (before != null && after != null) {
+                val readBefore = original
+                val readAfter = optimised
+                val loading = readBefore == null || readAfter == null
+                val before = readBefore?.bitmap
+                val after = readAfter?.bitmap
+                if (loading) {
+                    // The frame the comparison will fill, so nothing jumps
+                    // when it arrives, and a sign that it is on its way.
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else if (before != null && after != null) {
                     BoxWithConstraints(
                         Modifier
                             .fillMaxWidth()
@@ -180,6 +204,8 @@ fun CompareSheet(
                     }
                     Slider(value = split, onValueChange = { split = it })
                 } else {
+                    // Only once both reads have answered, and one came back
+                    // with nothing: then the copy really is not on the phone.
                     Text(
                         stringResource(R.string.compare_in_cloud),
                         style = MaterialTheme.typography.bodyMedium,
@@ -227,6 +253,9 @@ fun CompareSheet(
         }
     )
 }
+
+/** One thumbnail read that has finished, whether or not it found a picture. */
+private class Loaded(val bitmap: Bitmap?)
 
 /** A staged copy, decoded from the app's own file at roughly thumbnail size. */
 private suspend fun loadFileThumb(path: String?): Bitmap? {

@@ -3,6 +3,7 @@ package app.entesaver.ui.screens
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -58,11 +59,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -170,16 +174,24 @@ fun OnboardingScreen(vm: AppViewModel) {
     // setup, so leaving is the right answer and the default is left alone.
     BackHandler(enabled = step > 0) { backOneStep() }
 
+    // Refused twice, Android stops showing the question and answers every
+    // later request with an instant no - so "Grant permission" became a
+    // button that did nothing at all, and setup could not be finished from
+    // the step it was stuck on. The same check the Permissions screen makes:
+    // still short of full access, with Android no longer willing to explain
+    // why it is asking, means it has stopped asking. The button then says so
+    // and goes to app info, where the switch still is.
+    val activity = LocalActivity.current
+    var mediaPromptBlocked by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        go(
-            if (Permissions.mediaAccess(context) == Permissions.MediaAccess.FULL) {
-                Step.ALBUMS
-            } else {
-                Step.MEDIA
+        val full = Permissions.mediaAccess(context) == Permissions.MediaAccess.FULL
+        mediaPromptBlocked = !full && activity != null &&
+            Permissions.mediaPermissionsToRequest().none {
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
             }
-        )
+        go(if (full) Step.ALBUMS else Step.MEDIA)
     }
 
     val notifLauncher = rememberLauncherForActivityResult(
@@ -336,24 +348,27 @@ fun OnboardingScreen(vm: AppViewModel) {
             Step.MEDIA -> {
                 LaunchedEffect(Unit) { vm.refreshHealth() }
                 val access = mediaAccess
+                val blocked = access == Permissions.MediaAccess.NONE && mediaPromptBlocked
                 StepCard(
                     title = stringResource(R.string.onb1_title),
                     text = stringResource(R.string.onb1_text),
-                    buttonLabel = when (access) {
-                        Permissions.MediaAccess.FULL -> stringResource(R.string.onb_next)
-                        Permissions.MediaAccess.PARTIAL ->
+                    buttonLabel = when {
+                        access == Permissions.MediaAccess.FULL -> stringResource(R.string.onb_next)
+                        access == Permissions.MediaAccess.PARTIAL ->
                             stringResource(R.string.partial_action)
-                        Permissions.MediaAccess.NONE -> stringResource(R.string.onb1_grant)
+                        blocked -> stringResource(R.string.perm_app_info)
+                        else -> stringResource(R.string.onb1_grant)
                     },
                     onButton = {
-                        when (access) {
-                            Permissions.MediaAccess.FULL -> go(Step.ALBUMS)
+                        when {
+                            access == Permissions.MediaAccess.FULL -> go(Step.ALBUMS)
                             // "Select photos" was chosen. Asking again shows
                             // the same picker; only the app's settings page
-                            // can raise the level to full.
-                            Permissions.MediaAccess.PARTIAL ->
+                            // can raise the level to full. The same page is
+                            // the only way left once Android stops asking.
+                            access == Permissions.MediaAccess.PARTIAL || blocked ->
                                 OemPages.openAppInfo(context)
-                            Permissions.MediaAccess.NONE -> permissionLauncher.launch(
+                            else -> permissionLauncher.launch(
                                 Permissions.mediaPermissionsToRequest()
                             )
                         }
@@ -366,8 +381,19 @@ fun OnboardingScreen(vm: AppViewModel) {
                             color = MaterialTheme.colorScheme.error
                         )
                     }
-                    TextButton(onClick = { OemPages.openAppInfo(context) }) {
-                        Text(stringResource(R.string.onb1_appinfo))
+                    if (blocked) {
+                        // Why the button now leads out of the app, and what
+                        // to do once there. The "not asking?" link below
+                        // would only repeat the button, so it goes.
+                        Text(
+                            stringResource(R.string.onb1_blocked),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        TextButton(onClick = { OemPages.openAppInfo(context) }) {
+                            Text(stringResource(R.string.onb1_appinfo))
+                        }
                     }
                 }
             }
@@ -634,7 +660,12 @@ fun OnboardingScreen(vm: AppViewModel) {
                     onButton = {
                         vm.acknowledgeDoubleBackup()
                         go(Step.READY)
-                    }
+                    },
+                    // After the warning, not above it: the button stood
+                    // between the step's opening sentence and the card it is
+                    // meant to acknowledge, so it could be pressed before the
+                    // warning had even scrolled into view.
+                    buttonAtEnd = true
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         EnteIcon(installed = installed)
@@ -756,7 +787,11 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // scheduled, nothing has been copied, nothing has been read
                 // beyond the trial the user asked for.
                 buttonLabel = stringResource(R.string.onb_ready_start),
-                onButton = { vm.finishOnboarding() }
+                onButton = { vm.finishOnboarding() },
+                // Under the summary it confirms, not above it. "Start backing
+                // up" sat over the very lines that say what starting means,
+                // including the warning that no album is ticked.
+                buttonAtEnd = true
             ) {
                 val allAlbums by vm.buckets.collectAsStateWithLifecycle()
                 LaunchedEffect(Unit) { vm.loadBuckets() }
@@ -1171,12 +1206,19 @@ private fun StepCard(
     onSkip: (() -> Unit)? = null,
     // Most steps are a sentence with a decision under it, so the action sits
     // right after the text. The album step is a picker: the decision is the
-    // grid, and the action belongs after the choosing, not above it.
+    // grid, and the action belongs after the choosing, not above it. The
+    // cloud step and the summary are the same shape - something to read
+    // before the button means anything.
     buttonAtEnd: Boolean = false,
     extra: @Composable () -> Unit = {}
 ) {
     AppCard {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() }
+        )
         Spacer(Modifier.height(6.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(10.dp))

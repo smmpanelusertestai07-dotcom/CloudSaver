@@ -116,6 +116,9 @@ fun FileRow(
     // Long-press starts a selection, exactly as it does on Files. Without it
     // a screen can show a checkbox once a selection exists but offer no way to
     // create one, which leaves "Select all" and the action bar unreachable.
+    // Named, so a screen reader offers "double-tap and hold to select" rather
+    // than an unexplained long-press action.
+    val selectLabel = stringResource(R.string.list_select)
     val card = if (onLongPress != null) {
         modifier
             .padding(vertical = 4.dp)
@@ -129,6 +132,7 @@ fun FileRow(
             .clip(CardShape)
             .combinedClickable(
                 onClick = { onClick?.invoke() },
+                onLongClickLabel = selectLabel,
                 onLongClick = onLongPress
             )
     } else {
@@ -281,15 +285,17 @@ private fun FileRowValue(
 }
 
 /**
- * Filler so a pinned bottom bar never covers the last row.
+ * The ordinary gap under the last row of a list.
  *
- * The bar it is making room for is a sentence and a button, so it grows with
- * the text size while a fixed 96 dp does not: at 200% the bar was taller than
- * the gap left for it and sat over the last file in the list - the one row a
- * person scrolled all that way to reach.
+ * It used to be a taller gap, scaled with the text, for the selection bar to
+ * float over - and however it was sized it was a guess at that bar's height.
+ * A bar carrying a reason and a note above a button that had wrapped onto its
+ * own line outgrew it, and sat over the last file in the list: the one row a
+ * person scrolled all that way to reach. The bar is now laid out under the
+ * list rather than on top of it, so there is nothing left here to make room
+ * for.
  */
 @Composable
-fun ListTail(extra: Boolean = false) {
-    val scale = LocalDensity.current.fontScale.coerceIn(1f, 2f)
-    Spacer(Modifier.height(if (extra) 96.dp * scale else 24.dp))
+fun ListTail() {
+    Spacer(Modifier.height(24.dp))
 }

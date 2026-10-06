@@ -2,6 +2,7 @@ package app.entesaver.ui.theme
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -63,6 +64,13 @@ class ContrastTest {
             "$name onSurfaceVariant on card",
             scheme.onSurfaceVariant,
             scheme.surfaceContainer,
+            4.5
+        )
+        // The muted state badge on a file row: small type on a tinted pill.
+        assertReadable(
+            "$name onSurfaceVariant on a muted badge",
+            scheme.onSurfaceVariant,
+            scheme.surfaceContainerHigh,
             4.5
         )
         assertReadable("$name onPrimary", scheme.onPrimary, scheme.primary, 4.5)
@@ -130,6 +138,31 @@ class ContrastTest {
             assertReadable("OnBrand over $name", OnBrand, background, 4.5)
             // The muted variant carries supporting lines, not body copy.
             assertReadable("OnBrandMuted over $name", OnBrandMuted, background, 3.0)
+        }
+    }
+
+    @Test
+    fun `small text on the brand gradient is readable as it is actually drawn`() {
+        // The muted white and the tile fills are see-through, so what reaches
+        // the eye is the blend, not the colour as written. Read as opaque, the
+        // check above passed a label that was really 4.45:1 on the lighter end
+        // of the banner, and white tiles that took the figures on them under
+        // 4:1. Small text needs 4.5:1 at both ends of the gradient.
+        for ((name, background) in listOf("green" to BrandGreen, "deep green" to BrandGreenDeep)) {
+            assertReadable(
+                "OnBrandMuted blended over $name",
+                OnBrandMuted.compositeOver(background),
+                background,
+                4.5
+            )
+            val tile = BrandTile.compositeOver(background)
+            assertReadable("OnBrand on a tile over $name", OnBrand, tile, 4.5)
+            assertReadable(
+                "OnBrandMuted on a tile over $name",
+                OnBrandMuted.compositeOver(tile),
+                tile,
+                4.5
+            )
         }
     }
 }

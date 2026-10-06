@@ -66,6 +66,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -99,6 +101,7 @@ import app.entesaver.ui.components.SectionHeader
 import app.entesaver.ui.components.StatusChip
 import app.entesaver.ui.components.TrialCard
 import app.entesaver.ui.goTo
+import app.entesaver.ui.theme.BrandTile
 import app.entesaver.ui.theme.Dimens
 import app.entesaver.ui.theme.MetricTextStyle
 import app.entesaver.ui.theme.OnBrand
@@ -198,7 +201,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 Text(
                     stringResource(R.string.app_name),
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics { heading() }
                 )
                 Text(
                     stringResource(R.string.app_tagline),
@@ -607,10 +611,13 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(Modifier.width(6.dp))
+                    // The faint white is for the icon only. As the colour of
+                    // this line it was 3.6:1 on the lighter end of the banner,
+                    // too pale for words this small to be read comfortably.
                     Text(
                         stringResource(R.string.last_run, Formats.dateTime(options.lastRunAt)),
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnBrandFaint
+                        color = OnBrandMuted
                     )
                 }
             }
@@ -1416,7 +1423,10 @@ private fun HeroStat(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(OnBrand.copy(alpha = 0.14f))
+            // A shade darker than the banner rather than a white wash over
+            // it: the wash lifted the green towards the white text on top and
+            // left the figure here under 4:1.
+            .background(BrandTile)
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

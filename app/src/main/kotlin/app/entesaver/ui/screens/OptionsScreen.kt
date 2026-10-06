@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,6 +83,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -121,6 +123,7 @@ import app.entesaver.ui.components.StackedTextScale
 import app.entesaver.ui.components.WarningNote
 import app.entesaver.ui.components.WarningText
 import app.entesaver.ui.goTo
+import app.entesaver.ui.theme.Dimens
 import app.entesaver.util.Formats
 import app.entesaver.util.OemPages
 import app.entesaver.util.Permissions
@@ -211,7 +214,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         Text(
             stringResource(R.string.nav_options),
             style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() }
         )
         Spacer(Modifier.height(10.dp))
 
@@ -229,29 +233,36 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 if (enteHere) R.string.cloud_installed_mark else R.string.cloud_not_installed_mark
             )
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Ente's own icon beside what to do about it. It used to sit on a
+            // line of its own with "Ente Photos" written next to it, directly
+            // under a card already titled "Ente Photos" - the name twice, and
+            // a row that looked like something to tap and was not. The icon
+            // stays, because it is Ente's real one when Ente is installed and
+            // the green tile when it is not.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 6.dp)
+            ) {
                 EnteIcon(installed = enteHere)
                 Spacer(Modifier.width(10.dp))
-                Text(EnteApp.LABEL, style = MaterialTheme.typography.bodyLarge)
-            }
-            if (enteHere) {
-                OutlinedButton(
-                    onClick = { vm.openEnte() },
-                    modifier = Modifier.padding(top = 6.dp)
-                ) {
+                if (enteHere) {
+                    OutlinedButton(onClick = { vm.openEnte() }) {
+                        Text(
+                            stringResource(R.string.onb5_open, EnteApp.LABEL),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
                     Text(
-                        stringResource(R.string.onb5_open, EnteApp.LABEL),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        stringResource(R.string.ente_missing_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
                     )
                 }
-            } else {
-                Text(
-                    stringResource(R.string.ente_missing_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+            }
+            if (!enteHere) {
                 EnteInstallButtons(
                     onInstall = { vm.installEnte(it) },
                     modifier = Modifier.padding(top = 6.dp)
@@ -1452,7 +1463,13 @@ private fun NavRow(
     expanded: Boolean? = null,
     onClick: () -> Unit
 ) {
-    val state = expanded?.let { stringResource(if (it) R.string.a11y_expanded else R.string.a11y_collapsed) }
+    // What the chevron and the dot say to the eye, said to a screen reader
+    // too. The dot was never announced, so "Activity" read the same whether or
+    // not something new was waiting there.
+    val state = listOfNotNull(
+        expanded?.let { stringResource(if (it) R.string.a11y_expanded else R.string.a11y_collapsed) },
+        if (dot) stringResource(R.string.a11y_needs_attention) else null
+    ).joinToString(", ").ifEmpty { null }
     AppCard(
         modifier = Modifier
             .padding(vertical = 5.dp)
@@ -1516,6 +1533,9 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            // A finger's height whatever the label is. One short line beside
+            // a switch with no click handler of its own came to about 36 dp.
+            .heightIn(min = Dimens.TouchTarget)
             // The whole row is the control, not the switch on the end of it.
             // As two separate nodes a screen reader read out "switch, on" with
             // nothing to say what it switched, and the label was not something
