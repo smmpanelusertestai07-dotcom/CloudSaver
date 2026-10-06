@@ -333,7 +333,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(updated))
                 }
                 repo.setLong(OptionsRepo.K.LAST_RUN_AT, endAt)
-                repo.setString(OptionsRepo.K.LAST_RUN_NOTE, processed.toString())
                 // Whether Android ended this run, and why.
                 //
                 // A run the system cuts short still reaches here and still

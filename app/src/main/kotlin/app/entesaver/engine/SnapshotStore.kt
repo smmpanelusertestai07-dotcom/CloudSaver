@@ -27,18 +27,15 @@ import java.io.File
 import kotlinx.coroutines.sync.withLock
 
 /**
- * State durability. Room is the source of truth; these snapshots exist so the
- * app can recover after clear-data or a reinstall.
+ * State durability. Room is the source of truth; the daily history file
+ * exists so a new install - after an uninstall, "Clear data" or on a new
+ * phone - can pick up where the old one stopped (see Defaults.HISTORY_DIR for
+ * why it is a visible file). The same format is what Settings, Backup and
+ * restore saves and opens.
  *
- * Automatic snapshots are hidden - the app never leaves a visible file where
- * the user browses unless they tap Export. Targets are tried in order (beside
- * the output copies, a hidden dot-folder in Documents, a hidden dot-file, and
- * only then a visible file for devices that refuse every hidden option), and
- * writing continues past a target that fails so one refusal does not cost the
- * others.
- *
- * Items imported without upload evidence become UNKNOWN (never freed, never
- * reprocessed unless the user opts in).
+ * Items imported without upload evidence become UNKNOWN until their copy is
+ * found in the Ente Saver folder (ReattachRules); they are never freed on a
+ * file's say-so.
  */
 class SnapshotStore(
     private val context: Context,
@@ -137,57 +134,55 @@ class SnapshotStore(
     }
 
     /**
-     * Writes the safety snapshot to every target.
+     * Writes the daily history file (CC9.1/CC9.3).
      *
-     * Three copies, deliberately: two shared ones under Documents and
-     * Download that survive an uninstall, and one inside the app's own files
-     * directory that survives nothing but is always writable. Every target is
-     * attempted - a snapshot that exists in one place only is one deletion
-     * away from being no snapshot at all.
+     * Two copies, deliberately: history.json in the shared folder, which
+     * survives an uninstall and travels to a new phone with the person's
+     * files, and one inside the app's own files directory that survives
+     * nothing but is always writable.
      *
-     * Returns true when at least one shared copy was written. A total failure
-     * of the shared copies is a Problem the user is told about, in words:
-     * it means an uninstall would lose their history.
+     * Returns true when the shared copy was written. A failure there is a
+     * Problem the user is told about, in words: it means an uninstall would
+     * lose their history.
      */
     suspend fun writeSafetySnapshot(): Boolean {
         // CC9.1: a fresh install that never finished setup leaves nothing
         // behind. Before onboarding completes there is no state worth a file
-        // in the user's Download folder.
+        // in the user's Documents folder.
         if (!optionsRepo.current().onboardingDone) return false
         val json = SnapshotCodec.encode(build())
-        val failures = mutableListOf<String>()
-        var wroteShared = false
-        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
-            if (writeTo(json, dir, name)) wroteShared = true else failures += "$dir/$name"
-        }
-        // Always kept, whatever the shared writes did.
+        val written = Defaults.SNAPSHOT_TARGETS.any { (dir, name) -> writeTo(json, dir, name) }
+        // Always kept, whatever the shared write did.
         writePrivate(json)
-        if (failures.isEmpty()) removePrevious()
 
-        if (!wroteShared) {
+        if (written) {
+            removePrevious()
+        } else {
             ActivityLog(context).record(
                 ActivityLog.Kind.PROBLEM,
                 detail = context.getString(
-                    R.string.problem_snapshot_failed, failures.joinToString(", ")
+                    R.string.problem_snapshot_failed,
+                    Defaults.SNAPSHOT_TARGETS.joinToString(", ") { (dir, name) -> "$dir/$name" }
                 )
             )
         }
-        return wroteShared
+        return written
     }
 
     /**
-     * Before 12.0 the two shared copies lived in Documents/.cloudsaver and
-     * Download/.cloudsaver. Once both exist under today's name, the old files
-     * this app wrote there are removed, and their folders with them when
-     * nothing else is left inside, so Download and Documents hold one history
-     * folder each. A copy left by an install that was since removed is not
-     * this app's to delete without asking: it stays, and is still read
-     * (Defaults.LEGACY_SNAPSHOT_TARGETS).
+     * Empties the hidden folders builds before 12.0 wrote to. Android had
+     * renamed each one ("_.cloudsaver") and the app, never finding its file
+     * again, added a new one every pass - so there can be many. Only this
+     * install's own files are removed; one left by an install since removed
+     * is not this app's to delete without asking. Each folder goes too once
+     * nothing is left in it.
      */
     private fun removePrevious() {
-        for ((dir, name) in Defaults.PREVIOUS_SNAPSHOT_TARGETS) {
-            val uri = findSnapshot(dir, name) ?: continue
-            runCatching { context.contentResolver.delete(uri, null, null) }
+        val resolver = context.contentResolver
+        for (dir in Defaults.PREVIOUS_SNAPSHOT_DIRS) {
+            for (row in ownFiles(dir)) {
+                runCatching { resolver.delete(row.uri, null, null) }
+            }
             @Suppress("DEPRECATION")
             runCatching { File(Environment.getExternalStorageDirectory(), dir).delete() }
         }
@@ -210,21 +205,25 @@ class SnapshotStore(
     }
 
     /**
-     * Whether both shared snapshot files are where they should be (CC9.3).
+     * Whether the shared history file is where it should be (CC9.3).
      *
-     * A user tidying Download can delete one; the next maintenance pass sees
+     * A user tidying Documents can delete it; the next maintenance pass sees
      * the gap here and rewrites silently - no chip, no alert, because a file
      * the app can recreate in full is not a problem, only a chore.
      */
-    fun sharedTargetsPresent(): Boolean = Defaults.SNAPSHOT_TARGETS.all { (dir, name) ->
-        findSnapshot(dir, name) != null
+    fun sharedTargetsPresent(): Boolean = Defaults.SNAPSHOT_TARGETS.any { (dir, name) ->
+        ownFiles(dir, name).isNotEmpty()
     }
 
     /**
-     * Reads back the newest snapshot that passes its integrity check, trying
-     * the targets in order. A corrupted or hand-edited copy is skipped rather
-     * than trusted - it could otherwise promote evidence and put an original
-     * in front of the user for deletion.
+     * Reads back the newest snapshot that passes its integrity check, from
+     * every place this install can see one. A corrupted or hand-edited copy
+     * is skipped rather than trusted - it could otherwise promote evidence
+     * and put an original in front of the user for deletion.
+     *
+     * After an uninstall or "Clear data", Android shows the new install none
+     * of the shared files the old one wrote; then only Restore, with the
+     * person picking history.json, brings the history back.
      */
     suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
         var best: SnapshotCodec.Snapshot? = null
@@ -233,105 +232,103 @@ class SnapshotStore(
             val snapshot = try {
                 SnapshotCodec.decode(json)
             } catch (e: Exception) {
-                // A corrupted or hand-edited copy is skipped, never trusted:
-                // it could otherwise promote evidence and put an original in
-                // front of the user for deletion.
                 return
             }
             if (best == null || snapshot.exportedAt > best!!.exportedAt) best = snapshot
         }
         for ((dir, name) in Defaults.SNAPSHOT_TARGETS + Defaults.LEGACY_SNAPSHOT_TARGETS) {
-            consider(readFrom(dir, name))
+            for (row in ownFiles(dir, name)) consider(read(row.uri))
+        }
+        for (dir in Defaults.PREVIOUS_SNAPSHOT_DIRS) {
+            for (row in ownFiles(dir)) consider(read(row.uri))
         }
         consider(readPrivate())
         return best
     }
 
+    private data class SharedFile(val uri: Uri, val name: String, val modified: Long)
+
     /**
-     * The snapshot file, by where it lives and what it is called, or null.
+     * This install's files in [relativeDir], newest first: all of them, or
+     * only those named like [name] - "history.json", or the "history (1).json"
+     * Android makes when a file of that name is already there.
      *
-     * NOT by owner. Android clears `OWNER_PACKAGE_NAME` on the rows of a file
-     * whose creating app is uninstalled - the file survives in shared storage,
-     * the ownership does not. The selection used to require
-     * `OWNER_PACKAGE_NAME = our package`, so after an uninstall the app could
-     * no longer find its own snapshot, and the one thing that carries "what
-     * already reached your cloud" across a reinstall was invisible exactly
-     * when it was needed. Every release before this one changed signature, so
-     * every update WAS an uninstall: the recovery path had never once run on a
-     * real reinstall.
-     *
-     * Dropping the owner clause is safe because the payload is not trusted on
-     * name alone - [SnapshotCodec] verifies a schema version and a SHA-256 of
-     * the payload and refuses anything that does not match. If more than one
-     * file answers, ours is preferred and the newest wins, so a re-created
-     * snapshot beats a stale one.
+     * By owner, because that is all Android shows an app of the non-media
+     * files in shared storage: the ones this install wrote.
      */
-    internal fun findSnapshot(relativeDir: String, name: String): Uri? {
-        val resolver = context.contentResolver
+    private fun ownFiles(relativeDir: String, name: String? = null): List<SharedFile> {
         val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
-            "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
-        val args = arrayOf(name, "$relativeDir/")
+        var selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND " +
+            "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
+        val args = mutableListOf("$relativeDir/", context.packageName)
+        if (name != null) {
+            val base = name.substringBeforeLast('.')
+            val ext = name.substringAfterLast('.', "")
+            selection += " AND (${MediaStore.MediaColumns.DISPLAY_NAME} = ? OR " +
+                "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)"
+            args += name
+            args += "$base (%).$ext"
+        }
         return try {
-            var best: Uri? = null
-            var bestOwned = false
-            var bestModified = Long.MIN_VALUE
-            resolver.query(
+            val out = mutableListOf<SharedFile>()
+            context.contentResolver.query(
                 files,
                 arrayOf(
                     MediaStore.MediaColumns._ID,
-                    MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
                     MediaStore.MediaColumns.DATE_MODIFIED
                 ),
-                selection, args, null
+                selection, args.toTypedArray(), null
             )?.use { c ->
                 while (c.moveToNext()) {
-                    val owned = c.getString(1) == context.packageName
-                    val modified = c.getLong(2)
-                    // Ours beats an orphan; among equals, the newest wins.
-                    val better = best == null ||
-                        (owned && !bestOwned) ||
-                        (owned == bestOwned && modified > bestModified)
-                    if (better) {
-                        best = ContentUris.withAppendedId(files, c.getLong(0))
-                        bestOwned = owned
-                        bestModified = modified
-                    }
+                    out += SharedFile(
+                        ContentUris.withAppendedId(files, c.getLong(0)),
+                        c.getString(1).orEmpty(),
+                        c.getLong(2)
+                    )
                 }
             }
-            best
+            out.sortedByDescending { it.modified }
         } catch (e: Exception) {
-            null
+            emptyList()
         }
     }
 
-    private fun readFrom(relativeDir: String, name: String): String? {
-        val uri = findSnapshot(relativeDir, name) ?: return null
-        return try {
-            context.contentResolver.openInputStream(uri)?.use {
-                it.readBytes().toString(Charsets.UTF_8)
-            }
-        } catch (e: Exception) {
-            null
-        }
+    private fun read(uri: Uri): String? = try {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+    } catch (e: Exception) {
+        null
     }
 
-    /** Writes/updates [name] in [relativeDir] through MediaStore Files. */
+    /**
+     * Writes [name] in [relativeDir] through MediaStore: over this install's
+     * own file when there is one, so there is only ever one, and as a new
+     * file otherwise. Any second copy of its own - two passes that raced -
+     * is removed.
+     */
     private fun writeTo(json: String, relativeDir: String, name: String): Boolean {
         val resolver = context.contentResolver
-        val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         return try {
-            val target = findSnapshot(relativeDir, name) ?: run {
+            val own = ownFiles(relativeDir, name)
+            val target = own.firstOrNull()?.uri ?: run {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                     put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDir/")
                 }
-                resolver.insert(files, values)
+                // Android 10 takes a non-media file under Download only
+                // through the Downloads collection.
+                val collection = if (relativeDir.startsWith("${Environment.DIRECTORY_DOWNLOADS}/")) {
+                    MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                }
+                resolver.insert(collection, values)
             } ?: return false
             resolver.openOutputStream(target, "wt")?.use { out ->
                 out.write(json.toByteArray(Charsets.UTF_8))
             } ?: return false
+            for (extra in own.drop(1)) runCatching { resolver.delete(extra.uri, null, null) }
             true
         } catch (e: Exception) {
             false
@@ -434,6 +431,10 @@ class SnapshotStore(
         // to try again. Settings go in after it - they live in DataStore,
         // which has no part in a Room transaction.
         val imported = db.withTransaction { mergeRows(snapshot) }
+        // Rows restored without proof are matched to the copies still in the
+        // folder on the next run (ReattachEngine), however long this install
+        // has been running - a restore picked by hand comes after its first.
+        if (imported > 0) optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
         if (importOptions && snapshot.options.isNotEmpty()) {
             optionsRepo.importMap(withoutForeignFolders(snapshot.options), onlyIfSetupUntouched)
         }

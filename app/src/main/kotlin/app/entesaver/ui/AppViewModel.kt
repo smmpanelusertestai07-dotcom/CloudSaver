@@ -1245,7 +1245,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope.launch(Dispatchers.Default) {
                 val n = runCatching { MaintainEngine(ctx).confirmPass() }.getOrDefault(0)
                 confirmResult.value = n
-                repo.setInt(OptionsRepo.K.LAST_CONFIRM_COUNT, n)
             }
         }
         refreshHealth()
@@ -2167,7 +2166,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 leftoverUris.value = emptyList()
                 return@launch
             }
-            val knownFps = db.items().releasedFingerprints().toHashSet()
+            val knownFps = db.items().waitingFingerprints().toHashSet()
             val leftovers = (OutputInventory(ctx).query() ?: emptyList()).filter { entry ->
                 if (entry.ownedByUs) return@filter false
                 // Only a file named the way this pipeline names its output

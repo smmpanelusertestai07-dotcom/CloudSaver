@@ -45,8 +45,8 @@ object StateMachine {
     /**
      * Snapshot import mapping (fresh install / clear-data recovery):
      * - FREED stays FREED
-     * - RELEASED/GONE/DONE with NO evidence -> UNKNOWN (never freed, never reprocessed
-     *   unless the user enables "Reprocess unknown items")
+     * - RELEASED/GONE/DONE with NO evidence -> UNKNOWN (never freed; back under
+     *   watch as RELEASED once its copy is found in the folder, ReattachRules)
      * - RELEASED/GONE/DONE with evidence -> DONE, evidence kept
      * - SKIP stays SKIP; NEW/STAGED -> NEW (stage files do not survive reinstall)
      */

@@ -85,6 +85,7 @@ import app.entesaver.ui.components.EmptyState
 import app.entesaver.ui.components.EnteIcon
 import app.entesaver.ui.components.EnteInstallButtons
 import app.entesaver.ui.components.ListTags
+import app.entesaver.ui.components.OpenHistory
 import app.entesaver.ui.components.PasswordDialog
 import app.entesaver.ui.components.SegmentedChoice
 import app.entesaver.ui.components.TrialCard
@@ -190,9 +191,7 @@ fun OnboardingScreen(vm: AppViewModel) {
     val wrongPasswordLabel = stringResource(R.string.transfer_wrong_password)
     val pendingImport by vm.pendingImportUri.collectAsStateWithLifecycle()
     val importWrongPassword by vm.importPasswordWrong.collectAsStateWithLifecycle()
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
+    val importLauncher = rememberLauncherForActivityResult(OpenHistory()) { uri ->
         if (uri != null) {
             vm.importState(uri, null, importOkLabel, failedLabel, wrongPasswordLabel)
         }

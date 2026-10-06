@@ -107,7 +107,6 @@ data class Options(
     val keptCardSeen: Boolean = false,
     /** "": chain unproven. "SUCCESS"/"STALLED": card pending. "DONE": dismissed. */
     val firstChainState: String = "",
-    val showFreeUp: Boolean = false,
     val freeUpAllowVerified30: Boolean = false,
     /**
      * Where a light copy lands when an original is replaced.
@@ -118,13 +117,11 @@ data class Options(
      * move - the photo stays where it was and is simply smaller.
      */
     val keptInPlace: Boolean = false,
-    val reprocessUnknown: Boolean = false,
     val pauseAll: Boolean = false,
     // runtime / bookkeeping
     val onboardingDone: Boolean = false,
     val onboardingStep: Int = 0,
     val confirmFlowStartedAt: Long = 0,
-    val lastConfirmCount: Int = -1,
     val lastRunAt: Long = 0,
     /**
      * When a pass Android started last chose to wait on purpose - Battery
@@ -134,7 +131,6 @@ data class Options(
      * Saver became "the phone keeps stopping Ente Saver".
      */
     val lastWakeAt: Long = 0,
-    val lastRunNote: String = "",
     /**
      * Why Android ended the last run, when Android ended it.
      *
@@ -206,8 +202,6 @@ data class Options(
     val catchUpDay: String = "",
     /** The one-time "I understand" tick before the first reclaim batch. */
     val reclaimUnderstood: Boolean = false,
-    /** "Tell me when I can free more than X GB"; 0 = off. */
-    val reclaimReminderGb: Int = 0,
     /** How many "the phone stopped background work" alerts have been posted, ever. */
     val stallAlerts: Int = 0,
     /** When the last of them was posted. */
@@ -261,10 +255,8 @@ class OptionsRepo(private val context: Context) {
         val STORAGE_VOLUME = stringPreferencesKey("storageVolume")
         val APP_LOCK = booleanPreferencesKey("appLock")
         val WARNINGS_NOTIF = booleanPreferencesKey("warningsNotif")
-        val SHOW_FREE_UP = booleanPreferencesKey("showFreeUp")
         val FREE_UP_VERIFIED30 = booleanPreferencesKey("freeUpAllowVerified30")
         val KEPT_IN_PLACE = booleanPreferencesKey("keptInPlace")
-        val REPROCESS_UNKNOWN = booleanPreferencesKey("reprocessUnknown")
         val PAUSE_ALL = booleanPreferencesKey("pauseAll")
         val ONBOARDING_DONE = booleanPreferencesKey("onboardingDone")
         val PLACEHOLDER_REMOVED = booleanPreferencesKey("placeholderRemoved")
@@ -276,10 +268,8 @@ class OptionsRepo(private val context: Context) {
         val FIRST_CHAIN_STATE = stringPreferencesKey("firstChainState")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
         val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
-        val LAST_CONFIRM_COUNT = intPreferencesKey("lastConfirmCount")
         val LAST_RUN_AT = longPreferencesKey("lastRunAt")
         val LAST_WAKE_AT = longPreferencesKey("lastWakeAt")
-        val LAST_RUN_NOTE = stringPreferencesKey("lastRunNote")
         val LAST_STOP_REASON = stringPreferencesKey("lastStopReason")
         val LAST_SNAPSHOT_DAY = stringPreferencesKey("lastSnapshotDay")
         val FGS_SESSIONS = stringPreferencesKey("fgsSessions")
@@ -302,7 +292,6 @@ class OptionsRepo(private val context: Context) {
         val CATCH_UP_BYTES = longPreferencesKey("catchUpBytes")
         val CATCH_UP_DAY = stringPreferencesKey("catchUpDay")
         val RECLAIM_UNDERSTOOD = booleanPreferencesKey("reclaimUnderstood")
-        val RECLAIM_REMINDER_GB = intPreferencesKey("reclaimReminderGb")
         val STALL_ALERTS = intPreferencesKey("stallAlerts")
         val STALL_ALERT_AT = longPreferencesKey("stallAlertAt")
     }
@@ -347,18 +336,14 @@ class OptionsRepo(private val context: Context) {
             restoreDone = p[K.RESTORE_DONE] ?: false,
             keptCardSeen = p[K.KEPT_CARD_SEEN] ?: false,
             firstChainState = p[K.FIRST_CHAIN_STATE] ?: "",
-            showFreeUp = p[K.SHOW_FREE_UP] ?: false,
             freeUpAllowVerified30 = p[K.FREE_UP_VERIFIED30] ?: false,
             keptInPlace = p[K.KEPT_IN_PLACE] ?: false,
-            reprocessUnknown = p[K.REPROCESS_UNKNOWN] ?: false,
             pauseAll = p[K.PAUSE_ALL] ?: false,
             onboardingDone = p[K.ONBOARDING_DONE] ?: false,
             onboardingStep = p[K.ONBOARDING_STEP] ?: 0,
             confirmFlowStartedAt = p[K.CONFIRM_STARTED_AT] ?: 0,
-            lastConfirmCount = p[K.LAST_CONFIRM_COUNT] ?: -1,
             lastRunAt = p[K.LAST_RUN_AT] ?: 0,
             lastWakeAt = p[K.LAST_WAKE_AT] ?: 0,
-            lastRunNote = p[K.LAST_RUN_NOTE] ?: "",
             lastStopReason = p[K.LAST_STOP_REASON] ?: "",
             lastSnapshotDay = p[K.LAST_SNAPSHOT_DAY] ?: "",
             fgsSessions = p[K.FGS_SESSIONS] ?: "",
@@ -381,7 +366,6 @@ class OptionsRepo(private val context: Context) {
             catchUpBytes = p[K.CATCH_UP_BYTES] ?: 0,
             catchUpDay = p[K.CATCH_UP_DAY] ?: "",
             reclaimUnderstood = p[K.RECLAIM_UNDERSTOOD] ?: false,
-            reclaimReminderGb = p[K.RECLAIM_REMINDER_GB] ?: 0,
             stallAlerts = p[K.STALL_ALERTS] ?: 0,
             stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
         ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }
@@ -686,7 +670,8 @@ class OptionsRepo(private val context: Context) {
             "dynamicColor" to o.dynamicColor.toString(),
             "storageVolume" to o.storageVolume,
             "warningsNotif" to o.warningsNotif.toString(),
-            "showFreeUp" to o.showFreeUp.toString()
+            "keptInPlace" to o.keptInPlace.toString(),
+            "freeUpAllowVerified30" to o.freeUpAllowVerified30.toString()
         )
     }
 
@@ -782,7 +767,8 @@ class OptionsRepo(private val context: Context) {
             map["dynamicColor"]?.let { p[K.DYNAMIC_COLOR] = it.toBoolean() }
             map["storageVolume"]?.let { p[K.STORAGE_VOLUME] = it }
             map["warningsNotif"]?.let { p[K.WARNINGS_NOTIF] = it.toBoolean() }
-            map["showFreeUp"]?.let { p[K.SHOW_FREE_UP] = it.toBoolean() }
+            map["keptInPlace"]?.let { p[K.KEPT_IN_PLACE] = it.toBoolean() }
+            map["freeUpAllowVerified30"]?.let { p[K.FREE_UP_VERIFIED30] = it.toBoolean() }
         }
     }
 

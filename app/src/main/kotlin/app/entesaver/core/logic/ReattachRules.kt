@@ -19,10 +19,18 @@ object ReattachRules {
      * Only rows that have no output of their own. A RELEASED row already knows
      * about its copy, and rows further along carry upload evidence that a
      * filename match is not entitled to overwrite.
+     *
+     * UNKNOWN is a row restored from a history file without proof that Ente
+     * ever had it. Its copy still waiting in the folder means it is waiting
+     * for Ente exactly like a released one, so it goes back under watch -
+     * still with no proof. Left UNKNOWN, nothing would ever look at it again,
+     * and the copy would read as an earlier install's leftover. Its output
+     * fields describe the copy the old install made, so they do not count.
      */
-    fun canAdopt(state: String, hasOutput: Boolean): Boolean = when {
-        hasOutput -> false
-        else -> state == ItemState.NEW.name || state == ItemState.STAGED.name
+    fun canAdopt(state: String, hasOutput: Boolean): Boolean = when (state) {
+        ItemState.UNKNOWN.name -> true
+        ItemState.NEW.name, ItemState.STAGED.name -> !hasOutput
+        else -> false
     }
 
     /**

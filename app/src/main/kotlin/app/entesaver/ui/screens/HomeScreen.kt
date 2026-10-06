@@ -1127,16 +1127,20 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             exit = fadeOut() + shrinkVertically()
         ) {
             AppCard(modifier = Modifier.padding(top = 12.dp), tonal = true) {
+                // Nothing confirmed is not "Backup verified": it almost always
+                // means Ente's Free up device space did not run, so say that.
                 Text(
-                    stringResource(R.string.confirm_result_title),
+                    stringResource(
+                        if (lastConfirm > 0) R.string.confirm_result_title else R.string.confirm_none_title
+                    ),
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    pluralStringResource(
-                        R.plurals.confirm_result_line,
-                        lastConfirm,
-                        lastConfirm
-                    ),
+                    if (lastConfirm > 0) {
+                        pluralStringResource(R.plurals.confirm_result_line, lastConfirm, lastConfirm)
+                    } else {
+                        stringResource(R.string.confirm_none_text)
+                    },
                     style = MaterialTheme.typography.bodyMedium
                 )
                 TextButton(onClick = { vm.dismissConfirmResult() }) {

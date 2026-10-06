@@ -6,23 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The app must never leave a file the user can see unless they asked for one.
- * The output folder is theirs and their cloud app mirrors it, so a stray
- * state.json or placeholder there ends up in their photo library.
+ * Where the daily history file goes. One file, visible, outside the upload
+ * folder: a new install can only read it back when the person picks it, and
+ * the system file picker does not show hidden folders.
  */
 class SnapshotTargetsTest {
 
     @Test
-    fun everyTargetIsHidden() {
+    fun `the history is one visible file the system picker can open`() {
         val targets = Defaults.SNAPSHOT_TARGETS
         assertTrue("there must be somewhere to write", targets.isNotEmpty())
-        val visible = targets.filterNot { (dir, name) ->
-            Defaults.isHiddenSnapshotTarget(dir, name)
+        for ((dir, name) in targets) {
+            assertEquals(Defaults.HISTORY_NAME, name)
+            assertFalse(
+                "$dir/$name: Android renames a hidden folder an app asks for, and the picker hides it",
+                (dir.split('/') + name).any { it.startsWith(".") }
+            )
         }
-        // There is no visible last resort any more: Documents and Download
-        // both accept a hidden folder, so the app never has to leave a file
-        // where someone browsing Files would find it.
-        assertEquals("no visible target should remain: $visible", 0, visible.size)
     }
 
     @Test
@@ -41,10 +41,11 @@ class SnapshotTargetsTest {
     }
 
     @Test
-    fun `both shared copies exist, in different roots`() {
-        // One deletion should never be able to take the only copy with it.
-        val roots = Defaults.SNAPSHOT_TARGETS.map { it.first.substringBefore('/') }.toSet()
-        assertEquals("expected Documents and Download", setOf("Documents", "Download"), roots)
+    fun `Documents first, Download only where a phone refuses Documents`() {
+        assertEquals(
+            listOf("Documents/Ente Saver", "Download/Ente Saver"),
+            Defaults.SNAPSHOT_TARGETS.map { it.first }
+        )
     }
 
     @Test
@@ -63,41 +64,21 @@ class SnapshotTargetsTest {
     }
 
     @Test
-    fun `the folders named before 12_0 are still read, never written`() {
-        val previous = Defaults.PREVIOUS_SNAPSHOT_TARGETS
+    fun `the hidden folders used before 12_0 are read and emptied, never written`() {
         assertEquals(
-            listOf("Documents/.cloudsaver" to "state.json", "Download/.cloudsaver" to "state.json"),
-            previous
+            listOf("Documents/.cloudsaver", "Download/.cloudsaver", "Documents/_.cloudsaver", "Download/_.cloudsaver"),
+            Defaults.PREVIOUS_SNAPSHOT_DIRS
         )
-        assertTrue("an upgrade must still find its history", Defaults.LEGACY_SNAPSHOT_TARGETS.containsAll(previous))
-        assertEquals(
-            listOf("Documents/.entesaver" to "state.json", "Download/.entesaver" to "state.json"),
-            Defaults.SNAPSHOT_TARGETS
-        )
+        for (dir in Defaults.PREVIOUS_SNAPSHOT_DIRS) {
+            assertFalse("$dir must not be written to again", Defaults.SNAPSHOT_TARGETS.any { it.first == dir })
+        }
     }
 
+    /** Ente backs up the upload folder, so the history never goes there. */
     @Test
-    fun hiddenIsDecidedByDotPrefix() {
-        assertTrue(Defaults.isHiddenSnapshotTarget("Pictures/CloudSaver/.cloudsaver", "state.json"))
-        assertTrue(Defaults.isHiddenSnapshotTarget("Documents/.cloudsaver", "state.json"))
-        assertTrue(Defaults.isHiddenSnapshotTarget("Pictures/CloudSaver", ".cloudsaver.json"))
-        assertFalse(Defaults.isHiddenSnapshotTarget("Documents/CloudSaver", "backup.json"))
-        assertFalse(Defaults.isHiddenSnapshotTarget("Pictures/CloudSaver", "state.json"))
-    }
-
-    /**
-     * The output folder is the one the cloud app uploads, so nothing may be
-     * written there automatically except a hidden snapshot.
-     */
-    @Test
-    fun nothingVisibleIsEverWrittenToTheOutputFolder() {
+    fun nothingIsEverWrittenToTheOutputFolder() {
         for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
-            if (Defaults.isOutputPath(dir)) {
-                assertTrue(
-                    "$dir/$name sits in the upload folder and must be hidden",
-                    Defaults.isHiddenSnapshotTarget(dir, name)
-                )
-            }
+            assertFalse("$dir/$name sits in the upload folder", Defaults.isOutputPath(dir))
         }
     }
 

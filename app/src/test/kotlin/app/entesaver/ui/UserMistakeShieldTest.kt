@@ -126,9 +126,8 @@ class UserMistakeShieldTest {
     fun `settings says first that the history saves itself`() {
         assertTrue(strings.contains("name=\"opt_history_auto\""))
         assertTrue(
-            "the line must name both shared paths",
-            strings.contains("Download/.entesaver") &&
-                strings.contains("Documents/.entesaver")
+            "the line must name the history file and where it is",
+            strings.contains("history.json in Documents \\u203a Ente Saver")
         )
         assertTrue(screen("OptionsScreen.kt").contains("opt_history_auto"))
         assertTrue(

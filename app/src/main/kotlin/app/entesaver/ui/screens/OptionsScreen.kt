@@ -113,6 +113,7 @@ import app.entesaver.ui.components.FolderChoiceRows
 import app.entesaver.ui.components.FolderDialog
 import app.entesaver.ui.components.ListTags
 import app.entesaver.ui.components.MeterBar
+import app.entesaver.ui.components.OpenHistory
 import app.entesaver.ui.components.PasswordDialog
 import app.entesaver.ui.components.SectionHeader
 import app.entesaver.ui.components.SegmentedChoice
@@ -185,9 +186,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
         vm.backupPassword = null
     }
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
+    val importLauncher = rememberLauncherForActivityResult(OpenHistory()) { uri ->
         if (uri != null) {
             vm.importState(uri, null, importOkLabel, failedLabel, wrongPasswordLabel)
         }

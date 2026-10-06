@@ -152,23 +152,39 @@ object Defaults {
     const val OUTPUT_DIR_PHOTOS = "Pictures/EnteSaver/Photos"
     const val OUTPUT_DIR_VIDEOS = "Pictures/EnteSaver/Videos"
     /**
-     * Where the automatic snapshot lives.
+     * The daily history file: one visible file, history.json, in an
+     * "Ente Saver" folder under Documents - under Download on a phone that
+     * refuses Documents.
      *
-     * Documents and Download only. Android refuses a non-media file under
-     * Pictures - "Primary directory Pictures not allowed ... allowed
-     * directories are [Download, Documents]" - so the old Pictures targets
-     * silently wrote nothing, and the one thing that survives an uninstall
-     * was not being written at all.
+     * Visible on purpose. Android lets an app find a non-media file in shared
+     * storage only while the install that wrote it exists: after an uninstall
+     * or "Clear data" the file is still there, but the new install cannot see
+     * it by itself. It can open a file the person picks - and the system file
+     * picker hides hidden folders. So the file sits where Restore, on the
+     * first setup screen, opens. (Android also renames a hidden folder an app
+     * asks for: ".x" becomes "_.x". That is how the hidden copies written
+     * before 12.0 were never found again, and multiplied.)
      */
-    const val SNAPSHOT_DIR_DOCUMENTS = "Documents/.entesaver"
-    const val SNAPSHOT_DIR_DOWNLOAD = "Download/.entesaver"
+    const val HISTORY_DIR = "Documents/Ente Saver"
+    const val HISTORY_DIR_FALLBACK = "Download/Ente Saver"
+    const val HISTORY_NAME = "history.json"
+
+    /** Where the history file goes, in the order tried: the first that takes it is used. */
+    val SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
+        HISTORY_DIR to HISTORY_NAME,
+        HISTORY_DIR_FALLBACK to HISTORY_NAME
+    )
+
     /**
-     * The same two folders under the name they had before 12.0. Still read,
-     * so an upgrade or a reinstall finds its history; the files this app
-     * wrote there are removed once both copies exist under today's name.
+     * The hidden folders builds before 12.0 asked for, under both the name
+     * asked for and the name Android gave them. Whatever this app wrote there
+     * is read on an upgrade and removed once history.json exists.
      */
-    const val SNAPSHOT_DIR_PREVIOUS_DOCUMENTS = "Documents/.cloudsaver"
-    const val SNAPSHOT_DIR_PREVIOUS_DOWNLOAD = "Download/.cloudsaver"
+    val PREVIOUS_SNAPSHOT_DIRS: List<String> = listOf(
+        "Documents/.cloudsaver", "Download/.cloudsaver",
+        "Documents/_.cloudsaver", "Download/_.cloudsaver"
+    )
+
     /** Older builds wrote here. Read on upgrade, never written again. */
     const val SNAPSHOT_DIR_LEGACY_OUTPUT = "Pictures/CloudSaver/.cloudsaver"
     const val SNAPSHOT_DIR_LEGACY_DOTFILE = "Pictures/CloudSaver"
@@ -178,19 +194,7 @@ object Defaults {
     const val SNAPSHOT_NAME_DOTFILE = ".cloudsaver.json"
     const val SNAPSHOT_NAME_VISIBLE = "backup.json"
 
-    /** Snapshot targets in the order they are tried, as (directory, filename). */
-    val SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
-        SNAPSHOT_DIR_DOCUMENTS to SNAPSHOT_NAME,
-        SNAPSHOT_DIR_DOWNLOAD to SNAPSHOT_NAME
-    )
-
-    /** The snapshot folders as they were named before 12.0 (see SNAPSHOT_DIR_PREVIOUS_*). */
-    val PREVIOUS_SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
-        SNAPSHOT_DIR_PREVIOUS_DOCUMENTS to SNAPSHOT_NAME,
-        SNAPSHOT_DIR_PREVIOUS_DOWNLOAD to SNAPSHOT_NAME
-    )
-
-    /** The app-private third copy, relative to the app's own files dir. */
+    /** The app-private copy, relative to the app's own files dir. */
     const val SNAPSHOT_PRIVATE_NAME = "state.json"
 
     /**
@@ -198,16 +202,12 @@ object Defaults {
      * still looks here so an upgrade keeps its state, but nothing is written
      * here again and the file is removed once it is no longer needed.
      */
-    val LEGACY_SNAPSHOT_TARGETS: List<Pair<String, String>> = PREVIOUS_SNAPSHOT_TARGETS + listOf(
+    val LEGACY_SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
         SNAPSHOT_DIR_LEGACY_OUTPUT to SNAPSHOT_NAME,
         SNAPSHOT_DIR_LEGACY_DOTFILE to SNAPSHOT_NAME_DOTFILE,
         SNAPSHOT_DIR_LEGACY_VISIBLE to SNAPSHOT_NAME,
         SNAPSHOT_DIR_LEGACY_VISIBLE to SNAPSHOT_NAME_VISIBLE
     )
-
-    /** True for a snapshot target Android hides from the gallery and Files. */
-    fun isHiddenSnapshotTarget(dir: String, name: String): Boolean =
-        name.startsWith(".") || dir.split('/').any { it.startsWith(".") }
 
     /** Where a copy of this kind went before a row recorded its own folder. */
     fun legacyRelPath(folder: OutFolder): String = when (folder) {

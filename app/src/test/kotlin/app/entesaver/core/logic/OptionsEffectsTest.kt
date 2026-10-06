@@ -49,9 +49,7 @@ class OptionsEffectsTest {
         assertEquals("ente", o.cloudSingle)
         assertEquals("", o.storageVolume)
         // Dangerous things default OFF.
-        assertTrue(!o.showFreeUp)
         assertTrue(!o.freeUpAllowVerified30)
-        assertTrue(!o.reprocessUnknown)
         assertTrue(!o.pauseAll)
         assertTrue(!o.appLock)
     }

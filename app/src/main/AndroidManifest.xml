@@ -53,18 +53,21 @@
          to the account holder's Google Drive - without needing the internet
          permission, because the system does the sending. For an app whose
          first promise is that nothing leaves the phone, that is the promise
-         broken by a default. allowBackup="false" switches off BOTH that
-         cloud backup and Android 12's phone-to-phone transfer - the platform
-         offers no way to keep one without the other - so a new phone starts
-         this app empty and rebuilds from the .entesaver history file under
-         Download, which the transfer copies as an ordinary file. The rules
-         file below is inert while this stays false; it documents intent. -->
+         broken by a default. allowBackup="false" switches that off, and the
+         rules files exclude everything from a phone-to-phone transfer too, so
+         a new phone starts this app empty and is set up from the history file
+         (Documents/Ente Saver/history.json) through Restore.
+
+         hasFragileUserData: uninstalling asks "Keep app data?", so someone
+         who uninstalls by mistake and installs again keeps everything the app
+         knows. -->
     <application
         android:name=".EnteSaverApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
+        android:hasFragileUserData="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"

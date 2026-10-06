@@ -20,6 +20,14 @@ class ReattachRulesTest {
     }
 
     @Test
+    fun `a row restored without proof goes back under watch when its copy is still there`() {
+        // Its output fields describe the old install's copy, so they do not
+        // stop it; adoption still claims nothing (see the evidence test).
+        assertTrue(ReattachRules.canAdopt(ItemState.UNKNOWN.name, hasOutput = true))
+        assertTrue(ReattachRules.canAdopt(ItemState.UNKNOWN.name, hasOutput = false))
+    }
+
+    @Test
     fun `evidence-bearing rows are never overwritten by a filename match`() {
         // These states carry the proof Reclaim relies on. A copy sitting in a
         // folder is not permission to rewrite that.

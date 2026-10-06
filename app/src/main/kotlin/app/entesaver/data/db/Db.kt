@@ -656,9 +656,15 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = 'GONE'")
     suspend fun gone(): List<ItemRow>
 
-    /** Fingerprints of everything already in the upload folder. */
-    @Query("SELECT fingerprint FROM items WHERE state = 'RELEASED'")
-    suspend fun releasedFingerprints(): List<String>
+    /**
+     * Fingerprints of every file whose copy may be waiting in the upload
+     * folder: released ones, and ones restored from a history file without
+     * proof (UNKNOWN), whose copy is still waiting for Ente until a run
+     * matches it up again. A copy of either is never an earlier install's
+     * leftover.
+     */
+    @Query("SELECT fingerprint FROM items WHERE state IN ('RELEASED', 'UNKNOWN')")
+    suspend fun waitingFingerprints(): List<String>
 
     @Query("SELECT COUNT(*) FROM items WHERE state = :state")
     suspend fun countByState(state: String): Int

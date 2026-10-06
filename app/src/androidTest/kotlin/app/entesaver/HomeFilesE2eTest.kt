@@ -782,7 +782,7 @@ class HomeFilesE2eTest {
 
         // State badges: two queued, two ready to upload.
         compose.onAllNodesWithText(s(R.string.state_new)).assertCountEquals(2)
-        compose.onAllNodesWithText(s(R.string.state_released)).assertCountEquals(2)
+        compose.onAllNodesWithText(s(R.string.filter_in_progress)).assertCountEquals(2)
     }
 
     @Test
@@ -875,8 +875,8 @@ class HomeFilesE2eTest {
         assertChipReads(R.string.filter_status, s(R.string.filter_in_progress))
         assertVisibleRows(MEDIUM, LARGE)
 
-        // Only rows reading "Ready to upload" are on screen now, so the
-        // "Queued" option in the sheet is unambiguous.
+        // Only rows reading "Optimised" or "Waiting for Ente" are on screen now, so the
+        // "To optimise" option in the sheet is unambiguous.
         chooseFilterOn(
             R.string.filter_status, s(R.string.filter_in_progress), s(R.string.state_new)
         )

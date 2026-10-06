@@ -555,13 +555,23 @@ fun Thumbnail(row: ItemRow) {
     }
 }
 
+/**
+ * Whether a finished file's copy is known to have reached Ente. A copy can
+ * also finish without that: cleared for space after waiting its days while
+ * Ente's uploads could not be measured, or removed by hand. Calling that
+ * "Backed up" in green would be the one thing this screen must never say
+ * without proof.
+ */
+private fun reachedEnte(row: ItemRow): Boolean =
+    Evidence.parse(row.evidence).let { it.isPerFile || it == Evidence.VERIFIED }
+
 private fun badgeTone(row: ItemRow): BadgeTone {
     val state = runCatching { ItemState.valueOf(row.state) }.getOrDefault(ItemState.UNKNOWN)
     return when (state) {
         ItemState.NEW -> BadgeTone.NEUTRAL
         ItemState.STAGED, ItemState.RELEASED -> BadgeTone.PROGRESS
-        ItemState.GONE, ItemState.DONE, ItemState.FREED, ItemState.FREED_KEPT ->
-            BadgeTone.SUCCESS
+        ItemState.GONE, ItemState.DONE -> if (reachedEnte(row)) BadgeTone.SUCCESS else BadgeTone.MUTED
+        ItemState.FREED, ItemState.FREED_KEPT -> BadgeTone.SUCCESS
         ItemState.SKIP, ItemState.UNKNOWN -> BadgeTone.MUTED
     }
 }
@@ -573,7 +583,9 @@ fun stateLabel(row: ItemRow): String {
         ItemState.NEW -> stringResource(R.string.state_new)
         ItemState.STAGED -> stringResource(R.string.state_staged)
         ItemState.RELEASED -> stringResource(R.string.state_released)
-        ItemState.GONE, ItemState.DONE -> stringResource(R.string.state_done)
+        ItemState.GONE, ItemState.DONE -> stringResource(
+            if (reachedEnte(row)) R.string.state_done else R.string.state_done_unconfirmed
+        )
         ItemState.SKIP -> stringResource(R.string.state_skip)
         ItemState.FREED -> stringResource(R.string.state_freed)
         ItemState.FREED_KEPT -> stringResource(R.string.state_freed_kept)
@@ -625,6 +637,7 @@ private fun statusFilterChip(selected: String?, onSelect: (String?) -> Unit): Li
     val options = listOf(
         null to stringResource(R.string.filter_all),
         ItemState.NEW.name to stringResource(R.string.state_new),
+        // Optimised and waiting for Ente, both: the two steps between queued and backed up.
         ItemState.RELEASED.name to stringResource(R.string.filter_in_progress),
         ItemState.DONE.name to stringResource(R.string.state_done),
         ItemState.SKIP.name to stringResource(R.string.state_skip)
