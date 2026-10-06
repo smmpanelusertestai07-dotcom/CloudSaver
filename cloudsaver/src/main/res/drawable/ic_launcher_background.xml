@@ -1,13 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Launcher background: Ente Photos' own flat green, #08C225.
+    Launcher background: Ente Photos' own green, #08C225, lit from above -
+    a touch lighter at the top (#09D328) and a touch deeper at the bottom
+    (#07B122), so the white cloud sits on it the way a sticker sits on paper.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF08C225"
-        android:pathData="M0,0h108v108h-108z" />
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="18"
+                android:endX="54"
+                android:endY="90">
+                <item android:offset="0" android:color="#FF09D328" />
+                <item android:offset="1" android:color="#FF07B122" />
+            </gradient>
+        </aapt:attr>
+    </path>
 </vector>
