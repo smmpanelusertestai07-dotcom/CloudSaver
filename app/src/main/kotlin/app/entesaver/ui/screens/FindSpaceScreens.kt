@@ -149,7 +149,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result -> rvm.onDialogResult(result.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
-        pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
+        pending?.let { if (rvm.takeDialog(it)) launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
 
     val state = ListFilters.State(type, size, album, query)
@@ -887,7 +887,7 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
         ActivityResultContracts.StartIntentSenderForResult()
     ) { r -> rvm.onRestoreResult(r.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
-        pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
+        pending?.let { if (rvm.takeDialog(it)) launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
 
     Page(nav, stringResource(R.string.reclaim_history)) {

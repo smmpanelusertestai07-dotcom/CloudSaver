@@ -175,7 +175,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val nextDeleteDialog by vm.deleteIntent.collectAsStateWithLifecycle()
     LaunchedEffect(nextDeleteDialog) {
         nextDeleteDialog?.let {
-            cleanupLauncher.launch(IntentSenderRequest.Builder(it).build())
+            if (vm.takeDialog(it)) cleanupLauncher.launch(IntentSenderRequest.Builder(it).build())
         }
     }
 
@@ -1315,7 +1315,9 @@ private fun queueBreakdown(projection: Projection.Estimate): String? {
 fun skipReasonLabel(reason: String): String = when (reason) {
     "removed_before_upload" -> stringResource(R.string.skip_removed_early)
     "no_uri" -> stringResource(R.string.skip_unreadable)
-    "out_of_memory" -> stringResource(R.string.skip_too_large)
+    "out_of_memory" -> stringResource(R.string.skip_out_of_memory)
+    "process_died" -> stringResource(R.string.skip_process_died)
+    "encode_failed" -> stringResource(R.string.skip_encode_failed)
     "user_excluded" -> stringResource(R.string.skip_user_excluded)
     "duplicate" -> stringResource(R.string.skip_duplicate)
     "returned_copy" -> stringResource(R.string.skip_returned_copy)

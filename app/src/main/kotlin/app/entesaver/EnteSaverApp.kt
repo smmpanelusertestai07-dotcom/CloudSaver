@@ -1,6 +1,7 @@
 package app.entesaver
 
 import android.app.Application
+import android.text.format.DateFormat
 import androidx.work.Configuration
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
@@ -8,6 +9,7 @@ import app.entesaver.engine.StartupRecovery
 import app.entesaver.util.AppLooks
 import app.entesaver.util.DeviceTier
 import app.entesaver.util.FirstFrame
+import app.entesaver.util.Formats
 import app.entesaver.util.Notifications
 import app.entesaver.work.Scheduler
 import app.entesaver.work.WorkerNames
@@ -25,6 +27,7 @@ class EnteSaverApp : Application(), Configuration.Provider {
         // Before any window exists: the first frame follows the theme the
         // person chose, not the phone's night setting (FirstFrame).
         FirstFrame.apply(this)
+        Formats.clock24 = DateFormat.is24HourFormat(this)
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {

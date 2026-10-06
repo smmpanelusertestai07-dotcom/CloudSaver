@@ -81,13 +81,23 @@ object Formats {
      */
     fun mbLabel(mb: Int): String = if (mb < 0) "" else bytes(mb.toLong() * MB)
 
+    /**
+     * Whether the phone is set to 24-hour time. Kept up to date by the app
+     * (EnteSaverApp, HostActivity.onResume): a phone on 12-hour time read
+     * "after 00:00" on Home where it expected "after 12:00 AM".
+     */
+    @Volatile
+    var clock24: Boolean = true
+
+    private val clock: String get() = if (clock24) "HH:mm" else "h:mm a"
+
     fun dateTime(ms: Long): String =
         if (ms <= 0) "-"
-        else SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
+        else SimpleDateFormat("dd MMM yyyy, $clock", Locale.getDefault()).format(Date(ms))
 
     fun time(ms: Long): String =
         if (ms <= 0) "-"
-        else SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ms))
+        else SimpleDateFormat(clock, Locale.getDefault()).format(Date(ms))
 
     fun date(ms: Long): String =
         if (ms <= 0) "-"

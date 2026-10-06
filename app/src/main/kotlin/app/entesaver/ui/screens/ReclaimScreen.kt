@@ -113,7 +113,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     val sort by rvm.sort.collectAsStateWithLifecycle()
     val grouping by rvm.grouping.collectAsStateWithLifecycle()
 
-    var confirmBig by remember { mutableStateOf<Boolean?>(null) }
+    var confirmBig by rememberSaveable { mutableStateOf<Boolean?>(null) }
     var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }
     // The saved answer arrives a moment after the screen is first drawn, and
     // a plain remember of its value kept the very first one - "not yet" - for
@@ -130,7 +130,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         ActivityResultContracts.StartIntentSenderForResult()
     ) { r -> rvm.onDialogResult(r.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
-        pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
+        pending?.let { if (rvm.takeDialog(it)) launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
 
     val exportOk = stringResource(R.string.reclaim_export_ok)

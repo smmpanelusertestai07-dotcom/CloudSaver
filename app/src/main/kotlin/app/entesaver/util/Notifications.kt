@@ -12,6 +12,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import app.entesaver.HostActivity
 import app.entesaver.R
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
@@ -42,10 +43,13 @@ object Notifications {
     const val ID_WARN_CLOUD = 24
     /** An old folder ran empty: Ente can stop backing it up. */
     const val ID_NOTE_FOLDER = 25
+    /** More than a gigabyte of originals can be freed (FreeableNote). */
+    const val ID_NOTE_FREEABLE = 26
 
     /** Every slot an alert can use - what "Mute" takes down, and nothing else. */
     val ALERT_IDS = listOf(
-        ID_WARN_AGED, ID_WARN_SAFETY, ID_WARN_SPACE, ID_WARN_STALLED, ID_WARN_CLOUD, ID_NOTE_FOLDER
+        ID_WARN_AGED, ID_WARN_SAFETY, ID_WARN_SPACE, ID_WARN_STALLED, ID_WARN_CLOUD, ID_NOTE_FOLDER,
+        ID_NOTE_FREEABLE
     )
 
     /** The same alert is worth saying once a day at most. */
@@ -261,8 +265,14 @@ object Notifications {
     }
 
     private fun contentIntent(context: Context, route: String?): PendingIntent {
-        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            ?: Intent()
+        // The real activity, as the launcher starts it - not the launch
+        // intent, which names whichever home-screen icon is on when the alert
+        // is posted. Settings can switch that icon, and an alert from before
+        // the switch then pointed at a component that is off and did nothing.
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setClass(context, HostActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         route?.let { intent.putExtra(EXTRA_ROUTE, it) }
         return PendingIntent.getActivity(
             // A distinct request code per route, or the system would hand back

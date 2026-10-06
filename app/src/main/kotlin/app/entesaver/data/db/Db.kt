@@ -316,6 +316,21 @@ object Search {
         .replace("_", LIKE_ESCAPE + "_")
 }
 
+/** The originals that may be freed now (ItemDao.reclaimableBytesFlow explains each clause). */
+private const val RECLAIMABLE_BYTES =
+    "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
+        "WHERE originalMissing = 0 AND contentUri IS NOT NULL " +
+        "AND outputSha256 IS NOT NULL " +
+        "AND state IN ('RELEASED', 'GONE', 'DONE') " +
+        "AND sizeBytes >= :minSizeBytes " +
+        "AND dateAdded <= :addedBeforeSeconds " +
+        "AND outputSha256 IN (SELECT outputSha256 FROM ledger) " +
+        // The confirmation has to have aged, whichever grade it is. The
+        // fallback is the row itself: no date means nothing has settled.
+        "AND COALESCE(confirmedAt, releasedAt, :settledBefore + 1) <= :settledBefore " +
+        "AND (evidence IN ('CONFIRMED_EXACT', 'CONFIRMED', 'CONFIRMED_PACED') " +
+        "OR (:includeVerified AND evidence = 'VERIFIED'))"
+
 @Dao
 interface ItemDao {
 
@@ -790,26 +805,22 @@ interface ItemDao {
      * asking at all. What this cannot ask is whether a photograph is a
      * favourite: that lives in MediaStore, not here.
      */
-    @Query(
-        "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
-            "WHERE originalMissing = 0 AND contentUri IS NOT NULL " +
-            "AND outputSha256 IS NOT NULL " +
-            "AND state IN ('RELEASED', 'GONE', 'DONE') " +
-            "AND sizeBytes >= :minSizeBytes " +
-            "AND dateAdded <= :addedBeforeSeconds " +
-            "AND outputSha256 IN (SELECT outputSha256 FROM ledger) " +
-            // The confirmation has to have aged, whichever grade it is. The
-            // fallback is the row itself: no date means nothing has settled.
-            "AND COALESCE(confirmedAt, releasedAt, :settledBefore + 1) <= :settledBefore " +
-            "AND (evidence IN ('CONFIRMED_EXACT', 'CONFIRMED', 'CONFIRMED_PACED') " +
-            "OR (:includeVerified AND evidence = 'VERIFIED'))"
-    )
+    @Query(RECLAIMABLE_BYTES)
     fun reclaimableBytesFlow(
         settledBefore: Long,
         addedBeforeSeconds: Long,
         minSizeBytes: Long,
         includeVerified: Boolean
     ): Flow<Long>
+
+    /** The same total, asked once - by the maintenance pass (FreeableNote). */
+    @Query(RECLAIMABLE_BYTES)
+    suspend fun reclaimableBytes(
+        settledBefore: Long,
+        addedBeforeSeconds: Long,
+        minSizeBytes: Long,
+        includeVerified: Boolean
+    ): Long
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +

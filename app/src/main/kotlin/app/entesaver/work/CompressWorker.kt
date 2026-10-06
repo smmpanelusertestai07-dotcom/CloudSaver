@@ -149,6 +149,15 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         // and maintenance before that, and takes only the videos it can
         // finish, instead of being cut off and starting them again every run.
         val deadline = startAt + if (foreground) min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft) else PLAIN_RUN_MS
+        if (foreground) {
+            // Charged up front, for the longest this session may last. A run
+            // the system ends - low memory, Android 17's memory limit - never
+            // reaches the clean-up below, and a ledger that lost those
+            // sessions would let later runs overrun Android's six-hour limit.
+            // The clean-up puts the real end in its place.
+            val planned = FgsBudget.prune(sessions + (startAt to deadline), startAt)
+            runCatching { repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(planned)) }
+        }
         val deferred = HashSet<Long>()
         val profile = runCatching { ProfileBuilder(app).current(options) }
             .getOrDefault(MediaProfile.Profile())

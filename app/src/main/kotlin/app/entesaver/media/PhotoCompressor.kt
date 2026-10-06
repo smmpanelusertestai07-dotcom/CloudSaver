@@ -101,7 +101,7 @@ object PhotoCompressor {
         traits.asIsReason?.let { reason ->
             return copyAsIs(context, uri, displayName, tempDir, reason)
         }
-        val format = when (
+        var format = when (
             val decision = FormatResolver.resolve(spec.format, heicWorks, traits.ultraHdr, Build.VERSION.SDK_INT)
         ) {
             is FormatResolver.Decision.AsIs -> return copyAsIs(context, uri, displayName, tempDir, decision.reason)
@@ -146,6 +146,14 @@ object PhotoCompressor {
             return copyAsIs(context, uri, displayName, tempDir, "oom")
         }
 
+        // Android 16 cameras write HDR photos as HEIC with an ISO 21496-1 gain
+        // map, which the markers MediaTraits looks for do not name. The
+        // decoder knows: a picture that came with a gain map is an HDR photo,
+        // and of the formats written here only JPEG carries one forward.
+        val gainMapped = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && bitmap.hasGainmap()
+        val ultraHdr = traits.ultraHdr || gainMapped
+        if (gainMapped) format = PhotoFormat.JPEG
+
         try {
             var written = format
             var outFile = encode(context, bitmap, format, spec.quality, exifValues, tempDir)
@@ -183,7 +191,7 @@ object PhotoCompressor {
             }
             // An Ultra HDR photo is only re-made when its gain map survives;
             // otherwise its HDR would quietly be gone from the copy.
-            if (traits.ultraHdr && !MediaTraits.hasGainMap(outFile)) {
+            if (ultraHdr && !MediaTraits.hasGainMap(outFile)) {
                 outFile.delete()
                 return copyAsIs(context, uri, displayName, tempDir, "ultra_hdr_kept")
             }

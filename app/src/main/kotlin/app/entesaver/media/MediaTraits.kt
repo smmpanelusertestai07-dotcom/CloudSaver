@@ -117,9 +117,14 @@ object MediaTraits {
         }
     }.getOrDefault(false)
 
-    /** The gain map's own XMP namespace and version tag (Ultra HDR, ISO 21496-1). */
+    /**
+     * The gain map's own XMP namespace and version tag (Ultra HDR), and the
+     * ISO 21496-1 name a JPEG carries when its gain map is described the ISO
+     * way only. A HEIC gain map has no such text; PhotoCompressor asks the
+     * decoder for that one.
+     */
     private val ULTRA_HDR_MARKER_BYTES = listOf(
-        "hdrgm:Version", "http://ns.adobe.com/hdr-gain-map/1.0/"
+        "hdrgm:Version", "http://ns.adobe.com/hdr-gain-map/1.0/", "urn:iso:std:iso:ts:21496:-1"
     ).map { it.toByteArray(Charsets.ISO_8859_1) }
 
     /** Depth and portrait data proper, as opposed to the container that also holds a gain map. */

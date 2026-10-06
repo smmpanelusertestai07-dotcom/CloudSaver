@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.SdCard
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -30,6 +31,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -99,6 +103,41 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
         // arrives until access is full again, and the screen says so.
         if (AccessNotice.isLimited(mediaAccess)) {
             WarningNote(stringResource(AccessNotice.waiting(mediaAccess)))
+        }
+        // The chosen SD card is gone and work is paused. The alert and the
+        // Home chip both lead here, so the way out is here too, not only
+        // under Settings, Advanced - a card lost for good otherwise kept the
+        // app paused for good. Not while the volume list is still loading.
+        val cardMissing = options.storageVolume.isNotEmpty() && volumes.isNotEmpty() &&
+            volumes.none { it.mediaVolumeName == options.storageVolume }
+        var confirmPhone by rememberSaveable { mutableStateOf(false) }
+        if (cardMissing) {
+            WarningNote(stringResource(R.string.volume_missing_warning))
+            OutlinedButton(onClick = { confirmPhone = true }) {
+                Text(stringResource(R.string.volume_use_phone))
+            }
+        }
+        if (confirmPhone) {
+            AlertDialog(
+                onDismissRequest = { confirmPhone = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.setStorageVolume("")
+                        confirmPhone = false
+                    }) { Text(stringResource(R.string.volume_switch_confirm)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmPhone = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                },
+                title = { Text(stringResource(R.string.volume_switch_title)) },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(stringResource(R.string.volume_switch_body))
+                    }
+                }
+            )
         }
         SectionHeader(stringResource(R.string.storage_group_phone))
         AppCard {

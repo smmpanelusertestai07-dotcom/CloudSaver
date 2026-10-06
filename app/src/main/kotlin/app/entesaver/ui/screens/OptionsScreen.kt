@@ -173,7 +173,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     // The password is chosen before the file picker opens and used once the
     // user has picked a destination; it waits in the view model, which the
     // trip through the picker cannot clear (AppViewModel.backupPassword).
-    var askExportPassword by remember { mutableStateOf(false) }
+    var askExportPassword by rememberSaveable { mutableStateOf(false) }
     val pendingImport by vm.pendingImportUri.collectAsStateWithLifecycle()
     val importWrongPassword by vm.importPasswordWrong.collectAsStateWithLifecycle()
     val transferBusy by vm.transferBusy.collectAsStateWithLifecycle()

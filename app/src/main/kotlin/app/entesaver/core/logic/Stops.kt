@@ -22,7 +22,11 @@ object Stops {
 
     /** The platform's own constant names, so the sentence on Home says what it means. */
     fun name(reason: Int): String = when (reason) {
+        -512 -> UNKNOWN
         -256 -> "NOT_STOPPED"
+        // WorkManager's own number for Android 15's six-hour limit on a
+        // foreground service (Service.onTimeout), not a JobScheduler one.
+        -128 -> "FOREGROUND_SERVICE_TIMEOUT"
         0 -> UNKNOWN
         1 -> "CANCELLED_BY_APP"
         2 -> "PREEMPT"
@@ -39,7 +43,8 @@ object Stops {
         13 -> "USER"
         14 -> "SYSTEM_PROCESSING"
         15 -> "ESTIMATED_APP_LAUNCH_TIME_CHANGED"
-        16 -> "FOREGROUND_SERVICE_TIMEOUT"
+        // Android 16: JobScheduler gave up on a job it judged abandoned.
+        16 -> "TIMEOUT_ABANDONED"
         else -> UNKNOWN
     }
 
@@ -55,7 +60,7 @@ object Stops {
      */
     private val RATIONED = setOf(
         "QUOTA", "APP_STANDBY", "BACKGROUND_RESTRICTION",
-        "TIMEOUT", "FOREGROUND_SERVICE_TIMEOUT", "DEVICE_STATE", "PREEMPT"
+        "TIMEOUT", "TIMEOUT_ABANDONED", "FOREGROUND_SERVICE_TIMEOUT", "DEVICE_STATE", "PREEMPT"
     )
 
     /** True when [reason] means the app is being cut short rather than idle. */

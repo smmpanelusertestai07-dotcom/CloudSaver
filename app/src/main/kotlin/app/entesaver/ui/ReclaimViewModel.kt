@@ -137,6 +137,21 @@ class ReclaimViewModel(
     val lastResult = MutableStateFlow<ReclaimEngine.Result?>(null)
     val dryRun = MutableStateFlow<DryRun?>(null)
     val pendingIntent = MutableStateFlow<IntentSender?>(null)
+
+    /**
+     * The system dialog already on screen. Turning the phone, folding it or
+     * resizing the window rebuilds the screen, and the rebuilt screen sees
+     * the same request still pending: without this it opened a second dialog
+     * over the first, and the answer to one was counted for the other.
+     */
+    private var dialogOnScreen: IntentSender? = null
+
+    /** True once per request: whether the screen should open its dialog now. */
+    fun takeDialog(sender: IntentSender): Boolean {
+        if (sender === dialogOnScreen) return false
+        dialogOnScreen = sender
+        return true
+    }
     val busy = MutableStateFlow(false)
 
     private var prepared: ReclaimEngine.Prepared? = null
@@ -633,6 +648,7 @@ class ReclaimViewModel(
     }
 
     fun onDialogResult(granted: Boolean) {
+        dialogOnScreen = null
         pendingIntent.value = null
         if (Build.VERSION.SDK_INT < 30 && legacyQueue.isNotEmpty()) {
             // One file's consent came back; take it and move to the next.
@@ -761,6 +777,7 @@ class ReclaimViewModel(
     }
 
     fun onRestoreResult(granted: Boolean) {
+        dialogOnScreen = null
         pendingIntent.value = null
         if (granted) restoreGranted += restoreCurrent.map { it.toString() }
         restoreCurrent = emptyList()

@@ -439,7 +439,7 @@ fun FilesScreen(vm: AppViewModel) {
                         KeyValueRow(stringResource(R.string.detail_folder), folder)
                     }
                     row.skipReason?.let {
-                        KeyValueRow(stringResource(R.string.detail_reason), it)
+                        KeyValueRow(stringResource(R.string.detail_reason), fileSkipReason(it))
                     }
                     // Items copied byte-for-byte explain themselves here.
                     row.lastError?.takeIf { row.outputBytes != null }?.let { error ->
@@ -591,6 +591,17 @@ fun stateLabel(row: ItemRow): String {
         ItemState.FREED_KEPT -> stringResource(R.string.state_freed_kept)
         ItemState.UNKNOWN -> stringResource(R.string.state_unknown)
     }
+}
+
+/**
+ * Why this one file was set aside, in words. The reason is stored as a code;
+ * printed as it was, people read "out_of_memory", or an encoder's own error.
+ */
+@Composable
+private fun fileSkipReason(reason: String): String = when (reason) {
+    "removed_before_upload" -> stringResource(R.string.asis_removed_early)
+    "user_excluded" -> stringResource(R.string.skip_user_excluded_one)
+    else -> skipReasonLabel(reason)
 }
 
 /** Plain-English explanation for a file that was copied instead of compressed. */

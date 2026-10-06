@@ -12,12 +12,14 @@ import app.entesaver.core.logic.DeletePlanner
 import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.EvidenceRules
 import app.entesaver.core.logic.FirstChain
+import app.entesaver.core.logic.FreeableNote
 import app.entesaver.core.logic.GoneReason
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputLayout
 import app.entesaver.core.logic.OutputRoots
 import app.entesaver.core.logic.Pacing
+import app.entesaver.core.logic.ReclaimRules
 import app.entesaver.core.logic.ScanSources
 import app.entesaver.core.logic.StallAlert
 import app.entesaver.core.logic.StateMachine
@@ -186,6 +188,7 @@ class MaintainEngine(private val context: Context) {
         if (!pauseDeletions) {
             step { lazyDelete(o, now, summary) }
         }
+        step { freeableNote(now) }
         step { dailySnapshot(o, now) }
         step { logSummary(summary) }
         return summary
@@ -935,6 +938,34 @@ class MaintainEngine(private val context: Context) {
             // Said once - so only once it has actually been said.
             if (shown) repo.setBool(OptionsRepo.K.AGED_WARNED, true)
         }
+    }
+
+    /**
+     * Says that space can be freed, when that first passes a gigabyte and
+     * again only once it has doubled (FreeableNote). The same total the
+     * Storage tab marks, asked the same way, and nothing at all while Ente is
+     * missing or flagged, or this copy of the app is not the real one -
+     * freeing would refuse every file, and the note would lead nowhere.
+     */
+    private suspend fun freeableNote(now: Long) {
+        val o = repo.current()
+        if (o.cloudProblem.isNotEmpty() || !EnteApp.isInstalled(context) || TamperCheck.isModified(context)) return
+        val freeable = db.items().reclaimableBytes(
+            settledBefore = now - EvidenceRules.RECLAIM_MIN_DAYS * 86_400_000L,
+            addedBeforeSeconds = (now - ReclaimRules.MIN_CONFIRM_AGE_DAYS * 86_400_000L) / 1000L,
+            minSizeBytes = ReclaimRules.MIN_SIZE_BYTES,
+            includeVerified = o.freeUpAllowVerified30
+        )
+        val said = FreeableNote.remembered(freeable, o.freeableSaidBytes)
+        if (said != o.freeableSaidBytes) repo.setLong(OptionsRepo.K.FREEABLE_SAID_BYTES, said)
+        if (!FreeableNote.due(freeable, said)) return
+        val shown = Notifications.alert(
+            context, Notifications.ID_NOTE_FREEABLE,
+            context.getString(R.string.note_freeable_title, Formats.bytes(freeable)),
+            context.getString(R.string.note_freeable_text),
+            o, dedupKey = "freeable", route = "free_space_hub", now = now
+        )
+        if (shown) repo.setLong(OptionsRepo.K.FREEABLE_SAID_BYTES, freeable)
     }
 
     // ---- h) daily snapshot -------------------------------------------------------

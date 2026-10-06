@@ -202,6 +202,8 @@ data class Options(
     val catchUpDay: String = "",
     /** The one-time "I understand" tick before the first reclaim batch. */
     val reclaimUnderstood: Boolean = false,
+    /** The freeable total the last "space can be freed" note named (FreeableNote); 0 = none. */
+    val freeableSaidBytes: Long = 0,
     /** How many "the phone stopped background work" alerts have been posted, ever. */
     val stallAlerts: Int = 0,
     /** When the last of them was posted. */
@@ -292,6 +294,7 @@ class OptionsRepo(private val context: Context) {
         val CATCH_UP_BYTES = longPreferencesKey("catchUpBytes")
         val CATCH_UP_DAY = stringPreferencesKey("catchUpDay")
         val RECLAIM_UNDERSTOOD = booleanPreferencesKey("reclaimUnderstood")
+        val FREEABLE_SAID_BYTES = longPreferencesKey("freeableSaidBytes")
         val STALL_ALERTS = intPreferencesKey("stallAlerts")
         val STALL_ALERT_AT = longPreferencesKey("stallAlertAt")
     }
@@ -366,6 +369,7 @@ class OptionsRepo(private val context: Context) {
             catchUpBytes = p[K.CATCH_UP_BYTES] ?: 0,
             catchUpDay = p[K.CATCH_UP_DAY] ?: "",
             reclaimUnderstood = p[K.RECLAIM_UNDERSTOOD] ?: false,
+            freeableSaidBytes = p[K.FREEABLE_SAID_BYTES] ?: 0L,
             stallAlerts = p[K.STALL_ALERTS] ?: 0,
             stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
         ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }

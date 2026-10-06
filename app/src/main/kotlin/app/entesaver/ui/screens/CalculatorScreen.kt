@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,8 +94,9 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
         vm.refreshProfile()
     }
 
-    var freeText by remember { mutableStateOf("") }
-    var prefilled by remember { mutableStateOf(false) }
+    // Saveable: turning the phone mid-typing must not wipe the figure.
+    var freeText by rememberSaveable { mutableStateOf("") }
+    var prefilled by rememberSaveable { mutableStateOf(false) }
     // Ente's free plan as a starting point - editable, and labelled as a
     // prefill, never presented as the person's own figure.
     LaunchedEffect(Unit) {

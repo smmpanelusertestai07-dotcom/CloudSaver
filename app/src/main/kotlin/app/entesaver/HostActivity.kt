@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.text.format.DateFormat
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -15,6 +16,7 @@ import app.entesaver.ui.App
 import app.entesaver.ui.AppViewModel
 import app.entesaver.util.AppLooks
 import app.entesaver.util.Errand
+import app.entesaver.util.Formats
 import app.entesaver.util.Notifications
 
 class HostActivity : AppCompatActivity() {
@@ -30,7 +32,11 @@ class HostActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        vm.consumeDeepLink(intent?.getStringExtra(Notifications.EXTRA_ROUTE))
+        // Only on a real start: a rotation, fold or window resize recreates
+        // this activity with the same intent, and taking its route again
+        // threw the person back to the alert's screen every time they turned
+        // the phone.
+        if (savedInstanceState == null) takeRoute(intent)
         setContent {
             App(vm)
         }
@@ -44,7 +50,13 @@ class HostActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        vm.consumeDeepLink(intent.getStringExtra(Notifications.EXTRA_ROUTE))
+        takeRoute(intent)
+    }
+
+    /** Opens the screen an alert or shortcut asked for, once: the route is spent. */
+    private fun takeRoute(intent: Intent?) {
+        vm.consumeDeepLink(intent?.getStringExtra(Notifications.EXTRA_ROUTE))
+        intent?.removeExtra(Notifications.EXTRA_ROUTE)
     }
 
     /**
@@ -79,6 +91,8 @@ class HostActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The phone's clock setting can change while the app is away.
+        Formats.clock24 = DateFormat.is24HourFormat(this)
         vm.onResumed()
     }
 

@@ -57,7 +57,10 @@
     <string name="explain_backed_up">Copies Ente Saver can show reached Ente. Only these can ever offer an original for you to remove.</string>
     <string name="skip_removed_early">Removed before Ente collected them</string>
     <string name="skip_unreadable">Could not be read</string>
-    <string name="skip_too_large">Too large for the space available</string>
+    <string name="skip_out_of_memory">Too big for this phone\'s memory</string>
+    <string name="skip_process_died">The app was stopped while making it</string>
+    <string name="skip_encode_failed">Could not be made smaller</string>
+    <string name="skip_user_excluded_one">You chose to skip this file</string>
     <string name="skip_other">Skipped to be safe</string>
     <string name="skip_user_excluded">You chose to skip these</string>
     <string name="skip_duplicate">Already handled once</string>
@@ -126,6 +129,8 @@
     <string name="btn_verify_link">Confirm uploads in Ente</string>
     <string name="confirm_result_title">Backup verified</string>
     <string name="confirm_none_title">Nothing confirmed yet</string>
+    <string name="note_freeable_title">%1$s of space can be freed</string>
+    <string name="note_freeable_text">Ente has these photos and videos. Tap to see them and free up space on your phone.</string>
     <string name="confirm_none_text">No copy has left the Ente Saver folder yet. In Ente Photos, open Settings \u203a Free up space \u203a Free up device space and let it finish, then tap Confirm uploads in Ente again.</string>
     <plurals name="confirm_result_line">
         <item quantity="one">%1$d file confirmed as backed up</item>
@@ -265,6 +270,7 @@
     <string name="volume_free_line">%1$s available</string>
     <string name="volume_active_mark">(in use)</string>
     <string name="volume_missing_warning">The chosen SD card is not available. Ente Saver paused safely.</string>
+    <string name="volume_use_phone">Use phone storage instead</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, Ente Saver pauses safely.</string>
     <string name="storage_temp_title">Leftover work files</string>
     <string name="storage_temp_text">Half-finished files left behind when a run was interrupted. They are not needed and nothing of yours is lost by clearing them. A file Ente Saver is writing right now is left alone, so clearing during a run may not free all of it.</string>

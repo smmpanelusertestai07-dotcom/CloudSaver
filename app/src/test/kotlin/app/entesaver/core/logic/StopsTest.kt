@@ -21,7 +21,11 @@ class StopsTest {
     fun `the reasons that matter are named, not printed as integers`() {
         assertEquals("QUOTA", Stops.name(10))
         assertEquals("APP_STANDBY", Stops.name(12))
-        assertEquals("FOREGROUND_SERVICE_TIMEOUT", Stops.name(16))
+        // WorkManager reports the foreground-service timeout as its own -128
+        // (WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT); 16 is
+        // JobScheduler's abandoned-job stop on Android 16.
+        assertEquals("FOREGROUND_SERVICE_TIMEOUT", Stops.name(-128))
+        assertEquals("TIMEOUT_ABANDONED", Stops.name(16))
         assertEquals("CONSTRAINT_CHARGING", Stops.name(6))
         assertEquals("CANCELLED_BY_APP", Stops.name(1))
         assertEquals("NOT_STOPPED", Stops.name(-256))
@@ -34,6 +38,7 @@ class StopsTest {
         assertEquals(Stops.UNKNOWN, Stops.name(99))
         assertEquals(Stops.UNKNOWN, Stops.name(-1))
         assertEquals(Stops.UNKNOWN, Stops.name(0))
+        assertEquals(Stops.UNKNOWN, Stops.name(-512))
     }
 
     @Test
@@ -42,7 +47,7 @@ class StopsTest {
         // setting only the user can reach, so the app has to say so.
         for (r in listOf(
             "QUOTA", "APP_STANDBY", "BACKGROUND_RESTRICTION",
-            "TIMEOUT", "FOREGROUND_SERVICE_TIMEOUT", "DEVICE_STATE", "PREEMPT"
+            "TIMEOUT", "TIMEOUT_ABANDONED", "FOREGROUND_SERVICE_TIMEOUT", "DEVICE_STATE", "PREEMPT"
         )) {
             assertTrue("$r means the phone is rationing us", Stops.isRationed(r))
         }

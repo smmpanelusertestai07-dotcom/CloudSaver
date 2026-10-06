@@ -1960,6 +1960,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     val deleteIntent = MutableStateFlow<IntentSender?>(null)
 
+    /**
+     * The system dialog already on screen. Turning the phone, folding it or
+     * resizing the window rebuilds the screen, and the rebuilt screen sees
+     * the same request still pending: without this it opened a second dialog
+     * over the first, and the answer to one was counted for the other.
+     */
+    private var dialogOnScreen: IntentSender? = null
+
+    /** True once per request: whether the screen should open its dialog now. */
+    fun takeDialog(sender: IntentSender): Boolean {
+        if (sender === dialogOnScreen) return false
+        dialogOnScreen = sender
+        return true
+    }
+
     private var deleteOnDone: ((List<Uri>) -> Unit)? = null
     private var systemDialogUris: List<Uri> = emptyList()
     /**
@@ -2018,6 +2033,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** UI reports the outcome of whichever consent dialog was shown. */
     fun onDeleteDialogResult(ok: Boolean) {
+        dialogOnScreen = null
         // Cleared first, always. A sender left sitting in the flow is
         // relaunched the next time this screen is opened, and the user gets a
         // delete dialog they never asked for.

@@ -89,7 +89,7 @@ class Stager(private val context: Context, private val db: AppDb) {
         } catch (ce: CancellationException) {
             throw ce
         } catch (e: Exception) {
-            fail(row, e.message ?: e.javaClass.simpleName)
+            fail(row, ENCODE_FAILED, e.message ?: e.javaClass.simpleName)
             return false
         } catch (oom: OutOfMemoryError) {
             // A huge photo can exhaust the heap while being scaled or rotated.
@@ -97,7 +97,7 @@ class Stager(private val context: Context, private val db: AppDb) {
             // attempt, so the same file is retried first on every run and
             // nothing behind it is ever processed. Treat it as a failure so
             // the item reaches SKIP after the usual three tries.
-            fail(row, "out_of_memory")
+            fail(row, OUT_OF_MEMORY)
             return false
         } finally {
             InFlight.end(context)
@@ -147,7 +147,7 @@ class Stager(private val context: Context, private val db: AppDb) {
             // clean up both names rather than only the one we started with.
             result.file.delete()
             stageFile?.delete()
-            fail(row, e.message ?: e.javaClass.simpleName)
+            fail(row, ENCODE_FAILED, e.message ?: e.javaClass.simpleName)
             false
         }
     }
@@ -162,25 +162,36 @@ class Stager(private val context: Context, private val db: AppDb) {
         )
     }
 
-    private suspend fun fail(row: ItemRow, error: String) {
+    /**
+     * Counts a failed attempt; the third sets the file aside. [reason] is a
+     * fixed code, which Home and Files turn into words and Home groups by;
+     * [detail] is what actually went wrong, kept for the record. An exception
+     * message used as the reason was shown to people as it stood, and every
+     * different message made its own line on Home.
+     */
+    private suspend fun fail(row: ItemRow, reason: String, detail: String = reason) {
         val attempts = row.attempts + 1
         val now = System.currentTimeMillis()
         if (attempts >= 3) {
             db.items().update(
                 row.copy(
                     state = ItemState.SKIP.name,
-                    skipReason = error,
+                    skipReason = reason,
                     attempts = attempts,
-                    lastError = error,
+                    lastError = detail,
                     updatedAt = now
                 )
             )
         } else {
-            db.items().update(row.copy(attempts = attempts, lastError = error, updatedAt = now))
+            db.items().update(row.copy(attempts = attempts, lastError = detail, updatedAt = now))
         }
     }
 
     companion object {
+        /** Why a file was set aside after three tries (see [fail]). */
+        const val ENCODE_FAILED = "encode_failed"
+        const val OUT_OF_MEMORY = "out_of_memory"
+
         fun folderFor(isVideo: Boolean, mode: OutputMode): OutFolder = when {
             mode == OutputMode.SINGLE -> OutFolder.SINGLE
             isVideo -> OutFolder.VIDEOS
