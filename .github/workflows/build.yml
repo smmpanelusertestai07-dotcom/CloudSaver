@@ -47,6 +47,8 @@ jobs:
           if [ -n "${KEYSTORE_B64:-}" ]; then
             echo "$KEYSTORE_B64" | base64 -d > release.jks
             KS_PASS="$SECRET_KEYSTORE_PASSWORD"
+            # The alias inside the release key, under the name it was made
+            # with; it is part of the key and cannot be renamed.
             KEY_ALIAS="${SECRET_KEY_ALIAS:-cloudsaver}"
             KEY_PASS="${SECRET_KEY_PASSWORD:-$KS_PASS}"
             echo "generated=false" >> "$GITHUB_OUTPUT"
@@ -54,12 +56,12 @@ jobs:
           else
             KS_PASS=$(openssl rand -hex 16)
             echo "::add-mask::$KS_PASS"
-            KEY_ALIAS=cloudsaver
+            KEY_ALIAS=entesaver
             KEY_PASS="$KS_PASS"
             keytool -genkeypair -v -keystore release.jks -alias "$KEY_ALIAS" \
               -keyalg RSA -keysize 4096 -validity 9125 \
               -storepass "$KS_PASS" -keypass "$KEY_PASS" \
-              -dname "CN=CloudSaver Release, OU=CloudSaver, O=CloudSaver"
+              -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"
             echo "generated=true" >> "$GITHUB_OUTPUT"
             echo "No signing secrets found - minted a throwaway key for THIS RUN only."
             echo "It is not written anywhere but this runner, and the release step will refuse to publish with it."
@@ -89,8 +91,8 @@ jobs:
           APK_NAME="EnteSaver-v$VERSION-release.apk"
           echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
-          UNSIGNED=cloudsaver/build/outputs/apk/release/cloudsaver-release-unsigned.apk
-          [ -f "$UNSIGNED" ] || UNSIGNED=cloudsaver/build/outputs/apk/release/cloudsaver-release.apk
+          UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+          [ -f "$UNSIGNED" ] || UNSIGNED=app/build/outputs/apk/release/app-release.apk
           # -P 16, not -p: -p is the old 4 KiB rule, and Android 16 runs an
           # app whose .so files are not 16 KiB aligned in a compatibility
           # mode with a launch-time system dialog rather than refusing to
@@ -151,16 +153,16 @@ jobs:
           set -eu
           KEYSTORE_NOTE=""
           if [ "${{ steps.keystore.outputs.generated }}" = "true" ]; then
-            KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other Ente Saver or CloudSaver build - Android refuses an update whose signer differs. Generate one key on your own machine and add it as repository secrets; the release step refuses to publish until you do."
+            KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other Ente Saver build - Android refuses an update whose signer differs. Generate one key on your own machine and add it as repository secrets; the release step refuses to publish until you do."
           fi
           cat > RELEASE_NOTES.md <<EOF
-          Ente Saver (formerly CloudSaver), made for Ente Photos. It installs
-          over CloudSaver and keeps everything it knew. Only the owner's own
-          device findings may ever be patched.
+          Ente Saver, made for Ente Photos. It installs over every earlier
+          version and keeps everything it knew. Only the owner's own device
+          findings may ever be patched.
 
           Offline storage saver. Light copies go to one folder (Pictures/EnteSaver
-          for a new install; an existing install keeps Pictures/CloudSaver until
-          you tap Move); Ente Photos backs up only that folder. Photos and videos
+          for a new install; an older install keeps its old folder until you
+          tap Move); Ente Photos backs up only that folder. Photos and videos
           have their own settings. Originals are never touched automatically.
           Everything else is explained inside the app (Help).
 
@@ -193,25 +195,25 @@ jobs:
               echo "### No signing key is configured, so this build cannot be published"
               echo ""
               echo "This run signed the APK with a key it invented and then threw away, so the"
-              echo "APK cannot install over any other CloudSaver build. The release step refuses"
+              echo "APK cannot install over any other Ente Saver build. The release step refuses"
               echo "to publish it. Generate ONE key, on your own machine - never in CI, and never"
               echo "into an artifact - then add it as repository secrets:"
               echo ""
               echo '```'
-              echo 'keytool -genkeypair -v -keystore cloudsaver-release.jks -alias cloudsaver \\'
+              echo 'keytool -genkeypair -v -keystore entesaver-release.jks -alias entesaver \\'
               echo '  -keyalg RSA -keysize 4096 -validity 9125 \\'
-              echo '  -dname "CN=CloudSaver Release, OU=CloudSaver, O=CloudSaver"'
-              echo 'base64 -w0 cloudsaver-release.jks   # this string is KEYSTORE_B64'
+              echo '  -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"'
+              echo 'base64 -w0 entesaver-release.jks   # this string is KEYSTORE_B64'
               echo '```'
               echo ""
               echo "Then in Settings -> Secrets and variables -> Actions add:"
               echo "   - \`KEYSTORE_B64\` - the base64 string printed above"
               echo "   - \`KEYSTORE_PASSWORD\` - the store password you chose"
-              echo "   - \`KEY_ALIAS\` - cloudsaver"
+              echo "   - \`KEY_ALIAS\` - entesaver"
               echo "   - \`KEY_PASSWORD\` - the key password you chose"
               echo ""
               echo "Back up the .jks file itself somewhere private. Lose it and no future build"
-              echo "can ever update an installed CloudSaver again."
+              echo "can ever update an installed Ente Saver again."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -350,8 +352,8 @@ jobs:
         with:
           name: emulator-test-report-api${{ matrix.api }}
           path: |
-            cloudsaver/build/reports/androidTests/**
-            cloudsaver/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
   release:
@@ -371,25 +373,25 @@ jobs:
       - name: A published release needs a signing key that outlives the run
         if: needs.build.outputs.throwaway_key == 'true'
         run: |
-          echo "::error title=No signing key configured::This APK was signed with a key that existed only inside this run, so it cannot install over any other CloudSaver build. Refusing to publish it."
+          echo "::error title=No signing key configured::This APK was signed with a key that existed only inside this run, so it cannot install over any other Ente Saver build. Refusing to publish it."
           cat >&2 <<'MSG'
 
           Generate ONE key on your own machine - never in CI, never into an
           artifact - and add it as repository secrets:
 
-            keytool -genkeypair -v -keystore cloudsaver-release.jks \
-              -alias cloudsaver -keyalg RSA -keysize 4096 -validity 9125 \
-              -dname "CN=CloudSaver Release, OU=CloudSaver, O=CloudSaver"
-            base64 -w0 cloudsaver-release.jks
+            keytool -genkeypair -v -keystore entesaver-release.jks \
+              -alias entesaver -keyalg RSA -keysize 4096 -validity 9125 \
+              -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"
+            base64 -w0 entesaver-release.jks
 
           Then add them in Settings -> Secrets and variables -> Actions:
             KEYSTORE_B64        the base64 string
             KEYSTORE_PASSWORD   the store password
-            KEY_ALIAS           cloudsaver
+            KEY_ALIAS           entesaver
             KEY_PASSWORD        the key password
 
           Keep the .jks file somewhere private and backed up. Lose it and no
-          future build can ever update an installed CloudSaver again.
+          future build can ever update an installed Ente Saver again.
           MSG
           exit 1
 
@@ -417,10 +419,10 @@ jobs:
           #
           # This is not hypothetical: when another project shared this
           # repository, each of its pushes to main re-ran this job and
-          # silently re-signed the last CloudSaver release.
+          # silently re-signed the last release.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::notice::$TAG is already published - leaving it exactly as it is."
-            echo "To publish a new build, raise versionName in cloudsaver/build.gradle.kts."
+            echo "To publish a new build, raise versionName in app/build.gradle.kts."
             exit 0
           fi
           gh release create "$TAG" "EnteSaver-v${VERSION}-release.apk" \

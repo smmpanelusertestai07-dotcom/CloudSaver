@@ -1,0 +1,287 @@
+package app.entesaver
+
+import androidx.room.Room
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import app.entesaver.data.db.AppDb
+import app.entesaver.data.db.ItemRow
+import app.entesaver.data.db.LedgerRow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * The scope clause, held to on the queries that promise future work.
+ *
+ * The database inventories the whole phone on purpose - returned copies,
+ * duplicates and presence all need it - but every number that says "this is
+ * waiting" or "the trial will use this" must count ticked albums only. The
+ * shipped bug: one album ticked with one photo in it, and the trial optimised
+ * three photos from albums the user had just declined to hand over, because
+ * its pick read the inventory rather than the choice.
+ */
+@RunWith(AndroidJUnit4::class)
+class ScopeQueriesTest {
+
+    private lateinit var db: AppDb
+
+    private fun photo(name: String, bucket: String?, captureAt: Long) = ItemRow(
+        fingerprint = "fp-$name",
+        displayName = name,
+        sizeBytes = 1_000,
+        dateModified = captureAt / 1000,
+        captureAt = captureAt,
+        mimeType = "image/jpeg",
+        isVideo = false,
+        bucket = bucket,
+        state = "NEW"
+    )
+
+    @Before
+    fun setUp() {
+        db = Room.inMemoryDatabaseBuilder(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            AppDb::class.java
+        ).build()
+        runBlocking {
+            // Three albums and an SD-card row with no bucket at all; only
+            // Screenshots is ticked. Camera holds the newest photos, exactly
+            // the shape of the phone the bug shipped on.
+            db.items().insert(photo("cam1.jpg", "Camera", 5_000))
+            db.items().insert(photo("cam2.jpg", "Camera", 4_000))
+            db.items().insert(photo("dl1.jpg", "Download", 3_000))
+            db.items().insert(photo("shot1.jpg", "Screenshots", 2_000))
+            db.items().insert(photo("nobucket.jpg", null, 1_000))
+        }
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
+    }
+
+    private val everythingButScreenshots = setOf("Camera", "Download")
+
+    @Test
+    fun theTrialPicksOnlyFromTickedAlbums() = runBlocking {
+        val picked = db.items().newestNewPhotos(3, everythingButScreenshots)
+        // Two eligible rows exist - the ticked album's photo and the row no
+        // album claims - and newest-first order must survive the clause.
+        assertEquals(listOf("shot1.jpg", "nobucket.jpg"), picked.map { it.displayName })
+    }
+
+    @Test
+    fun theTrialCountAgreesWithTheTrialPick() = runBlocking {
+        assertEquals(2, db.items().waitingPhotoCountFlow(everythingButScreenshots).first())
+        // Nothing excluded: the whole inventory is the queue.
+        assertEquals(5, db.items().waitingPhotoCountFlow(emptySet<String>()).first())
+    }
+
+    @Test
+    fun waitingCountsFollowTheTicks() = runBlocking {
+        assertEquals(2, db.items().newInScopeCount(everythingButScreenshots))
+        assertEquals(2, db.items().newInScopeCountFlow(everythingButScreenshots).first())
+        assertEquals(5, db.items().newInScopeCount(emptySet<String>()))
+    }
+
+    @Test
+    fun theProjectionCoversOnlyWhatARunMayTouch() = runBlocking {
+        assertEquals(
+            2_000,
+            db.items().pendingBytesByType(video = false, everythingButScreenshots)
+        )
+        assertEquals(2, db.items().pendingCountByType(video = false, everythingButScreenshots))
+        assertEquals(0, db.items().pendingCountByType(video = true, everythingButScreenshots))
+    }
+
+    /**
+     * The list agrees with the counter, on a library big enough to disagree.
+     *
+     * The Files query is capped, and the worker takes newest first, so on a
+     * mature phone the newest rows are all finished work and the backlog is
+     * older. The filter used to run in Kotlin over the capped result: tapping
+     * "Waiting" took the newest 500 rows - every one of them DONE - kept
+     * none, and printed "No files match these filters" while Home's counter,
+     * a COUNT over the same table, said six hundred. Six hundred waiting
+     * files, none of them listed.
+     *
+     * 600 NEW rows older than 500 DONE ones reproduces exactly that.
+     */
+    @Test
+    fun theWaitingListIsNotEmptiedByRowsItDidNotAskFor() = runBlocking {
+        val setUpInScopeNew = db.items().newInScopeCount(everythingButScreenshots)
+        val done = 500
+        val waiting = 600
+        for (i in 0 until done) {
+            db.items().insert(
+                photo("done_$i.jpg", "Screenshots", 1_000_000L + i).copy(
+                    fingerprint = "fp-done-$i", state = "DONE"
+                )
+            )
+        }
+        for (i in 0 until waiting) {
+            db.items().insert(
+                photo("wait_$i.jpg", "Screenshots", 100_000L + i).copy(
+                    fingerprint = "fp-wait-$i", state = "NEW"
+                )
+            )
+        }
+
+        val counter = db.items().newInScopeCount(everythingButScreenshots)
+        val listed = db.items().searchFlow(
+            q = "", states = listOf("NEW"), anyState = 0,
+            excludedBuckets = everythingButScreenshots, sortKey = 0, limit = 500
+        ).first()
+
+        // The counter sees every waiting row, plus whatever setUp left in
+        // scope - measured, not assumed. setUp puts two NEW rows inside the
+        // scope, not one: shot1.jpg in the ticked album, and nobucket.jpg,
+        // which has no album at all and so is never excluded by an album tick.
+        // Writing "+ 1" here turned eight emulator jobs red for a fault that
+        // was in this line and nowhere else.
+        assertEquals("in-scope NEW rows from setUp", 2, setUpInScopeNew)
+        assertEquals(waiting + setUpInScopeNew, counter)
+        // The list is capped, but it is capped on the answer - so it is full
+        // of the rows the chip asked for, not empty of them.
+        assertEquals(500, listed.size)
+        assertTrue(
+            "every listed row must be a waiting row, not the DONE rows that " +
+                "used to fill the cap: ${listed.map { it.state }.distinct()}",
+            listed.all { it.state == "NEW" }
+        )
+    }
+
+    /**
+     * "Largest" means largest of what was asked for, not largest of the
+     * newest page. Sorting after a cap sorts the wrong five hundred.
+     */
+    @Test
+    fun theLargestSortReachesPastTheNewestPage() = runBlocking {
+        // One big old file, buried under 600 newer small ones.
+        db.items().insert(
+            photo("old_whale.mp4", "Screenshots", 1L).copy(
+                fingerprint = "fp-whale", sizeBytes = 9_000_000_000L, isVideo = true
+            )
+        )
+        for (i in 0 until 600) {
+            db.items().insert(
+                photo("new_$i.jpg", "Screenshots", 2_000_000L + i).copy(fingerprint = "fp-new-$i")
+            )
+        }
+        val bySize = db.items().searchFlow(
+            q = "", states = emptyList(), anyState = 1,
+            excludedBuckets = everythingButScreenshots, sortKey = 2, limit = 500
+        ).first()
+        assertEquals("the biggest file on the phone must head the list", "old_whale.mp4", bySize.first().displayName)
+    }
+
+    /**
+     * "Clear the list" says, in the setting's own words, that the files go
+     * back in the queue. Excluding one parks it in SKIP, so clearing has to
+     * lift it out of SKIP too - not just drop the flag and leave it there.
+     */
+    @Test
+    fun clearingTheExcludedListPutsThoseFilesBackInTheQueue() = runBlocking {
+        val excluded = photo("excluded.jpg", "Screenshots", 9_000).copy(
+            fingerprint = "fp-excluded", state = "SKIP",
+            skipReason = "user_excluded", neverOptimise = true
+        )
+        // Parked for a reason of the app's own, and also excluded: clearing
+        // the flag must not pretend the other reason went away.
+        val tooSmall = photo("tiny.jpg", "Screenshots", 8_000).copy(
+            fingerprint = "fp-tiny", state = "SKIP",
+            skipReason = "too_small", neverOptimise = true
+        )
+        // Excluded, and the original has since left the gallery: nothing to
+        // queue, so it stays where it is.
+        val gone = photo("gone.jpg", "Screenshots", 7_000).copy(
+            fingerprint = "fp-gone", state = "SKIP", skipReason = "user_excluded",
+            neverOptimise = true, originalMissing = true
+        )
+        db.items().insert(excluded)
+        db.items().insert(tooSmall)
+        db.items().insert(gone)
+
+        assertEquals(3, db.items().neverOptimiseCountFlow().first())
+        db.items().clearNeverOptimise(1_234L)
+        assertEquals("nothing may still be excluded", 0, db.items().neverOptimiseCountFlow().first())
+
+        val rows = db.items().searchFlow(
+            q = "", states = emptyList(), anyState = 1,
+            excludedBuckets = everythingButScreenshots, sortKey = 0, limit = 500
+        ).first().associateBy { it.displayName }
+        assertEquals("NEW", rows.getValue("excluded.jpg").state)
+        assertEquals(null, rows.getValue("excluded.jpg").skipReason)
+        assertEquals("SKIP", rows.getValue("tiny.jpg").state)
+        assertEquals("too_small", rows.getValue("tiny.jpg").skipReason)
+        assertEquals("SKIP", rows.getValue("gone.jpg").state)
+    }
+
+    /**
+     * The mark on the Storage tab must never promise more than the Free-up
+     * screen will offer. It is one SQL sum standing in for a rule written in
+     * Kotlin, so every refusal that rule makes and this sum can also make is
+     * checked here against a real database.
+     */
+    @Test
+    fun theReclaimableSumRefusesWhatTheScreenRefuses() = runBlocking {
+        val now = 1_000L * 86_400_000L
+        val settledBefore = now - 30L * 86_400_000L
+        val addedBefore = (now - 30L * 86_400_000L) / 1000L
+        val floor = 2L * 1024 * 1024
+
+        fun reclaimable(name: String, sha: String) = photo(name, "Camera", now).copy(
+            fingerprint = "fp-$name",
+            sizeBytes = 10L * 1024 * 1024,
+            state = "RELEASED",
+            evidence = "CONFIRMED_EXACT",
+            contentUri = "content://media/external/images/media/1",
+            outputSha256 = sha,
+            outputBytes = 1_000L,
+            originalMissing = false,
+            confirmedAt = settledBefore - 1,
+            releasedAt = settledBefore - 1,
+            dateAdded = addedBefore - 1
+        )
+
+        // Eligible in every way, and its copy is in the ledger.
+        db.items().insert(reclaimable("good.jpg", "sha-good"))
+        db.ledger().insert(ledgerRow("sha-good", "fp-good.jpg"))
+        // Everything below fails exactly one of the rule's questions.
+        db.items().insert(reclaimable("noledger.jpg", "sha-noledger"))
+        db.items().insert(reclaimable("small.jpg", "sha-small").copy(sizeBytes = floor - 1))
+        db.ledger().insert(ledgerRow("sha-small", "fp-small.jpg"))
+        db.items().insert(reclaimable("justadded.jpg", "sha-added").copy(dateAdded = addedBefore + 1))
+        db.ledger().insert(ledgerRow("sha-added", "fp-justadded.jpg"))
+        db.items().insert(
+            reclaimable("justconfirmed.jpg", "sha-conf")
+                .copy(confirmedAt = settledBefore + 1, releasedAt = settledBefore + 1)
+        )
+        db.ledger().insert(ledgerRow("sha-conf", "fp-justconfirmed.jpg"))
+
+        val sum = db.items().reclaimableBytesFlow(
+            settledBefore = settledBefore,
+            addedBeforeSeconds = addedBefore,
+            minSizeBytes = floor,
+            includeVerified = false
+        ).first()
+        assertEquals(
+            "only the original the screen would actually offer may be counted",
+            10L * 1024 * 1024, sum
+        )
+    }
+
+    private fun ledgerRow(sha: String, fingerprint: String) = LedgerRow(
+        outputSha256 = sha,
+        fingerprint = fingerprint,
+        displayName = fingerprint,
+        outputBytes = 1_000L,
+        evidence = "CONFIRMED_EXACT",
+        confirmedAt = 1L
+    )
+}

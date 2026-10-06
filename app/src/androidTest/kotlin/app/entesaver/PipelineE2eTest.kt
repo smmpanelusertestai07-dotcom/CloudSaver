@@ -1,0 +1,543 @@
+package app.entesaver
+
+import android.content.ContentValues
+import android.content.Context
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.exifinterface.media.ExifInterface
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.rule.GrantPermissionRule
+import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.FolderName
+import app.entesaver.core.logic.ItemState
+import app.entesaver.core.logic.OutFolder
+import app.entesaver.core.logic.VideoCodec
+import app.entesaver.core.logic.VideoCodecChoice
+import app.entesaver.core.logic.VideoPreset
+import app.entesaver.core.logic.VideoSettings
+import app.entesaver.data.db.AppDb
+import app.entesaver.data.prefs.OptionsRepo
+import app.entesaver.engine.MaintainEngine
+import app.entesaver.media.EncoderCaps
+import app.entesaver.media.MediaScanner
+import app.entesaver.media.OutputInventory
+import app.entesaver.media.Releaser
+import app.entesaver.media.Stager
+import app.entesaver.media.VideoCompressor
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * The real end-to-end run on a device: put genuine photos and a video into the
+ * gallery, drive the actual pipeline, then check what landed in the upload
+ * folder - sizes, dates, EXIF - and that the originals were never touched.
+ */
+@RunWith(AndroidJUnit4::class)
+class PipelineE2eTest {
+
+    /** Any failure below leaves a picture of the screen behind it. */
+    @get:Rule
+    val shotOnFailure = ScreenshotOnFailure()
+
+    @get:Rule
+    val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
+
+    private val context: Context get() = ApplicationProvider.getApplicationContext()
+    private val captureAt = 1_600_000_000_000L
+
+    @Before
+    fun setUp() {
+        MediaFixtures.cleanUp(context)
+        clearOutputFolder()
+        runBlocking {
+            AppDb.get(context).clearAllTables()
+            OptionsRepo.get(context).useDefaultFolders()
+        }
+    }
+
+    @After
+    fun tearDown() {
+        MediaFixtures.cleanUp(context)
+        clearOutputFolder()
+    }
+
+    @Test
+    fun photosAreOptimisedReleasedAndDatedCorrectly() = runBlockingTest {
+        val originals = (1..3).map { i ->
+            MediaFixtures.insertPhoto(
+                context,
+                name = "e2e_photo_$i.jpg",
+                seed = i,
+                captureMillis = captureAt
+            )
+        }
+        val originalSizes = originals.map { sizeOf(it) }
+        assertTrue("fixtures should be non-trivial", originalSizes.all { it > 200_000 })
+
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        val found = MediaScanner(context, db).scan()
+        assertTrue("scanner must see the fixtures", found >= 3)
+
+        val queued = db.items().byState(ItemState.NEW.name)
+            .filter { it.displayName.startsWith("e2e_photo_") }
+        assertEquals(3, queued.size)
+
+        val stager = Stager(context, db)
+        for (row in queued) {
+            assertTrue("staging ${row.displayName} failed", stager.stageOne(row, options))
+        }
+
+        val staged = db.items().staged().filter { it.displayName.startsWith("e2e_photo_") }
+        assertEquals(3, staged.size)
+        for (row in staged) {
+            val out = row.outputBytes ?: 0
+            assertTrue("copy must exist", File(row.stagePath!!).exists())
+            assertTrue(
+                "copy of ${row.displayName} ($out) must be smaller than ${row.sizeBytes}",
+                out in 1 until row.sizeBytes
+            )
+            assertNotNull("sha must be recorded", row.outputSha256)
+        }
+
+        val released = Releaser(context, db).releaseBatch(options, System.currentTimeMillis())
+        assertEquals(3, released)
+
+        // For photos, DATE_TAKEN is MediaProvider's own derivation from EXIF -
+        // it ignores what an app writes - so the contract the app can actually
+        // keep is that the copy carries the original's shooting metadata, and
+        // that its capture date matches the original's whenever MediaStore
+        // reports one at all. The EXIF assertions below are the real check.
+        val originalTaken = dateTakenOf(originals.first())
+        val recordedCaptureAt = staged.first().captureAt
+        assertTrue(
+            "the app must have recorded a capture date, got $recordedCaptureAt",
+            recordedCaptureAt > 0
+        )
+
+        val inFolder = OutputInventory(context).query()
+        assertNotNull("the output folder must be readable", inFolder)
+        assertEquals(3, inFolder!!.size)
+        for (entry in inFolder) {
+            assertEquals(Defaults.OUTPUT_DIR, entry.relPath.trimEnd('/'))
+            assertTrue("copy must be owned by us", entry.ownedByUs)
+            if (originalTaken > 0 && entry.dateTaken > 0) {
+                assertTrue(
+                    "copy DATE_TAKEN ${entry.dateTaken} must match the original's " +
+                        "$originalTaken (app recorded $recordedCaptureAt)",
+                    abs(entry.dateTaken - originalTaken) < 2000
+                )
+            }
+            // The optimised copy keeps the shooting metadata.
+            context.contentResolver.openInputStream(entry.uri)!!.use { input ->
+                val exif = ExifInterface(input)
+                assertEquals(
+                    "2020:09:13 12:26:40",
+                    exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+                )
+                assertEquals("EnteSaverTest", exif.getAttribute(ExifInterface.TAG_MAKE))
+                assertNotNull("GPS must survive", exif.latLong)
+                assertEquals(
+                    "orientation must be baked in",
+                    ExifInterface.ORIENTATION_NORMAL,
+                    exif.getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_UNDEFINED
+                    )
+                )
+            }
+        }
+
+        // The whole point of the app: originals are exactly as they were.
+        originals.forEachIndexed { index, uri ->
+            assertEquals(
+                "original ${index + 1} must be untouched",
+                originalSizes[index],
+                sizeOf(uri)
+            )
+        }
+
+        // Bookkeeping pass must run clean over real data.
+        MaintainEngine(context).run()
+        val after = db.items().released().filter { it.displayName.startsWith("e2e_photo_") }
+        assertEquals(3, after.size)
+    }
+
+    @Test
+    fun videoIsOptimisedOrSafelyCopied() = runBlockingTest {
+        // Every Android device that can record has an H.264 encoder, and the
+        // emulator carries the software one, so a null here is a real failure
+        // rather than a reason to pass quietly. A test that returns early on
+        // the very condition it exists to exercise proves nothing.
+        val uri = MediaFixtures.insertVideo(context, "e2e_clip.mp4")
+        assertNotNull("the device must be able to produce a test clip", uri)
+        uri!!
+        val srcSize = sizeOf(uri)
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        MediaScanner(context, db).scan()
+
+        val row = db.items().byState(ItemState.NEW.name)
+            .firstOrNull { it.displayName == "e2e_clip.mp4" }
+        assertNotNull("scanner must see the clip", row)
+
+        assertTrue("video staging must succeed", Stager(context, db).stageOne(row!!, options))
+        val staged = db.items().staged().first { it.displayName == "e2e_clip.mp4" }
+        val out = staged.outputBytes ?: 0
+        assertTrue("a copy must exist", out > 0)
+        // Either it compressed, or it fell back to an as-is copy - never bigger.
+        assertTrue("copy must not be larger than the source", out <= srcSize)
+        assertTrue(File(staged.stagePath!!).exists())
+    }
+
+    /**
+     * A clip that goes in with sound comes out with sound.
+     *
+     * The export sequence names which tracks it carries, and the exporter
+     * strips any it does not name - so the one-line choice of how that
+     * sequence is built decides whether every optimised video keeps its
+     * audio. The wrong choice would fail no other test: the copy would be
+     * smaller, valid, and silent.
+     */
+    @Test
+    fun videoKeepsItsSound() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(context, "e2e_talkie.mp4", withAudio = true)
+        assertNotNull("the device must be able to produce a clip with an audio track", uri)
+        assertTrue("the fixture itself must carry audio", hasAudioTrack(uri!!.toString()))
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        MediaScanner(context, db).scan()
+        val row = db.items().byState(ItemState.NEW.name)
+            .firstOrNull { it.displayName == "e2e_talkie.mp4" }
+        assertNotNull("scanner must see the clip", row)
+        assertTrue("video staging must succeed", Stager(context, db).stageOne(row!!, options))
+        val staged = db.items().staged().first { it.displayName == "e2e_talkie.mp4" }
+        val path = staged.stagePath!!
+        assertTrue(File(path).exists())
+        assertTrue(
+            "the optimised copy lost its audio track",
+            hasAudioTrack(path)
+        )
+    }
+
+    /**
+     * The other half of the promise: a clip that goes in silent comes out
+     * silent. Naming audio in the export sequence makes Media3 generate a
+     * silent track for a clip that has none - a timelapse would come back
+     * with an audio track it never had, larger and lying about itself.
+     */
+    @Test
+    fun videoOnlyClipGainsNoSound() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(context, "e2e_silent.mp4")
+        assertNotNull("the device must be able to produce a test clip", uri)
+        assertFalse("the fixture itself must be silent", hasAudioTrack(uri!!.toString()))
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        MediaScanner(context, db).scan()
+        val row = db.items().byState(ItemState.NEW.name)
+            .firstOrNull { it.displayName == "e2e_silent.mp4" }
+        assertNotNull("scanner must see the clip", row)
+        assertTrue("video staging must succeed", Stager(context, db).stageOne(row!!, options))
+        val staged = db.items().staged().first { it.displayName == "e2e_silent.mp4" }
+        assertFalse(
+            "the optimised copy of a silent clip was given an audio track",
+            hasAudioTrack(staged.stagePath!!)
+        )
+    }
+
+    /**
+     * An ordinary 60 fps clip is written at 30, the cap every preset carries:
+     * half the frames is most of the saving, and nothing a phone shows misses
+     * them. (Slow motion, 90 fps and up, keeps every frame - MediaSettingsTest.)
+     */
+    @Test
+    fun aSixtyFpsClipIsWrittenAtThirty() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(
+            context, "e2e_sixty.mp4", width = 640, height = 360, frames = 120, fps = 60, textured = true
+        )
+        assertNotNull("the device must be able to produce a 60 fps clip", uri)
+        val src = File(context.cacheDir, "sixty_out").apply { mkdirs() }
+        val result = VideoCompressor.compress(
+            context, uri!!, "e2e_sixty.mp4", "video/mp4", sizeOf(uri),
+            VideoSettings().spec(), src
+        )
+        try {
+            assertFalse(
+                "the clip must be re-encoded, got ${result.reason} (${result.detail}; source ${sizeOf(uri)} bytes)",
+                result.asIs
+            )
+            val fps = videoFrames(result.file.absolutePath) / 2.0
+            assertTrue("written at about 30 fps, measured $fps", fps in 25.0..35.0)
+        } finally {
+            result.file.delete()
+        }
+    }
+
+    /**
+     * HEVC is never encoded in software: on a phone without an HEVC chip -
+     * every emulator - a clip asked for in HEVC comes out H.264, and Settings
+     * says so.
+     */
+    @Test
+    fun hevcWithoutAChipFallsBackToH264() = runBlockingTest {
+        assumeFalse("this phone has an HEVC chip", EncoderCaps.hevcFits(640, 360, 10f))
+        val uri = MediaFixtures.insertVideo(context, "e2e_hevc_ask.mp4", width = 640, height = 360, frames = 30)
+        assertNotNull(uri)
+        val spec = VideoSettings(VideoPreset.CUSTOM, codec = VideoCodecChoice.HEVC, audioKbps = 64).spec()
+        val out = File(context.cacheDir, "hevc_out").apply { mkdirs() }
+        val result = VideoCompressor.compress(context, uri!!, "e2e_hevc_ask.mp4", "video/mp4", sizeOf(uri), spec, out)
+        try {
+            if (!result.asIs) {
+                assertEquals(VideoCodec.H264, result.codec)
+                assertEquals(MediaFormat.MIMETYPE_VIDEO_AVC, videoMime(result.file.absolutePath))
+            }
+        } finally {
+            result.file.delete()
+        }
+    }
+
+    private fun videoFrames(path: String): Int {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(path)
+            val track = (0 until extractor.trackCount).first {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+            }
+            extractor.selectTrack(track)
+            var frames = 0
+            while (extractor.sampleTime >= 0) {
+                frames++
+                extractor.advance()
+            }
+            frames
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun videoMime(path: String): String? {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(path)
+            (0 until extractor.trackCount).map { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) }
+                .firstOrNull { it?.startsWith("video/") == true }
+        } finally {
+            extractor.release()
+        }
+    }
+
+    /** True when the container at [source] (a path or a content URI) has an audio track. */
+    private fun hasAudioTrack(source: String): Boolean {
+        val ex = MediaExtractor()
+        return try {
+            if (source.startsWith("content:")) {
+                ex.setDataSource(context, Uri.parse(source), null)
+            } else {
+                ex.setDataSource(source)
+            }
+            (0 until ex.trackCount).any { i ->
+                ex.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
+                    ?.startsWith("audio/") == true
+            }
+        } finally {
+            runCatching { ex.release() }
+        }
+    }
+
+    /**
+     * A copy that leaves the folders the app looks at is read as collected,
+     * and its original is offered for deletion. So when the person picks a
+     * new folder, the copies still waiting in the old one must stay watched:
+     * here maintenance runs while the "back from Ente's Free up space" window
+     * is open - the moment every missing copy counts as uploaded - and the
+     * waiting copies must still be seen. Only once they really leave are they
+     * confirmed, and only then is the old folder let go.
+     */
+    @Test
+    fun aNewFolderNeverMakesWaitingCopiesLookUploaded() = runBlockingTest {
+        val moved = FolderName.pathOf("E2eMovedFolder")
+        val repo = OptionsRepo.get(context)
+        try {
+            (1..2).forEach { i ->
+                MediaFixtures.insertPhoto(
+                    context,
+                    name = "e2e_move_$i.jpg",
+                    seed = 20 + i,
+                    captureMillis = captureAt
+                )
+            }
+            val db = AppDb.get(context)
+            MediaScanner(context, db).scan()
+            val stager = Stager(context, db)
+            val before = repo.current()
+            for (row in db.items().byState(ItemState.NEW.name).filter { it.displayName.startsWith("e2e_move_") }) {
+                assertTrue(stager.stageOne(row, before))
+            }
+            assertEquals(2, Releaser(context, db).releaseBatch(before, System.currentTimeMillis()))
+
+            repo.setFolders(mapOf(OutFolder.SINGLE to moved))
+            val after = repo.current()
+            assertTrue(
+                "the old folder must be remembered: ${after.pastOutputRoots}",
+                after.pastOutputRoots.any { it.trimEnd('/') == Defaults.OUTPUT_DIR }
+            )
+
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            MaintainEngine(context).run()
+            val waiting = db.items().released().filter { it.displayName.startsWith("e2e_move_") }
+            assertEquals("copies still in the old folder are still waiting", 2, waiting.size)
+            assertTrue(waiting.all { it.outputRelPath?.trimEnd('/') == Defaults.OUTPUT_DIR })
+
+            // A new copy goes to the new folder.
+            MediaFixtures.insertPhoto(context, name = "e2e_move_3.jpg", seed = 23, captureMillis = captureAt)
+            MediaScanner(context, db).scan()
+            val third = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_move_3.jpg" }
+            assertTrue(stager.stageOne(third, after))
+            assertEquals(1, Releaser(context, db).releaseBatch(after, System.currentTimeMillis()))
+            assertEquals(1, OutputInventory(context).query(listOf(moved)).orEmpty().size)
+            assertEquals(
+                moved,
+                db.items().released().single { it.displayName == "e2e_move_3.jpg" }.outputRelPath?.trimEnd('/')
+            )
+
+            // Ente collects the old folder's copies: now they are confirmed,
+            // and the emptied folder is let go.
+            for (entry in OutputInventory(context).query(listOf(Defaults.OUTPUT_DIR)).orEmpty()) {
+                context.contentResolver.delete(entry.uri, null, null)
+            }
+            MaintainEngine(context).run()
+            assertTrue(
+                "collected copies are no longer waiting",
+                db.items().released().none { it.displayName == "e2e_move_1.jpg" || it.displayName == "e2e_move_2.jpg" }
+            )
+            assertTrue(
+                "the emptied old folder is let go",
+                repo.current().pastOutputRoots.none { it.trimEnd('/') == Defaults.OUTPUT_DIR }
+            )
+        } finally {
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
+            for (entry in OutputInventory(context).query(listOf(moved)).orEmpty()) {
+                runCatching { context.contentResolver.delete(entry.uri, null, null) }
+            }
+            repo.useDefaultFolders()
+        }
+    }
+
+    /**
+     * A folder renamed in a file manager takes its copies with it. They are
+     * gone from the folder the app watches, but not gone: even inside the
+     * "back from Ente's Free up space" window, a copy that still exists is
+     * followed to where it is, never counted as collected.
+     */
+    @Test
+    fun aCopyMovedElsewhereIsFollowedNotCountedAsUploaded() = runBlockingTest {
+        val elsewhere = "Pictures/E2eRenamedByHand/"
+        val repo = OptionsRepo.get(context)
+        try {
+            MediaFixtures.insertPhoto(context, name = "e2e_moved_1.jpg", seed = 31, captureMillis = captureAt)
+            val db = AppDb.get(context)
+            MediaScanner(context, db).scan()
+            val options = repo.current()
+            val row = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_moved_1.jpg" }
+            assertTrue(Stager(context, db).stageOne(row, options))
+            assertEquals(1, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
+            val released = db.items().released().single { it.displayName == "e2e_moved_1.jpg" }
+
+            // A person renames a folder long after a release; here it is the
+            // very next moment, while the release's own gallery nudge may still
+            // be rescanning the folder. A rescan that read the copy before the
+            // move and writes after it puts the copy's row back where it was.
+            awaitGalleryRescan(released.outputRelPath!!)
+            val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, elsewhere) }
+            assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
+
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            // The gallery finishes a move in its own time - Android 12 may
+            // even give the file a new address - so the pass runs as the app
+            // runs it, again and again, until the copy has been followed. At
+            // no pass may it be counted as collected: it still exists.
+            var after = db.items().byId(released.id)!!
+            for (pass in 1..10) {
+                MaintainEngine(context).run()
+                after = db.items().byId(released.id)!!
+                assertEquals("a moved copy is still waiting (pass $pass)", ItemState.RELEASED.name, after.state)
+                if (after.outputRelPath?.trimEnd('/') == elsewhere.trimEnd('/')) break
+                delay(500)
+            }
+            assertEquals(elsewhere.trimEnd('/'), after.outputRelPath?.trimEnd('/'))
+        } finally {
+            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
+            for (entry in OutputInventory(context).query(listOf(elsewhere)).orEmpty()) {
+                runCatching { context.contentResolver.delete(entry.uri, null, null) }
+            }
+        }
+    }
+
+    @Test
+    fun skippedAndEmptyStatesDoNotCrash() = runBlockingTest {
+        val db = AppDb.get(context)
+        // No fixtures at all: every stage must be a no-op, not an exception.
+        MediaScanner(context, db).scan()
+        Releaser(context, db).releaseBatch(
+            OptionsRepo.get(context).current(),
+            System.currentTimeMillis()
+        )
+        MaintainEngine(context).run()
+    }
+
+    /** JUnit needs void test methods; this pins the return type to Unit. */
+    private fun runBlockingTest(body: suspend () -> Unit) {
+        runBlocking { body() }
+    }
+
+    private fun sizeOf(uri: Uri): Long =
+        context.contentResolver.query(
+            uri, arrayOf(MediaStore.MediaColumns.SIZE), null, null, null
+        )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
+
+    private fun dateTakenOf(uri: Uri): Long =
+        context.contentResolver.query(
+            uri, arrayOf(MediaStore.MediaColumns.DATE_TAKEN), null, null, null
+        )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
+
+    /**
+     * Returns once every gallery rescan this process has asked for so far is
+     * done. Rescans run one after another on the process's one background
+     * thread, so a rescan of our own, queued behind them, ends after they do.
+     */
+    private fun awaitGalleryRescan(relPath: String) {
+        val done = CountDownLatch(1)
+        MediaScannerConnection.scanFile(
+            context, arrayOf("${Environment.getExternalStorageDirectory()}/$relPath"), null
+        ) { _, _ -> done.countDown() }
+        assertTrue("the gallery rescan did not finish", done.await(60, TimeUnit.SECONDS))
+    }
+
+    private fun clearOutputFolder() {
+        for (entry in OutputInventory(context).query().orEmpty()) {
+            runCatching { context.contentResolver.delete(entry.uri, null, null) }
+        }
+        runCatching {
+            File(context.getExternalFilesDir(null), "stage").deleteRecursively()
+        }
+    }
+}

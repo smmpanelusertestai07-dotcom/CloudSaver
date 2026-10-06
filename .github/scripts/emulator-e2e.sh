@@ -11,6 +11,7 @@
 
 set -uo pipefail
 
+# The app's permanent id (app/build.gradle.kts), not its name.
 PKG=app.cloudsaver
 SHOTS_ON_DEVICE=/sdcard/Pictures/CSTestShots
 OUT=artifacts
@@ -26,7 +27,7 @@ adb shell settings put global animator_duration_scale 0
 # The emulator's own apps can hang on a loaded runner, and Android then puts
 # an "isn't responding" dialog over everything. That dialog takes window
 # focus, so taps and back presses stop reaching the app under test and a
-# whole leg goes red with CloudSaver untouched (run 373, API 35: the Pixel
+# whole leg goes red with Ente Saver untouched (run 373, API 35: the Pixel
 # Launcher's dialog sat over nine tests). Hide those dialogs. The suite's
 # own assertions, the crash buffer collected below and the process checks
 # after the release install still report every failure that is the app's.
@@ -45,7 +46,7 @@ if [ "$tests_failed" -ne 0 ]; then
   python3 - <<'REPORT' || true
 import glob, xml.etree.ElementTree as ET
 for path in sorted(glob.glob(
-        "cloudsaver/build/outputs/androidTest-results/connected/**/*.xml",
+        "app/build/outputs/androidTest-results/connected/**/*.xml",
         recursive=True)):
     for case in ET.parse(path).getroot().iter("testcase"):
         for bad in list(case.findall("failure")) + list(case.findall("error")):

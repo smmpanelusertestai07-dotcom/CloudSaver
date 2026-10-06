@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup and transfer rules. allowBackup="false" in the manifest
+  switches off both cloud backup AND device-to-device transfer, so neither
+  section below applies today; they stay as a statement of intent in case
+  that attribute is ever changed: never the logs, which are diagnostics and
+  belong to one device. What survives a reinstall or a new phone is the
+  app's own .entesaver history file under Download.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude
+            domain="file"
+            path="logs" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude
+            domain="file"
+            path="logs" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,290 @@
+package app.entesaver
+
+import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * The app has to keep working for years with nobody maintaining it.
+ *
+ * That is a design property, not a wish, and it rests on four things this
+ * test refuses to let anyone undo: it depends on no server, it contains
+ * nothing that expires, every version-dependent call has a fallback for an
+ * Android that does not exist yet, and its database can only ever be migrated
+ * - never dropped and rebuilt.
+ */
+class PermanenceTest {
+
+    private val main = File("src/main/kotlin/app/entesaver")
+    private val manifest = File("src/main/AndroidManifest.xml").readText()
+
+    private fun sources(): List<File> =
+        main.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+
+    @Test
+    fun `nothing can reach the network, by permission or by code`() {
+        // Both network permissions are stripped from the merged manifest, so
+        // even a library that wanted to talk could not.
+        for (permission in listOf("INTERNET", "ACCESS_NETWORK_STATE")) {
+            val at = manifest.indexOf(permission)
+            assertTrue("$permission must be declared only to remove it", at > 0)
+            assertTrue(
+                "$permission must carry tools:node=\"remove\"",
+                manifest.substring(at, minOf(at + 200, manifest.length))
+                    .contains("tools:node=\"remove\"")
+            )
+        }
+        // The system can send app data even where the app cannot: Auto Backup
+        // copies the database and settings to the account holder's Drive
+        // without needing the internet permission, because the system does the
+        // sending. An app that promises nothing leaves the phone has to opt
+        // out of that too.
+        assertTrue(
+            "Android's own cloud backup must be off",
+            manifest.contains("android:allowBackup=\"false\"")
+        )
+        val banned = Regex("""HttpURLConnection|okhttp3|retrofit2|java\.net\.URL\(|java\.net\.Socket""")
+        val offenders = sources()
+            .filter { banned.containsMatchIn(it.readText()) }
+            .map { it.name }
+        assertTrue("these reach for the network: $offenders", offenders.isEmpty())
+    }
+
+    @Test
+    fun `nothing expires, and no clock decides whether the app still works`() {
+        // A hard-coded future date is how an unmaintained app dies on a
+        // Tuesday for no reason its owner can see.
+        val dateBomb = Regex("""20[3-9]\d-\d\d-\d\d""")
+        val offenders = sources()
+            .filter { dateBomb.containsMatchIn(it.readText()) }
+            .map { it.name }
+        assertTrue("these carry a hard-coded date: $offenders", offenders.isEmpty())
+    }
+
+    @Test
+    fun `a future Android falls through to something that works`() {
+        // Every version fork must end in an else. The two that would break
+        // silently on an SDK that does not exist yet are named here: the
+        // foreground-service type and the release-name table.
+        val worker = File(main, "work/CompressWorker.kt").readText()
+        val fgs = worker.substringAfter("SDK_INT >= 35").substringBefore("}")
+        assertTrue(
+            "the foreground service must start on an unknown future SDK",
+            fgs.contains("else -> ForegroundInfo(")
+        )
+        val platform = File(main, "core/logic/Platform.kt").readText()
+        val names = platform.substringAfter("fun releaseName").substringBefore("}")
+        assertTrue("an unknown SDK must answer with its number", names.contains("else ->"))
+    }
+
+    @Test
+    fun `the daily snapshot cannot grow without bound, and never drops proof`() {
+        val store = File(main, "engine/SnapshotStore.kt").readText()
+        assertTrue(store.contains("MAX_REBUILDABLE_ITEMS"))
+        val build = store.substringAfter("suspend fun build()").substringBefore("val batches")
+        // The split is the whole safety argument: a row with evidence or a
+        // delivered copy is irreplaceable - losing it could let a file reach
+        // the cloud twice - so only queue state is ever trimmed.
+        assertTrue(
+            build.contains("it.outputSha256 != null || Evidence.parse(it.evidence) != Evidence.NONE")
+        )
+        assertTrue("evidenced rows are always written", build.contains("critical + rebuildable"))
+        assertTrue(
+            "and what is kept is the newest of the replaceable rows",
+            build.contains("sortedByDescending { it.updatedAt }") &&
+                build.contains(".take(MAX_REBUILDABLE_ITEMS)")
+        )
+        // The ledger itself is never capped: it is what stops a second upload.
+        val ledger = store.substringAfter("val ledger = db.ledger().all()")
+            .substringBefore("val access")
+        assertFalse("the ledger must be written whole", ledger.contains("take("))
+    }
+
+    @Test
+    fun `the database is migrated, never dropped`() {
+        val db = File(main, "data/db/Db.kt").readText()
+        assertFalse(
+            "a destructive fallback throws away the upload ledger, which is " +
+                "the one thing that stops a second copy reaching the cloud",
+            db.contains("fallbackToDestructiveMigration")
+        )
+        val version = Regex("""version = (\d+)""").find(db)!!.groupValues[1].toInt()
+        val migrations = Regex("""MIGRATION_(\d+)_(\d+) = object""").findAll(db)
+            .map { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
+            .toList()
+        assertEquals(
+            "every step from 1 to $version needs a migration",
+            (1 until version).map { it to it + 1 },
+            migrations
+        )
+        assertTrue(db.contains("addMigrations(*MIGRATIONS)"))
+    }
+
+    @Test
+    fun `a setting, once chosen, is written even if the screen goes`() {
+        // Every setter is called from a view-model scope, which dies with the
+        // activity. A tick followed immediately by leaving the app could
+        // cancel the write mid-transaction and lose the choice - which is
+        // exactly what losing an album tick looks like from the outside.
+        val repo = File(main, "data/prefs/OptionsRepo.kt").readText()
+        assertTrue(repo.contains("withContext(NonCancellable)"))
+        val setters = Regex("""suspend fun set[A-Za-z]+\([^)]*\)[^{]*\{([^}]*)\}""", RegexOption.DOT_MATCHES_ALL)
+        for (m in setters.findAll(repo)) {
+            val body = m.groupValues[1]
+            assertFalse(
+                "a setter must go through the protected write: ${'$'}body",
+                body.contains("dataStore.edit")
+            )
+        }
+        assertTrue(
+            "the import is one transaction too",
+            Regex("""suspend fun importMap\([^)]*\) = withContext\(NonCancellable\)""").containsMatchIn(repo)
+        )
+    }
+
+    @Test
+    fun `a snapshot restore lands whole or not at all`() {
+        // The first launch after a reinstall restores before setup is done -
+        // the moment a person is most likely to swipe the app away - and the
+        // rows used to go in one commit at a time. Whatever had landed stayed,
+        // the next launch saw a non-empty table, wrote RESTORE_DONE and never
+        // read the snapshot again: half a history, no ledger, taken for done.
+        val store = File(main, "engine/SnapshotStore.kt").readText()
+        val merge = store.substringAfter("private suspend fun mergeLocked(")
+            .substringBefore("private suspend fun mergeRows(")
+        assertTrue(
+            "the rows must go in under db.withTransaction, so an interrupted " +
+                "restore leaves the table empty for the next launch to retry",
+            merge.contains("db.withTransaction { mergeRows(snapshot) }")
+        )
+        val rows = store.substringAfter("private suspend fun mergeRows(")
+        assertFalse(
+            "settings live in DataStore and have no place inside a Room transaction",
+            rows.contains("optionsRepo.importMap")
+        )
+        // And the two facts a scan cannot rebuild travel with the rows.
+        assertTrue(store.contains("keptUri = row.keptUri"))
+        assertTrue(store.contains("neverOptimise = row.neverOptimise"))
+        assertTrue(rows.contains("keptUri = mapped.keptUri"))
+        assertTrue(rows.contains("neverOptimise = mapped.neverOptimise"))
+    }
+
+    @Test
+    fun `a process start does not cancel the run a new photo just triggered`() {
+        // FAST mode's content trigger wakes the process to run; the process
+        // then ran ensure(), and ensure() re-armed the trigger with REPLACE,
+        // cancelling the very run it had been woken for. Only the worker's
+        // own re-arm, after it has consumed the trigger, may replace.
+        val scheduler = File(main, "work/Scheduler.kt").readText()
+        val ensure = scheduler.substringAfter("fun ensure(").substringBefore("fun enqueueContentTrigger(")
+        assertTrue(
+            "ensure() must keep a pending trigger, not replace it",
+            ensure.contains("enqueueContentTrigger(context)") && !ensure.contains("force = true")
+        )
+        val trigger = scheduler.substringAfter("fun enqueueContentTrigger(")
+            .substringBefore("fun cancelAll(")
+        assertTrue(
+            "the trigger policy must be KEEP unless the caller forces a replace",
+            trigger.contains("if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP")
+        )
+        val worker = File(main, "work/CompressWorker.kt").readText()
+        assertTrue(
+            "the worker has consumed its trigger and must replace it",
+            worker.contains("Scheduler.enqueueContentTrigger(context, force = true)")
+        )
+    }
+
+    @Test
+    fun `the Alerts switch says when notifications are blocked`() {
+        // Setup asks for the notification permission once and offers Skip;
+        // the system lets it be revoked later. The switch then sat ON while
+        // every alert was dropped at posting time, and nothing said so.
+        val options = File(main, "ui/screens/OptionsScreen.kt").readText()
+        val afterSwitch = options.substringAfter("checked = o.warningsNotif")
+        assertTrue(
+            "the row that says notifications are off must follow the Alerts switch",
+            afterSwitch.take(200).contains("AlertsPermissionRow(wanted = o.warningsNotif)")
+        )
+        val row = options.substringAfter("private fun AlertsPermissionRow(")
+        assertTrue(row.contains("Permissions.hasNotifications(context)"))
+        assertTrue(
+            "it must re-check on resume, because the permission is granted on another screen",
+            row.contains("LifecycleEventEffect(Lifecycle.Event.ON_RESUME)")
+        )
+        assertTrue(row.contains("launcher.launch(Manifest.permission.POST_NOTIFICATIONS)"))
+        assertTrue(
+            "once the system stops asking, the only way back is its settings page",
+            row.contains("OemPages.openNotificationSettings(context)")
+        )
+    }
+
+    @Test
+    fun `the launch self-check runs in the order that survives a bad state`() {
+        // Inside onCreate, not the import block above it - the imports are
+        // alphabetical and say nothing about what runs first.
+        val app = File(main, "EnteSaverApp.kt").readText()
+            .substringAfter("override fun onCreate()")
+        val theme = app.indexOf("FirstFrame.apply")
+        val recovery = app.indexOf("StartupRecovery")
+        val schedule = app.indexOf("Scheduler.ensure")
+        assertTrue("the theme is settled before any window exists", theme in 1 until recovery)
+        assertTrue(
+            "state must be restored before work is scheduled against it",
+            recovery in 1 until schedule
+        )
+    }
+
+    /**
+     * Nothing in this app ever shows a person a log or a stack trace.
+     *
+     * An app with no internet permission has no crash reporter, and for a
+     * while that was answered the other way round: a log file on the phone,
+     * a page that printed it, a card that offered to share it, and a
+     * recovery screen after two bad launches. None of it was ever read by
+     * the person it was built for - it was a developer's console shipped to
+     * someone who wanted their photos backed up, and it cost a file append,
+     * under a global lock, on every scanned item.
+     *
+     * So the app keeps no log of its own. What the app DID is in Activity,
+     * in sentences; what the app CANNOT do right now is a chip on Home and a
+     * row in Permissions, each with the page that fixes it. A crash is a
+     * crash: Android shows its own dialog and keeps its own record, which is
+     * the one channel that survives the app being unable to start at all.
+     */
+    @Test
+    fun `no log, no stack trace and no diagnostic page ships in this app`() {
+        val banned = listOf(
+            "AppLog", "CrashLog", "FrameworkRace", "RecoveryScreen",
+            "setDefaultUncaughtExceptionHandler", "stackTraceToString",
+            "getHistoricalProcessExitReasons", "FileProvider"
+        )
+        val offenders = main.walkTopDown().filter { it.extension == "kt" }
+            .flatMap { file ->
+                val text = file.readText()
+                banned.filter { text.contains(it) }.map { "${file.name}: $it" }
+            }.toList()
+        assertTrue("nothing may write, read or show a log: $offenders", offenders.isEmpty())
+
+        // The strings went with the screens. A string nothing draws is a
+        // promise the app no longer keeps, and this one promised a log page.
+        val strings = File("src/main/res/values/strings.xml").readText()
+        for (name in listOf(
+            "crash_title", "crash_body", "crash_share", "help_logs", "logs_share",
+            "logs_clear", "logs_empty", "recovery_title", "recovery_body",
+            "recovery_try", "recovery_share", "recovery_app_info",
+            "perm_last_exit", "exit_crash", "exit_anr"
+        )) {
+            assertFalse(
+                "$name belongs to a screen that is gone",
+                strings.contains("name=\"$name\"")
+            )
+        }
+
+        // And nothing may hand a file of the app's own out to another app:
+        // the share sheet existed only to post that log somewhere.
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertFalse("no file of this app's is shared anywhere", manifest.contains("FileProvider"))
+    }
+}
