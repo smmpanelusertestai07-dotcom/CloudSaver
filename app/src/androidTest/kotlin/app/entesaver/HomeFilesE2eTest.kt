@@ -780,9 +780,9 @@ class HomeFilesE2eTest {
             )
         }
 
-        // State badges: two queued, two ready to upload.
+        // State badges: two to optimise, two waiting for Ente.
         compose.onAllNodesWithText(s(R.string.state_new)).assertCountEquals(2)
-        compose.onAllNodesWithText(s(R.string.filter_in_progress)).assertCountEquals(2)
+        compose.onAllNodesWithText(s(R.string.state_released)).assertCountEquals(2)
     }
 
     @Test
@@ -875,7 +875,7 @@ class HomeFilesE2eTest {
         assertChipReads(R.string.filter_status, s(R.string.filter_in_progress))
         assertVisibleRows(MEDIUM, LARGE)
 
-        // Only rows reading "Optimised" or "Waiting for Ente" are on screen now, so the
+        // Only rows reading "Waiting for Ente" are on screen now, so the
         // "To optimise" option in the sheet is unambiguous.
         chooseFilterOn(
             R.string.filter_status, s(R.string.filter_in_progress), s(R.string.state_new)
