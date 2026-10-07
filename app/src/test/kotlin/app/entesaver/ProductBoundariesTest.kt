@@ -458,6 +458,14 @@ class ProductBoundariesTest {
         )) {
             assertTrue("$path must be a declared input of the unit tests", block.contains("\"$path\""))
         }
+        // The naming rule reads every tracked file, so a list of named files
+        // is always one file short: gradle.properties and gradlew were
+        // missing from it. The whole tree has to be the input, unfiltered.
+        val property = "withPropertyName(\"sourceTextRuleRepositoryTree\")"
+        assertTrue("the whole repository must be a declared input of the unit tests", block.contains(property))
+        val tree = block.substringBefore(property).substringAfterLast("inputs.files(")
+        assertTrue("the repository input must be the root tree", tree.contains("rootProject.fileTree(\".\")"))
+        assertFalse("the repository input must not narrow itself to some files", tree.contains("include("))
     }
 
     /**
