@@ -90,4 +90,19 @@ class ReattachRulesTest {
         assertEquals(fp, Fingerprint.fpFromOutputName(name))
         assertEquals(fp, Fingerprint.fpFromOutputName("IMG_0042__$fp (1).jpg"))
     }
+
+    @Test
+    fun restoredCopiesWaitToBeMatchedUntilEveryVolumeWasLookedAt() {
+        val phone = "external_primary"
+        val card = "1234-abcd"
+        // A restore not yet matched.
+        assertTrue(ReattachRules.matchPending(false, setOf(phone, card), setOf(phone, card)))
+        // Matched with every volume that is in now.
+        assertFalse(ReattachRules.matchPending(true, setOf(phone, card), setOf(phone, card)))
+        assertFalse(ReattachRules.matchPending(true, setOf(phone, card), setOf(phone)))
+        // The card was out then and is in now: its copies were missed.
+        assertTrue(ReattachRules.matchPending(true, setOf(phone), setOf(phone, card)))
+        // Matched before the volumes were recorded: once more.
+        assertTrue(ReattachRules.matchPending(true, emptySet(), setOf(phone)))
+    }
 }

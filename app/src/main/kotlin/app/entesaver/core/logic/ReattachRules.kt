@@ -14,6 +14,15 @@ package app.entesaver.core.logic
 object ReattachRules {
 
     /**
+     * Whether restored copies still have to be matched to the folder: not
+     * since the last restore ([reattached] false), or a volume is in now
+     * ([volumesNow]) that was not when they were ([volumesThen]) - a copy on
+     * it was taken as gone then, and may be in the folder after all.
+     */
+    fun matchPending(reattached: Boolean, volumesThen: Set<String>, volumesNow: Set<String>): Boolean =
+        !reattached || !volumesThen.containsAll(volumesNow)
+
+    /**
      * Whether [state] may adopt a copy already sitting in the output folder.
      *
      * Only rows that have no output of their own. A RELEASED row already knows

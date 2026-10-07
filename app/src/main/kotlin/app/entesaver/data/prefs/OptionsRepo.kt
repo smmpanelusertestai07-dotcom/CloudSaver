@@ -166,6 +166,8 @@ data class Options(
     val volumeWarnedAt: Long = 0,
     val oldFilesCleaned: Boolean = false,
     val copiesReattached: Boolean = false,
+    /** The storage volumes that were in when restored copies were last matched. */
+    val reattachedVolumes: Set<String> = emptySet(),
     /** Rows an older restore left inconsistent were set right (StartupRecovery). */
     val queueRepaired: Boolean = false,
     /**
@@ -302,6 +304,7 @@ class OptionsRepo(private val context: Context) {
         // Renamed in 12.0 so that every phone matches its copies up once
         // more: rows restored earlier without proof were never looked at again.
         val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached12")
+        val REATTACHED_VOLUMES = stringSetPreferencesKey("reattachedVolumes")
         val QUEUE_REPAIRED = booleanPreferencesKey("queueRepaired122")
         val COPIES_NEED_CONSENT = stringSetPreferencesKey("copiesNeedConsent")
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
@@ -379,6 +382,7 @@ class OptionsRepo(private val context: Context) {
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
             copiesReattached = p[K.COPIES_REATTACHED] ?: false,
+            reattachedVolumes = p[K.REATTACHED_VOLUMES] ?: emptySet(),
             queueRepaired = p[K.QUEUE_REPAIRED] ?: false,
             copiesNeedConsent = p[K.COPIES_NEED_CONSENT] ?: emptySet(),
             cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,

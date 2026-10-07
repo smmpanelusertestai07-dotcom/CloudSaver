@@ -371,7 +371,7 @@ class MaintainEngine(private val context: Context) {
             null
         }
         val attribution = EvidenceRules.attributeTraffic(waiting, leftDuring(waiting), txShared, now).let {
-            if (stillInFlight(waiting, now)) {
+            if (EvidenceRules.Attribution.PER_FILE !in it.values || stillInFlight(waiting)) {
                 it
             } else {
                 it.mapValues { (_, a) ->
@@ -699,7 +699,7 @@ class MaintainEngine(private val context: Context) {
         if (Pacing.isTimedOut(candidate.releasedAt, now)) return
         val tx = txSinceRelease(candidate.releasedAt, now) ?: return
         val alone = EvidenceRules.aloneInFlight(waiting, leftDuring(waiting), now, tx) ?: return
-        if (!stillInFlight(waiting, now)) return
+        if (!stillInFlight(waiting)) return
         // Only a copy with no grade at all is ever upgraded by a byte match.
         val row = db.items().byId(alone.id)?.takeIf { evidenceOf(it) == Evidence.NONE } ?: return
         db.items().update(
@@ -764,12 +764,13 @@ class MaintainEngine(private val context: Context) {
     private suspend fun leftDuring(waiting: List<EvidenceRules.Waiting>): List<EvidenceRules.Left> {
         val since = waiting.singleOrNull()?.releasedAt ?: return emptyList()
         // A restore lands mid-run, and its copies are matched to the folder
-        // only on the next run. Until then any of them may be there, sending,
-        // so each counts as in the folder for the whole window. Read before
+        // only on the next run - or a volume missing when they were is back.
+        // Until then any of them may be there, sending, so each counts as in
+        // the folder for the whole window. Read before
         // the copies that left: the reattach pass dates those it does not
         // find before it marks the restore matched, so a pass finishing in
         // between leaves each in one list or the other.
-        val restored = if (repo.current().copiesReattached) {
+        val restored = if (!ReattachEngine.pending(context)) {
             emptyList()
         } else {
             val stillThere = maxOf(System.currentTimeMillis(), since)
@@ -791,8 +792,9 @@ class MaintainEngine(private val context: Context) {
      * found again by the reattach pass, while the copies that left were read
      * is in neither list, so no single copy can claim the traffic then.
      */
-    private suspend fun stillInFlight(waiting: List<EvidenceRules.Waiting>, now: Long): Boolean =
-        unprovenWaiting(now).map { it.id }.toSet() == waiting.map { it.id }.toSet()
+    private suspend fun stillInFlight(waiting: List<EvidenceRules.Waiting>): Boolean =
+        db.items().released().filter { !evidenceOf(it).isPerFile }.mapTo(HashSet()) { it.id } ==
+            waiting.mapTo(HashSet()) { it.id }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
 

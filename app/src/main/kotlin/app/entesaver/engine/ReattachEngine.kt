@@ -12,6 +12,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.OutputInventory
 import app.entesaver.util.Locks
+import app.entesaver.util.Volumes
 import java.io.File
 import kotlinx.coroutines.sync.withLock
 
@@ -24,13 +25,26 @@ import kotlinx.coroutines.sync.withLock
  * the folder copied across - the filenames are the last thing left, and each
  * one carries its original's fingerprint.
  *
- * Runs once, after the first scan following a recovery. Adopted rows carry no
- * upload evidence: the file being present proves it was made, not sent.
+ * Runs once, after the first scan following a recovery - and again when a
+ * storage volume is in that was not then, since copies on it were missed.
+ * Adopted rows carry no upload evidence: the file being present proves it
+ * was made, not sent.
  */
 class ReattachEngine(private val context: Context) {
 
+    companion object {
+        /**
+         * Whether restored copies wait to be matched to the folder. Until they
+         * are, any of them may be in it: MaintainEngine counts each as there.
+         */
+        suspend fun pending(context: Context): Boolean {
+            val o = OptionsRepo.get(context).current()
+            return ReattachRules.matchPending(o.copiesReattached, o.reattachedVolumes, Volumes.mountedNames(context))
+        }
+    }
+
     suspend fun run() {
-        if (OptionsRepo.get(context).current().copiesReattached) return
+        if (!pending(context)) return
         // A restore's order: stage, then release. The rows are read and
         // written back whole below, and a restore merging meanwhile - taking
         // a row over with its history's proof - was overwritten with a copy
@@ -43,7 +57,10 @@ class ReattachEngine(private val context: Context) {
     private suspend fun runLocked() {
         val db = AppDb.get(context)
         val repo = OptionsRepo.get(context)
-        if (repo.current().copiesReattached) return
+        if (!pending(context)) return
+        // Read before the listing: a volume coming in during the pass is not
+        // covered by it, and asks for another.
+        val volumes = Volumes.mountedNames(context)
 
         // A failed query looks identical to an empty folder, so a null answer
         // is left alone rather than recorded as "nothing to adopt". Only the
@@ -109,6 +126,7 @@ class ReattachEngine(private val context: Context) {
         // it counts as having left now, for any window still open.
         db.items().stampRestoredLeft(now)
 
+        repo.setStringSet(OptionsRepo.K.REATTACHED_VOLUMES, volumes)
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
     }
 }

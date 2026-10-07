@@ -655,7 +655,7 @@ class ProductBoundariesTest {
     fun `restored copies count as in the folder until they are matched`() {
         val engine = File(main, "engine/MaintainEngine.kt").readText()
         val body = engine.substringAfter("private suspend fun leftDuring(").substringBefore("\n    }\n")
-        assertTrue(body, body.contains("if (repo.current().copiesReattached)"))
+        assertTrue(body, body.contains("if (!ReattachEngine.pending(context))"))
         assertTrue(body, body.contains("provenAt = null"))
         // Read before the copies that left, which the pass dates before it
         // marks the restore matched: one list or the other always has each.
@@ -663,7 +663,9 @@ class ProductBoundariesTest {
         // Paced proof and attribution both read it, and both drop a single
         // copy's claim when what is in flight changed while they read.
         assertEquals(2, Regex("""leftDuring\(waiting\)""").findAll(engine).count())
-        assertEquals(2, Regex("""stillInFlight\(waiting, now\)""").findAll(engine).count())
+        assertEquals(2, Regex("""stillInFlight\(waiting\)""").findAll(engine).count())
+        // Only where a single copy's claim is on the table.
+        assertTrue(engine.contains("if (EvidenceRules.Attribution.PER_FILE !in it.values || stillInFlight(waiting))"))
     }
 
     /**
@@ -937,8 +939,14 @@ class ProductBoundariesTest {
         val reattach = File("src/main/kotlin/app/entesaver/engine/ReattachEngine.kt").readText()
         assertTrue(reattach.contains("Locks.stage.withLock { Locks.release.withLock { runLocked() } }"))
         val locked = reattach.substringAfter("private suspend fun runLocked()")
-        assertTrue("the flag is read again under the locks", locked.contains("if (repo.current().copiesReattached) return"))
+        assertTrue("the flag is read again under the locks", locked.contains("if (!pending(context)) return"))
         assertTrue(locked.contains("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
+        // The volumes it saw are read before the listing and kept with the
+        // flag, so a card that was out asks for another pass when it is in.
+        val seen = locked.indexOf("val volumes = Volumes.mountedNames(context)")
+        assertTrue(seen in 0 until locked.indexOf("OutputInventory(context)"))
+        assertTrue(locked.indexOf("repo.setStringSet(OptionsRepo.K.REATTACHED_VOLUMES, volumes)") in 0 until
+            locked.indexOf("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
     }
 
     @Test
