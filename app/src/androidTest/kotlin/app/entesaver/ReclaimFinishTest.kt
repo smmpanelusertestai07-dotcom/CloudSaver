@@ -21,6 +21,7 @@ import app.entesaver.data.db.ReclaimBatchRow
 import app.entesaver.data.db.ReclaimItemRow
 import app.entesaver.data.prefs.Options
 import app.entesaver.engine.ReclaimEngine
+import app.entesaver.media.MediaScanner
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -331,6 +332,37 @@ class ReclaimFinishTest {
         assertEquals(copy.toString(), back.keptUri)
     }
 
+    /**
+     * Once the restore points the row back at "IMG_1234.jpg", its copy
+     * "IMG_1235.jpg" no longer carries the row's name. The scanner read it
+     * as a stranger and queued an already light copy to be optimised and
+     * uploaded again as a new photo.
+     */
+    @Test
+    fun aRestored121RowStillKnowsItsNumberedCopyAtTheNextScan() = runBlocking {
+        val original = photo("IMG_1234.jpg", seed = 26)
+        val modified = seen(original).modified
+        val copy = photo("IMG_1235.jpg", seed = 27)
+        val copySeen = seen(copy)
+        val rowId = db.items().insert(
+            row(copySeen.name, copy, copySeen.fingerprint).copy(
+                state = ItemState.FREED_KEPT.name,
+                keptUri = copy.toString(),
+                dateModified = modified,
+                outputBytes = copySeen.size
+            )
+        )
+        ReclaimEngine(target).onRestored(legacyHistory("IMG_1234.jpg", original, copySeen.size))
+        assertEquals(original.toString(), db.items().byId(rowId)!!.contentUri)
+
+        MediaScanner(target, db).scan()
+
+        assertNull("the copy is not new work", db.items().byFingerprint(copySeen.fingerprint))
+        assertEquals(rowId, db.items().byFingerprint(seen(original).fingerprint)?.id)
+        assertEquals(copy.toString(), db.items().byId(rowId)!!.keptUri)
+        assertEquals(ItemState.DONE.name, db.items().byId(rowId)!!.state)
+    }
+
     /** Two numbered copies with the original's time: neither is guessed at. */
     @Test
     fun aRestoreOfA121NumberedBatchThatMatchesTwoRowsTouchesNeither() = runBlocking {
@@ -461,7 +493,7 @@ class ReclaimFinishTest {
     )
 
     /** A history entry as 12.1 wrote it: the original's own fingerprint, name and address. */
-    private suspend fun legacyHistory(name: String, original: Uri): ReclaimItemRow {
+    private suspend fun legacyHistory(name: String, original: Uri, optimisedBytes: Long = 1234L): ReclaimItemRow {
         val batchId = db.reclaim().insertBatch(
             ReclaimBatchRow(
                 atMs = System.currentTimeMillis(),
@@ -479,7 +511,7 @@ class ReclaimFinishTest {
                     displayName = name,
                     album = "EnteSaverTest",
                     originalBytes = 3L * 1024 * 1024,
-                    optimisedBytes = 1234L,
+                    optimisedBytes = optimisedBytes,
                     contentUri = original.toString(),
                     trashed = true
                 )

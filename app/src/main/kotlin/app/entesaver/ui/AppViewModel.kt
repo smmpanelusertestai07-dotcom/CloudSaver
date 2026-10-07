@@ -1115,12 +1115,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun keptCopyUri(row: ItemRow): Uri? {
         val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
-        val name = runCatching {
+        val (name, size) = runCatching {
             ctx.contentResolver.query(
-                uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
-            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                uri,
+                arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE),
+                null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0)?.let { it to c.getLong(1) } else null }
         }.getOrNull() ?: return null
-        return if (KeptCopies.belongsTo(name, row.displayName, row.fingerprint)) uri else null
+        return if (KeptCopies.isRowsCopy(name, size, row.displayName, row.fingerprint, row.outputBytes)) uri else null
     }
 
 

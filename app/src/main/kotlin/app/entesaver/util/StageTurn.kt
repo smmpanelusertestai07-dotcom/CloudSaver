@@ -27,7 +27,7 @@ class StageTurn(
     private val waitMs: Long,
     private val yieldMs: Long,
     private val onWaiting: (Boolean) -> Unit = {},
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = { Locks.runClock() }
 ) {
     private var asked = false
     private var held = false

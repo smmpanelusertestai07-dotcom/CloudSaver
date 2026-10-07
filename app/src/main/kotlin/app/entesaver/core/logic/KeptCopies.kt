@@ -30,7 +30,9 @@ package app.entesaver.core.logic
  * free number, "IMG_1235", which cannot be told from the camera's next real
  * photo - so an in-place copy never asks for such a name (inPlaceRequest).
  * 12.1 did ask for it, and only its history lookup reads such a copy back
- * (isLegacyCountUp).
+ * (isLegacyCountUp). That lookup points the row back at its restored
+ * original, and the copy is then known only at the row's own address, by
+ * its number and its size (isRowsCopy).
  */
 object KeptCopies {
 
@@ -47,6 +49,27 @@ object KeptCopies {
         if (isCameraRename(stemOf(fileName), own)) return true
         val fp = Fingerprint.fpFromOutputName(fileName) ?: return false
         return fp.equals(fingerprint, ignoreCase = true)
+    }
+
+    /**
+     * Whether the file at a row's keptUri, [fileName] of [fileBytes], is
+     * that row's light copy: what belongsTo accepts, or a 12.1 copy the
+     * provider numbered under DCIM whose row a restore pointed back at its
+     * original - "IMG_1235.jpg" for the row's "IMG_1234.jpg". Read as a
+     * stranger, that copy was optimised again and uploaded as a new photo.
+     * The number alone is the camera's next photo, so it counts only with
+     * the copy's size, [outputBytes], to the byte.
+     */
+    fun isRowsCopy(
+        fileName: String,
+        fileBytes: Long,
+        displayName: String,
+        fingerprint: String,
+        outputBytes: Long?
+    ): Boolean {
+        if (belongsTo(fileName, displayName, fingerprint)) return true
+        return outputBytes != null && outputBytes > 0L && fileBytes == outputBytes &&
+            countsUp(fileName, displayName)
     }
 
     /**
@@ -75,7 +98,7 @@ object KeptCopies {
      * alone is also the camera's next real photo, so the copy must carry the
      * original's modified time too - 12.1 stamped it on every in-place copy.
      * Only the lookup for a 12.1 history entry may ask this; the scanner and
-     * "Remove the light copy" never do (belongsTo).
+     * "Remove the light copy" ask isRowsCopy, at the row's own address.
      */
     fun isLegacyCountUp(
         copyName: String,
@@ -84,6 +107,11 @@ object KeptCopies {
         originalModified: Long
     ): Boolean {
         if (copyModified <= 0L || copyModified != originalModified) return false
+        return countsUp(copyName, originalName)
+    }
+
+    /** "IMG_1235.jpg" for "IMG_1234.jpg": the same type, prefix and a later number. */
+    private fun countsUp(copyName: String, originalName: String): Boolean {
         val ext = copyName.substringAfterLast('.', "")
         if (!ext.equals(originalName.substringAfterLast('.', ""), ignoreCase = true)) return false
         val copy = DCF_STRICT.matchEntire(stemOf(copyName)) ?: return false

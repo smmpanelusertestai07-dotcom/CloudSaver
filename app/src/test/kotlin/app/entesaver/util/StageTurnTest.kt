@@ -1,5 +1,6 @@
 package app.entesaver.util
 
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ class StageTurnTest {
         if (Locks.stage.isLocked) Locks.stage.unlock()
         Locks.runYieldsUntil.set(0L)
         Locks.freeUpWaiting.set(0)
+        Locks.runClock = { 0L }
     }
 
     @Test
@@ -32,11 +34,11 @@ class StageTurnTest {
         val turn = StageTurn(waitMs = 1_000L, yieldMs = 60_000L)
         assertTrue(turn.take())
         assertTrue("held for the batch", Locks.stage.isLocked)
-        assertTrue("the run starts no new file meanwhile", Locks.runShouldYield(System.currentTimeMillis()))
+        assertTrue("the run starts no new file meanwhile", Locks.runShouldYield())
         assertTrue("a later row needs no second ask", turn.take())
         turn.close()
         assertFalse(Locks.stage.isLocked)
-        assertFalse("the run carries on once the batch is done", Locks.runShouldYield(System.currentTimeMillis()))
+        assertFalse("the run carries on once the batch is done", Locks.runShouldYield())
         assertEquals(0, turn.refusals)
     }
 
@@ -45,7 +47,7 @@ class StageTurnTest {
         val turn = StageTurn(waitMs = 1_000L, yieldMs = 60_000L)
         turn.close()
         assertFalse(Locks.stage.isLocked)
-        assertFalse(Locks.runShouldYield(System.currentTimeMillis()))
+        assertFalse(Locks.runShouldYield())
     }
 
     @Test
@@ -97,7 +99,7 @@ class StageTurnTest {
         asked.join()
         Locks.stage.unlock()
         assertFalse("the encoder is not left taken", Locks.stage.isLocked)
-        assertFalse("nor the run held up", Locks.runShouldYield(System.currentTimeMillis()))
+        assertFalse("nor the run held up", Locks.runShouldYield())
         assertEquals(0, Locks.freeUpWaiting.get())
     }
 
@@ -107,6 +109,31 @@ class StageTurnTest {
         val turn = StageTurn(waitMs = 1_000L, yieldMs = 60_000L)
         assertTrue(turn.take())
         turn.close()
-        assertFalse(Locks.runShouldYield(System.currentTimeMillis()))
+        assertFalse(Locks.runShouldYield())
+    }
+
+    @Test
+    fun `the wait a refused batch leaves is kept by a clock no one can set`() = runBlocking {
+        // On the wall clock, a clock set back a day after a refusal held
+        // every background run up for that day as well.
+        var sinceBoot = 5_000L
+        Locks.runClock = { sinceBoot }
+        Locks.stage.lock()
+        val turn = StageTurn(waitMs = 10L, yieldMs = 60_000L)
+        assertFalse(turn.take())
+        turn.close()
+        Locks.stage.unlock()
+        assertTrue("the run gives way for one file's time", Locks.runShouldYield())
+        sinceBoot += 59_999L
+        assertTrue(Locks.runShouldYield())
+        sinceBoot += 1L
+        assertFalse("and carries on after it, whatever the date says", Locks.runShouldYield())
+        // The worker asks by the same clock, never by the date.
+        val worker = File("src/main/kotlin/app/entesaver/work/CompressWorker.kt").readText()
+        assertTrue(worker.contains("if (Locks.runShouldYield()) break@loop"))
+        val locks = File("src/main/kotlin/app/entesaver/util/Locks.kt").readText()
+        assertTrue(locks.contains("var runClock: () -> Long = { SystemClock.elapsedRealtime() }"))
+        val stageTurn = File("src/main/kotlin/app/entesaver/util/StageTurn.kt").readText()
+        assertFalse(stageTurn.contains("currentTimeMillis"))
     }
 }

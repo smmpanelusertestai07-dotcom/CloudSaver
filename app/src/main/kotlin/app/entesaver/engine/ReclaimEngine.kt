@@ -471,7 +471,7 @@ class ReclaimEngine(private val context: Context) {
     private fun keptCopyToReuse(row: ItemRow): Pinned? {
         if (row.keptUri == row.contentUri) return null
         val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
-        val (name, path) = runCatching {
+        val (name, path, size) = runCatching {
             context.contentResolver.query(
                 uri,
                 arrayOf(
@@ -483,10 +483,10 @@ class ReclaimEngine(private val context: Context) {
             )?.use { c ->
                 if (!c.moveToFirst() || c.getLong(2) <= 0) return@use null
                 val name = c.getString(0) ?: return@use null
-                name to c.getString(1)
+                Triple(name, c.getString(1), c.getLong(2))
             }
         }.getOrNull() ?: return null
-        if (!KeptCopies.belongsTo(name, row.displayName, row.fingerprint)) return null
+        if (!KeptCopies.isRowsCopy(name, size, row.displayName, row.fingerprint, row.outputBytes)) return null
         if (!looksDecodable(uri, name, row.isVideo)) return null
         val folder = originalFolder(row)
         val here = path?.let { if (it.endsWith("/")) it else "$it/" }

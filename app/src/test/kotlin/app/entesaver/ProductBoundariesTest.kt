@@ -760,7 +760,7 @@ class ProductBoundariesTest {
         assertTrue("and gives it back", pin.contains("if (turn == null) own.close()"))
         // The background run starts no new file while Free up wants it.
         val worker = File("src/main/kotlin/app/entesaver/work/CompressWorker.kt").readText()
-        val yieldAt = worker.indexOf("if (Locks.runShouldYield(itemStart)) break@loop")
+        val yieldAt = worker.indexOf("if (Locks.runShouldYield()) break@loop")
         assertTrue("the run must give way to Free up", yieldAt >= 0)
         assertTrue("before it starts the file", yieldAt < worker.indexOf("stager.stageInRun("))
         // The wait is on screen, and so is a remake left out for it.

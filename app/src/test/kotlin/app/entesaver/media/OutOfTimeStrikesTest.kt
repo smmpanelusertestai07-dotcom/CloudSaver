@@ -87,6 +87,50 @@ class OutOfTimeStrikesTest {
     }
 
     @Test
+    fun `a plain run tries a held clip once a day at most, and settles it after the week`() {
+        // A phone that never gets a foreground service: every run is plain,
+        // and with nothing else waiting each one took the held clip, spent
+        // its whole window on it, and ran out of time again - every half
+        // hour, for a week.
+        val day = 24 * 60 * 60_000L
+        val start = 1_000_000_000L
+        assertTrue("a clip never held is due", Stager.plainTryDue(clip, start))
+        var row = Stager.heldBack(clip, start)
+        var tries = 1
+        var t = start
+        while (row.state == ItemState.NEW.name) {
+            t += 30 * 60_000L
+            if (Stager.plainTryDue(row, t)) {
+                row = Stager.heldBack(row, t)
+                tries++
+            }
+        }
+        assertEquals("one plain try a day, then set aside", 8, tries)
+        assertEquals(Stager.OUT_OF_TIME, row.skipReason)
+        assertEquals(0, row.attempts)
+        assertNull(row.stagePath)
+        assertEquals(false, row.originalMissing)
+        // A counted try's mark, an older mark with one date, and a clock set
+        // back all leave the clip due.
+        assertTrue(Stager.plainTryDue(clip.copy(lastError = Stager.OUT_OF_TIME), start))
+        assertTrue(Stager.plainTryDue(clip.copy(lastError = "out_of_time@$start"), start + day))
+        assertTrue(Stager.plainTryDue(Stager.heldBack(clip, start), start - 1))
+        assertEquals(false, Stager.plainTryDue(Stager.heldBack(clip, start), start + day - 1))
+    }
+
+    @Test
+    fun `only a plain run waits for a held clip's day`() {
+        val worker = File("src/main/kotlin/app/entesaver/work/CompressWorker.kt").readText()
+        assertTrue(
+            worker.contains(
+                "if (foreground) emptyList() else found.filterNot { Stager.plainTryDue(it, now) }"
+            )
+        )
+        val asked = worker.indexOf("found.filterNot { Stager.plainTryDue(it, now) }")
+        assertTrue("before anything is started", asked < worker.indexOf("stager.stageInRun("))
+    }
+
+    @Test
     fun `a counted try or a clock set back starts the week again`() {
         val day = 24 * 60 * 60_000L
         val held = Stager.heldBack(clip, 10 * day)
