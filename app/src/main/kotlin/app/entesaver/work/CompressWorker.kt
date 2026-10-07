@@ -159,6 +159,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             runCatching { repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(planned)) }
         }
         val deferred = HashSet<Long>()
+        // Videos left for the next run: kept apart from [deferred], which
+        // tells Home the phone is short of space.
+        val later = HashSet<Long>()
         val profile = runCatching { ProfileBuilder(app).current(options) }
             .getOrDefault(MediaProfile.Profile())
         var processed = 0
@@ -215,8 +218,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 // Files skipped for space this run are left out of the query;
                 // past a couple of hundred of them the run has nothing useful
                 // left to try (and the list stays far under SQLite's limit).
-                if (deferred.size > MAX_DEFERRED) break@loop
-                val batch = nextItems(db, live, plan, videoMaxMs, deferred, 5)
+                if (deferred.size + later.size > MAX_DEFERRED) break@loop
+                val batch = nextItems(db, live, plan, videoMaxMs, deferred + later, 5)
                 if (batch.isEmpty()) {
                     // Nothing left that this run can take; whatever is still
                     // waiting gets its reason on Home, found by asking again
@@ -241,6 +244,19 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     ) {
                         // Time has moved on since the query; the next one
                         // asks for shorter clips.
+                        continue
+                    }
+                    if (row.isVideo && foreground &&
+                        RunDecider.videoWaitsForLongerRun(
+                            row.durationMs,
+                            VideoCompressor.budgetFor(deadline - itemStart),
+                            VideoCompressor.DEFAULT_TOTAL_MS
+                        )
+                    ) {
+                        // Too long for what is left of this run, and a later
+                        // run gives it more. Started anyway, it would only
+                        // run out of time; it is first in line next run.
+                        later += row.id
                         continue
                     }
                     val ratio = if (row.isVideo) profile.videos.ratio else profile.photos.ratio
@@ -270,6 +286,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                         if (!power.plugged) {
                             if (row.isVideo) videoMsOnBattery += took else photosOnBattery++
                         }
+                    } else if (row.isVideo) {
+                        // A clip that did not finish - out of time, or a
+                        // failed try - is not started again in this run with
+                        // even less time left; the next run takes it.
+                        later += row.id
                     }
                     // Re-check power between items, not just between batches.
                     val mid = System.currentTimeMillis()

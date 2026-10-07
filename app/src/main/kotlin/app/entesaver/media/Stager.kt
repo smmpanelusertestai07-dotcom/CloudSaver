@@ -3,20 +3,24 @@ package app.entesaver.media
 import android.content.Context
 import android.net.Uri
 import android.os.Process
+import android.provider.MediaStore
 import app.entesaver.core.logic.Fingerprint
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputMode
 import app.entesaver.core.logic.PhotoFormat
+import app.entesaver.core.logic.StageRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.prefs.Options
 import app.entesaver.engine.InFlight
 import app.entesaver.util.DeviceTier
+import app.entesaver.util.Locks
 import app.entesaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Creates the compressed copy of one item in the hidden stage dir
@@ -38,19 +42,79 @@ class Stager(private val context: Context, private val db: AppDb) {
      * deadline it had set itself. Passing the remaining time down means the
      * deadline actually governs. A caller with no deadline of its own leaves
      * it alone and gets the ordinary budget.
+     *
+     * One file at a time across the scheduled run and the Home trial
+     * ([Locks.stage]), and only a row that is still waiting for the file it
+     * describes ([StageRules]).
      */
     suspend fun stageOne(
         row: ItemRow,
         options: Options,
         predictedBytes: Long = 0,
         runRemainingMs: Long = Long.MAX_VALUE
-    ): Boolean {
-        val uriString = row.contentUri
+    ): Boolean = Locks.stage.withLock {
+        // Read again under the lock: the row the caller holds came from a
+        // list read before it started, and the other path may have staged
+        // it since. Everything written below starts from this fresh row.
+        val fresh = db.items().byId(row.id) ?: return@withLock false
+        val uriString = fresh.contentUri
         if (uriString == null) {
-            skip(row, "no_uri")
-            return false
+            if (fresh.state == ItemState.NEW.name) skip(fresh, "no_uri")
+            return@withLock false
         }
         val uri = Uri.parse(uriString)
+        val now = identityOf(uri)
+        when (
+            StageRules.verdict(
+                fresh.state, fresh.originalMissing, fresh.displayName, fresh.sizeBytes,
+                now?.first, now?.second
+            )
+        ) {
+            StageRules.Verdict.TAKEN -> return@withLock false
+            StageRules.Verdict.CHANGED -> {
+                // Edited in place while it waited. The bytes this row
+                // describes are gone, and the edited file has a row of its
+                // own (or will at the next scan), so this one is retired the
+                // way Free up retires it - never encoded under the old name.
+                db.items().update(
+                    fresh.copy(
+                        state = ItemState.DONE.name,
+                        originalMissing = true,
+                        mediaStoreId = null,
+                        contentUri = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+                return@withLock false
+            }
+            StageRules.Verdict.STAGE -> stageLocked(fresh, uri, options, predictedBytes, runRemainingMs)
+        }
+    }
+
+    /** Name and size of the file behind [uri] right now; null when unreadable. */
+    private fun identityOf(uri: Uri): Pair<String, Long>? = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE),
+            null, null, null
+        )?.use { c ->
+            if (!c.moveToFirst()) return@use null
+            val name = c.getString(0) ?: return@use null
+            // MediaStore reports 0 for a file it has not measured yet; that
+            // is not knowing, not a change.
+            val size = c.getLong(1)
+            if (size <= 0) return@use null
+            name to size
+        }
+    }.getOrNull()
+
+    private suspend fun stageLocked(
+        row: ItemRow,
+        uri: Uri,
+        options: Options,
+        predictedBytes: Long,
+        runRemainingMs: Long
+    ): Boolean {
         val tempDir = Storage.tempDir(context, options.storageVolume)
         // Held to what this phone can decode without running out of memory;
         // asked only for a photo, since it reads the memory free right now.
@@ -88,6 +152,15 @@ class Stager(private val context: Context, private val db: AppDb) {
             }
         } catch (ce: CancellationException) {
             throw ce
+        } catch (late: VideoCompressor.OutOfTime) {
+            // The run had too little left for this clip. That says nothing
+            // about the clip, so no attempt is counted: it stays in the queue
+            // for a run with the whole budget, rather than going out full
+            // size as an as-is copy for good.
+            db.items().update(
+                row.copy(lastError = OUT_OF_TIME, updatedAt = System.currentTimeMillis())
+            )
+            return false
         } catch (e: Exception) {
             fail(row, ENCODE_FAILED, e.message ?: e.javaClass.simpleName)
             return false
@@ -191,6 +264,9 @@ class Stager(private val context: Context, private val db: AppDb) {
         /** Why a file was set aside after three tries (see [fail]). */
         const val ENCODE_FAILED = "encode_failed"
         const val OUT_OF_MEMORY = "out_of_memory"
+
+        /** A clip left waiting because the run ran short (see [stageOne]). */
+        const val OUT_OF_TIME = "out_of_time"
 
         fun folderFor(isVideo: Boolean, mode: OutputMode): OutFolder = when {
             mode == OutputMode.SINGLE -> OutFolder.SINGLE

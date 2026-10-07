@@ -269,6 +269,25 @@ class RunDeciderTest {
     }
 
     @Test
+    fun `a video cut short by the run waits for a longer one, never goes out full size`() {
+        val full = 20 * 60_000L
+        // Five minutes was all the run had left: a later run gives more, so
+        // the clip waits instead of being copied across as it is for good.
+        assertTrue(RunDecider.outOfTimeWaits(5 * 60_000L, full))
+        // Out of the whole budget: no run gives more, so it is copied as before.
+        assertFalse(RunDecider.outOfTimeWaits(full, full))
+        // A ten-minute clip needs about sixteen minutes: not started with
+        // five left, started with the whole budget.
+        assertTrue(RunDecider.videoWaitsForLongerRun(10 * 60_000L, 5 * 60_000L, full))
+        assertFalse(RunDecider.videoWaitsForLongerRun(10 * 60_000L, full, full))
+        // A short clip still fits what is left, and an unknown length is tried.
+        assertFalse(RunDecider.videoWaitsForLongerRun(60_000L, 5 * 60_000L, full))
+        assertFalse(RunDecider.videoWaitsForLongerRun(0L, 5 * 60_000L, full))
+        // A clip longer than any run is never held back for good.
+        assertFalse(RunDecider.videoWaitsForLongerRun(60 * 60_000L, full, full))
+    }
+
+    @Test
     fun `the smallest phones make videos only while charging`() {
         val battery = RunDecider.Power(
             plugged = false, batteryPct = 90, saverOn = false, thermalThrottled = false,

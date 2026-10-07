@@ -17,6 +17,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.StageRules
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -342,6 +343,30 @@ interface ItemDao {
 
     @Query("SELECT * FROM items WHERE fingerprint = :fp LIMIT 1")
     suspend fun byFingerprint(fp: String): ItemRow?
+
+    /**
+     * Rows still waiting that nothing has been made from, by address - what
+     * the scan checks for files edited in place (StageRules.replaced). Three
+     * columns, not whole rows: on a first scan this is the whole gallery.
+     */
+    @Query(
+        "SELECT id, fingerprint, contentUri FROM items WHERE state = 'NEW' " +
+            "AND contentUri IS NOT NULL AND stagePath IS NULL AND outputUri IS NULL " +
+            "AND releasedAt IS NULL"
+    )
+    suspend fun waitingAddresses(): List<StageRules.Waiting>
+
+    /**
+     * Retires waiting rows whose file was replaced under their address, the
+     * way Free up retires a changed original. The conditions are repeated so
+     * a row staged since it was read is left alone.
+     */
+    @Query(
+        "UPDATE items SET state = 'DONE', originalMissing = 1, mediaStoreId = NULL, " +
+            "contentUri = NULL, updatedAt = :now WHERE id IN (:ids) AND state = 'NEW' " +
+            "AND stagePath IS NULL AND outputUri IS NULL AND releasedAt IS NULL"
+    )
+    suspend fun retireReplaced(ids: List<Long>, now: Long): Int
 
     @Query("SELECT * FROM items WHERE id = :id LIMIT 1")
     suspend fun byId(id: Long): ItemRow?

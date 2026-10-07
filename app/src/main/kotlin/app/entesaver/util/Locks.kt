@@ -35,4 +35,15 @@ object Locks {
      * this one at its entry points cannot deadlock against them.
      */
     val maintain = Mutex()
+
+    /**
+     * Making one light copy: the scheduled run and the Home trial.
+     *
+     * Both pick the newest waiting photos, so a trial tapped mid-run used to
+     * encode the same photo the run was on - two full-size decodes on a
+     * phone sized for one, one note of which file was in progress for two
+     * encodes, and two copies written to the same name. One encode at a time.
+     * Nothing taken while holding it takes another lock.
+     */
+    val stage = Mutex()
 }

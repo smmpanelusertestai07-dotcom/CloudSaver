@@ -6,7 +6,9 @@ import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import java.io.InputStream
+import java.nio.ByteBuffer
 
 /**
  * Real-world file traits that change how an item must be handled:
@@ -93,7 +95,12 @@ object MediaTraits {
 
     fun photoTraits(context: Context, uri: Uri): PhotoTraits {
         val head = readChunk(context, uri, MAX_SCAN) ?: return PhotoTraits(null, false)
-        return traitsOf(head)
+        val traits = traitsOf(head)
+        if (traits.asIsReason != null) return traits
+        // Older Samsung motion photos name their video only in a trailer
+        // after the picture, megabytes past the head. One more small read.
+        val tail = readTail(context, uri, TAIL_SCAN) ?: return traits
+        return tailReason(tail)?.let { PhotoTraits(it, false) } ?: traits
     }
 
     fun traitsOf(head: ByteArray): PhotoTraits {
@@ -101,6 +108,7 @@ object MediaTraits {
         val realDepth = DEPTH_DATA_MARKER_BYTES.any { containsBytes(head, it) }
         val reason = when {
             MOTION_MARKER_BYTES.any { containsBytes(head, it) } -> "motion_photo"
+            isAnimated(head) -> "animated"
             realDepth -> "depth_photo"
             ultra -> null
             DEPTH_MARKER_BYTES.any { containsBytes(head, it) } -> "depth_photo"
@@ -116,6 +124,113 @@ object MediaTraits {
             ULTRA_HDR_MARKER_BYTES.any { containsBytes(head, it) }
         }
     }.getOrDefault(false)
+
+    /**
+     * True when the file says it holds more than one frame: an animated
+     * WebP, an APNG, or an AVIF or HEIF image sequence.
+     *
+     * The decoder hands back the first frame only, so re-encoding one of
+     * these keeps a still and throws the animation away. Each format says
+     * so in its first few bytes, so the head already read is enough.
+     */
+    fun isAnimated(head: ByteArray): Boolean = when {
+        regionStarts(head, PNG_SIGNATURE) -> pngHasAnimation(head)
+        head.size >= 21 && regionStarts(head, RIFF) && regionMatchesAt(head, 8, WEBP) &&
+            regionMatchesAt(head, 12, VP8X) -> (head[20].toInt() and 0x02) != 0
+        head.size >= 12 && regionMatchesAt(head, 4, FTYP) -> ftypBrands(head).any { it in SEQUENCE_BRANDS }
+        else -> false
+    }
+
+    /** APNG: an "acTL" chunk ahead of the first picture data. */
+    private fun pngHasAnimation(bytes: ByteArray): Boolean {
+        var i = PNG_SIGNATURE.size
+        while (i + 8 <= bytes.size) {
+            val length = readIntBe(bytes, i)
+            if (length < 0) return false
+            val type = String(bytes, i + 4, 4, Charsets.ISO_8859_1)
+            if (type == "acTL") return true
+            if (type == "IDAT" || type == "IEND") return false
+            val next = i.toLong() + 12 + length
+            if (next > bytes.size) return false
+            i = next.toInt()
+        }
+        return false
+    }
+
+    /** The major and compatible brands of an ISO media file's "ftyp" box. */
+    private fun ftypBrands(bytes: ByteArray): List<String> {
+        val boxEnd = minOf(readIntBe(bytes, 0).toLong(), bytes.size.toLong()).toInt()
+        val brands = mutableListOf<String>()
+        var i = 8
+        while (i + 4 <= boxEnd) {
+            // Offset 12 is the minor version, not a brand.
+            if (i != 12) brands += String(bytes, i, 4, Charsets.ISO_8859_1)
+            i += 4
+        }
+        return brands
+    }
+
+    /**
+     * Why a photo must be copied as it is, judged from the last bytes of the
+     * file; null when they say nothing.
+     *
+     * Samsung phones before about 2020 stored a motion photo's video in a
+     * trailer after the JPEG, with no motion marker in the head at all. The
+     * trailer ends with a directory: "SEFH", a count, twelve bytes per entry
+     * (two of padding, a little-endian type, an offset and a length), then
+     * the directory's length and "SEFT". Type 0x0A30 is the motion video.
+     */
+    fun tailReason(tail: ByteArray): String? {
+        if (TAIL_MOTION_MARKER_BYTES.any { containsBytes(tail, it) }) return "motion_photo"
+        val n = tail.size
+        if (n < 8 || !regionMatchesAt(tail, n - 4, SEFT)) return null
+        val dirLength = readIntLe(tail, n - 8)
+        val sefh = n - 8 - dirLength
+        if (dirLength < 12 || sefh < 0 || !regionMatchesAt(tail, sefh, SEFH)) return null
+        val count = readIntLe(tail, sefh + 8)
+        if (count <= 0) return null
+        for (e in 0 until count) {
+            val at = sefh + 12 + 12 * e
+            if (at + 12 > n - 8) break
+            val type = (tail[at + 2].toInt() and 0xFF) or ((tail[at + 3].toInt() and 0xFF) shl 8)
+            if (type == SEF_MOTION_VIDEO) return "motion_photo"
+        }
+        return null
+    }
+
+    private fun readIntBe(bytes: ByteArray, at: Int): Int =
+        ((bytes[at].toInt() and 0xFF) shl 24) or ((bytes[at + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[at + 2].toInt() and 0xFF) shl 8) or (bytes[at + 3].toInt() and 0xFF)
+
+    private fun readIntLe(bytes: ByteArray, at: Int): Int =
+        (bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[at + 2].toInt() and 0xFF) shl 16) or ((bytes[at + 3].toInt() and 0xFF) shl 24)
+
+    private fun regionStarts(bytes: ByteArray, needle: ByteArray): Boolean = regionMatchesAt(bytes, 0, needle)
+
+    /** [regionMatches] with the bounds checked here. */
+    private fun regionMatchesAt(bytes: ByteArray, at: Int, needle: ByteArray): Boolean =
+        at >= 0 && at + needle.size <= bytes.size && regionMatches(bytes, at, needle)
+
+    private val PNG_SIGNATURE = byteArrayOf(
+        0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A
+    )
+    private val RIFF = "RIFF".toByteArray(Charsets.ISO_8859_1)
+    private val WEBP = "WEBP".toByteArray(Charsets.ISO_8859_1)
+    private val VP8X = "VP8X".toByteArray(Charsets.ISO_8859_1)
+    private val FTYP = "ftyp".toByteArray(Charsets.ISO_8859_1)
+    private val SEFH = "SEFH".toByteArray(Charsets.ISO_8859_1)
+    private val SEFT = "SEFT".toByteArray(Charsets.ISO_8859_1)
+
+    /** AVIF and HEIF image-sequence brands: a moving picture, not a still. */
+    private val SEQUENCE_BRANDS = setOf("avis", "msf1", "hevc", "hevx")
+
+    /** Samsung's trailer type for a motion photo's video. */
+    private const val SEF_MOTION_VIDEO = 0x0A30
+
+    /** The trailer block's own name, and Google's HEIC motion-video box. */
+    private val TAIL_MOTION_MARKER_BYTES = listOf("MotionPhoto_Data", "mpvd")
+        .map { it.toByteArray(Charsets.ISO_8859_1) }
 
     /**
      * The gain map's own XMP namespace and version tag (Ultra HDR), and the
@@ -155,6 +270,9 @@ object MediaTraits {
     private val DEPTH_MARKER_BYTES = DEPTH_MARKERS.map { it.toByteArray(Charsets.ISO_8859_1) }
 
     private const val MAX_SCAN = 512 * 1024
+
+    /** How much of the end of a file is read for a trailer ([tailReason]). */
+    private const val TAIL_SCAN = 64 * 1024
 
     /**
      * How much is read before the buffer is grown.
@@ -236,6 +354,31 @@ object MediaTraits {
 
     private fun readChunk(context: Context, uri: Uri, max: Int): ByteArray? = try {
         context.contentResolver.openInputStream(uri)?.use { input -> readUpTo(input, max) }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * The last [max] bytes of the file, or null when they cannot be read
+     * directly - the head alone then decides, as it always did.
+     */
+    private fun readTail(context: Context, uri: Uri, max: Int): ByteArray? = try {
+        context.contentResolver.openFileDescriptor(uri, "r")?.let { pfd ->
+            ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+                val channel = input.channel
+                val size = channel.size()
+                val n = minOf(size, max.toLong()).toInt()
+                if (n <= 0) return@use null
+                val buffer = ByteBuffer.allocate(n)
+                var at = size - n
+                while (buffer.hasRemaining()) {
+                    val read = channel.read(buffer, at)
+                    if (read <= 0) return@use null
+                    at += read
+                }
+                buffer.array()
+            }
+        }
     } catch (e: Exception) {
         null
     }

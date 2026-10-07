@@ -29,7 +29,7 @@ object PhotoCompressor {
     private val RAW_EXTS = setOf(
         "dng", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "orf", "raf", "rw2", "pef"
     )
-    private val AS_IS_EXTS = setOf("gif", "svg", "psd") + RAW_EXTS
+    private val AS_IS_EXTS = setOf("gif", "apng", "svg", "psd") + RAW_EXTS
 
     private val EXIF_TAGS = arrayOf(
         ExifInterface.TAG_DATETIME,
@@ -101,6 +101,11 @@ object PhotoCompressor {
         traits.asIsReason?.let { reason ->
             return copyAsIs(context, uri, displayName, tempDir, reason)
         }
+        // The decoder's own word too, for a moving picture the head did not
+        // name: re-encoded, it would keep its first frame and nothing else.
+        if (decoderSaysAnimated(context, uri)) {
+            return copyAsIs(context, uri, displayName, tempDir, "animated")
+        }
         var format = when (
             val decision = FormatResolver.resolve(spec.format, heicWorks, traits.ultraHdr, Build.VERSION.SDK_INT)
         ) {
@@ -146,6 +151,13 @@ object PhotoCompressor {
             return copyAsIs(context, uri, displayName, tempDir, "oom")
         }
 
+        // See-through areas: JPEG and HEIC have no alpha, so a sticker or a
+        // logo would come out on black. Only the original keeps them.
+        if (hasSeeThrough(bitmap)) {
+            bitmap.recycle()
+            return copyAsIs(context, uri, displayName, tempDir, "transparency")
+        }
+
         // Android 16 cameras write HDR photos as HEIC with an ISO 21496-1 gain
         // map, which the markers MediaTraits looks for do not name. The
         // decoder knows: a picture that came with a gain map is an HDR photo,
@@ -153,6 +165,10 @@ object PhotoCompressor {
         val gainMapped = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && bitmap.hasGainmap()
         val ultraHdr = traits.ultraHdr || gainMapped
         if (gainMapped) format = PhotoFormat.JPEG
+        // A wide-gamut photo (Display P3) loses its colour space on the way
+        // through the HEIC encoder and comes out paler; JPEG carries it.
+        val colourSpace = bitmap.colorSpace
+        format = FormatResolver.forColourSpace(format, srgb = colourSpace == null || colourSpace.isSrgb)
 
         try {
             var written = format
@@ -258,6 +274,38 @@ object PhotoCompressor {
         }
     } catch (e: Exception) {
         null
+    }
+
+    /** Thrown to stop a decode once its header has been read. */
+    private class StopDecode : RuntimeException()
+
+    /**
+     * Whether the platform decoder reads the file as animated. Only the
+     * header is read: the listener stops the decode once it has looked.
+     */
+    private fun decoderSaysAnimated(context: Context, uri: Uri): Boolean {
+        var animated = false
+        try {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { _, info, _ ->
+                animated = info.isAnimated
+                throw StopDecode()
+            }
+        } catch (e: Exception) {
+            // StopDecode, or a file this decoder cannot open; the head check
+            // in MediaTraits has already had its say.
+        }
+        return animated
+    }
+
+    /** True when any pixel is less than fully opaque; read a row at a time. */
+    private fun hasSeeThrough(bitmap: Bitmap): Boolean {
+        if (!bitmap.hasAlpha()) return false
+        val row = IntArray(bitmap.width)
+        for (y in 0 until bitmap.height) {
+            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+            if (FormatResolver.anyTransparent(row)) return true
+        }
+        return false
     }
 
     private fun decodeWithBitmapFactory(
