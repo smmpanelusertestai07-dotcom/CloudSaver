@@ -998,6 +998,14 @@ class ReclaimEngine(private val context: Context) {
         } else {
             null
         }
+        // The file the row stood for. A 12.1 copy numbered under DCIM is
+        // known after this only by its number and size, and a copy remade
+        // from the original is not the size first staged.
+        val copy = if (pinned && original != null) {
+            row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() }?.let { identityOf(it) }
+        } else {
+            null
+        }
         db.withTransaction {
             val cur = db.items().byId(row.id) ?: return@withTransaction
             val claimed = original != null && claimFingerprint(cur.id, original.fingerprint)
@@ -1008,7 +1016,15 @@ class ReclaimEngine(private val context: Context) {
             // as it is.
             if (inPlace && !claimed) return@withTransaction
             val back = if (claimed && original != null) {
+                val kept = copy?.takeIf { it.uri.toString() == cur.keptUri && cur.contentUri == cur.keptUri }
                 cur.copy(
+                    outputBytes = kept?.let {
+                        KeptCopies.outputBytesAfterRestore(
+                            cur.outputBytes, cur.displayName,
+                            it.displayName, it.sizeBytes, it.dateModified,
+                            original.displayName, original.dateModified
+                        )
+                    } ?: cur.outputBytes,
                     fingerprint = original.fingerprint,
                     contentUri = original.uri.toString(),
                     mediaStoreId = original.mediaStoreId,
