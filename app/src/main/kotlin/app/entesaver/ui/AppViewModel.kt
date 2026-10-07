@@ -1032,21 +1032,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch
             val now = System.currentTimeMillis()
-            db.items().update(
-                row.copy(
-                    state = ItemState.NEW.name,
-                    skipReason = null,
-                    attempts = 0,
-                    // Ask for the jump, do not fake the date. captureAt is
-                    // what the camera recorded: it is shown in the details
-                    // dialog, stamped onto the copy so the cloud files it
-                    // chronologically, and used by the Newest sort. Writing
-                    // `now` into it bought one run's queue position at the
-                    // cost of the file's real date, for good.
-                    priorityAt = now,
-                    updatedAt = now
-                )
-            )
+            // Ask for the jump, do not fake the date. captureAt is what the
+            // camera recorded: it is shown in the details dialog, stamped
+            // onto the copy so the cloud files it chronologically, and used
+            // by the Newest sort. Writing `now` into it bought one run's
+            // queue position at the cost of the file's real date, for good.
+            db.items().update(Stager.askedFirst(row, now))
         }
     }
 

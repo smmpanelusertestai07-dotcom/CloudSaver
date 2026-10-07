@@ -28,6 +28,7 @@ import app.entesaver.engine.DuplicateScanner
 import app.entesaver.engine.ReclaimEligibility
 import app.entesaver.engine.ReclaimEngine
 import app.entesaver.media.MediaScanner
+import app.entesaver.media.Stager
 import app.entesaver.util.Formats
 import app.entesaver.util.TamperCheck
 import kotlinx.coroutines.CancellationException
@@ -1066,15 +1067,7 @@ class ReclaimViewModel(
                 // priorityAt, never by faking the date. captureAt is what the
                 // camera recorded and is stamped onto the copy Ente files by
                 // date, so writing `now` there moved a 2019 video to today.
-                db.items().update(
-                    row.copy(
-                        state = ItemState.NEW.name,
-                        skipReason = null,
-                        attempts = 0,
-                        priorityAt = now,
-                        updatedAt = now
-                    )
-                )
+                db.items().update(Stager.askedFirst(row, now))
             }
         }
     }

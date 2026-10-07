@@ -45,6 +45,10 @@ class Stager(private val context: Context, private val db: AppDb) {
      * deadline actually governs. A caller with no deadline of its own leaves
      * it alone and gets the ordinary budget.
      *
+     * [overrunCounts] is false for a run without a foreground service: a
+     * clip that runs out of time there is held back without a counted try
+     * ([heldBack]), since a run with the whole budget may still come.
+     *
      * One file at a time across the scheduled run and the Home trial
      * ([Locks.stage]), and only a row that is still waiting for the file it
      * describes ([StageRules]).
@@ -53,12 +57,13 @@ class Stager(private val context: Context, private val db: AppDb) {
         row: ItemRow,
         options: Options,
         predictedBytes: Long = 0,
-        runRemainingMs: Long = Long.MAX_VALUE
+        runRemainingMs: Long = Long.MAX_VALUE,
+        overrunCounts: Boolean = true
     ): Boolean = Locks.stage.withLock {
         // stageHeld reads the row again under the lock: the one the caller
         // holds came from a list read before it started, and the other path
         // may have staged it since.
-        stageHeld(row, options, predictedBytes, runRemainingMs)
+        stageHeld(row, options, predictedBytes, runRemainingMs, overrunCounts)
     }
 
     /**
@@ -70,7 +75,8 @@ class Stager(private val context: Context, private val db: AppDb) {
         row: ItemRow,
         options: Options,
         predictedBytes: Long = 0,
-        runRemainingMs: Long = Long.MAX_VALUE
+        runRemainingMs: Long = Long.MAX_VALUE,
+        overrunCounts: Boolean = true
     ): Boolean {
         check(Locks.stage.isLocked) { "Locks.stage must be held" }
         val fresh = db.items().byId(row.id) ?: return false
@@ -111,7 +117,8 @@ class Stager(private val context: Context, private val db: AppDb) {
                 )
                 return false
             }
-            StageRules.Verdict.STAGE -> return stageLocked(fresh, uri, options, predictedBytes, runRemainingMs)
+            StageRules.Verdict.STAGE ->
+                return stageLocked(fresh, uri, options, predictedBytes, runRemainingMs, overrunCounts)
         }
     }
 
@@ -137,7 +144,8 @@ class Stager(private val context: Context, private val db: AppDb) {
         uri: Uri,
         options: Options,
         predictedBytes: Long,
-        runRemainingMs: Long
+        runRemainingMs: Long,
+        overrunCounts: Boolean
     ): Boolean {
         val tempDir = Storage.tempDir(context, options.storageVolume)
         // Held to what this phone can decode without running out of memory;
@@ -179,12 +187,21 @@ class Stager(private val context: Context, private val db: AppDb) {
         } catch (late: VideoCompressor.OutOfTime) {
             // The run had too little left for this clip. It stays in the
             // queue for a run with the whole budget, rather than going out
-            // full size as an as-is copy for good - but the try is counted.
-            // A phone whose runs never get a foreground service never gives
-            // that budget, and an uncounted clip was then started again in
-            // every run, for ever. After the usual three tries it is set
-            // aside with its own reason: the original stays, no copy is made.
-            fail(row, OUT_OF_TIME)
+            // full size as an as-is copy for good. In a run that had a
+            // foreground service the try is counted, and after the usual
+            // three the clip is set aside with its own reason. A plain run
+            // - the day's foreground allowance spent, say - does not count
+            // it, because tomorrow's run may well finish the clip; it is
+            // held back instead, and set aside once plain runs alone have
+            // tried it for a week, so a phone that never gives the whole
+            // budget does not start it for ever. Either way the original
+            // stays and no copy is made.
+            if (overrunCounts) {
+                fail(row, OUT_OF_TIME)
+            } else {
+                val now = System.currentTimeMillis()
+                settle(row) { cur -> heldBack(cur, now) }
+            }
             return false
         } catch (e: Exception) {
             fail(row, ENCODE_FAILED, e.message ?: e.javaClass.simpleName)
@@ -316,6 +333,66 @@ class Stager(private val context: Context, private val db: AppDb) {
 
         /** Tries a file gets before it is set aside (see [fail]). */
         const val MAX_TRIES = 3
+
+        /**
+         * How long plain runs alone may keep running out of time on a clip,
+         * with no try counted, before it is set aside (see [heldBack]).
+         */
+        const val PLAIN_OVERRUN_LIMIT_MS = 7L * 24 * 60 * 60_000L
+
+        /**
+         * The mark a plain run's overrun leaves in lastError: [OUT_OF_TIME],
+         * so the queue holds the clip back the same way, then the time of the
+         * first such overrun.
+         */
+        private const val HELD_SINCE = "$OUT_OF_TIME@"
+
+        /** True when [lastError] holds a clip back for running out of time. */
+        fun overran(lastError: String?): Boolean = lastError?.startsWith(OUT_OF_TIME) == true
+
+        /**
+         * [row] after running out of time at [now] in a run without a
+         * foreground service: still waiting, at the back of a plain run's
+         * queue, with no try counted - until plain runs have done that for
+         * [PLAIN_OVERRUN_LIMIT_MS], when it is set aside like a third try.
+         */
+        fun heldBack(row: ItemRow, now: Long): ItemRow {
+            // A date ahead of now (the clock was set back) starts the week
+            // again rather than stretching it.
+            val since = row.lastError
+                ?.takeIf { it.startsWith(HELD_SINCE) }
+                ?.removePrefix(HELD_SINCE)
+                ?.toLongOrNull()
+                ?.takeIf { it <= now }
+                ?: now
+            return if (now - since >= PLAIN_OVERRUN_LIMIT_MS) {
+                row.copy(
+                    state = ItemState.SKIP.name,
+                    skipReason = OUT_OF_TIME,
+                    lastError = OUT_OF_TIME,
+                    updatedAt = now
+                )
+            } else {
+                row.copy(lastError = "$HELD_SINCE$since", updatedAt = now)
+            }
+        }
+
+        /**
+         * [row] once the person asks for it first ("Optimise first", "Try
+         * again"): waiting again with its tries back, at the front of the
+         * queue by priorityAt. The out-of-time mark goes too: left in place,
+         * a plain run's queue held the clip back behind every other file,
+         * against what the button says. If it runs out of time again, the
+         * mark comes back with that try.
+         */
+        fun askedFirst(row: ItemRow, now: Long): ItemRow = row.copy(
+            state = ItemState.NEW.name,
+            skipReason = null,
+            attempts = 0,
+            lastError = row.lastError.takeUnless { overran(it) },
+            priorityAt = now,
+            updatedAt = now
+        )
 
         /** [row] after one more failed try at [now] (see [fail]). */
         fun struck(row: ItemRow, reason: String, detail: String, now: Long): ItemRow {

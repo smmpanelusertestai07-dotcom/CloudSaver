@@ -87,8 +87,13 @@ class FreeUpWiringTest {
     fun `optimise first never rewrites the capture date`() {
         val optimise = body(vm, "optimiseFirst")
         assertFalse("captureAt is the camera's date, not a queue position", optimise.contains("captureAt ="))
-        assertTrue(optimise.contains("priorityAt = now"))
-        assertTrue(optimise.contains("attempts = 0"))
+        // The same jump as Files' "Optimise first" and "Try again".
+        assertTrue(optimise.contains("Stager.askedFirst(row, now)"))
+        val appVm = File(main, "ui/AppViewModel.kt").readText()
+        assertTrue(
+            appVm.substringAfter("fun optimiseNow(id: Long)").substringBefore("\n    fun ")
+                .contains("Stager.askedFirst(row, now)")
+        )
         // No other view model may fake the date either.
         val offenders = File(main, "ui").walkTopDown()
             .filter { it.isFile && it.extension == "kt" }

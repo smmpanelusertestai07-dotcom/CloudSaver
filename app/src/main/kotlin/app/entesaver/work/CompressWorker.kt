@@ -280,9 +280,12 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     // encoder, so a single stubborn video can no longer sit
                     // there for three twenty-minute attempts while the
                     // deadline and the foreground-service allowance both run
-                    // out underneath it.
+                    // out underneath it. A clip that runs out of time counts
+                    // a try only in a run with a foreground service; a plain
+                    // run holds it back instead (Stager.heldBack).
                     val ok = stager.stageOne(
-                        row, live, predicted, runRemainingMs = deadline - itemStart
+                        row, live, predicted, runRemainingMs = deadline - itemStart,
+                        overrunCounts = foreground
                     )
                     val took = System.currentTimeMillis() - itemStart
                     // Free space changes only when something was written.
