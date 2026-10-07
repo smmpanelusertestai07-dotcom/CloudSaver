@@ -20,6 +20,7 @@ import app.entesaver.core.logic.DeviceDefaults
 import app.entesaver.core.logic.EvidenceRules
 import app.entesaver.core.logic.Fingerprint
 import app.entesaver.core.logic.FolderName
+import app.entesaver.core.logic.FreeUpFlow
 import app.entesaver.core.logic.GoneReason
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.KeptCopies
@@ -990,8 +991,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Counted as the history screen lists them: a batch whose trash Android
+    // has emptied is not history anyone can act on.
     val reclaimHistoryCount: StateFlow<Int> = db.reclaim().recentBatchesFlow(50)
-        .map { it.size }
+        .map { batches ->
+            val now = System.currentTimeMillis()
+            batches.count { !FreeUpFlow.trashExpired(it.atMs, now) }
+        }
         .stateIn(viewModelScope, screenLocal, 0)
 
     val keptBytes: StateFlow<Long> =

@@ -270,7 +270,7 @@ class ProductBoundariesTest {
             "ReclaimViewModel.kt" to listOf(
                 "fun start(permanent: Boolean) {",
                 "fun removeDuplicateExtras(chosen: Set<Long>) {",
-                "fun restore(items: List<ReclaimItemRow>) {"
+                "fun restore(batch: ReclaimBatchRow, items: List<ReclaimItemRow>) {"
             ),
             "AppViewModel.kt" to listOf(
                 "fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {",

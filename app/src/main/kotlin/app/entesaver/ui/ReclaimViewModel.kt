@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import app.entesaver.R
 import app.entesaver.core.logic.DuplicateRules
 import app.entesaver.core.logic.Evidence
+import app.entesaver.core.logic.FreeUpFlow
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.ListFilters
 import app.entesaver.core.logic.Platform
@@ -150,9 +151,62 @@ class ReclaimViewModel(
     fun takeDialog(sender: IntentSender): Boolean {
         if (sender === dialogOnScreen) return false
         dialogOnScreen = sender
+        kindOnScreen = pendingKind
         return true
     }
+
+    /**
+     * Which flow the pending request, and the one on screen, belong to.
+     *
+     * Free up, Duplicates and History all open whatever request is pending,
+     * and each used to send the answer to its own handler. Someone who left
+     * Free up while a batch was being prepared and opened History was shown
+     * the trash dialog there; History's handler was the restore one, so the
+     * originals went to the trash and the batch was never written down - no
+     * history, no restore, and copies left behind as new photos. The answer
+     * now goes to the flow that asked, whichever screen opened the dialog.
+     */
+    @Volatile private var pendingKind: FreeUpFlow.Dialog? = null
+    private var kindOnScreen: FreeUpFlow.Dialog? = null
+
+    /** The one place a request is handed to the screens, tagged with its flow. */
+    private fun ask(sender: IntentSender?, kind: FreeUpFlow.Dialog) {
+        pendingKind = if (sender != null) kind else null
+        pendingIntent.value = sender
+    }
+
+    /** Every screen's dialog launcher answers here, and only here. */
+    fun onSystemDialogResult(granted: Boolean) {
+        val kind = kindOnScreen ?: pendingKind
+        kindOnScreen = null
+        when (FreeUpFlow.answerGoesTo(kind)) {
+            FreeUpFlow.Answer.REMOVAL -> onDialogResult(granted)
+            FreeUpFlow.Answer.RESTORE -> onRestoreResult(granted)
+            FreeUpFlow.Answer.NOBODY -> {
+                dialogOnScreen = null
+                pendingIntent.value = null
+            }
+        }
+    }
+
+    /**
+     * True from the tap that starts a batch until the batch is written down,
+     * including while Android's dialog is open. The screen disables its
+     * buttons and shows progress on it: preparing light copies can take
+     * minutes, and a screen that looked idle got a second tap, which ran a
+     * second batch over the first.
+     */
     val busy = MutableStateFlow(false)
+
+    /**
+     * Whether any removal or restore is still under way. One flow at a time:
+     * each keeps its own state between dialogs, and a second one started
+     * part way through overwrote it.
+     */
+    private fun flowOpen(): Boolean =
+        busy.value || prepared != null || pendingIntent.value != null ||
+            legacyQueue.isNotEmpty() || pendingDuplicateIds.isNotEmpty() ||
+            restoring.isNotEmpty()
 
     private var prepared: ReclaimEngine.Prepared? = null
     private var pendingMode: ReclaimRules.Mode = ReclaimRules.Mode.REPLACE_WITH_LIGHT
@@ -284,8 +338,10 @@ class ReclaimViewModel(
         persistSelection()
     }
 
-    fun selectGroup(key: String) {
-        selected.value = selected.value + (groups()[key]?.map { it.id } ?: emptyList())
+    /** Ticks a whole group, or unticks it, as its box says. */
+    fun tickGroup(key: String, tick: Boolean) {
+        val ids = groups()[key]?.map { it.id } ?: return
+        selected.value = FreeUpFlow.tickGroup(selected.value, ids, tick)
         persistSelection()
     }
 
@@ -499,8 +555,14 @@ class ReclaimViewModel(
         if (TamperCheck.isModified(ctx)) return
         val chosen = selectedEntries()
         if (chosen.isEmpty()) return
+        // Checked and set here, on the tap, not inside the coroutine: a
+        // second tap before the coroutine started would have got through.
+        if (flowOpen()) return
+        busy.value = true
         viewModelScope.launch(Dispatchers.IO) {
-            busy.value = true
+            // Whether the batch went on to Android's dialog. Until then it
+            // ends here; after, it ends when the last answer is written down.
+            var handedOn = false
             try {
                 val now = System.currentTimeMillis()
                 if (mode.value == ReclaimRules.Mode.COPIES_ONLY) {
@@ -536,8 +598,12 @@ class ReclaimViewModel(
                     pendingTrash = false
                     startLegacy(ready.uris)
                 }
+                handedOn = true
             } finally {
-                busy.value = false
+                if (!handedOn) {
+                    prepared = null
+                    busy.value = false
+                }
             }
         }
     }
@@ -561,7 +627,7 @@ class ReclaimViewModel(
         val next = consentChunks.removeFirstOrNull() ?: return false
         val request = requestFor(next, consentPermanent) ?: return false
         consentCurrent = next
-        pendingIntent.value = request
+        ask(request, FreeUpFlow.Dialog.RECLAIM)
         return true
     }
 
@@ -614,7 +680,7 @@ class ReclaimViewModel(
                     val sender = (se as? RecoverableSecurityException)
                         ?.userAction?.actionIntent?.intentSender
                     if (sender != null) {
-                        pendingIntent.value = sender
+                        ask(sender, FreeUpFlow.Dialog.LEGACY)
                         return@launch
                     }
                     legacyQueue.removeFirst()
@@ -639,15 +705,19 @@ class ReclaimViewModel(
         val ready = prepared ?: return
         prepared = null
         viewModelScope.launch(Dispatchers.IO) {
-            lastResult.value = engine.finish(
-                ready, legacyDeleted.toSet(), pendingMode, false, System.currentTimeMillis()
-            )
-            clearSelection()
-            load()
+            try {
+                lastResult.value = engine.finish(
+                    ready, legacyDeleted.toSet(), pendingMode, false, System.currentTimeMillis()
+                )
+                clearSelection()
+                load()
+            } finally {
+                busy.value = false
+            }
         }
     }
 
-    fun onDialogResult(granted: Boolean) {
+    private fun onDialogResult(granted: Boolean) {
         dialogOnScreen = null
         pendingIntent.value = null
         if (Build.VERSION.SDK_INT < 30 && legacyQueue.isNotEmpty()) {
@@ -691,11 +761,15 @@ class ReclaimViewModel(
         val deleted = consentConfirmed.toSet()
         consentConfirmed.clear()
         viewModelScope.launch(Dispatchers.IO) {
-            lastResult.value = engine.finish(
-                ready, deleted, pendingMode, pendingTrash, System.currentTimeMillis()
-            )
-            clearSelection()
-            load()
+            try {
+                lastResult.value = engine.finish(
+                    ready, deleted, pendingMode, pendingTrash, System.currentTimeMillis()
+                )
+                clearSelection()
+                load()
+            } finally {
+                busy.value = false
+            }
         }
     }
 
@@ -726,7 +800,20 @@ class ReclaimViewModel(
 
     // ---- history and restore -------------------------------------------------
 
-    val history = db.reclaim().recentBatchesFlow(50)
+    /**
+     * Only batches whose files can still be in the trash. Old batches were
+     * pruned only when a new one was written, so someone who freed space
+     * once and came back after a month was offered a restore of files
+     * Android had already emptied out.
+     */
+    val history = db.reclaim().recentBatchesFlow(50).map { batches ->
+        val now = System.currentTimeMillis()
+        batches.filterNot { FreeUpFlow.trashExpired(it.atMs, now) }
+    }
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) { engine.prune() }
+    }
 
     val historyItems = MutableStateFlow<List<ReclaimItemRow>>(emptyList())
 
@@ -744,7 +831,7 @@ class ReclaimViewModel(
     private val restoreGranted = mutableSetOf<String>()
 
     /** Untrash, with the system dialog: the files are the gallery's, not ours. */
-    fun restore(items: List<ReclaimItemRow>) {
+    fun restore(batch: ReclaimBatchRow, items: List<ReclaimItemRow>) {
         // A modified build may not remove anything.
         //
         // TamperCheck's own contract says a mismatched signing certificate
@@ -754,6 +841,11 @@ class ReclaimViewModel(
         // file ran exactly as before. Gated here, at the entry point, so no
         // screen route can get past it.
         if (TamperCheck.isModified(ctx)) return
+        if (flowOpen()) return
+        // Android empties its trash after thirty days. A restore after that
+        // has nothing to bring back, and a "yes" to it marked originals that
+        // no longer exist as back on the phone.
+        if (!batch.trashed || FreeUpFlow.trashExpired(batch.atMs, System.currentTimeMillis())) return
         val uris = items.mapNotNull { row -> row.contentUri?.let { Uri.parse(it) } }
         // Nothing to restore from on Android 10: it has no trash, so those
         // batches were permanent and the history says so.
@@ -763,7 +855,7 @@ class ReclaimViewModel(
         // goes back through the same chunked confirmation as the removal did.
         restoreChunks = ArrayDeque(ReclaimRules.batches(uris))
         restoreGranted.clear()
-        pendingIntent.value = nextRestoreChunk()
+        ask(nextRestoreChunk(), FreeUpFlow.Dialog.RESTORE)
     }
 
     private fun nextRestoreChunk(): IntentSender? {
@@ -776,13 +868,13 @@ class ReclaimViewModel(
         return MediaStore.createTrashRequest(ctx.contentResolver, next, false).intentSender
     }
 
-    fun onRestoreResult(granted: Boolean) {
+    private fun onRestoreResult(granted: Boolean) {
         dialogOnScreen = null
         pendingIntent.value = null
         if (granted) restoreGranted += restoreCurrent.map { it.toString() }
         restoreCurrent = emptyList()
         if (granted && restoreChunks.isNotEmpty()) {
-            pendingIntent.value = nextRestoreChunk()
+            ask(nextRestoreChunk(), FreeUpFlow.Dialog.RESTORE)
             return
         }
         restoreChunks.clear()
@@ -876,7 +968,7 @@ class ReclaimViewModel(
         // file ran exactly as before. Gated here, at the entry point, so no
         // screen route can get past it.
         if (TamperCheck.isModified(ctx)) return
-        if (busy.value) return
+        if (flowOpen()) return
         if (chosen.isEmpty()) return
         busy.value = true
         viewModelScope.launch(Dispatchers.IO) {
@@ -934,7 +1026,7 @@ class ReclaimViewModel(
         val next = dupeChunks.removeFirstOrNull() ?: return false
         val request = requestFor(next, permanent = false) ?: return false
         dupeCurrent = next
-        pendingIntent.value = request
+        ask(request, FreeUpFlow.Dialog.DUPLICATES)
         return true
     }
 
@@ -958,13 +1050,16 @@ class ReclaimViewModel(
             for (id in ids) {
                 val row = db.items().byId(id) ?: continue
                 if (row.state != ItemState.SKIP.name && row.state != ItemState.NEW.name) continue
-                // captureAt drives the queue order, so bringing an item
-                // forward means making it look like the newest thing there is.
+                // The same jump as AppViewModel.optimiseNow: asked for with
+                // priorityAt, never by faking the date. captureAt is what the
+                // camera recorded and is stamped onto the copy Ente files by
+                // date, so writing `now` there moved a 2019 video to today.
                 db.items().update(
                     row.copy(
                         state = ItemState.NEW.name,
                         skipReason = null,
-                        captureAt = now,
+                        attempts = 0,
+                        priorityAt = now,
                         updatedAt = now
                     )
                 )
