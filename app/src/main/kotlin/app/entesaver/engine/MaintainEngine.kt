@@ -370,7 +370,15 @@ class MaintainEngine(private val context: Context) {
         } else {
             null
         }
-        val attribution = EvidenceRules.attributeTraffic(waiting, leftDuring(waiting), txShared, now)
+        val attribution = EvidenceRules.attributeTraffic(waiting, leftDuring(waiting), txShared, now).let {
+            if (stillInFlight(waiting, now)) {
+                it
+            } else {
+                it.mapValues { (_, a) ->
+                    if (a == EvidenceRules.Attribution.PER_FILE) EvidenceRules.Attribution.BYTES_SENT else a
+                }
+            }
+        }
 
         // A "Confirm uploads" tap still open, read now rather than at the
         // start of the pass: the person may have tapped since - which is also
@@ -691,6 +699,7 @@ class MaintainEngine(private val context: Context) {
         if (Pacing.isTimedOut(candidate.releasedAt, now)) return
         val tx = txSinceRelease(candidate.releasedAt, now) ?: return
         val alone = EvidenceRules.aloneInFlight(waiting, leftDuring(waiting), now, tx) ?: return
+        if (!stillInFlight(waiting, now)) return
         // Only a copy with no grade at all is ever upgraded by a byte match.
         val row = db.items().byId(alone.id)?.takeIf { evidenceOf(it) == Evidence.NONE } ?: return
         db.items().update(
@@ -754,22 +763,36 @@ class MaintainEngine(private val context: Context) {
      */
     private suspend fun leftDuring(waiting: List<EvidenceRules.Waiting>): List<EvidenceRules.Left> {
         val since = waiting.singleOrNull()?.releasedAt ?: return emptyList()
-        val left = db.items().leftReleasedSince(since).map { row ->
+        // A restore lands mid-run, and its copies are matched to the folder
+        // only on the next run. Until then any of them may be there, sending,
+        // so each counts as in the folder for the whole window. Read before
+        // the copies that left: the reattach pass dates those it does not
+        // find before it marks the restore matched, so a pass finishing in
+        // between leaves each in one list or the other.
+        val restored = if (repo.current().copiesReattached) {
+            emptyList()
+        } else {
+            val stillThere = maxOf(System.currentTimeMillis(), since)
+            db.items().restoredUnmatched().map { id ->
+                EvidenceRules.Left(id = id, leftAt = stillThere, provenAt = null)
+            }
+        }
+        return restored + db.items().leftReleasedSince(since).map { row ->
             EvidenceRules.Left(
                 id = row.id,
                 leftAt = row.leftAt,
                 provenAt = row.confirmedAt?.takeIf { Evidence.parse(row.evidence).isPerFile }
             )
         }
-        if (repo.current().copiesReattached) return left
-        // A restore lands mid-run, and its copies are matched to the folder
-        // only on the next run. Until then any of them may be there, sending,
-        // so each counts as in the folder for the whole window.
-        val stillThere = maxOf(System.currentTimeMillis(), since)
-        return left + db.items().restoredUnmatched().map { id ->
-            EvidenceRules.Left(id = id, leftAt = stillThere, provenAt = null)
-        }
     }
+
+    /**
+     * Whether the copies in flight are still [waiting]. A copy released, or
+     * found again by the reattach pass, while the copies that left were read
+     * is in neither list, so no single copy can claim the traffic then.
+     */
+    private suspend fun stillInFlight(waiting: List<EvidenceRules.Waiting>, now: Long): Boolean =
+        unprovenWaiting(now).map { it.id }.toSet() == waiting.map { it.id }.toSet()
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
 

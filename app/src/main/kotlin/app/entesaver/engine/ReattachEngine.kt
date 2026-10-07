@@ -98,14 +98,16 @@ class ReattachEngine(private val context: Context) {
         // (the ones found are RELEASED by now): Ente had it.
         for (row in db.items().restoredWithEvidence()) {
             val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence))
-            // It left some time before now; dated now, later bookkeeping
-            // cannot move it.
+            // It may have been in the folder, sending, until this pass looked:
+            // dated now, and later bookkeeping cannot move it.
             if (state.name != row.state) {
-                db.items().update(
-                    row.copy(state = state.name, leftFolderAt = row.leftFolderAt ?: now, updatedAt = now)
-                )
+                db.items().update(row.copy(state = state.name, leftFolderAt = now, updatedAt = now))
             }
         }
+        // So may every other restored copy this pass did not find. Until now
+        // each counted as in the folder (MaintainEngine.leftDuring); from now
+        // it counts as having left now, for any window still open.
+        db.items().stampRestoredLeft(now)
 
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
     }

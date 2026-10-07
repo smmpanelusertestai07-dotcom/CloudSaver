@@ -629,14 +629,20 @@ class ProductBoundariesTest {
         }
 
         // Into the folder again, a row carries no earlier leave; a restored
-        // copy found missing is dated when that was found.
+        // copy found missing is dated when that was found, and so is every
+        // restored copy the pass did not find, before the restore counts as
+        // matched.
         val releaser = File(main, "media/Releaser.kt").readText()
         val release = stateWrites(releaser).single { it.contains("ItemState.RELEASED.name") }
         assertTrue(release, release.contains("leftFolderAt = null"))
         val reattach = stateWrites(File(main, "engine/ReattachEngine.kt").readText())
         assertEquals(2, reattach.size)
         assertTrue(reattach[0], reattach[0].contains("leftFolderAt = null"))
-        assertTrue(reattach[1], reattach[1].contains("leftFolderAt = row.leftFolderAt ?: now"))
+        assertTrue(reattach[1], reattach[1].contains("leftFolderAt = now"))
+        val reattachText = File(main, "engine/ReattachEngine.kt").readText()
+        val stamp = reattachText.indexOf("db.items().stampRestoredLeft(now)")
+        assertTrue("the pass dates what it did not find", stamp > 0)
+        assertTrue(stamp < reattachText.indexOf("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
     }
 
     /**
@@ -649,11 +655,15 @@ class ProductBoundariesTest {
     fun `restored copies count as in the folder until they are matched`() {
         val engine = File(main, "engine/MaintainEngine.kt").readText()
         val body = engine.substringAfter("private suspend fun leftDuring(").substringBefore("\n    }\n")
-        assertTrue(body, body.contains("if (repo.current().copiesReattached) return left"))
-        assertTrue(body, body.contains("db.items().restoredUnmatched()"))
+        assertTrue(body, body.contains("if (repo.current().copiesReattached)"))
         assertTrue(body, body.contains("provenAt = null"))
-        // Paced proof and attribution both read it.
+        // Read before the copies that left, which the pass dates before it
+        // marks the restore matched: one list or the other always has each.
+        assertTrue(body, body.indexOf("db.items().restoredUnmatched()") in 0 until body.indexOf("leftReleasedSince("))
+        // Paced proof and attribution both read it, and both drop a single
+        // copy's claim when what is in flight changed while they read.
         assertEquals(2, Regex("""leftDuring\(waiting\)""").findAll(engine).count())
+        assertEquals(2, Regex("""stillInFlight\(waiting, now\)""").findAll(engine).count())
     }
 
     /**

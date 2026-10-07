@@ -97,9 +97,10 @@ data class ItemRow(
      * or sent back to the queue. Written there and nowhere else, so no later
      * bookkeeping on the row moves it, and kept when [releasedAt] is cleared.
      * Cleared when the row is released again. A row that left before 12.2
-     * carries its last change at the upgrade, never earlier than it left.
+     * carries its last change at the upgrade, never earlier than it left; a
+     * restored copy the reattach pass did not find, the time of that pass.
      * Null for a row that never left, or one whose copy may still be in the
-     * folder (restored, not yet found again).
+     * folder (restored, not yet looked for).
      */
     val leftFolderAt: Long? = null,
     val attempts: Int = 0,
@@ -365,7 +366,8 @@ private const val RECLAIMABLE_BYTES =
  * the folder - its last change. Null - never matched - for a row that was
  * never released. Until the reattach pass has matched restored rows to the
  * folder, MaintainEngine counts each as there throughout (see
- * [ItemDao.restoredUnmatched]).
+ * [ItemDao.restoredUnmatched]); the pass dates those it did not find to
+ * itself ([ItemDao.stampRestoredLeft]).
  */
 private const val LEFT_AT =
     "COALESCE(leftFolderAt, CASE WHEN releasedAt IS NOT NULL THEN updatedAt END)"
@@ -611,6 +613,17 @@ interface ItemDao {
      */
     @Query("SELECT id FROM items WHERE state = 'UNKNOWN' AND releasedAt IS NOT NULL")
     suspend fun restoredUnmatched(): List<Long>
+
+    /**
+     * Dates every restored copy the reattach pass did not find as having left
+     * at [now], when the pass looked: until then nothing said it was not in
+     * the folder. Never earlier than a time it already carries.
+     */
+    @Query(
+        "UPDATE items SET leftFolderAt = :now WHERE state = 'UNKNOWN' AND releasedAt IS NOT NULL " +
+            "AND (leftFolderAt IS NULL OR leftFolderAt < :now)"
+    )
+    suspend fun stampRestoredLeft(now: Long): Int
 
     /** Rows restored from a history file that came with some upload evidence. */
     @Query(

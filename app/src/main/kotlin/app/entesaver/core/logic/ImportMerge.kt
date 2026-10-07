@@ -144,7 +144,8 @@ object ImportMerge {
      * A row restored UNKNOWN - a copy the history saw waiting, or one it saw
      * go without proof - is one the reattach pass may still find in the
      * folder, so a leave the history recorded says nothing about this
-     * phone's folder; it carries none until that pass has looked. A copy
+     * phone's folder; it carries none until that pass has looked, and is
+     * dated to the pass if it is not found. A copy
      * that had left keeps its recorded time or, from a history written
      * before 12.2 recorded one, [now]: never earlier than it left, and no
      * later bookkeeping moves it.

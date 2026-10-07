@@ -93,6 +93,31 @@ class LeftFolderQueryTest {
     }
 
     @Test
+    fun aRestoredCopyNotFoundIsDatedToThePassThatLooked() = runBlocking {
+        // Restored before B went out, never written since: read by that.
+        val restored = released("restored").copy(state = ItemState.UNKNOWN.name, fromImport = true)
+        db.items().update(restored)
+        assertTrue(db.items().leftReleasedSince(since).none { it.id == restored.id })
+        // Taken over with a leave this phone had recorded, earlier still.
+        val takenOver = released("takenOver").copy(state = ItemState.UNKNOWN.name, leftFolderAt = 5_000L)
+        db.items().update(takenOver)
+        // Found again, and never released: neither is touched.
+        val found = released("found")
+        val neverOut = released("neverOut").copy(state = ItemState.UNKNOWN.name, releasedAt = null)
+        db.items().update(neverOut)
+
+        assertEquals(2, db.items().stampRestoredLeft(leftAt))
+
+        val read = db.items().leftReleasedSince(since).associate { it.id to it.leftAt }
+        assertEquals(mapOf(restored.id to leftAt, takenOver.id to leftAt), read)
+        assertEquals(null, db.items().byId(found.id)!!.leftFolderAt)
+        assertEquals(null, db.items().byId(neverOut.id)!!.leftFolderAt)
+        // Later bookkeeping no longer moves it.
+        db.items().update(db.items().byId(restored.id)!!.copy(originalMissing = true, updatedAt = 99_000L))
+        assertEquals(leftAt, db.items().leftReleasedSince(since).single { it.id == restored.id }.leftAt)
+    }
+
+    @Test
     fun everyWayOutOfTheFolderIsRead() = runBlocking {
         val now = leftAt
         val expected = mutableMapOf<String, Long>()
