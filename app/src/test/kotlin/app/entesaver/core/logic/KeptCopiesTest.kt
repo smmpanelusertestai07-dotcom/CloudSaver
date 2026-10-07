@@ -2,6 +2,7 @@ package app.entesaver.core.logic
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -88,6 +89,40 @@ class KeptCopiesTest {
         assertFalse(KeptCopies.isRowsCopy("PXL_20260101_120000.jpg", copyBytes, "IMG_0001.jpg", fp, copyBytes))
         // Whatever belongsTo accepts still belongs, at any size.
         assertTrue(KeptCopies.isRowsCopy("IMG_0001 (1).jpg", 1L, "IMG_0001.jpg", fp, copyBytes))
+    }
+
+    @Test
+    fun aRemade121CopyIsKnownByItsOwnSizeAfterTheRestore() {
+        // The copy was remade from the original, so it is not the size first
+        // staged. Kept as outputBytes, the next scan read "IMG_1235.jpg" as a
+        // stranger and sent it to Ente again as a new photo.
+        val staged = 900_000L
+        val remade = 812_345L
+        val t = 1_700_000_000L
+        val origFp = "fedcba9876543210"
+        fun after(copyName: String, copyBytes: Long, copyModified: Long, rowName: String = copyName) =
+            KeptCopies.outputBytesAfterRestore(
+                staged, rowName, copyName, copyBytes, copyModified, "IMG_1234.jpg", t
+            )
+
+        val stored = after("IMG_1235.jpg", remade, t)
+        assertEquals(remade, stored)
+        assertTrue(KeptCopies.isRowsCopy("IMG_1235.jpg", remade, "IMG_1234.jpg", origFp, stored))
+        // A file of another size at that address later is still new work.
+        assertFalse(KeptCopies.isRowsCopy("IMG_1235.jpg", remade + 1, "IMG_1234.jpg", origFp, stored))
+
+        // Not proven to be the copy: outputBytes stays, and the file is queued.
+        // Another time is the camera's next real photo.
+        assertEquals(staged, after("IMG_1235.jpg", remade, t + 1))
+        // A name that does not count up from the original's.
+        assertEquals(staged, after("holiday.jpg", remade, t))
+        assertFalse(KeptCopies.isRowsCopy("holiday.jpg", remade, "IMG_1234.jpg", origFp, staged))
+        // Not the file the row stood for: the address now holds another one.
+        assertEquals(staged, after("IMG_1236.jpg", remade, t, rowName = "IMG_1235.jpg"))
+        assertFalse(KeptCopies.isRowsCopy("IMG_1236.jpg", remade, "IMG_1234.jpg", origFp, staged))
+        // An unreadable size is no size.
+        assertEquals(staged, after("IMG_1235.jpg", 0L, t))
+        assertNull(KeptCopies.outputBytesAfterRestore(null, "IMG_1235.jpg", "IMG_1235.jpg", 0L, t, "IMG_1234.jpg", t))
     }
 
     @Test

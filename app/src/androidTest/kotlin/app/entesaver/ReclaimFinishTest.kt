@@ -363,6 +363,60 @@ class ReclaimFinishTest {
         assertEquals(ItemState.DONE.name, db.items().byId(rowId)!!.state)
     }
 
+    /**
+     * A copy remade from the original is not the size first staged, so the
+     * restore's outputBytes no longer matched it, and the next scan sent
+     * "IMG_1235.jpg" to Ente again as a new photo.
+     */
+    @Test
+    fun aRestored121RowKnowsARemadeCopyByItsOwnSize() = runBlocking {
+        val (original, copy) = numberedPair("IMG_1234.jpg", "IMG_1235.jpg")
+        val copySeen = seen(copy)
+        val staged = copySeen.size + 4096
+        val rowId = db.items().insert(
+            row(copySeen.name, copy, copySeen.fingerprint).copy(
+                state = ItemState.FREED_KEPT.name,
+                keptUri = copy.toString(),
+                sizeBytes = copySeen.size,
+                dateModified = copySeen.modified,
+                outputBytes = staged
+            )
+        )
+        ReclaimEngine(target).onRestored(legacyHistory("IMG_1234.jpg", original, staged))
+        val back = db.items().byId(rowId)!!
+        assertEquals(original.toString(), back.contentUri)
+        assertEquals(copySeen.size, back.outputBytes)
+
+        MediaScanner(target, db).scan()
+
+        assertNull("the copy is not new work", db.items().byFingerprint(copySeen.fingerprint))
+        assertEquals(copy.toString(), db.items().byId(rowId)!!.keptUri)
+    }
+
+    /** A file at the copy's address that does not count up is still a new photo. */
+    @Test
+    fun aRestoredRowDoesNotTakeAStrangersSizeAtItsCopysAddress() = runBlocking {
+        val original = photo("IMG_1234.jpg", seed = 28)
+        val other = photo("holiday.jpg", seed = 29)
+        val otherSeen = seen(other)
+        // Matched by the history's own fingerprint, so no count-up proof was needed.
+        val rowId = db.items().insert(
+            row(otherSeen.name, other, "legacyorig000001").copy(
+                state = ItemState.FREED_KEPT.name,
+                keptUri = other.toString(),
+                dateModified = otherSeen.modified
+            )
+        )
+        ReclaimEngine(target).onRestored(legacyHistory("IMG_1234.jpg", original))
+        val back = db.items().byId(rowId)!!
+        assertEquals(original.toString(), back.contentUri)
+        assertEquals(1234L, back.outputBytes)
+
+        MediaScanner(target, db).scan()
+
+        assertNotNull("a stranger's file is queued", db.items().byFingerprint(otherSeen.fingerprint))
+    }
+
     /** Two numbered copies with the original's time: neither is guessed at. */
     @Test
     fun aRestoreOfA121NumberedBatchThatMatchesTwoRowsTouchesNeither() = runBlocking {
@@ -456,6 +510,22 @@ class ReclaimFinishTest {
 
     private fun photo(name: String, seed: Int): Uri =
         MediaFixtures.insertPhoto(target, name = name, width = 64, height = 64, seed = seed)
+
+    /**
+     * An original and its 12.1 numbered copy, which 12.1 stamped with the
+     * original's modified time. MediaStore keeps it in seconds, so the two
+     * are written again until they share one.
+     */
+    private fun numberedPair(originalName: String, copyName: String): Pair<Uri, Uri> {
+        repeat(10) { i ->
+            val original = photo(originalName, seed = 40 + i)
+            val copy = photo(copyName, seed = 60 + i)
+            val modified = seen(original).modified
+            if (modified > 0L && modified == seen(copy).modified) return original to copy
+            MediaFixtures.cleanUp(target)
+        }
+        throw AssertionError("$originalName and $copyName never shared a modified time")
+    }
 
     private fun seen(uri: Uri): Seen =
         target.contentResolver.query(

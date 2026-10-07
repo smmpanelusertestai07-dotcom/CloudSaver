@@ -58,7 +58,9 @@ object KeptCopies {
      * original - "IMG_1235.jpg" for the row's "IMG_1234.jpg". Read as a
      * stranger, that copy was optimised again and uploaded as a new photo.
      * The number alone is the camera's next photo, so it counts only with
-     * the copy's size, [outputBytes], to the byte.
+     * the copy's size, [outputBytes], to the byte. A copy remade from the
+     * original has its own size, which the restore stores there
+     * (outputBytesAfterRestore).
      */
     fun isRowsCopy(
         fileName: String,
@@ -70,6 +72,34 @@ object KeptCopies {
         if (belongsTo(fileName, displayName, fingerprint)) return true
         return outputBytes != null && outputBytes > 0L && fileBytes == outputBytes &&
             countsUp(fileName, displayName)
+    }
+
+    /**
+     * The outputBytes a 12.1 row keeps once a restore points it back at its
+     * original [originalName], when the file at its keptUri is
+     * [copyName] of [copyBytes].
+     *
+     * outputBytes is the size of the copy first staged. A copy remade from
+     * the original since then has another size, and isRowsCopy would read
+     * it as a stranger at the next scan: optimised again and uploaded as a
+     * new photo. In place, that copy is the row's light copy, so its own
+     * size is stored - but only when it is still the file the row stood for,
+     * [rowName], and passes the same test the history lookup used
+     * (isLegacyCountUp). Anything else keeps [outputBytes], and the file is
+     * queued as before.
+     */
+    fun outputBytesAfterRestore(
+        outputBytes: Long?,
+        rowName: String,
+        copyName: String,
+        copyBytes: Long,
+        copyModified: Long,
+        originalName: String,
+        originalModified: Long
+    ): Long? {
+        if (copyBytes <= 0L || copyName != rowName) return outputBytes
+        if (!isLegacyCountUp(copyName, originalName, copyModified, originalModified)) return outputBytes
+        return copyBytes
     }
 
     /**
