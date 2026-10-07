@@ -358,8 +358,8 @@ class MaintainEngine(private val context: Context) {
         // Ente's byte count is everything it sent: camera photos, and every
         // other copy of ours still waiting. So the copies without evidence
         // share one count from the oldest of them, settled oldest first, and
-        // only a copy that was alone in flight - AGED and VERIFIED neighbours
-        // included - can call the bytes its own.
+        // only a copy that was alone in flight - AGED neighbours, and VERIFIED
+        // ones still in their window, included - can call the bytes its own.
         val goneIds = gone.map { it.id }.toSet()
         val waiting = unprovenWaiting(now, goneIds)
         val settled = waiting.filter { !it.graded }
@@ -666,8 +666,9 @@ class MaintainEngine(private val context: Context) {
     private suspend fun pacedEvidence(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         // Every copy without per-file proof counts, timed out, AGED or
-        // VERIFIED: each is still in the folder, and Ente sending it later
-        // must not be credited to a newer copy that went out "alone" beside it.
+        // VERIFIED within its window: each is still in the folder, and Ente
+        // sending it later must not be credited to a newer copy that went out
+        // "alone" beside it.
         val waiting = unprovenWaiting(now)
         // A copy that sat there for six hours without its bytes appearing is
         // the accounting failing, not succeeding slowly. The ladder drops.
@@ -694,23 +695,41 @@ class MaintainEngine(private val context: Context) {
     }
 
     /**
-     * Every released copy without per-file proof, as paced proof, attribution
-     * and release pacing all weigh it - one definition, so the three cannot
-     * disagree about what is in flight. A copy whose release time is not
-     * known counts as graded: it competes, but it has no window to read.
+     * Every released copy without per-file proof that still competes for
+     * Ente's traffic, as paced proof, attribution and release pacing all
+     * weigh it - one definition, so the three cannot disagree about what is
+     * in flight. A copy whose release time is not known counts as graded: it
+     * competes, but it has no window to read.
+     *
+     * A VERIFIED copy is dated by its batch's verification. Where that is
+     * not recorded - a row adopted or restored from a history file - by the
+     * row's last change instead, which is never earlier; and never before
+     * the copy's own release.
      */
-    private suspend fun unprovenWaiting(now: Long, goneIds: Set<Long> = emptySet()): List<EvidenceRules.Waiting> =
-        db.items().released()
-            .filter { !evidenceOf(it).isPerFile }
-            .map { row ->
-                EvidenceRules.Waiting(
-                    id = row.id,
-                    releasedAt = row.releasedAt ?: now,
-                    bytes = row.outputBytes ?: 0L,
-                    gone = row.id in goneIds,
-                    graded = evidenceOf(row) != Evidence.NONE || row.releasedAt == null
-                )
-            }
+    private suspend fun unprovenWaiting(now: Long, goneIds: Set<Long> = emptySet()): List<EvidenceRules.Waiting> {
+        val rows = db.items().released().filter { !evidenceOf(it).isPerFile }
+        val verifiedAt = if (rows.any { evidenceOf(it) == Evidence.VERIFIED }) {
+            db.batches().verifiedOfReleased().associate { it.id to it.verifiedAt }
+        } else {
+            emptyMap()
+        }
+        val waiting = rows.map { row ->
+            val evidence = evidenceOf(row)
+            EvidenceRules.Waiting(
+                id = row.id,
+                releasedAt = row.releasedAt ?: now,
+                bytes = row.outputBytes ?: 0L,
+                gone = row.id in goneIds,
+                graded = evidence != Evidence.NONE || row.releasedAt == null,
+                verifiedAt = if (evidence == Evidence.VERIFIED) {
+                    maxOf(verifiedAt[row.batchId] ?: row.updatedAt, row.releasedAt ?: 0L)
+                } else {
+                    null
+                }
+            )
+        }
+        return EvidenceRules.competing(waiting, now)
+    }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
 
@@ -914,18 +933,19 @@ class MaintainEngine(private val context: Context) {
     private suspend fun pacedRelease(o: Options, now: Long, summary: Summary) {
         val caps = watchdog.caps()
         val oracle = CloudCapability.hasDisappearanceOracle(caps)
-        // The same copies paced proof weighs. While one of them can never be
-        // judged alone - timed out, or AGED or VERIFIED and still in the
-        // folder - holding the next copy back buys no proof, only a stalled
-        // queue: it goes out at the byte slice, and simply is not paced-proved.
-        val unproven = unprovenWaiting(now)
-        val inFlight = unproven.filter { !it.graded }.map { it.releasedAt }
-        val slots = Pacing.slotsFree(inFlight, now, oracle, o.cleanConfirmStreak)
-        val maxItems = Pacing.releaseSlots(
-            slotsFree = slots,
-            stagedWaiting = db.items().countByState(ItemState.STAGED.name),
-            perFileProofPossible = UsageVerifier.hasUsageAccess(context) &&
-                EvidenceRules.pacedProofPossible(unproven, now)
+        // The same copies paced proof weighs. A VERIFIED copy holds the next
+        // one back only for its own window, so that one can then go out
+        // alone; an AGED copy holds nothing back, but never lifts the limit.
+        // Only a copy that timed out without a grade does: holding the queue
+        // for it would stall it for days, so copies go out at the byte slice,
+        // and simply are not paced-proved.
+        val maxItems = Pacing.releaseLimit(
+            competing = unprovenWaiting(now),
+            now = now,
+            canMeasure = UsageVerifier.hasUsageAccess(context),
+            cloudHasFreeUpOracle = oracle,
+            cleanStreak = o.cleanConfirmStreak,
+            stagedWaiting = db.items().countByState(ItemState.STAGED.name)
         )
         val releasedToday = releaser.bytesReleasedToday(now)
         val budget = Pacing.dailyBudgetWithCatchUp(o.dailyCapBytes, carryForward(o, now))

@@ -492,14 +492,43 @@ class ProductBoundariesTest {
         // The window is stored before Ente opens, and handed to one pass only.
         val start = vm.substringAfter("fun startConfirmFlow()").substringBefore("fun dismissConfirmResult")
         assertTrue(start.indexOf("openConfirmWindow(tappedAt)") in 0 until start.indexOf("EnteApp.launch(ctx)"))
-        assertTrue("a tap under way ignores a second one", start.contains("if (confirmJob?.isActive == true) return"))
+        assertTrue("a tap under way ignores a second one", start.contains("if (confirmJob?.isActive == true || !inFront) return"))
+        // So does a tap after Ente was asked to open and before the screen
+        // is left: it would replace the stored window, then drop it.
+        assertTrue(start.contains("if (tappedAt - enteLaunchedAt in 0 until ENTE_LAUNCH_GRACE_MS) return"))
+        assertTrue(
+            "noted before the launch",
+            start.indexOf("enteLaunchedAt = System.currentTimeMillis()") in 0 until start.indexOf("EnteApp.launch(ctx)")
+        )
         assertFalse("the view model never hands a window to a pass itself", vm.contains("confirmPass(window"))
         val resumed = vm.substringAfter("fun onResumed()").substringBefore("fun onMediaChanged")
         assertTrue(resumed.contains("MaintainEngine(ctx).returnPass()"))
+        assertTrue("the return ends the launch", resumed.indexOf("enteLaunchedAt = 0L") in 0 until resumed.indexOf("returnPass()"))
         assertTrue(vm.substringAfter("fun quickMaintain()").take(200).contains("confirmPass() }"))
         // The return pass spends the window it judged.
         val ret = engine.substringAfter("suspend fun returnPass()").substringBefore("private suspend fun confirmPassLocked")
         assertTrue(ret.indexOf("confirmPassLocked(window)") in 0 until ret.lastIndexOf("repo.clearConfirmWindow(window.openedAt)"))
+    }
+
+    /**
+     * One VERIFIED or AGED copy left in the folder used to switch off paced
+     * proof and the per-item limit for as long as the folder kept it - in
+     * practice for good, and the copies then sent in bulk became the next
+     * blockers. Paced proof, attribution and pacing read one list, filtered
+     * by EvidenceRules.competing, and only Pacing.releaseLimit lifts the limit.
+     */
+    @Test
+    fun `graded copies in the folder do not end paced proof for good`() {
+        val engine = File("src/main/kotlin/app/entesaver/engine/MaintainEngine.kt").readText()
+        val waiting = engine.substringAfter("private suspend fun unprovenWaiting(").substringBefore("// ---- d)")
+        assertTrue(waiting.contains("db.batches().verifiedOfReleased()"))
+        assertTrue(waiting.contains("return EvidenceRules.competing(waiting, now)"))
+        val release = engine.substringAfter("private suspend fun pacedRelease(").substringBefore("val releasedToday")
+        assertTrue(release.contains("Pacing.releaseLimit("))
+        assertFalse(release.contains("Pacing.releaseSlots("))
+        for (fn in listOf("private suspend fun pacedEvidence(", "private suspend fun pacedRelease(")) {
+            assertTrue(fn, engine.substringAfter(fn).substringBefore("\n    }\n").contains("unprovenWaiting(now)"))
+        }
     }
 
     /**
@@ -519,7 +548,8 @@ class ProductBoundariesTest {
         val start = vm.substringAfter("fun startConfirmFlow()").substringBefore("fun dismissConfirmResult")
         assertTrue(
             "a window whose Ente did not open is dropped",
-            start.contains("if ((!inFront || !EnteApp.launch(ctx)) && window != null)") &&
+            start.contains("val opened = inFront && run {") &&
+                start.contains("if (!opened && window != null)") &&
                 start.contains("engine.dropConfirmWindow(window.openedAt)")
         )
         // A return that found nothing says to tap first, then free up: freed

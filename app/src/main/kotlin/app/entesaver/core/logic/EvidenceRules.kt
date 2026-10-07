@@ -85,14 +85,40 @@ object EvidenceRules {
      * camera photos - so it still competes for Ente's traffic. But a byte
      * match never upgrades it, and it is not settled in the running total:
      * its window can be days old.
+     *
+     * [verifiedAt] is set only on a VERIFIED copy: when its batch was
+     * verified. [competing] reads it; an AGED copy has none.
      */
     data class Waiting(
         val id: Long,
         val releasedAt: Long,
         val bytes: Long,
         val gone: Boolean,
-        val graded: Boolean = false
+        val graded: Boolean = false,
+        val verifiedAt: Long? = null
     )
+
+    /**
+     * The waiting copies that still compete for Ente's traffic.
+     *
+     * An AGED copy never showed its bytes going out, so Ente may send it at
+     * any time: it competes for as long as it is in the folder. Ente's
+     * traffic did cover a VERIFIED copy's batch, so it has most likely gone
+     * out, and all it could still bring is a late send. It competes for one
+     * in-flight window after its batch was verified, and not for a copy
+     * released after that window. Without this, one VERIFIED
+     * copy left in the folder would keep every newer copy from ever being
+     * judged alone, for as long as the folder keeps it - which is usually
+     * for good.
+     *
+     * Judged from when the oldest ungraded copy went out, not from now: a
+     * VERIFIED copy that still competed when a copy was released keeps
+     * competing for that copy's whole window.
+     */
+    fun competing(waiting: List<Waiting>, now: Long): List<Waiting> {
+        val from = minOf(now, waiting.filter { !it.graded }.minOfOrNull { it.releasedAt } ?: now)
+        return waiting.filter { it.verifiedAt == null || !Pacing.isTimedOut(it.verifiedAt, from) }
+    }
 
     /** How much of Ente's traffic a vanished copy can claim as its own. */
     enum class Attribution { PER_FILE, BYTES_SENT, UNPROVEN }
@@ -101,8 +127,9 @@ object EvidenceRules {
      * The copy paced proof may judge, or null.
      *
      * Only ever the one copy of ours still waiting - and every copy without
-     * per-file proof counts: timed out, AGED or VERIFIED alike. Each is still
-     * in the folder and Ente can still send it, so a newer copy released
+     * per-file proof that is still [competing] counts: timed out, AGED or
+     * VERIFIED alike. Each is still in the folder and Ente can still send
+     * it, so a newer copy released
      * "alone" next to it would be credited with its bytes. The copy itself
      * must have no grade yet and still be inside its window: past it, the
      * count has had hours to pick up camera uploads.
@@ -111,18 +138,6 @@ object EvidenceRules {
         val only = waiting.singleOrNull() ?: return null
         return if (only.graded || Pacing.isTimedOut(only.releasedAt, now)) null else only
     }
-
-    /**
-     * Whether a copy released now could ever be judged alone.
-     *
-     * Not while a copy waits that [aloneInFlight] will never accept: one
-     * that timed out, or carries a grade. Holding releases back for proof
-     * that cannot come would only stall the queue, so release pacing steps
-     * aside, and no paced proof is claimed until those copies have left the
-     * folder.
-     */
-    fun pacedProofPossible(waiting: List<Waiting>, now: Long): Boolean =
-        waiting.none { it.graded || Pacing.isTimedOut(it.releasedAt, now) }
 
     /**
      * Which vanished copies Ente's traffic can pay for.

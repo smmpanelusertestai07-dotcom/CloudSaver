@@ -932,6 +932,13 @@ interface BatchDao {
     @Query("UPDATE batches SET verifiedAt = :at WHERE id = :id")
     suspend fun markVerified(id: Long, at: Long)
 
+    /** Verified batches that a VERIFIED copy still in its folder belongs to. */
+    @Query(
+        "SELECT * FROM batches WHERE verifiedAt IS NOT NULL AND id IN " +
+            "(SELECT batchId FROM items WHERE state = 'RELEASED' AND evidence = 'VERIFIED')"
+    )
+    suspend fun verifiedOfReleased(): List<BatchRow>
+
     @Query("UPDATE batches SET totalBytes = :bytes WHERE id = :id")
     suspend fun setTotalBytes(id: Long, bytes: Long)
 

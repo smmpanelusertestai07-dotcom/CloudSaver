@@ -134,6 +134,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          */
         const val FILES_PAGE = 500
 
+        /**
+         * How long a second "Confirm uploads" tap is ignored after Ente was
+         * asked to open, if this screen is neither left nor returned to.
+         */
+        const val ENTE_LAUNCH_GRACE_MS = 10_000L
+
     }
 
     private val ctx get() = getApplication<Application>()
@@ -1248,9 +1254,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether this screen is in front: Ente is opened only from the front. */
     private var inFront = false
 
+    /**
+     * When Ente was last asked to open, until the next return to this screen.
+     * The tap's job ends once the launch is handed off, but the screen takes
+     * taps until Ente covers it. A second tap then would replace the stored
+     * window, find the screen gone, and drop it - and the first tap's window
+     * with it. Bounded, so a launch that never came up leaves no dead button.
+     */
+    private var enteLaunchedAt = 0L
+
     fun startConfirmFlow() {
-        if (confirmJob?.isActive == true) return
         val tappedAt = System.currentTimeMillis()
+        if (confirmJob?.isActive == true || !inFront) return
+        if (tappedAt - enteLaunchedAt in 0 until ENTE_LAUNCH_GRACE_MS) return
         confirmJob = viewModelScope.launch {
             // One read of the folders, not a pass: it does not wait behind
             // one, so Ente opens at once. The window is on disk before Ente
@@ -1260,9 +1276,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val window = withContext(Dispatchers.IO) {
                 runCatching { engine.openConfirmWindow(tappedAt) }.getOrNull()
             }
+            // Noted before the launch, on this thread, so no later tap can
+            // slip in between.
+            val opened = inFront && run {
+                enteLaunchedAt = System.currentTimeMillis()
+                EnteApp.launch(ctx).also { if (!it) enteLaunchedAt = 0L }
+            }
             // A window whose Ente never came up would credit, on the next
             // return, whatever the person cleared by hand meanwhile.
-            if ((!inFront || !EnteApp.launch(ctx)) && window != null) {
+            if (!opened && window != null) {
                 withContext(Dispatchers.IO) { runCatching { engine.dropConfirmWindow(window.openedAt) } }
             }
         }
@@ -1290,6 +1312,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshPowerRequirements()
         noteScreenOn()
         inFront = true
+        enteLaunchedAt = 0L
         // The first return after "Confirm uploads" judges what Ente took, in
         // this process or a new one: the window is read from where the tap
         // stored it, and spent by that one pass.

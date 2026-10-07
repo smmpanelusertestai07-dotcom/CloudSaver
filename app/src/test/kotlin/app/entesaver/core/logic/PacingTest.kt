@@ -2,6 +2,7 @@ package app.entesaver.core.logic
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -64,27 +65,73 @@ class PacingTest {
         assertEquals(1, Pacing.slotsFree(stale, now, cloudHasFreeUpOracle = false))
     }
 
+    private val hour = 3_600_000L
+
+    private fun limit(competing: List<EvidenceRules.Waiting>, now: Long, staged: Int = 3) = Pacing.releaseLimit(
+        competing = competing,
+        now = now,
+        canMeasure = true,
+        cloudHasFreeUpOracle = false,
+        cleanStreak = 0,
+        stagedWaiting = staged
+    )
+
     @Test
-    fun `a copy that can never be judged alone does not hold the queue`() {
+    fun `only a copy timed out without a grade lifts the limit`() {
         val now = 100_000_000L
         val fresh = EvidenceRules.Waiting(id = 2, releasedAt = now - 60_000, bytes = 1000, gone = false)
         val timedOut = fresh.copy(id = 1, releasedAt = now - Pacing.IN_FLIGHT_TIMEOUT_MS - 1)
-        val graded = fresh.copy(id = 3, graded = true)
-        fun slots(waiting: List<EvidenceRules.Waiting>) = Pacing.releaseSlots(
-            slotsFree = Pacing.slotsFree(waiting.filter { !it.graded }.map { it.releasedAt }, now, false),
-            stagedWaiting = 3,
-            perFileProofPossible = EvidenceRules.pacedProofPossible(waiting, now)
-        )
+        val aged = fresh.copy(id = 3, releasedAt = now - 12 * 24 * hour, graded = true)
         // A copy that can still be proved holds the slot for its proof...
-        assertEquals(0, slots(listOf(fresh)))
-        // ...but one that never can - timed out, AGED or VERIFIED - holds
-        // nothing back for days: releases go on at the byte slice.
-        assertNull(slots(listOf(timedOut)))
-        assertNull(slots(listOf(graded)))
-        assertNull(slots(listOf(timedOut, fresh)))
-        // And no copy released beside it is ever paced-proved.
+        assertEquals(0, limit(listOf(fresh), now))
+        // ...but one that timed out holds nothing back for days: releases go
+        // on at the byte slice, and nothing beside it is ever paced-proved.
+        assertNull(limit(listOf(timedOut), now))
+        assertNull(limit(listOf(timedOut, fresh), now))
         assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), now))
-        assertNull(EvidenceRules.aloneInFlight(listOf(graded, fresh), now))
+        // An AGED copy holds no slot, but never lifts the limit: copies sent
+        // in bulk beside it would only be the next ones nothing can judge.
+        assertEquals(1, limit(listOf(aged), now))
+        assertEquals(0, limit(listOf(aged, fresh), now))
+        assertNull(EvidenceRules.aloneInFlight(listOf(aged, fresh), now))
+    }
+
+    @Test
+    fun `a VERIFIED copy left in the folder does not end paced proof for good`() {
+        // Copy 1 went out alone, but Ente also sent camera photos, so it was
+        // only VERIFIED by its batch - and it stays in the folder, below the
+        // space cap, for weeks. Ente then goes quiet.
+        val verifiedAt = 50 * hour
+        val v = EvidenceRules.Waiting(
+            id = 1, releasedAt = verifiedAt - hour, bytes = 3_000_000, gone = false,
+            graded = true, verifiedAt = verifiedAt
+        )
+        var waiting = listOf(v)
+        var releasedAt: Long? = null
+        // Hourly passes. Until its window ends the copy holds the one slot,
+        // so the next copy waits instead of going out beside it; never
+        // without a limit, which is how bulk releases made more such copies.
+        for (h in 1..10) {
+            val now = verifiedAt + h * hour
+            val competing = EvidenceRules.competing(waiting, now)
+            val slots = limit(competing, now)
+            assertTrue("pass $h: $slots", slots != null && slots <= 1)
+            if (slots == 1 && releasedAt == null) {
+                assertTrue("pass $h", now - verifiedAt >= Pacing.IN_FLIGHT_TIMEOUT_MS)
+                releasedAt = now
+                waiting = waiting + EvidenceRules.Waiting(id = 2, releasedAt = now, bytes = 3_000_000, gone = false)
+            }
+        }
+        assertNotNull("a copy goes out once the window has ended", releasedAt)
+        val b = releasedAt!!
+        // The new copy went out alone, and is judged alone: its bytes alone
+        // are what Ente sent, so it can be paced-proved again.
+        val now = b + 2 * hour
+        val alone = EvidenceRules.aloneInFlight(EvidenceRules.competing(waiting, now), now)
+        assertEquals(2L, alone?.id)
+        assertTrue(EvidenceRules.confirmedPaced(txSinceRelease = 3_000_000, fileBytes = alone!!.bytes))
+        // Upgraded from 12.1 with such copies already there: the same.
+        assertEquals(1, limit(EvidenceRules.competing(listOf(v), verifiedAt + 30 * 24 * hour), verifiedAt + 30 * 24 * hour))
     }
 
     @Test
@@ -111,7 +158,7 @@ class PacingTest {
             Pacing.releaseSlots(
                 slotsFree = 0,
                 stagedWaiting = Pacing.BACKLOG_BURST_ITEMS + 1,
-                perFileProofPossible = true
+                pacingPossible = true
             )
         )
     }
@@ -120,11 +167,11 @@ class PacingTest {
     fun `a short queue is paced, so each file can be proved`() {
         assertEquals(
             1,
-            Pacing.releaseSlots(slotsFree = 1, stagedWaiting = 3, perFileProofPossible = true)
+            Pacing.releaseSlots(slotsFree = 1, stagedWaiting = 3, pacingPossible = true)
         )
         assertEquals(
             0,
-            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 3, perFileProofPossible = true)
+            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 3, pacingPossible = true)
         )
     }
 
@@ -132,7 +179,7 @@ class PacingTest {
     fun `without a way to measure, pacing buys nothing and is skipped`() {
         assertEquals(
             null,
-            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 1, perFileProofPossible = false)
+            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 1, pacingPossible = false)
         )
     }
 

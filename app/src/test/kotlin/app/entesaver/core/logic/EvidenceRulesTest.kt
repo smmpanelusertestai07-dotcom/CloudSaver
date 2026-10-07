@@ -240,14 +240,52 @@ class EvidenceRulesTest {
     }
 
     @Test
-    fun `paced proof is possible only while every waiting copy can still be judged`() {
-        assertTrue(EvidenceRules.pacedProofPossible(emptyList(), now))
-        assertTrue(EvidenceRules.pacedProofPossible(listOf(copy(1)), now))
+    fun `nothing beside a copy that can never be judged is alone`() {
         for (blocker in listOf(copy(1, hoursAgo = 8), graded(1))) {
-            assertFalse(EvidenceRules.pacedProofPossible(listOf(blocker), now))
-            // The same rule as aloneInFlight: nothing beside it is ever alone.
             assertNull(EvidenceRules.aloneInFlight(listOf(blocker, copy(2)), now))
         }
+    }
+
+    // ---- a VERIFIED copy competes for one window -----------------------------
+
+    private fun verified(id: Long, verifiedHoursAgo: Long, releasedHoursAgo: Long = 48) =
+        graded(id, hoursAgo = releasedHoursAgo).copy(verifiedAt = now - verifiedHoursAgo * hour)
+
+    @Test
+    fun `an AGED copy competes for as long as it is in the folder`() {
+        val aged = graded(1, hoursAgo = 30 * 24)
+        assertEquals(listOf(aged), EvidenceRules.competing(listOf(aged), now))
+        assertNull(EvidenceRules.aloneInFlight(EvidenceRules.competing(listOf(aged, copy(2)), now), now))
+    }
+
+    @Test
+    fun `a VERIFIED copy stops competing one window after its batch was verified`() {
+        // Inside its window it still competes, and nothing beside it is alone.
+        val recent = verified(1, verifiedHoursAgo = 2)
+        assertEquals(listOf(recent), EvidenceRules.competing(listOf(recent), now))
+        // Past it, a copy released now has the folder to itself.
+        val settled = verified(1, verifiedHoursAgo = 7)
+        assertTrue(EvidenceRules.competing(listOf(settled), now).isEmpty())
+        val fresh = copy(2, hoursAgo = 0)
+        assertEquals(2L, EvidenceRules.aloneInFlight(EvidenceRules.competing(listOf(settled, fresh), now), now)?.id)
+    }
+
+    @Test
+    fun `a VERIFIED copy still in its window when a copy went out competes for that copy`() {
+        // Copy 2 went out three hours after copy 1's batch was verified. By
+        // now copy 1's window has ended, but Ente could have sent it at any
+        // point since copy 2 went out, so copy 2 is not alone.
+        val v = verified(1, verifiedHoursAgo = 8)
+        val b = copy(2, hoursAgo = 5)
+        val competing = EvidenceRules.competing(listOf(v, b), now)
+        assertEquals(listOf(v, b), competing)
+        assertNull(EvidenceRules.aloneInFlight(competing, now))
+        val gone = EvidenceRules.attributeTraffic(
+            EvidenceRules.competing(listOf(v, b.copy(gone = true)), now),
+            txSinceEarliest = 3_000_000,
+            now = now
+        )
+        assertEquals(EvidenceRules.Attribution.BYTES_SENT, gone[2L])
     }
 
     // ---- the return from Ente's free-up screen ------------------------------
