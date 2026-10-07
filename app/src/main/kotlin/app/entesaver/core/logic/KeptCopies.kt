@@ -18,11 +18,18 @@ package app.entesaver.core.logic
  * copy someone renamed by hand fails both tests and becomes an ordinary photo
  * again; there is no way to tell a renamed copy from a stranger's file that
  * happens to share its number, and the safe reading is the stranger's.
+ *
+ * The one rename that is not a person's is MediaProvider's own: an in-place
+ * copy is written while the original still sits beside it under the same
+ * name, so it lands as "IMG_1234 (1).jpg". That suffix is the provider's, not
+ * a choice anyone made, and the copy still belongs.
  */
 object KeptCopies {
 
     fun belongsTo(fileName: String, displayName: String, fingerprint: String): Boolean {
-        if (stemOf(fileName).equals(stemOf(displayName), ignoreCase = true)) return true
+        val own = stemOf(displayName)
+        if (stemOf(fileName).equals(own, ignoreCase = true)) return true
+        if (stemOf(Fingerprint.stripDedupSuffix(fileName)).equals(own, ignoreCase = true)) return true
         val fp = Fingerprint.fpFromOutputName(fileName) ?: return false
         return fp.equals(fingerprint, ignoreCase = true)
     }

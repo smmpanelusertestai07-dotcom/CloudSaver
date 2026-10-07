@@ -247,4 +247,37 @@ class ReclaimRulesTest {
     fun `nothing to send is no request at all`() {
         assertTrue(ReclaimRules.batches(emptyList<String>()).isEmpty())
     }
+
+    /**
+     * Reclaim offers RELEASED rows, and a copy confirmed by pacing still sits
+     * in the upload folder. Once the row is FREED no folder pass reads it, so
+     * a copy left there was never counted, watched or removed again.
+     */
+    @Test
+    fun `freeing a released row takes its upload copy with it`() {
+        assertTrue(ReclaimRules.leavesUploadCopy(ItemState.RELEASED.name, "content://media/1"))
+        // No copy, or a row whose copy already left the folder: nothing to do.
+        assertFalse(ReclaimRules.leavesUploadCopy(ItemState.RELEASED.name, null))
+        assertFalse(ReclaimRules.leavesUploadCopy(ItemState.DONE.name, "content://media/1"))
+        assertFalse(ReclaimRules.leavesUploadCopy(ItemState.GONE.name, "content://media/1"))
+    }
+
+    /**
+     * The scanner can meet an in-place light copy before finish() re-keys the
+     * row to it, and the unique index then refused the re-key - a crash after
+     * the originals were already gone. Only a row nobody has worked on may
+     * give its fingerprint up.
+     */
+    @Test
+    fun `only an untouched scanner row gives way to a freed row`() {
+        assertTrue(ReclaimRules.isUntouchedStray(ItemState.NEW.name, null, null, null, null))
+        assertTrue(ReclaimRules.isUntouchedStray(ItemState.SKIP.name, null, null, null, null))
+        assertFalse(ReclaimRules.isUntouchedStray(ItemState.STAGED.name, null, "/stage/x", null, null))
+        assertFalse(ReclaimRules.isUntouchedStray(ItemState.RELEASED.name, "content://m/2", null, 5L, null))
+        assertFalse(ReclaimRules.isUntouchedStray(ItemState.DONE.name, null, null, null, null))
+        assertFalse(ReclaimRules.isUntouchedStray(ItemState.FREED_KEPT.name, null, null, null, "content://m/3"))
+        // A NEW row that was released once and came back still has a past.
+        assertFalse(ReclaimRules.isUntouchedStray(ItemState.NEW.name, null, null, 5L, null))
+        assertFalse(ReclaimRules.isUntouchedStray(ItemState.NEW.name, "content://m/2", null, null, null))
+    }
 }

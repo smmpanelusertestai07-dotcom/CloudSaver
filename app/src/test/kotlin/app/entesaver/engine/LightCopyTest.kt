@@ -275,6 +275,107 @@ class LightCopyTest {
         )
     }
 
+    /**
+     * A remade photo is held to the phone's memory ceiling exactly as the
+     * background pass is, and a remake that takes the app down leaves a note
+     * that keeps the same file from doing it again on the next try.
+     */
+    @Test
+    fun `a remade copy respects the memory ceiling and the crash-loop guard`() {
+        val source = code(
+            engine.substringAfter("private suspend fun pinSource")
+                .substringBefore("private suspend fun writeVerified")
+        )
+        assertTrue(
+            "the remake must be capped like Stager's encode",
+            source.contains("DeviceTier.fit(context, options.photo.spec())")
+        )
+        val skipAt = source.indexOf("if (row.id == remakeDiedOn) return null")
+        val noteAt = source.indexOf("InFlight.beginRemake(")
+        val workAt = source.indexOf("PhotoCompressor.compress")
+        val endAt = source.indexOf("InFlight.endRemake(")
+        assertTrue("a file that took the app down sits the batch out", skipAt >= 0)
+        assertTrue("the note is written before the work", noteAt in (skipAt + 1) until workAt)
+        assertTrue("and cleared once the work comes back", endAt > workAt)
+        assertTrue(source.substring(workAt, endAt).contains("finally"))
+        // Read once, before the first remake of a batch overwrites it.
+        val prepare = code(
+            engine.substringAfter("suspend fun prepare").substringBefore("for (row in rows)")
+        )
+        assertTrue(prepare.contains("InFlight.recoverRemake(context)"))
+    }
+
+    /**
+     * The kept copy must land under a name the scanner's skip and "Remove the
+     * light copy" recognise, with its real type - or not be kept at all.
+     */
+    @Test
+    fun `a light copy is only kept under a name it can be found by`() {
+        val write = engine.substringAfter("private suspend fun writeVerified")
+            .substringBefore("private fun originalFolder")
+        val nameAt = write.indexOf("KeptCopies.belongsTo(landedName")
+        val recordAt = write.indexOf("keptUri = target.toString()")
+        assertTrue("the landed name must be read back and checked", nameAt >= 0)
+        assertTrue("before the copy is recorded", nameAt < recordAt)
+        val mime = engine.substringAfter("private fun mimeForName")
+            .substringBefore("private fun looksDecodable")
+        assertTrue(
+            "the copy's type comes from the full table, HEIC and WebP included",
+            mime.contains("FormatResolver.mimeOf(name, fallback)")
+        )
+    }
+
+    /**
+     * After consent the originals are gone, so finish() must get every row's
+     * bookkeeping and the history written whatever one row does - and the
+     * re-key to an in-place copy must not fight the scanner for the
+     * fingerprint's unique index.
+     */
+    @Test
+    fun `finishing a batch survives one row's bookkeeping failing`() {
+        val finish = engine.substringAfter("private suspend fun finishLocked")
+            .substringBefore("private suspend fun recordBatch")
+        val loop = finish.substringBefore("private suspend fun settleFreed")
+        assertTrue(loop.contains("settleFreed(row, kept, inPlace, now)"))
+        assertTrue(
+            "a failing row must not throw out of the batch",
+            Regex("""catch \(e: Exception\)""").containsMatchIn(loop)
+        )
+        assertTrue(
+            "the history is keyed by the fingerprint the row now carries",
+            loop.contains("recorded += row.copy(fingerprint = historyKey)")
+        )
+        assertTrue(finish.contains("claimFingerprint(cur.id, identity.fingerprint)"))
+        assertTrue(finish.contains("ReclaimRules.isUntouchedStray("))
+        assertTrue(
+            "a copy left in the upload folder goes with its original",
+            finish.contains("ReclaimRules.leavesUploadCopy(start.state, copy)")
+        )
+    }
+
+    /**
+     * A row freed in place stands for its light copy; when its original is
+     * restored the row has to point back at it, or the next scan queues the
+     * original as new and a second copy goes up to the cloud.
+     */
+    @Test
+    fun `restoring an in-place original points its row back at it`() {
+        val restored = engine.substringAfter("suspend fun onRestored")
+        assertTrue(restored.contains("row.contentUri == row.keptUri"))
+        assertTrue(restored.contains("identityOf(it)"))
+        assertTrue(restored.contains("claimFingerprint(cur.id, original.fingerprint)"))
+        assertTrue(restored.contains("fingerprint = original.fingerprint"))
+        assertTrue(restored.contains("contentUri = original.uri.toString()"))
+        assertTrue(
+            "a row that could not be pointed back must not offer its copy as an original",
+            restored.contains("if (inPlace && !claimed) return@withTransaction")
+        )
+        assertFalse(
+            "the copy beside it must stay known to the scanner",
+            restored.contains("keptUri = null")
+        )
+    }
+
     @Test
     fun `refusing the removal still takes the copy back`() {
         val finish = engine.substringAfter("private suspend fun finishLocked")
