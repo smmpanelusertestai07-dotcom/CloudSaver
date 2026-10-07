@@ -29,6 +29,8 @@ package app.entesaver.core.logic
  * plainly the original's and belongs. A name like "IMG_1234" takes the next
  * free number, "IMG_1235", which cannot be told from the camera's next real
  * photo - so an in-place copy never asks for such a name (inPlaceRequest).
+ * 12.1 did ask for it, and only its history lookup reads such a copy back
+ * (isLegacyCountUp).
  */
 object KeptCopies {
 
@@ -36,7 +38,7 @@ object KeptCopies {
     private val DCF_RELAXED = Regex("""((?:IMG|MVIMG|VID)_[0-9]{8}_[0-9]{6})(?:~([0-9]+))?""")
 
     /** MediaProvider's numbered camera name, "IMG_1234": it renames by counting up. */
-    private val DCF_STRICT = Regex("""[A-Z0-9_]{4}[0-9]{4}""")
+    private val DCF_STRICT = Regex("""([A-Z0-9_]{4})([0-9]{4})""")
 
     fun belongsTo(fileName: String, displayName: String, fingerprint: String): Boolean {
         val own = stemOf(displayName)
@@ -62,6 +64,32 @@ object KeptCopies {
         if (!dcim || !DCF_STRICT.matches(stem)) return name
         val ext = name.substringAfterLast('.', "")
         return if (ext.isEmpty()) "$stem (1)" else "$stem (1).$ext"
+    }
+
+    /**
+     * Whether [copyName] is a 12.1 in-place copy of [originalName] that the
+     * provider numbered under DCIM: "IMG_1234.jpg" landed as "IMG_1235.jpg",
+     * or a later number if that was taken.
+     *
+     * 12.1 asked for the original's own name and kept what it got. The name
+     * alone is also the camera's next real photo, so the copy must carry the
+     * original's modified time too - 12.1 stamped it on every in-place copy.
+     * Only the lookup for a 12.1 history entry may ask this; the scanner and
+     * "Remove the light copy" never do (belongsTo).
+     */
+    fun isLegacyCountUp(
+        copyName: String,
+        originalName: String,
+        copyModified: Long,
+        originalModified: Long
+    ): Boolean {
+        if (copyModified <= 0L || copyModified != originalModified) return false
+        val ext = copyName.substringAfterLast('.', "")
+        if (!ext.equals(originalName.substringAfterLast('.', ""), ignoreCase = true)) return false
+        val copy = DCF_STRICT.matchEntire(stemOf(copyName)) ?: return false
+        val mine = DCF_STRICT.matchEntire(stemOf(originalName)) ?: return false
+        return copy.groupValues[1] == mine.groupValues[1] &&
+            copy.groupValues[2].toInt() > mine.groupValues[2].toInt()
     }
 
     /**

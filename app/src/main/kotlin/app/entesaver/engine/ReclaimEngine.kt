@@ -986,15 +986,25 @@ class ReclaimEngine(private val context: Context) {
      * 12.1 wrote that history under the original's fingerprint, taken before
      * the row moved to its light copy, so no row carries it now. The row is
      * still the one freed in place in the same album, with the same copy size,
-     * whose copy carries the original's name. Anything but exactly one such
-     * row is left alone: a guess could point the wrong row at this original.
+     * whose copy carries the original's name - or, under DCIM, the number the
+     * provider counted up to, with the original's modified time. Anything but
+     * exactly one such row is left alone: a guess could point the wrong row at
+     * this original.
      */
-    private suspend fun legacyInPlaceRow(item: ReclaimItemRow): ItemRow? =
-        db.items().keptCopies().filter { r ->
+    private suspend fun legacyInPlaceRow(item: ReclaimItemRow): ItemRow? {
+        // Read only when a numbered name needs the original's time.
+        val restored by lazy {
+            item.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }?.let { identityOf(it) }
+        }
+        fun countedUp(r: ItemRow) = KeptCopies.isLegacyCountUp(
+            r.displayName, item.displayName, r.dateModified, restored?.dateModified ?: 0L
+        )
+        return db.items().keptCopies().filter { r ->
             r.state == ItemState.FREED_KEPT.name &&
                 r.contentUri == r.keptUri &&
                 r.bucket == item.album &&
                 (r.outputBytes ?: 0L) == item.optimisedBytes &&
-                KeptCopies.belongsTo(r.displayName, item.displayName, r.fingerprint)
+                (KeptCopies.belongsTo(r.displayName, item.displayName, r.fingerprint) || countedUp(r))
         }.singleOrNull()
+    }
 }
