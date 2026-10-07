@@ -579,16 +579,17 @@ interface ItemDao {
      * which beats grinding through a thousand old screenshots.
      *
      * [holdOverrun] leaves out a clip that already ran out of time once
-     * (Stager.OUT_OF_TIME). A run without a foreground service asks for the
-     * queue that way first, so such a clip is no longer first in every one of
-     * those runs, burning their whole window; it is taken when nothing else
-     * is left, or by a run with the whole budget.
+     * (Stager.overran: a counted try, or a plain run's hold with its date).
+     * A run without a foreground service asks for the queue that way first,
+     * so such a clip is no longer first in every one of those runs, burning
+     * their whole window; it is taken when nothing else is left, or by a run
+     * with the whole budget.
      */
     @Query(
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
             "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1 " +
             "AND (:videoMaxMs < 0 OR durationMs BETWEEN 1 AND :videoMaxMs) " +
-            "AND (:holdOverrun = 0 OR lastError IS NULL OR lastError != 'out_of_time'))) " +
+            "AND (:holdOverrun = 0 OR lastError IS NULL OR lastError NOT GLOB 'out_of_time*'))) " +
             "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
             "AND id NOT IN (:skipIds) " +
             "ORDER BY priorityAt DESC, (captureAt >= :freshAfter) DESC, " +

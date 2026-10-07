@@ -286,11 +286,14 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     // encoder, so a single stubborn video can no longer sit
                     // there for three twenty-minute attempts while the
                     // deadline and the foreground-service allowance both run
-                    // out underneath it. Measured once the encoder is free,
+                    // out underneath it. A clip that runs out of time counts
+                    // a try only in a run with a foreground service; a plain
+                    // run holds it back instead (Stager.heldBack). Measured
+                    // once the encoder is free,
                     // and the file is asked again whether it still fits: a
                     // Free-up remake or a restore may have held it for
                     // minutes.
-                    val staged = stager.stageInRun(row, live, predicted, deadline) { left ->
+                    val staged = stager.stageInRun(row, live, predicted, deadline, overrunCounts = foreground) { left ->
                         RunDecider.canStart(
                             row.isVideo, row.durationMs, left, foreground,
                             VideoCompressor.budgetFor(left),
