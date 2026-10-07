@@ -49,24 +49,132 @@ object EvidenceRules {
      * What a released copy's disappearance means.
      *
      * A cloud with a free-up feature deletes its own uploads once they are
-     * safe, so a file vanishing while that app was transmitting is the normal
-     * success case - not the user losing data. Vanishing with no traffic at
-     * all is the opposite, and worth re-sending a couple of times before
-     * giving up rather than looping forever.
+     * safe, so a file vanishing while that app was transmitting can be the
+     * success case. But so can a person clearing the folder in the gallery,
+     * and Ente's byte count covers everything it sends - camera photos and
+     * the other copies too. So only traffic [attributeTraffic] could pin on
+     * this one copy is proof; bytes that merely went out somewhere are worth
+     * the batch grade at most. Vanishing with nothing to show for it is
+     * worth re-sending a couple of times before giving up rather than
+     * looping forever.
      */
     fun onCopyMissing(
         appDeletedIt: Boolean,
-        txSinceRelease: Long,
-        fileBytes: Long,
+        attribution: Attribution,
         resendCount: Int
     ): MissingVerdict = when {
         appDeletedIt -> MissingVerdict.WE_DELETED_IT
-        confirmedExact(txSinceRelease, fileBytes) -> MissingVerdict.PROOF_OF_UPLOAD
+        attribution == Attribution.PER_FILE -> MissingVerdict.PROOF_OF_UPLOAD
+        attribution == Attribution.BYTES_SENT -> MissingVerdict.BYTES_SENT
         resendCount >= MAX_RESENDS -> MissingVerdict.GIVE_UP
         else -> MissingVerdict.RESEND
     }
 
-    enum class MissingVerdict { PROOF_OF_UPLOAD, RESEND, GIVE_UP, WE_DELETED_IT }
+    /**
+     * BYTES_SENT is "enough went out to cover it, but not provably this
+     * file": the copy is not sent again, and it carries no grade stronger
+     * than a batch's.
+     */
+    enum class MissingVerdict { PROOF_OF_UPLOAD, BYTES_SENT, RESEND, GIVE_UP, WE_DELETED_IT }
+
+    /** One released copy of ours that has no evidence yet. */
+    data class Waiting(
+        val id: Long,
+        val releasedAt: Long,
+        val bytes: Long,
+        val gone: Boolean
+    )
+
+    /** How much of Ente's traffic a vanished copy can claim as its own. */
+    enum class Attribution { PER_FILE, BYTES_SENT, UNPROVEN }
+
+    /**
+     * The copy paced proof may judge, or null.
+     *
+     * Only ever the one copy of ours still waiting - and every waiting copy
+     * counts, timed out or not. A copy that timed out is still in the folder
+     * and Ente can still send it, so a newer copy released "alone" next to
+     * it would be credited with its bytes. The copy itself must also still
+     * be inside its window: past it, the count has had hours to pick up
+     * camera uploads.
+     */
+    fun aloneInFlight(waiting: List<Waiting>, now: Long): Waiting? {
+        val only = waiting.singleOrNull() ?: return null
+        return if (Pacing.isTimedOut(only.releasedAt, now)) null else only
+    }
+
+    /**
+     * Which vanished copies Ente's traffic can pay for.
+     *
+     * [txSinceEarliest] is everything Ente sent since the oldest waiting
+     * copy went out, or null when it cannot be measured. Every waiting copy
+     * competes for those bytes - the ones still in the folder too - and they
+     * are settled oldest first against one running total, as batches are: a
+     * transmitted byte can only pay for one copy.
+     *
+     * Even covered, that is only BYTES_SENT: the bytes may have been camera
+     * photos. PER_FILE needs what paced proof needs - the copy was the only
+     * one of ours waiting, still inside its window, and the traffic matches
+     * its size both ways.
+     */
+    fun attributeTraffic(
+        waiting: List<Waiting>,
+        txSinceEarliest: Long?,
+        now: Long
+    ): Map<Long, Attribution> {
+        val result = HashMap<Long, Attribution>()
+        for (copy in waiting) if (copy.gone) result[copy.id] = Attribution.UNPROVEN
+        if (txSinceEarliest == null || txSinceEarliest < 0) return result
+        val alone = aloneInFlight(waiting, now)
+        var required = 0L
+        for (copy in waiting.sortedWith(compareBy({ it.releasedAt }, { it.id }))) {
+            // A copy of unknown size cannot be covered by anything, and once
+            // the total stops covering one copy it covers none after it.
+            if (copy.bytes <= 0) break
+            required += copy.bytes
+            if (!batchVerified(txSinceEarliest, required)) break
+            if (!copy.gone) continue
+            result[copy.id] = if (alone?.id == copy.id && confirmedPaced(txSinceEarliest, copy.bytes)) {
+                Attribution.PER_FILE
+            } else {
+                Attribution.BYTES_SENT
+            }
+        }
+        return result
+    }
+
+    /**
+     * The moment "Confirm uploads" opened Ente, and which copies were still
+     * in their folders right then - after a normal pass had already judged
+     * everything missing before the tap.
+     */
+    data class ConfirmWindow(val openedAt: Long, val presentAtTap: Set<Long>)
+
+    /**
+     * Whether a copy missing on the return from Ente's free-up screen left
+     * because Ente collected it.
+     *
+     * The return is the only evidence, so it is believed narrowly: only on
+     * the one pass the return starts, only soon after the tap, only for a
+     * copy that was still there at the tap, and never over a finding with
+     * real proof behind it. Where Ente's traffic can be read, the copy's
+     * bytes must also have gone out.
+     */
+    fun collectedByFreeUp(
+        window: ConfirmWindow?,
+        id: Long,
+        now: Long,
+        evidence: Evidence,
+        appDeletedIt: Boolean,
+        txSinceRelease: Long?,
+        fileBytes: Long
+    ): Boolean = window != null &&
+        now >= window.openedAt &&
+        now - window.openedAt <= Defaults.CONFIRM_WINDOW_MS &&
+        id in window.presentAtTap &&
+        !appDeletedIt &&
+        (evidence == Evidence.NONE || evidence == Evidence.AGED) &&
+        (txSinceRelease == null || confirmedExact(txSinceRelease, fileBytes))
 
     // Whether an original may be reclaimed is decided by ReclaimRules.refuse,
     // and whether one of the app's own copies may go by DeletePlanner. Both

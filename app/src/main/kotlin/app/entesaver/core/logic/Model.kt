@@ -108,7 +108,12 @@ object Defaults {
     const val FGS_BUDGET_MS = 19_800_000L // 5.5 h per rolling 24 h
     const val FGS_WINDOW_MS = 86_400_000L
 
-    const val CONFIRM_WINDOW_MS = 86_400_000L // "Confirm uploads" pressed within last 24 h
+    /**
+     * How long after "Confirm uploads" opened Ente its return is still
+     * believed. Freeing up space takes minutes; a day was long enough for a
+     * person to clear the folder by hand and have that counted as uploads.
+     */
+    const val CONFIRM_WINDOW_MS = 3_600_000L
 
     const val SAFETY_TX_MIN_BYTES = 5L * 1024 * 1024 // below this over 3 days => "TX ~ 0"
     const val SAFETY_TX_DAYS = 3

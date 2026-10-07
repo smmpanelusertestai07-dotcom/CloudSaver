@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.FolderName
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
@@ -401,7 +402,8 @@ class PipelineE2eTest {
                 after.pastOutputRoots.any { it.trimEnd('/') == Defaults.OUTPUT_DIR }
             )
 
-            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
+            val window = MaintainEngine(context).openConfirmWindow()
+            MaintainEngine(context).confirmPass(window)
             MaintainEngine(context).run()
             val waiting = db.items().released().filter { it.displayName.startsWith("e2e_move_") }
             assertEquals("copies still in the old folder are still waiting", 2, waiting.size)
@@ -424,17 +426,21 @@ class PipelineE2eTest {
             for (entry in OutputInventory(context).query(listOf(Defaults.OUTPUT_DIR)).orEmpty()) {
                 context.contentResolver.delete(entry.uri, null, null)
             }
+            MaintainEngine(context).confirmPass(window)
             MaintainEngine(context).run()
             assertTrue(
                 "collected copies are no longer waiting",
                 db.items().released().none { it.displayName == "e2e_move_1.jpg" || it.displayName == "e2e_move_2.jpg" }
             )
             assertTrue(
+                "copies there at the tap and gone on the return were collected",
+                waiting.all { db.items().byId(it.id)?.evidence == Evidence.CONFIRMED_EXACT.name }
+            )
+            assertTrue(
                 "the emptied old folder is let go",
                 repo.current().pastOutputRoots.none { it.trimEnd('/') == Defaults.OUTPUT_DIR }
             )
         } finally {
-            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
             for (entry in OutputInventory(context).query(listOf(moved)).orEmpty()) {
                 runCatching { context.contentResolver.delete(entry.uri, null, null) }
             }
@@ -467,17 +473,18 @@ class PipelineE2eTest {
             // be rescanning the folder. A rescan that read the copy before the
             // move and writes after it puts the copy's row back where it was.
             awaitGalleryRescan(released.outputRelPath!!)
+            val window = MaintainEngine(context).openConfirmWindow()
+            assertTrue("the copy is there at the tap", released.id in window.presentAtTap)
             val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, elsewhere) }
             assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
 
-            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
             // The gallery finishes a move in its own time - Android 12 may
-            // even give the file a new address - so the pass runs as the app
-            // runs it, again and again, until the copy has been followed. At
-            // no pass may it be counted as collected: it still exists.
+            // even give the file a new address - so the return pass runs
+            // again and again, until the copy has been followed. At no pass
+            // may it be counted as collected: it still exists.
             var after = db.items().byId(released.id)!!
             for (pass in 1..10) {
-                MaintainEngine(context).run()
+                MaintainEngine(context).confirmPass(window)
                 after = db.items().byId(released.id)!!
                 assertEquals("a moved copy is still waiting (pass $pass)", ItemState.RELEASED.name, after.state)
                 if (after.outputRelPath?.trimEnd('/') == elsewhere.trimEnd('/')) break
@@ -485,11 +492,59 @@ class PipelineE2eTest {
             }
             assertEquals(elsewhere.trimEnd('/'), after.outputRelPath?.trimEnd('/'))
         } finally {
-            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, 0)
             for (entry in OutputInventory(context).query(listOf(elsewhere)).orEmpty()) {
                 runCatching { context.contentResolver.delete(entry.uri, null, null) }
             }
         }
+    }
+
+    /**
+     * "Confirm uploads" believes only what left the folder after the tap.
+     * A copy cleared by hand before it - the gallery, a cleaner app - must
+     * never be counted as collected by Ente on the return, and outside the
+     * one return pass no missing copy is counted as collected at all.
+     */
+    @Test
+    fun onlyCopiesThereAtTheTapCountAsCollected() = runBlockingTest {
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        (1..3).forEach { i ->
+            MediaFixtures.insertPhoto(context, name = "e2e_tap_$i.jpg", seed = 40 + i, captureMillis = captureAt)
+        }
+        MediaScanner(context, db).scan()
+        for (row in db.items().byState(ItemState.NEW.name).filter { it.displayName.startsWith("e2e_tap_") }) {
+            assertTrue(Stager(context, db).stageOne(row, options))
+        }
+        assertEquals(3, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
+        val rows = db.items().released().filter { it.displayName.startsWith("e2e_tap_") }
+            .associateBy { it.displayName }
+        val before = rows.getValue("e2e_tap_1.jpg")
+        val during = rows.getValue("e2e_tap_2.jpg")
+        val later = rows.getValue("e2e_tap_3.jpg")
+
+        // Cleared by hand before the tap.
+        assertEquals(1, context.contentResolver.delete(Uri.parse(before.outputUri), null, null))
+        val window = MaintainEngine(context).openConfirmWindow()
+        assertFalse(before.id in window.presentAtTap)
+        assertTrue(during.id in window.presentAtTap)
+
+        // Collected while the person is in Ente, judged on the return.
+        assertEquals(1, context.contentResolver.delete(Uri.parse(during.outputUri), null, null))
+        MaintainEngine(context).confirmPass(window)
+        assertEquals(Evidence.CONFIRMED_EXACT.name, db.items().byId(during.id)?.evidence)
+        assertTrue(
+            "a copy gone before the tap is not counted as uploaded",
+            db.items().byId(before.id)?.evidence != Evidence.CONFIRMED_EXACT.name
+        )
+
+        // Cleared after the return: an ordinary pass never counts it.
+        assertEquals(1, context.contentResolver.delete(Uri.parse(later.outputUri), null, null))
+        MaintainEngine(context).run()
+        MaintainEngine(context).confirmPass()
+        assertTrue(
+            "a copy gone outside the return pass is not counted as uploaded",
+            db.items().byId(later.id)?.evidence != Evidence.CONFIRMED_EXACT.name
+        )
     }
 
     @Test
