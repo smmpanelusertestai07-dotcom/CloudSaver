@@ -786,15 +786,14 @@ class MaintainEngine(private val context: Context) {
         for (row in db.items().staged()) {
             val path = row.stagePath
             if (path == null || !File(path).exists()) {
-                db.items().update(
-                    row.copy(
-                        state = ItemState.NEW.name,
-                        stagePath = null,
-                        outputBytes = null,
-                        outputSha256 = null,
-                        updatedAt = now
-                    )
-                )
+                // Conditional, not the row read above written back: a restore
+                // taking this row over, or parking it as never optimise,
+                // deletes its staged file mid-transaction, and the stale row
+                // put back as NEW undid that - the excluded photo encoded and
+                // published, or one Ente had sent a second time. This pass
+                // holds Locks.maintain, so it may not wait for the restore's
+                // locks; the write checks instead.
+                db.items().unstageIfStill(row.id, path, now)
             }
         }
     }

@@ -201,11 +201,35 @@ object RunDecider {
             durationMs * 3 / 2 + 60_000L > budgetMs
 
     /**
+     * Whether a file can still be started with [remainingMs] of the run left,
+     * asked once the encoder is free (Stager.stageInRun): the same tests the
+     * run made before it waited, [fitsPlainRun] without a foreground service
+     * and [videoWaitsForLongerRun] with one, against what the wait has left.
+     * [budgetMs] is what the encoder would be given now. A run past its
+     * deadline starts nothing.
+     */
+    fun canStart(
+        isVideo: Boolean,
+        durationMs: Long,
+        remainingMs: Long,
+        foreground: Boolean,
+        budgetMs: Long,
+        minBudgetMs: Long,
+        fullBudgetMs: Long
+    ): Boolean = when {
+        remainingMs <= 0 -> false
+        !isVideo -> true
+        !foreground -> fitsPlainRun(durationMs, remainingMs, minBudgetMs)
+        else -> !videoWaitsForLongerRun(durationMs, budgetMs, fullBudgetMs)
+    }
+
+    /**
      * What one file just cost the day's on-battery allowance. A video's
      * encoder time is spent whether or not a copy came of it, so a clip that
      * failed or ran out of time is charged as well: left uncharged, a clip
      * that never finishes could drain every run on battery and the daily
      * limit would never stop it. A photo counts only once it is made.
+     * [tookMs] is the encode's own time, never a wait for the encoder.
      */
     fun batteryCost(plugged: Boolean, isVideo: Boolean, ok: Boolean, tookMs: Long): Budget = when {
         plugged -> Budget(0L, 0)

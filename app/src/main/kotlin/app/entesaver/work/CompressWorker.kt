@@ -29,6 +29,7 @@ import app.entesaver.media.MediaScanner
 import app.entesaver.media.Stager
 import app.entesaver.media.VideoCompressor
 import app.entesaver.util.DeviceTier
+import app.entesaver.util.Locks
 import app.entesaver.util.Notifications
 import app.entesaver.util.Permissions
 import app.entesaver.util.SpaceLimits
@@ -245,6 +246,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 for (row in batch) {
                     if (System.currentTimeMillis() >= deadline || isStopped) break@loop
                     val itemStart = System.currentTimeMillis()
+                    // Someone in front of Free up is waiting for the encoder
+                    // to remake a light copy, or gave up waiting a moment
+                    // ago. They asked for it; this run starts no new file,
+                    // finishes as usual, and the next run carries on.
+                    if (Locks.runShouldYield(itemStart)) break@loop
                     if (row.isVideo && !foreground &&
                         !RunDecider.fitsPlainRun(row.durationMs, deadline - itemStart, VideoCompressor.MIN_TOTAL_MS)
                     ) {
@@ -280,17 +286,29 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     // encoder, so a single stubborn video can no longer sit
                     // there for three twenty-minute attempts while the
                     // deadline and the foreground-service allowance both run
-                    // out underneath it.
-                    val ok = stager.stageOne(
-                        row, live, predicted, runRemainingMs = deadline - itemStart
-                    )
-                    val took = System.currentTimeMillis() - itemStart
+                    // out underneath it. Measured once the encoder is free,
+                    // and the file is asked again whether it still fits: a
+                    // Free-up remake or a restore may have held it for
+                    // minutes.
+                    val staged = stager.stageInRun(row, live, predicted, deadline) { left ->
+                        RunDecider.canStart(
+                            row.isVideo, row.durationMs, left, foreground,
+                            VideoCompressor.budgetFor(left),
+                            VideoCompressor.MIN_TOTAL_MS, VideoCompressor.DEFAULT_TOTAL_MS
+                        )
+                    }
+                    if (!staged.started) {
+                        // Not tried, so not counted; the next run takes it.
+                        if (row.isVideo) later += row.id
+                        continue
+                    }
+                    val ok = staged.ok
                     // Free space changes only when something was written.
                     free = Storage.freeBytes(app, live.storageVolume)
                     // Encoder time on battery is charged whether or not a copy
                     // came of it, so a clip that keeps failing still meets the
-                    // day's limit.
-                    val cost = RunDecider.batteryCost(power.plugged, row.isVideo, ok, took)
+                    // day's limit - the encode's own time, not the wait for it.
+                    val cost = RunDecider.batteryCost(power.plugged, row.isVideo, ok, staged.encodeMs)
                     videoMsOnBattery += cost.videoEncodeMs
                     photosOnBattery += cost.photosOnBattery
                     if (ok) {

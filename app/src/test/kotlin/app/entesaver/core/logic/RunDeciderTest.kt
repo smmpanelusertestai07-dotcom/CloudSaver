@@ -288,6 +288,24 @@ class RunDeciderTest {
     }
 
     @Test
+    fun `a file is asked again whether it fits once the encoder is free`() {
+        val min = 5 * 60_000L
+        val full = 20 * 60_000L
+        fun budget(left: Long) = maxOf(min, minOf(full, left))
+        // A plain run admitted a 3-minute clip with 6 minutes left, then
+        // waited 4 minutes for a Free-up remake: 2 minutes do not fit it.
+        assertTrue(RunDecider.canStart(true, 3 * 60_000L, 6 * 60_000L, false, budget(6 * 60_000L), min, full))
+        assertFalse(RunDecider.canStart(true, 3 * 60_000L, 2 * 60_000L, false, budget(2 * 60_000L), min, full))
+        // With a foreground service: a clip a later run would give more time.
+        assertTrue(RunDecider.canStart(true, 5 * 60_000L, 15 * 60_000L, true, budget(15 * 60_000L), min, full))
+        assertFalse(RunDecider.canStart(true, 10 * 60_000L, 6 * 60_000L, true, budget(6 * 60_000L), min, full))
+        // A photo fits while the run has time; nothing starts past the deadline.
+        assertTrue(RunDecider.canStart(false, 0L, 1_000L, false, budget(1_000L), min, full))
+        assertFalse(RunDecider.canStart(false, 0L, 0L, true, budget(0L), min, full))
+        assertFalse(RunDecider.canStart(false, 0L, -60_000L, false, budget(-60_000L), min, full))
+    }
+
+    @Test
     fun `a video that did not finish on battery is still charged to the day`() {
         // A clip that ran out of time spent the encoder all the same; left
         // uncharged, it could drain every run on battery for ever.

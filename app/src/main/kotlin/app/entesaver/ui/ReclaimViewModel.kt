@@ -202,6 +202,14 @@ class ReclaimViewModel(
     val busy = MutableStateFlow(false)
 
     /**
+     * True while a batch waits for the file the background run is
+     * optimising, before it can remake light copies. A minute at most
+     * (ReclaimEngine.STAGE_WAIT_MS), and the screen says what it is waiting
+     * for rather than spin.
+     */
+    val waitingForStage = MutableStateFlow(false)
+
+    /**
      * Whether any removal or restore is still under way. One flow at a time:
      * each keeps its own state between dialogs, and a second one started
      * part way through overwrote it.
@@ -589,7 +597,11 @@ class ReclaimViewModel(
                 // named, not silently dropped: a batch that quietly does less
                 // than it said it would is worse than one that explains.
                 droppedAtAction = (chosen - stillGood.toSet()).map { it.row.displayName }
-                val ready = engine.prepare(stillGood.map { it.row }, mode.value, o, now)
+                val ready = try {
+                    engine.prepare(stillGood.map { it.row }, mode.value, o, now) { waitingForStage.value = it }
+                } finally {
+                    waitingForStage.value = false
+                }
                 prepared = ready
                 pendingMode = mode.value
                 pendingTrash = !permanent

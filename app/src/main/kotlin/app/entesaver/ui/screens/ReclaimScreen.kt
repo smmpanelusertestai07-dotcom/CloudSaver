@@ -74,6 +74,7 @@ import app.entesaver.core.logic.ProofLine
 import app.entesaver.core.logic.ReclaimRules
 import app.entesaver.core.logic.Suggestions
 import app.entesaver.data.EnteApp
+import app.entesaver.engine.ReclaimEngine
 import app.entesaver.ui.AppViewModel
 import app.entesaver.ui.ReclaimViewModel
 import app.entesaver.ui.Routes
@@ -209,6 +210,17 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         // that looked idle meanwhile was tapped again.
         if (loading || working) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        // A light copy is being remade, and the background run is finishing
+        // the file it was on first: said, so the wait does not look stuck.
+        val waitingForStage by rvm.waitingForStage.collectAsStateWithLifecycle()
+        if (working && waitingForStage) {
+            Text(
+                stringResource(R.string.freeup_waiting_for_stage),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
         }
 
         // Arrived from "Remove from phone" with a file this screen cannot
@@ -1187,6 +1199,7 @@ private fun skipReasonLabel(reason: String?): String = when (reason) {
     "integrity_failed" -> stringResource(R.string.skip_integrity_failed)
     "original_changed" -> stringResource(R.string.skip_original_changed)
     "not_confirmed" -> stringResource(R.string.skip_not_confirmed)
+    ReclaimEngine.STAGE_BUSY -> stringResource(R.string.skip_stage_busy)
     else -> stringResource(R.string.skip_generic)
 }
 

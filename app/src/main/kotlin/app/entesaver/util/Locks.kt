@@ -1,5 +1,7 @@
 package app.entesaver.util
 
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -45,9 +47,25 @@ object Locks {
      * phone sized for one, one note of which file was in progress for two
      * encodes, and two copies written to the same name. One encode at a time.
      *
-     * A restore and the start-up repair rewrite waiting rows, so they take
-     * it too, before [release] and then [ledger]. Nothing holding either of
-     * those takes this one, and an encode holding it takes nothing else.
+     * A restore, the start-up repair and the reattach pass rewrite waiting
+     * rows, so they take it too, before [release] (and then [ledger]).
+     * Nothing holding either of those, or [maintain], takes this one, and an
+     * encode holding it takes nothing else.
+     *
+     * Free up takes it once per batch, never waiting long ([StageTurn]).
      */
     val stage = Mutex()
+
+    /** Free-up batches waiting for, or holding, [stage] ([StageTurn]). */
+    val freeUpWaiting = AtomicInteger(0)
+
+    /** Until when the background run starts no new file, after a batch gave up waiting. */
+    val runYieldsUntil = AtomicLong(0L)
+
+    /**
+     * Whether the background run should start no new file now: someone is
+     * in front of Free up waiting for the encoder, which is what they asked
+     * for, and the run can pick its queue up again on its next pass.
+     */
+    fun runShouldYield(now: Long): Boolean = freeUpWaiting.get() > 0 || now < runYieldsUntil.get()
 }

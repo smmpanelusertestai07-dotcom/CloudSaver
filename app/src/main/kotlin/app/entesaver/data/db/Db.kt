@@ -509,6 +509,19 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = 'STAGED'")
     suspend fun staged(): List<ItemRow>
 
+    /**
+     * Self-heal for a staged row whose file is gone: back to the queue. Only
+     * while it is still staged on that same file - a restore may have taken
+     * it over or parked it since it was read (and deleted the file as it
+     * did), and the row read before that must not be written back over it.
+     */
+    @Query(
+        "UPDATE items SET state = 'NEW', stagePath = NULL, outputBytes = NULL, " +
+            "outputSha256 = NULL, updatedAt = :now WHERE id = :id AND state = 'STAGED' " +
+            "AND stagePath IS :path"
+    )
+    suspend fun unstageIfStill(id: Long, path: String?, now: Long): Int
+
     @Query("SELECT * FROM items WHERE state = 'RELEASED'")
     suspend fun released(): List<ItemRow>
 

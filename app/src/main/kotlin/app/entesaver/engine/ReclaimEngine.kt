@@ -28,6 +28,7 @@ import app.entesaver.media.PhotoCompressor
 import app.entesaver.media.VideoCompressor
 import app.entesaver.util.DeviceTier
 import app.entesaver.util.Locks
+import app.entesaver.util.StageTurn
 import app.entesaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
@@ -48,6 +49,12 @@ class ReclaimEngine(private val context: Context) {
         /** SHA-256 of zero bytes: a hash "match" of two empty files is not proof. */
         private const val EMPTY_SHA256 =
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+        /** The longest a batch waits for the file the background run is on. */
+        const val STAGE_WAIT_MS = 60_000L
+
+        /** Why a remake was left out: the encoder was busy with another file. */
+        const val STAGE_BUSY = "stage_busy"
     }
 
     private val db = AppDb.get(context)
@@ -130,15 +137,30 @@ class ReclaimEngine(private val context: Context) {
         row: ItemRow,
         options: Options,
         now: Long,
-        remakeDiedOn: Long? = null
+        remakeDiedOn: Long? = null,
+        turn: StageTurn? = null
     ): Pinned? {
-        val src = pinSource(row, options, remakeDiedOn) ?: return null
-        return try {
-            writeVerified(row, src, now, options.keptInPlace)
+        // A caller with no batch of its own takes a turn for this one copy.
+        val own = turn ?: stageTurn()
+        try {
+            val src = pinSource(row, options, remakeDiedOn, own) ?: return null
+            return try {
+                writeVerified(row, src, now, options.keptInPlace)
+            } finally {
+                src.temp?.delete()
+            }
         } finally {
-            src.temp?.delete()
+            if (turn == null) own.close()
         }
     }
+
+    /**
+     * Free up's turn at the encoder: a minute at most for the file under
+     * way, and then the background run waits as long as one file can take,
+     * so a second try finds it free.
+     */
+    private fun stageTurn(onWaiting: (Boolean) -> Unit = {}) =
+        StageTurn(STAGE_WAIT_MS, VideoCompressor.DEFAULT_TOTAL_MS, onWaiting)
 
     /** One provable byte source for a light copy. [temp] is deleted after use. */
     private class PinSource(
@@ -148,7 +170,12 @@ class ReclaimEngine(private val context: Context) {
         val temp: File? = null
     )
 
-    private suspend fun pinSource(row: ItemRow, options: Options, remakeDiedOn: Long?): PinSource? {
+    private suspend fun pinSource(
+        row: ItemRow,
+        options: Options,
+        remakeDiedOn: Long?,
+        turn: StageTurn
+    ): PinSource? {
         val resolver = context.contentResolver
         val recorded = row.outputSha256
 
@@ -184,38 +211,40 @@ class ReclaimEngine(private val context: Context) {
             ?: return null
         val tempDir = Storage.tempDir(context, options.storageVolume)
         // One encode at a time, the background run's included: two full-size
-        // decodes on a phone sized for one is how both get killed. The memory
-        // ceiling is read inside the lock, once the other decode has let go.
-        val result = Locks.stage.withLock {
-            // A note first, written before the work: running out of memory
-            // ends the process without an exception, and only the note
-            // survives it.
-            InFlight.beginRemake(context, row.id, row.isVideo)
-            try {
-                if (row.isVideo) {
-                    VideoCompressor.compress(
-                        context, original, row.displayName, row.mimeType, row.sizeBytes,
-                        options.video.spec(), tempDir
-                    )
-                } else {
-                    // HEIC only where this phone has already passed its test;
-                    // a screen is waiting on this, so the test is not run
-                    // here. Held to this phone's memory ceiling exactly as
-                    // the background pass is: "keep every pixel" on a 200 MP
-                    // photo is 800 MB of bitmap, and the low-memory killer,
-                    // not a catchable error, is what answers that.
-                    PhotoCompressor.compress(
-                        context, original, row.displayName, row.sizeBytes,
-                        DeviceTier.fit(context, options.photo.spec()), HeicSupport.works(context), tempDir
-                    )
-                }
-            } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-                throw ce
-            } catch (e: Throwable) {
-                null
-            } finally {
-                InFlight.endRemake(context, row.id)
+        // decodes on a phone sized for one is how both get killed. The batch
+        // takes its turn once and keeps it (StageTurn); a remake that cannot
+        // have it keeps its original, named, rather than hold the screen up
+        // behind a clip. The memory ceiling is read once the turn is held,
+        // after the other decode has let go.
+        if (!turn.take()) return null
+        // A note first, written before the work: running out of memory
+        // ends the process without an exception, and only the note
+        // survives it.
+        InFlight.beginRemake(context, row.id, row.isVideo)
+        val result = try {
+            if (row.isVideo) {
+                VideoCompressor.compress(
+                    context, original, row.displayName, row.mimeType, row.sizeBytes,
+                    options.video.spec(), tempDir
+                )
+            } else {
+                // HEIC only where this phone has already passed its test;
+                // a screen is waiting on this, so the test is not run
+                // here. Held to this phone's memory ceiling exactly as
+                // the background pass is: "keep every pixel" on a 200 MP
+                // photo is 800 MB of bitmap, and the low-memory killer,
+                // not a catchable error, is what answers that.
+                PhotoCompressor.compress(
+                    context, original, row.displayName, row.sizeBytes,
+                    DeviceTier.fit(context, options.photo.spec()), HeicSupport.works(context), tempDir
+                )
             }
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (e: Throwable) {
+            null
+        } finally {
+            InFlight.endRemake(context, row.id)
         } ?: return null
         if (result.file.length() <= 0) {
             result.file.delete()
@@ -586,7 +615,8 @@ class ReclaimEngine(private val context: Context) {
         rows: List<ItemRow>,
         mode: ReclaimRules.Mode,
         options: Options,
-        now: Long
+        now: Long,
+        onWaiting: (Boolean) -> Unit = {}
     ): Prepared {
         val uris = mutableListOf<Uri>()
         val ready = mutableListOf<ItemRow>()
@@ -598,7 +628,28 @@ class ReclaimEngine(private val context: Context) {
         } else {
             null
         }
+        // Taken at the first remake, if any, and kept to the end of the batch.
+        val turn = stageTurn(onWaiting)
+        try {
+            prepareRows(rows, mode, options, now, remakeDiedOn, turn, uris, ready, pinned, skipped)
+        } finally {
+            turn.close()
+        }
+        return Prepared(uris, ready, pinned, skipped)
+    }
 
+    private suspend fun prepareRows(
+        rows: List<ItemRow>,
+        mode: ReclaimRules.Mode,
+        options: Options,
+        now: Long,
+        remakeDiedOn: Long?,
+        turn: StageTurn,
+        uris: MutableList<Uri>,
+        ready: MutableList<ItemRow>,
+        pinned: MutableMap<Long, Pinned>,
+        skipped: MutableList<Outcome>
+    ) {
         for (row in rows) {
             val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             if (original == null) {
@@ -648,9 +699,11 @@ class ReclaimEngine(private val context: Context) {
                 // first batch made. A second copy would take over keptUri and
                 // leave the first one to the scanner as a new photo, to be
                 // optimised and uploaded again; that one is used instead.
-                val kept = keptCopyToReuse(row) ?: pinLightCopy(row, options, now, remakeDiedOn)
+                val refusedBefore = turn.refusals
+                val kept = keptCopyToReuse(row) ?: pinLightCopy(row, options, now, remakeDiedOn, turn)
                 if (kept == null) {
-                    skipped += Outcome(row.fingerprint, row.displayName, false, "light_copy_failed")
+                    val why = if (turn.refusals > refusedBefore) STAGE_BUSY else "light_copy_failed"
+                    skipped += Outcome(row.fingerprint, row.displayName, false, why)
                     continue
                 }
                 pinned[row.id] = kept
@@ -658,7 +711,6 @@ class ReclaimEngine(private val context: Context) {
             uris += original
             ready += row
         }
-        return Prepared(uris, ready, pinned, skipped)
     }
 
     /**
