@@ -1126,6 +1126,7 @@
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
     <string name="optimise_working">Working\u2026</string>
     <string name="verify_link_hint">Opens Ente: there, Settings \u203a Free up space \u203a Free up device space, then come back and Ente Saver counts what Ente took. Or turn on usage access and it confirms uploads by itself.</string>
+    <string name="verify_link_hint_graded">Some copies cannot be confirmed from Ente\u2019s traffic. Opens Ente: there, Settings \u203a Free up space \u203a Free up device space. Then come back, and Ente Saver counts what Ente took.</string>
     <string name="activity_started_by_you">Started by you</string>
     <string name="storage_group_phone">Your phone</string>
     <!-- Held for the moment between the screen opening and the phone's own

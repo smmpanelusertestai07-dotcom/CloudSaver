@@ -104,12 +104,17 @@ object HomeAction {
     /**
      * Whether Home may offer the "check my uploads" link at all.
      *
-     * It exists for one situation only: the chosen cloud app removes its own
-     * uploads, and Usage Access is switched off so the app cannot see the
-     * bytes go. With access granted the check happens by itself, and a button
-     * that duplicates automatic work is a button that implies it did not
-     * happen.
+     * It exists only where the chosen cloud app removes its own uploads and
+     * the app cannot see them go for itself: Usage Access is switched off,
+     * or a copy that carries only a time or batch grade is in the folder
+     * ([gradedInFolder]). Beside such a copy Ente's traffic proves nothing
+     * about any one file, and Ente's own free-up is the one route left.
+     * Otherwise the check happens by itself, and a button that duplicates
+     * automatic work is a button that implies it did not happen.
      */
-    fun showVerifyLink(usageAccessGranted: Boolean, cloudRemovesItsUploads: Boolean): Boolean =
-        !usageAccessGranted && cloudRemovesItsUploads
+    fun showVerifyLink(
+        usageAccessGranted: Boolean,
+        cloudRemovesItsUploads: Boolean,
+        gradedInFolder: Boolean
+    ): Boolean = cloudRemovesItsUploads && (!usageAccessGranted || gradedInFolder)
 }

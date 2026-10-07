@@ -88,19 +88,20 @@ class PacingTest {
         // on at the byte slice, and nothing beside it is ever paced-proved.
         assertNull(limit(listOf(timedOut), now))
         assertNull(limit(listOf(timedOut, fresh), now))
-        assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), now, tx = 1000))
+        assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), emptyList(), now, tx = 1000))
         // An AGED copy holds no slot, but never lifts the limit: copies sent
         // in bulk beside it would only be the next ones nothing can judge.
         assertEquals(1, limit(listOf(aged), now))
         assertEquals(0, limit(listOf(aged, fresh), now))
-        assertNull(EvidenceRules.aloneInFlight(listOf(aged, fresh), now, tx = 1000))
+        assertNull(EvidenceRules.aloneInFlight(listOf(aged, fresh), emptyList(), now, tx = 1000))
     }
 
     @Test
-    fun `a VERIFIED copy left in the folder paces releases and still explains its bytes`() {
+    fun `a VERIFIED copy left in the folder paces releases and proves nothing beside it`() {
         // Copy 1 went out alone, but Ente also sent camera photos, so it was
         // only VERIFIED by its batch - and it stays in the folder, below the
-        // space cap, for weeks. Ente may still send it at any time.
+        // space cap, for weeks. Ente may still send it, or any part of it, at
+        // any time.
         val verifiedAt = 50 * hour
         val v = EvidenceRules.Waiting(
             id = 1, releasedAt = verifiedAt - hour, bytes = 3_000_000, gone = false,
@@ -123,26 +124,53 @@ class PacingTest {
         }
         assertNotNull("a copy goes out once the window has ended", releasedAt)
         val now = releasedAt!! + 2 * hour
-        // Ente sending copy 1 is about copy 2's size, and copy 1 sending with
-        // copy 2 is not copy 2's size: copy 2 is credited with neither.
-        assertNull(EvidenceRules.aloneInFlight(waiting, now, tx = v.bytes))
-        assertNull(EvidenceRules.aloneInFlight(waiting, now, tx = v.bytes + 3_000_000))
-        // A copy that copy 1 cannot be mistaken for is credited: one too
-        // small for copy 1 to be what went out, or bytes that cover both.
-        val small = waiting.map { if (it.id == 2L) it.copy(bytes = 1_000_000) else it }
-        assertEquals(2L, EvidenceRules.aloneInFlight(small, now, tx = 1_000_000)?.id)
-        val large = waiting.map { if (it.id == 2L) it.copy(bytes = 10_000_000) else it }
-        assertNull(EvidenceRules.aloneInFlight(large, now, tx = 10_000_000))
-        assertEquals(2L, EvidenceRules.aloneInFlight(large, now, tx = v.bytes + 10_000_000)?.id)
+        // Whatever went out and whatever the sizes, copy 2 is not credited:
+        // copy 1 may have sent any amount of it.
+        for (bytes in listOf(1_000_000L, 3_000_000L, 10_000_000L)) {
+            val sized = waiting.map { if (it.id == 2L) it.copy(bytes = bytes) else it }
+            for (tx in listOf(bytes, v.bytes + bytes, (bytes * 1.2).toLong())) {
+                assertNull("$bytes/$tx", EvidenceRules.aloneInFlight(sized, emptyList(), now, tx))
+            }
+        }
         // Copy 2 timing out unproved is what lifts the limit, not copy 1.
         assertNull(limit(waiting, releasedAt + Pacing.IN_FLIGHT_TIMEOUT_MS))
         // Upgraded from 12.1 with such a copy already there: it holds no
-        // slot, never lifts the limit, and still explains its own bytes.
+        // slot and never lifts the limit.
         val later = verifiedAt + 30 * 24 * hour
         val fresh = EvidenceRules.Waiting(id = 3, releasedAt = later, bytes = 3_000_000, gone = false)
         assertEquals(1, limit(listOf(v), later))
         assertEquals(0, limit(listOf(v, fresh), later))
-        assertNull(EvidenceRules.aloneInFlight(listOf(v, fresh), later + hour, tx = v.bytes))
+        assertNull(EvidenceRules.aloneInFlight(listOf(v, fresh), emptyList(), later + hour, tx = 3_000_000))
+    }
+
+    @Test
+    fun `releases keep flowing while graded copies block proof`() {
+        // A folder of AGED and long-VERIFIED copies: nothing can be proved
+        // by traffic beside them, and the queue does not wait for that. Each
+        // copy released holds the slot for its own window, then the next
+        // one goes out.
+        val start = 100 * 24 * hour
+        val blockers = listOf(
+            EvidenceRules.Waiting(
+                id = 1, releasedAt = start - 40 * 24 * hour, bytes = 40_000_000, gone = false, graded = true
+            ),
+            EvidenceRules.Waiting(
+                id = 2, releasedAt = start - 40 * 24 * hour, bytes = 3_000_000, gone = false,
+                graded = true, verifiedAt = start - 30 * 24 * hour
+            )
+        )
+        var waiting = blockers
+        var lastRelease = start - Pacing.IN_FLIGHT_TIMEOUT_MS
+        for (h in 0 until 48) {
+            val now = start + h * hour
+            val slots = limit(waiting, now)
+            if (slots == null || slots > 0) {
+                lastRelease = now
+                waiting = waiting + EvidenceRules.Waiting(id = 10L + h, releasedAt = now, bytes = 5_000_000, gone = false)
+                assertNull(EvidenceRules.aloneInFlight(waiting, emptyList(), now + hour, tx = 5_000_000))
+            }
+            assertTrue("pass $h", now - lastRelease <= Pacing.IN_FLIGHT_TIMEOUT_MS)
+        }
     }
 
     @Test

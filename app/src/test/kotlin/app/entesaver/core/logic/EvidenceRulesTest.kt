@@ -104,20 +104,18 @@ class EvidenceRulesTest {
         // The finding: a 3 MB copy waits next to another, Ente uploads 3 MB of
         // camera photos, the person deletes the copy in the gallery. The bytes
         // cover it, but nothing says they were this file.
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, gone = true), copy(2)),
-            txSinceEarliest = 3_000_000,
-            now = now
+            tx = 3_000_000
         )
         assertEquals(EvidenceRules.Attribution.BYTES_SENT, result[1L])
     }
 
     @Test
     fun `one burst pays for one copy, not every copy that vanished`() {
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, gone = true), copy(2, gone = true), copy(3, gone = true)),
-            txSinceEarliest = 3_000_000,
-            now = now
+            tx = 3_000_000
         )
         assertEquals(EvidenceRules.Attribution.BYTES_SENT, result[1L])
         assertEquals(EvidenceRules.Attribution.UNPROVEN, result[2L])
@@ -128,60 +126,54 @@ class EvidenceRulesTest {
     fun `older copies still in the folder are paid first`() {
         // Ente sent one copy's worth: that was most likely the oldest one,
         // still sitting there - not the newer copy that disappeared.
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, hoursAgo = 3), copy(2, gone = true)),
-            txSinceEarliest = 3_000_000,
-            now = now
+            tx = 3_000_000
         )
         assertEquals(EvidenceRules.Attribution.UNPROVEN, result[2L])
     }
 
     @Test
     fun `a copy alone in flight whose size matches is its own proof`() {
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, gone = true)),
-            txSinceEarliest = 3_100_000,
-            now = now
+            tx = 3_100_000
         )
         assertEquals(EvidenceRules.Attribution.PER_FILE, result[1L])
     }
 
     @Test
     fun `far more traffic than the file proves nothing about it`() {
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, gone = true)),
-            txSinceEarliest = 30_000_000,
-            now = now
+            tx = 30_000_000
         )
         assertEquals(EvidenceRules.Attribution.BYTES_SENT, result[1L])
     }
 
     @Test
     fun `a copy alone but past its window is not exact`() {
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, gone = true, hoursAgo = 30)),
-            txSinceEarliest = 3_000_000,
-            now = now
+            tx = 3_000_000
         )
         assertEquals(EvidenceRules.Attribution.BYTES_SENT, result[1L])
     }
 
     @Test
     fun `unreadable traffic proves nothing`() {
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, gone = true)),
-            txSinceEarliest = null,
-            now = now
+            tx = null
         )
         assertEquals(EvidenceRules.Attribution.UNPROVEN, result[1L])
     }
 
     @Test
     fun `a copy of unknown size is never covered`() {
-        val result = EvidenceRules.attributeTraffic(
+        val result = attribute(
             listOf(copy(1, bytes = 0, gone = true)),
-            txSinceEarliest = 3_000_000,
-            now = now
+            tx = 3_000_000
         )
         assertEquals(EvidenceRules.Attribution.UNPROVEN, result[1L])
     }
@@ -194,105 +186,102 @@ class EvidenceRulesTest {
         // still has it to send. Copy 2 released "alone" beside it must not
         // be credited with copy 1's bytes.
         val waiting = listOf(copy(1, hoursAgo = 8), copy(2))
-        assertNull(EvidenceRules.aloneInFlight(waiting, now, tx = 3_000_000))
+        assertNull(alone(waiting, tx = 3_000_000))
     }
 
     @Test
     fun `a single copy inside its window is alone`() {
-        assertEquals(1L, EvidenceRules.aloneInFlight(listOf(copy(1)), now, tx = 3_000_000)?.id)
+        assertEquals(1L, alone(listOf(copy(1)), tx = 3_000_000)?.id)
     }
 
     @Test
     fun `a single copy past its window is not judged`() {
-        assertNull(EvidenceRules.aloneInFlight(listOf(copy(1, hoursAgo = 8)), now, tx = 3_000_000))
+        assertNull(alone(listOf(copy(1, hoursAgo = 8)), tx = 3_000_000))
     }
 
-    // ---- graded neighbours still compete -------------------------------------
+    @Test
+    fun `a single copy whose size does not match is not judged`() {
+        assertNull(alone(listOf(copy(1)), tx = 30_000_000))
+        assertNull(alone(listOf(copy(1)), tx = 1_000_000))
+    }
+
+    // ---- any other copy in the window leaves nothing alone ------------------
 
     private fun graded(id: Long, hoursAgo: Long = 12 * 24, gone: Boolean = false) =
         copy(id, gone = gone, hoursAgo = hoursAgo).copy(graded = true)
+
+    private fun verified(id: Long, bytes: Long, verifiedHoursAgo: Long = 30 * 24, releasedHoursAgo: Long = 40 * 24) =
+        graded(id, hoursAgo = releasedHoursAgo).copy(bytes = bytes, verifiedAt = now - verifiedHoursAgo * hour)
+
+    private fun alone(
+        waiting: List<EvidenceRules.Waiting>,
+        tx: Long,
+        left: List<EvidenceRules.Left> = emptyList()
+    ) = EvidenceRules.aloneInFlight(waiting, left, now, tx)
+
+    private fun attribute(
+        waiting: List<EvidenceRules.Waiting>,
+        tx: Long?,
+        left: List<EvidenceRules.Left> = emptyList()
+    ) = EvidenceRules.attributeTraffic(waiting, left, tx, now)
+
+    /** Neither paced proof nor PER_FILE, whether [b] is still there or gone. */
+    private fun assertNotAlone(
+        others: List<EvidenceRules.Waiting>,
+        b: EvidenceRules.Waiting,
+        tx: Long,
+        left: List<EvidenceRules.Left> = emptyList()
+    ) {
+        assertNull(alone(others + b, tx, left))
+        val gone = attribute(others + b.copy(gone = true), tx, left)
+        assertTrue("${gone[b.id]}", gone[b.id] != EvidenceRules.Attribution.PER_FILE)
+    }
 
     @Test
     fun `an AGED or VERIFIED copy still waiting means nothing is alone`() {
         // Copy 1 has sat in the folder for twelve days (AGED), or its batch
         // was paid for by camera photos (VERIFIED). Ente can still send it, so
         // fresh copy 2 released "alone" beside it is not alone.
-        assertNull(EvidenceRules.aloneInFlight(listOf(graded(1), copy(2)), now, tx = 3_000_000))
+        assertNull(alone(listOf(graded(1), copy(2)), tx = 3_000_000))
     }
 
     @Test
     fun `a pace match never upgrades a graded copy`() {
-        assertNull(EvidenceRules.aloneInFlight(listOf(graded(1, hoursAgo = 1)), now, tx = 3_000_000))
+        assertNull(alone(listOf(graded(1, hoursAgo = 1)), tx = 3_000_000))
     }
 
     @Test
     fun `a vanished copy beside a graded one is never its own proof`() {
         // Ente sent graded copy 1 (the same size) and never had copy 2, which
         // the person then deleted. The bytes cover copy 2 - nothing more.
-        val result = EvidenceRules.attributeTraffic(
-            listOf(graded(1), copy(2, gone = true)),
-            txSinceEarliest = 3_000_000,
-            now = now
-        )
+        val result = attribute(listOf(graded(1), copy(2, gone = true)), tx = 3_000_000)
         assertEquals(EvidenceRules.Attribution.BYTES_SENT, result[2L])
         // A graded copy is neither settled nor judged here.
         assertNull(result[1L])
     }
 
     @Test
-    fun `nothing beside a copy that can never be judged is alone`() {
-        for (blocker in listOf(copy(1, hoursAgo = 8), graded(1))) {
-            assertNull(EvidenceRules.aloneInFlight(listOf(blocker, copy(2)), now, tx = 3_000_000))
+    fun `a big AGED copy sending part of itself is not a small copy's proof`() {
+        // A 40 MB video copy is AGED because Ente keeps failing to finish it.
+        // Fresh 5 MB copy 2 goes out alone; Ente starts the video again,
+        // sends 5 MB and is killed. Copy 2 was never sent.
+        val aged = graded(1, hoursAgo = 30 * 24).copy(bytes = 40_000_000)
+        val b = copy(2, bytes = 5_000_000, hoursAgo = 0)
+        assertTrue(EvidenceRules.confirmedPaced(5_000_000, b.bytes))
+        assertNotAlone(listOf(aged), b, tx = 5_000_000)
+    }
+
+    @Test
+    fun `a VERIFIED copy verified long ago still leaves nothing alone`() {
+        // Verified a month ago on camera photos and still in the folder. Its
+        // size does not matter: any part of it may be what went out.
+        val b = copy(2, bytes = 3_000_000, hoursAgo = 0)
+        for (bytes in listOf(3_200_000L, 1_000_000L, 20_000_000L, 0L)) {
+            val v = verified(1, bytes = bytes)
+            for (tx in listOf(b.bytes, v.bytes + b.bytes, 4_600_000L)) {
+                if (EvidenceRules.confirmedPaced(tx, b.bytes)) assertNotAlone(listOf(v), b, tx)
+            }
         }
-    }
-
-    @Test
-    fun `a single copy whose size does not match is not judged`() {
-        assertNull(EvidenceRules.aloneInFlight(listOf(copy(1)), now, tx = 30_000_000))
-        assertNull(EvidenceRules.aloneInFlight(listOf(copy(1)), now, tx = 1_000_000))
-    }
-
-    // ---- a graded copy competes for as long as it is in the folder ----------
-
-    private fun verified(id: Long, bytes: Long, verifiedHoursAgo: Long = 30 * 24, releasedHoursAgo: Long = 40 * 24) =
-        graded(id, hoursAgo = releasedHoursAgo).copy(bytes = bytes, verifiedAt = now - verifiedHoursAgo * hour)
-
-    private fun attribute(waiting: List<EvidenceRules.Waiting>, tx: Long) =
-        EvidenceRules.attributeTraffic(waiting, txSinceEarliest = tx, now = now)
-
-    @Test
-    fun `a VERIFIED copy verified long ago still explains the bytes`() {
-        // Copy 1 was VERIFIED a month ago on camera photos and is still in the
-        // folder. Fresh copy 2, about its size, goes out; Ente sends copy 1
-        // and is stopped before copy 2. Copy 2 must not take copy 1's bytes.
-        val v = verified(1, bytes = 3_200_000)
-        val b = copy(2, bytes = 3_000_000, hoursAgo = 0)
-        assertTrue(EvidenceRules.confirmedPaced(v.bytes, b.bytes))
-        assertNull(EvidenceRules.aloneInFlight(listOf(v, b), now, tx = v.bytes))
-        // Deleted in the gallery instead, it is not its own proof either.
-        val gone = attribute(listOf(v, b.copy(gone = true)), tx = v.bytes)
-        assertEquals(EvidenceRules.Attribution.BYTES_SENT, gone[2L])
-    }
-
-    @Test
-    fun `bytes that cover the neighbour and the copy both still grade the copy`() {
-        // A small VERIFIED neighbour: what went out is its size plus the new
-        // copy's, which is outside the neighbour's band and inside the copy's.
-        val v = verified(1, bytes = 1_000_000)
-        val b = copy(2, bytes = 3_000_000, hoursAgo = 0)
-        val tx = v.bytes + b.bytes
-        assertFalse(EvidenceRules.confirmedPaced(tx, v.bytes))
-        assertEquals(2L, EvidenceRules.aloneInFlight(listOf(v, b), now, tx)?.id)
-        assertEquals(EvidenceRules.Attribution.PER_FILE, attribute(listOf(v, b.copy(gone = true)), tx)[2L])
-        // Bytes the neighbour is too big to have sent alone grade it too.
-        val big = verified(1, bytes = 20_000_000)
-        assertEquals(2L, EvidenceRules.aloneInFlight(listOf(big, b), now, tx = b.bytes)?.id)
-    }
-
-    @Test
-    fun `an AGED copy competes for as long as it is in the folder`() {
-        val aged = graded(1, hoursAgo = 30 * 24)
-        assertNull(EvidenceRules.aloneInFlight(listOf(aged, copy(2, hoursAgo = 0)), now, tx = aged.bytes))
     }
 
     @Test
@@ -301,34 +290,72 @@ class EvidenceRulesTest {
         // dated by the restore. Either way it is still in the folder.
         for (verifiedHoursAgo in listOf(5 * 24L, 7L, 0L)) {
             val v = verified(1, bytes = 3_000_000, verifiedHoursAgo = verifiedHoursAgo)
-            assertNull(EvidenceRules.aloneInFlight(listOf(v, copy(2, hoursAgo = 0)), now, tx = 3_000_000))
+            assertNotAlone(listOf(v), copy(2, hoursAgo = 0), tx = 3_000_000)
         }
     }
 
     @Test
-    fun `graded copies that together match the bytes leave nothing alone`() {
-        val b = copy(3, bytes = 3_000_000, hoursAgo = 0)
-        val tx = 4_600_000L
-        // Neither 2 MB neighbour alone explains 4.6 MB beside a 3 MB copy...
-        assertEquals(3L, EvidenceRules.aloneInFlight(listOf(verified(1, 2_000_000), b), now, tx)?.id)
-        // ...but the two of them together do.
-        val pair = listOf(verified(1, 2_000_000), verified(2, 2_000_000), b)
-        assertNull(EvidenceRules.aloneInFlight(pair, now, tx))
-        assertEquals(EvidenceRules.Attribution.BYTES_SENT, attribute(pair.map { it.copy(gone = it.id == 3L) }, tx)[3L])
-    }
-
-    @Test
-    fun `too many graded copies leave nothing alone`() {
+    fun `any number of graded copies leaves nothing alone`() {
         val b = copy(9, bytes = 3_000_000, hoursAgo = 0)
-        val neighbours = (1L..4L).map { verified(it, bytes = 20_000_000) }
-        assertEquals(9L, EvidenceRules.aloneInFlight(neighbours.take(3) + b, now, tx = b.bytes)?.id)
-        assertNull(EvidenceRules.aloneInFlight(neighbours + b, now, tx = b.bytes))
+        for (n in 1..4) {
+            val neighbours = (1L..n.toLong()).map { verified(it, bytes = 20_000_000) }
+            assertNotAlone(neighbours, b, tx = b.bytes)
+        }
+    }
+
+    // ---- copies that left the folder during the window ----------------------
+
+    private fun left(id: Long, hoursAgo: Long, provenHoursAgo: Long? = null) = EvidenceRules.Left(
+        id = id,
+        leftAt = now - hoursAgo * hour,
+        provenAt = provenHoursAgo?.let { now - it * hour }
+    )
+
+    @Test
+    fun `a copy that went during the window leaves nothing alone`() {
+        // AGED copy 1, 3.2 MB, was in the folder when 3 MB copy 2 went out.
+        // Ente sent copy 1, and copy 1 then went (deleted by hand, or by
+        // Ente's free-up): what went out is its size, and copy 2 has had none.
+        val b = copy(2, bytes = 3_000_000, hoursAgo = 2)
+        val went = left(1, hoursAgo = 1)
+        assertTrue(EvidenceRules.sharedWindow(went, b.releasedAt))
+        assertNotAlone(emptyList(), b, tx = 3_200_000, left = listOf(went))
+        // Whatever it carried and whenever it was graded after copy 2 went
+        // out - even per-file proof, which it may have earned with these
+        // very bytes.
+        assertNotAlone(emptyList(), b, tx = 3_200_000, left = listOf(left(1, hoursAgo = 1, provenHoursAgo = 1)))
+        // Leaving the moment copy 2 went out is inside the window too.
+        val atRelease = EvidenceRules.Left(id = 1, leftAt = b.releasedAt, provenAt = null)
+        assertNotAlone(emptyList(), b, tx = 3_200_000, left = listOf(atRelease))
     }
 
     @Test
-    fun `a graded copy of unknown size leaves nothing alone`() {
-        val b = copy(2, bytes = 3_000_000, hoursAgo = 0)
-        assertNull(EvidenceRules.aloneInFlight(listOf(verified(1, bytes = 0), b), now, tx = b.bytes))
+    fun `a copy proved before the window does not count`() {
+        // Ente had copy 1 before copy 2 went out; it left the folder later
+        // (Ente's free-up), but Ente does not send a file it already has.
+        val b = copy(2, bytes = 3_000_000, hoursAgo = 2)
+        val proved = left(1, hoursAgo = 1, provenHoursAgo = 3)
+        assertFalse(EvidenceRules.sharedWindow(proved, b.releasedAt))
+        assertEquals(2L, alone(listOf(b), tx = 3_000_000, left = listOf(proved))?.id)
+        val gone = attribute(listOf(b.copy(gone = true)), tx = 3_000_000, left = listOf(proved))
+        assertEquals(EvidenceRules.Attribution.PER_FILE, gone[2L])
+    }
+
+    @Test
+    fun `a copy that left before the window does not count`() {
+        val b = copy(2, bytes = 3_000_000, hoursAgo = 2)
+        val before = left(1, hoursAgo = 3)
+        assertFalse(EvidenceRules.sharedWindow(before, b.releasedAt))
+        assertEquals(2L, alone(listOf(b), tx = 3_000_000, left = listOf(before))?.id)
+    }
+
+    @Test
+    fun `with no other copy the rule is the single-copy one`() {
+        val b = copy(1, bytes = 3_000_000, hoursAgo = 1)
+        assertEquals(1L, alone(listOf(b), tx = 3_100_000)?.id)
+        assertEquals(EvidenceRules.Attribution.PER_FILE, attribute(listOf(b.copy(gone = true)), tx = 3_100_000)[1L])
+        assertNull(alone(listOf(b), tx = 2_000_000))
+        assertNull(alone(listOf(b), tx = 5_000_000))
     }
 
     // ---- the return from Ente's free-up screen ------------------------------

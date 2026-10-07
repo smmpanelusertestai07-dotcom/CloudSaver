@@ -518,8 +518,9 @@ class ProductBoundariesTest {
      * after its batch was verified - though the batch may have been paid by
      * camera photos, and Ente's late send of the copy was credited to a newer
      * one. Paced proof, attribution and pacing read one list that time never
-     * shortens; aloneInFlight weighs every graded copy against the bytes, and
-     * only Pacing.releaseLimit lifts the limit.
+     * shortens; aloneInFlight finds nothing alone beside any other copy in it
+     * or any copy that left during the window, and only Pacing.releaseLimit
+     * lifts the limit. Home offers Ente's free-up while graded copies stay.
      */
     @Test
     fun `graded copies in the folder do not end paced proof for good`() {
@@ -540,8 +541,21 @@ class ProductBoundariesTest {
         }
         // Paced proof and attribution hand the measured bytes to the one rule.
         val paced = engine.substringAfter("private suspend fun pacedEvidence(").substringBefore("\n    }\n")
-        assertTrue(paced.contains("EvidenceRules.aloneInFlight(waiting, now, tx)"))
-        assertTrue(rules.contains("val alone = aloneInFlight(waiting, now, txSinceEarliest)"))
+        assertTrue(paced.contains("EvidenceRules.aloneInFlight(waiting, leftDuring(waiting), now, tx)"))
+        assertTrue(rules.contains("val alone = aloneInFlight(waiting, left, now, txSinceEarliest)"))
+        val gone = engine.substringAfter("private suspend fun detectGone(").substringBefore("\n    }\n")
+        assertTrue(gone.contains("EvidenceRules.attributeTraffic(waiting, leftDuring(waiting), txShared, now)"))
+        // A copy that left the folder during the window is read, whatever
+        // state it is in now, by the row's last change.
+        val db = File("src/main/kotlin/app/entesaver/data/db/Db.kt").readText()
+        assertTrue(db.contains("WHERE state != 'RELEASED' AND releasedAt IS NOT NULL AND updatedAt >= :since"))
+        val left = engine.substringAfter("private suspend fun leftDuring(").substringBefore("\n    }\n")
+        assertTrue(left.contains("db.items().leftReleasedSince(since)"))
+        assertTrue(left.contains("leftAt = row.updatedAt"))
+        // No size arithmetic decides that a neighbour sent nothing.
+        assertFalse(rules.contains("MAX_GRADED"))
+        val home = File("src/main/kotlin/app/entesaver/ui/screens/HomeScreen.kt").readText()
+        assertTrue(home.contains("gradedInFolder = gradedInFolder"))
     }
 
     /**

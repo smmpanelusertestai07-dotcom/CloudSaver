@@ -116,9 +116,11 @@ object Pacing {
      *
      * A copy without a grade holds a slot until it times out, and a VERIFIED
      * one until its own window after verification ends: then the next copy
-     * goes out, and is judged beside it. An AGED copy holds no slot - it may
-     * sit there for weeks. Neither graded kind ever lifts the limit: copies
-     * released in bulk beside them would only become the next blockers.
+     * goes out. Nothing beside a graded copy can be proved by traffic, but
+     * the queue does not wait for it to leave. An AGED copy holds no slot -
+     * it may sit there for weeks. Neither graded kind ever lifts the limit:
+     * copies released in bulk beside them would only become the next
+     * blockers.
      *
      * The limit is lifted only while a copy without a grade has timed out.
      * That copy will not leave for days, and nothing released beside it can

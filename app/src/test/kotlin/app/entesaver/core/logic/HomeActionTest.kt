@@ -101,20 +101,24 @@ class HomeActionTest {
 
     @Test
     fun `the verify link appears only when the app cannot check for itself`() {
-        assertTrue(
-            HomeAction.showVerifyLink(usageAccessGranted = false, cloudRemovesItsUploads = true)
-        )
+        fun show(access: Boolean, removes: Boolean, graded: Boolean = false) =
+            HomeAction.showVerifyLink(access, cloudRemovesItsUploads = removes, gradedInFolder = graded)
+        assertTrue(show(access = false, removes = true))
         // Granted: the check is automatic, and a button implying otherwise
         // teaches people the automatic part does not work.
-        assertFalse(
-            HomeAction.showVerifyLink(usageAccessGranted = true, cloudRemovesItsUploads = true)
-        )
+        assertFalse(show(access = true, removes = true))
         // Nothing to observe on a cloud that leaves its uploads in place.
-        assertFalse(
-            HomeAction.showVerifyLink(usageAccessGranted = false, cloudRemovesItsUploads = false)
-        )
-        assertFalse(
-            HomeAction.showVerifyLink(usageAccessGranted = true, cloudRemovesItsUploads = false)
-        )
+        assertFalse(show(access = false, removes = false))
+        assertFalse(show(access = true, removes = false))
+        assertFalse(show(access = true, removes = false, graded = true))
+    }
+
+    @Test
+    fun `the verify link appears with usage access when graded copies block proof`() {
+        // An AGED or VERIFIED copy in the folder means Ente's traffic proves
+        // nothing about any one file beside it; Ente's own free-up is the
+        // one route to proof left, and it also empties the folder.
+        assertTrue(HomeAction.showVerifyLink(true, cloudRemovesItsUploads = true, gradedInFolder = true))
+        assertTrue(HomeAction.showVerifyLink(false, cloudRemovesItsUploads = true, gradedInFolder = true))
     }
 }

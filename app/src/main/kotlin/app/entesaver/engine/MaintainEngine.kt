@@ -356,10 +356,11 @@ class MaintainEngine(private val context: Context) {
         if (gone.isEmpty()) return
 
         // Ente's byte count is everything it sent: camera photos, and every
-        // other copy of ours still waiting. So the copies without evidence
-        // share one count from the oldest of them, settled oldest first, and
-        // only a copy that was alone in flight - beside graded neighbours
-        // whose bytes cannot be what Ente sent - can call the bytes its own.
+        // other copy of ours, waiting or already gone. So the copies without
+        // evidence share one count from the oldest of them, settled oldest
+        // first, and only a copy that was alone in flight - no other copy of
+        // ours in the folder at any time in its window - can call the bytes
+        // its own.
         val goneIds = gone.map { it.id }.toSet()
         val waiting = unprovenWaiting(now, goneIds)
         val settled = waiting.filter { !it.graded }
@@ -368,7 +369,7 @@ class MaintainEngine(private val context: Context) {
         } else {
             null
         }
-        val attribution = EvidenceRules.attributeTraffic(waiting, txShared, now)
+        val attribution = EvidenceRules.attributeTraffic(waiting, leftDuring(waiting), txShared, now)
 
         // A "Confirm uploads" tap still open, read now rather than at the
         // start of the pass: the person may have tapped since - which is also
@@ -668,7 +669,7 @@ class MaintainEngine(private val context: Context) {
         // Every copy without per-file proof counts, timed out, AGED or
         // VERIFIED however long ago: each is still in the folder, and Ente
         // sending it later must not be credited to a newer copy that went out
-        // "alone" beside it.
+        // "alone" beside it. So does every copy that left during the window.
         val waiting = unprovenWaiting(now)
         // A copy that sat there for six hours without its bytes appearing is
         // the accounting failing, not succeeding slowly. The ladder drops.
@@ -678,7 +679,7 @@ class MaintainEngine(private val context: Context) {
         val candidate = waiting.singleOrNull { !it.graded } ?: return
         if (Pacing.isTimedOut(candidate.releasedAt, now)) return
         val tx = txSinceRelease(candidate.releasedAt, now) ?: return
-        val alone = EvidenceRules.aloneInFlight(waiting, now, tx) ?: return
+        val alone = EvidenceRules.aloneInFlight(waiting, leftDuring(waiting), now, tx) ?: return
         // Only a copy with no grade at all is ever upgraded by a byte match.
         val row = db.items().byId(alone.id)?.takeIf { evidenceOf(it) == Evidence.NONE } ?: return
         db.items().update(
@@ -730,6 +731,25 @@ class MaintainEngine(private val context: Context) {
             )
         }
         return waiting
+    }
+
+    /**
+     * Every copy of ours that left the folder since the one copy in [waiting]
+     * went out, whatever it is now: Ente may have been sending it, all of it
+     * or any part, while it was there. Its row's last change is when it
+     * left, or later; per-file proof only counts from when it was granted.
+     * With more than one copy waiting nothing is alone anyway, so nothing is
+     * read.
+     */
+    private suspend fun leftDuring(waiting: List<EvidenceRules.Waiting>): List<EvidenceRules.Left> {
+        val since = waiting.singleOrNull()?.releasedAt ?: return emptyList()
+        return db.items().leftReleasedSince(since).map { row ->
+            EvidenceRules.Left(
+                id = row.id,
+                leftAt = row.updatedAt,
+                provenAt = row.confirmedAt?.takeIf { Evidence.parse(row.evidence).isPerFile }
+            )
+        }
     }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------

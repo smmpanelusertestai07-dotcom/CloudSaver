@@ -278,6 +278,12 @@ data class BatchRow(
 
 data class StateCount(val state: String, val cnt: Int)
 
+/**
+ * A released copy that has left the folder since: when its row last changed,
+ * and what it was proved with.
+ */
+data class LeftRow(val id: Long, val updatedAt: Long, val evidence: String, val confirmedAt: Long?)
+
 /** How many released copies wait in one folder. */
 data class FolderCount(val outputRelPath: String, val cnt: Int)
 
@@ -524,6 +530,26 @@ interface ItemDao {
 
     @Query("SELECT * FROM items WHERE state = 'RELEASED'")
     suspend fun released(): List<ItemRow>
+
+    /**
+     * Copies that were released and left the folder at or after [since]: by
+     * the row's last change, which is never earlier than the copy leaving.
+     */
+    @Query(
+        "SELECT id, updatedAt, evidence, confirmedAt FROM items " +
+            "WHERE state != 'RELEASED' AND releasedAt IS NOT NULL AND updatedAt >= :since"
+    )
+    suspend fun leftReleasedSince(since: Long): List<LeftRow>
+
+    /**
+     * Copies in the folder that carry AGED or VERIFIED, or have no release
+     * time. While any is there, nothing beside it can be proved by traffic.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE state = 'RELEASED' AND " +
+            "(evidence IN ('AGED', 'VERIFIED') OR releasedAt IS NULL)"
+    )
+    fun gradedInFolderCountFlow(): Flow<Int>
 
     /** Batches some row belongs to. A batch no row names has nothing to verify. */
     @Query("SELECT DISTINCT batchId FROM items WHERE batchId IS NOT NULL")

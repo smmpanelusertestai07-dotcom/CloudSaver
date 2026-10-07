@@ -129,6 +129,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val processed = processedRead ?: 0
     val noAlbumsTicked by vm.noAlbumsTicked.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
+    val gradedInFolder by vm.gradedInFolder.collectAsStateWithLifecycle()
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
     val leftoverUris by vm.leftoverUris.collectAsStateWithLifecycle()
     val consentCopies by vm.consentCopies.collectAsStateWithLifecycle()
@@ -1119,13 +1120,22 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // Not a button, and not always present: this exists only where the
         // app cannot see the uploads for itself. With usage access granted
         // the check is automatic, and offering it anyway would imply the
-        // automatic part does not work.
-        if (HomeAction.showVerifyLink(!health.usageAccessOff, cloudRemovesItsUploads = !health.cloudMissing)) {
+        // automatic part does not work - unless a graded copy in the folder
+        // stops Ente's traffic proving anything, and Ente's free-up is the
+        // one route left.
+        if (HomeAction.showVerifyLink(
+                !health.usageAccessOff,
+                cloudRemovesItsUploads = !health.cloudMissing,
+                gradedInFolder = gradedInFolder
+            )
+        ) {
             TextButton(onClick = { vm.startConfirmFlow() }) {
                 Text(stringResource(R.string.btn_verify_link))
             }
             Text(
-                stringResource(R.string.verify_link_hint),
+                stringResource(
+                    if (health.usageAccessOff) R.string.verify_link_hint else R.string.verify_link_hint_graded
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

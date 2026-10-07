@@ -240,6 +240,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, screenLocal, false)
 
     /**
+     * True while an AGED or VERIFIED copy waits in the folder. Nothing beside
+     * it can be proved by Ente's traffic, so Home offers Ente's own free-up,
+     * which is the one route to proof left.
+     */
+    val gradedInFolder: StateFlow<Boolean> = db.items().gradedInFolderCountFlow()
+        .map { it > 0 }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, screenLocal, false)
+
+    /**
      * Null until the first read lands. The flow starts when Home subscribes,
      * so the first frame used to be drawn from the initial value - all zeros
      * - and zeros are not "unknown": they are "nothing waiting, nothing in
