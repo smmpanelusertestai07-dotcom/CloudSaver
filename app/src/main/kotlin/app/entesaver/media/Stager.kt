@@ -371,9 +371,15 @@ class Stager(private val context: Context, private val db: AppDb) {
         const val PLAIN_OVERRUN_LIMIT_MS = 7L * 24 * 60 * 60_000L
 
         /**
+         * How long a clip held back by a plain run waits before another
+         * plain run tries it again (see [plainTryDue]).
+         */
+        const val PLAIN_RETRY_GAP_MS = 24L * 60 * 60_000L
+
+        /**
          * The mark a plain run's overrun leaves in lastError: [OUT_OF_TIME],
          * so the queue holds the clip back the same way, then the time of the
-         * first such overrun.
+         * first such overrun, then "@" and the time of the latest.
          */
         private const val HELD_SINCE = "$OUT_OF_TIME@"
 
@@ -389,12 +395,7 @@ class Stager(private val context: Context, private val db: AppDb) {
         fun heldBack(row: ItemRow, now: Long): ItemRow {
             // A date ahead of now (the clock was set back) starts the week
             // again rather than stretching it.
-            val since = row.lastError
-                ?.takeIf { it.startsWith(HELD_SINCE) }
-                ?.removePrefix(HELD_SINCE)
-                ?.toLongOrNull()
-                ?.takeIf { it <= now }
-                ?: now
+            val since = heldTimes(row.lastError)?.first?.takeIf { it <= now } ?: now
             return if (now - since >= PLAIN_OVERRUN_LIMIT_MS) {
                 row.copy(
                     state = ItemState.SKIP.name,
@@ -403,8 +404,33 @@ class Stager(private val context: Context, private val db: AppDb) {
                     updatedAt = now
                 )
             } else {
-                row.copy(lastError = "$HELD_SINCE$since", updatedAt = now)
+                row.copy(lastError = "$HELD_SINCE$since@$now", updatedAt = now)
             }
+        }
+
+        /**
+         * Whether a run without a foreground service may try [row] at [now].
+         *
+         * Such a run takes a held clip only when nothing else is left, and
+         * on a phone that never gives the whole budget that was every idle
+         * run: the same clip encoded for the whole window, and out of time
+         * again, every half hour for a week. A held clip now waits
+         * [PLAIN_RETRY_GAP_MS] after its latest plain try. A run with a
+         * foreground service takes it at once.
+         */
+        fun plainTryDue(row: ItemRow, now: Long): Boolean {
+            val last = heldTimes(row.lastError)?.second ?: return true
+            // A time ahead of now is a clock set back: tried again, and the
+            // mark then carries the new time.
+            return last > now || now - last >= PLAIN_RETRY_GAP_MS
+        }
+
+        /** The first and the latest plain overrun a mark holds; the latest is the first in an older mark. */
+        private fun heldTimes(lastError: String?): Pair<Long, Long>? {
+            val times = lastError?.takeIf { it.startsWith(HELD_SINCE) }?.removePrefix(HELD_SINCE) ?: return null
+            val since = times.substringBefore('@').toLongOrNull() ?: return null
+            val last = times.substringAfter('@', "").toLongOrNull() ?: since
+            return since to last
         }
 
         /**

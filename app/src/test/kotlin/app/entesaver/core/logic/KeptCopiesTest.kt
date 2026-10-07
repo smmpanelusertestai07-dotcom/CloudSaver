@@ -69,6 +69,28 @@ class KeptCopiesTest {
     }
 
     @Test
+    fun a121NumberedCopyStaysKnownOnceItsRowIsBackOnTheOriginal() {
+        // The restore pointed the row back at "IMG_1234.jpg"; its copy at
+        // keptUri is still "IMG_1235.jpg". Read as a stranger, the scanner
+        // optimised it again and sent it to Ente as a new photo, and "Remove
+        // the light copy" could not find it.
+        val copyBytes = 812_345L
+        val origFp = "fedcba9876543210"
+        assertTrue(KeptCopies.isRowsCopy("IMG_1235.jpg", copyBytes, "IMG_1234.jpg", origFp, copyBytes))
+        assertTrue(KeptCopies.isRowsCopy("IMG_1240.JPG", copyBytes, "IMG_1234.jpg", origFp, copyBytes))
+        // Another size is the camera's next real photo under a stale number.
+        assertFalse(KeptCopies.isRowsCopy("IMG_1235.jpg", copyBytes + 1, "IMG_1234.jpg", origFp, copyBytes))
+        assertFalse(KeptCopies.isRowsCopy("IMG_1235.jpg", copyBytes, "IMG_1234.jpg", origFp, null))
+        // Not a later number, not the same prefix, not the same type.
+        assertFalse(KeptCopies.isRowsCopy("IMG_1233.jpg", copyBytes, "IMG_1234.jpg", origFp, copyBytes))
+        assertFalse(KeptCopies.isRowsCopy("DSC_1235.jpg", copyBytes, "IMG_1234.jpg", origFp, copyBytes))
+        assertFalse(KeptCopies.isRowsCopy("IMG_1235.mp4", copyBytes, "IMG_1234.jpg", origFp, copyBytes))
+        assertFalse(KeptCopies.isRowsCopy("PXL_20260101_120000.jpg", copyBytes, "IMG_0001.jpg", fp, copyBytes))
+        // Whatever belongsTo accepts still belongs, at any size.
+        assertTrue(KeptCopies.isRowsCopy("IMG_0001 (1).jpg", 1L, "IMG_0001.jpg", fp, copyBytes))
+    }
+
+    @Test
     fun aNumberedCameraNameAsksForTheProvidersOrdinarySuffix() {
         // Asked for as itself, "IMG_1234" in DCIM lands as "IMG_1235",
         // which belongsTo cannot accept. Asked for with " (1)", it lands

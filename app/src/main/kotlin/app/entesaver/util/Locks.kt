@@ -1,5 +1,6 @@
 package app.entesaver.util
 
+import android.os.SystemClock
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
@@ -59,13 +60,26 @@ object Locks {
     /** Free-up batches waiting for, or holding, [stage] ([StageTurn]). */
     val freeUpWaiting = AtomicInteger(0)
 
-    /** Until when the background run starts no new file, after a batch gave up waiting. */
+    /**
+     * Until when the background run starts no new file, after a batch gave
+     * up waiting, by [runClock].
+     */
     val runYieldsUntil = AtomicLong(0L)
+
+    /**
+     * The clock [runYieldsUntil] is kept by: time since the phone started,
+     * which no one can set. On the wall clock, a clock set back a day after
+     * a batch gave up held every background run up for that day as well.
+     * Tests put their own clock here.
+     */
+    @Volatile
+    var runClock: () -> Long = { SystemClock.elapsedRealtime() }
 
     /**
      * Whether the background run should start no new file now: someone is
      * in front of Free up waiting for the encoder, which is what they asked
      * for, and the run can pick its queue up again on its next pass.
      */
-    fun runShouldYield(now: Long): Boolean = freeUpWaiting.get() > 0 || now < runYieldsUntil.get()
+    fun runShouldYield(now: Long = runClock()): Boolean =
+        freeUpWaiting.get() > 0 || now < runYieldsUntil.get()
 }

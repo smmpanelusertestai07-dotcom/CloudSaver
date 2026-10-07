@@ -223,10 +223,19 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 // A run without a foreground service takes a clip that already
                 // ran out of time once only when nothing else is left: it
                 // would most likely run out again, and first in line it held
-                // up every file behind it in every such run.
+                // up every file behind it in every such run. Even then, once
+                // a day at most (Stager.plainTryDue): every idle run used to
+                // spend its whole window on the same clip. One tried less
+                // than a day ago waits for the next run.
                 val passed = deferred + later
-                val batch = nextItems(db, live, plan, videoMaxMs, passed, 5, holdOverrun = !foreground)
+                val found = nextItems(db, live, plan, videoMaxMs, passed, 5, holdOverrun = !foreground)
                     .ifEmpty { if (foreground) emptyList() else nextItems(db, live, plan, videoMaxMs, passed, 5) }
+                val resting = if (foreground) emptyList() else found.filterNot { Stager.plainTryDue(it, now) }
+                if (resting.isNotEmpty()) {
+                    later += resting.map { it.id }
+                    continue@loop
+                }
+                val batch = found
                 if (batch.isEmpty()) {
                     // Nothing left that this run can take; whatever is still
                     // waiting gets its reason on Home, found by asking again
@@ -249,8 +258,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     // Someone in front of Free up is waiting for the encoder
                     // to remake a light copy, or gave up waiting a moment
                     // ago. They asked for it; this run starts no new file,
-                    // finishes as usual, and the next run carries on.
-                    if (Locks.runShouldYield(itemStart)) break@loop
+                    // finishes as usual, and the next run carries on. Asked
+                    // by its own clock, which setting the time cannot move.
+                    if (Locks.runShouldYield()) break@loop
                     if (row.isVideo && !foreground &&
                         !RunDecider.fitsPlainRun(row.durationMs, deadline - itemStart, VideoCompressor.MIN_TOTAL_MS)
                     ) {

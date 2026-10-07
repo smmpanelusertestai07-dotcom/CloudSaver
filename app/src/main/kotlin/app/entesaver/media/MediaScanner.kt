@@ -84,8 +84,8 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         for (f in found) {
             val keptRow = keptByUri[f.uri] ?: keptById[f.mediaStoreId]
             if (keptRow != null &&
-                KeptCopies.belongsTo(
-                    f.displayName, keptRow.displayName, keptRow.fingerprint
+                KeptCopies.isRowsCopy(
+                    f.displayName, f.sizeBytes, keptRow.displayName, keptRow.fingerprint, keptRow.outputBytes
                 )
             ) continue
             // Z4.1: a file named like the app's own output is a copy that
