@@ -48,6 +48,27 @@ class KeptCopiesTest {
     }
 
     @Test
+    fun a121CopyTheProviderNumberedIsReadBackOnlyWithTheOriginalsTime() {
+        // 12.1 asked for "IMG_1234.JPG" in DCIM and kept "IMG_1235.JPG", with
+        // the original's modified time stamped on it. Its history lookup
+        // missed that row, and a restored original came back as new work.
+        val t = 1_600_000_000L
+        assertTrue(KeptCopies.isLegacyCountUp("IMG_1235.JPG", "IMG_1234.JPG", t, t))
+        assertTrue(KeptCopies.isLegacyCountUp("DSC_0050.jpg", "DSC_0042.JPG", t, t))
+        // Another time is the camera's next real photo.
+        assertFalse(KeptCopies.isLegacyCountUp("IMG_1235.JPG", "IMG_1234.JPG", t + 1, t))
+        assertFalse(KeptCopies.isLegacyCountUp("IMG_1235.JPG", "IMG_1234.JPG", 0L, 0L))
+        // Not a later number, not the same prefix, not the same type.
+        assertFalse(KeptCopies.isLegacyCountUp("IMG_1234.JPG", "IMG_1234.JPG", t, t))
+        assertFalse(KeptCopies.isLegacyCountUp("IMG_1233.JPG", "IMG_1234.JPG", t, t))
+        assertFalse(KeptCopies.isLegacyCountUp("DSC_1235.JPG", "IMG_1234.JPG", t, t))
+        assertFalse(KeptCopies.isLegacyCountUp("IMG_1235.mp4", "IMG_1234.JPG", t, t))
+        assertFalse(KeptCopies.isLegacyCountUp("holiday.jpg", "IMG_1234.jpg", t, t))
+        // The general test still never takes the next number.
+        assertFalse(KeptCopies.belongsTo("IMG_1235.JPG", "IMG_1234.JPG", fp))
+    }
+
+    @Test
     fun aNumberedCameraNameAsksForTheProvidersOrdinarySuffix() {
         // Asked for as itself, "IMG_1234" in DCIM lands as "IMG_1235",
         // which belongsTo cannot accept. Asked for with " (1)", it lands

@@ -295,6 +295,66 @@ class ReclaimFinishTest {
     }
 
     /**
+     * 12.1 kept the provider's DCIM count-up for an in-place copy, so the
+     * row moved to "IMG_1235.jpg" while its history says "IMG_1234.jpg".
+     * The copy carries the original's modified time, and that is what lets
+     * the row be found; without it, the next number is the camera's next
+     * photo, and nothing is touched.
+     */
+    @Test
+    fun aRestoreOfA121CopyTheProviderNumberedFindsItsRowOnlyByItsTime() = runBlocking {
+        val original = photo("IMG_1234.jpg", seed = 21)
+        val modified = seen(original).modified
+        val copy = photo("IMG_1235.jpg", seed = 22)
+        val copySeen = seen(copy)
+        val rowId = db.items().insert(
+            row(copySeen.name, copy, copySeen.fingerprint).copy(
+                state = ItemState.FREED_KEPT.name,
+                keptUri = copy.toString(),
+                dateModified = modified + 60
+            )
+        )
+        val item = legacyHistory("IMG_1234.jpg", original)
+        val before = db.items().byId(rowId)!!
+
+        ReclaimEngine(target).onRestored(item)
+
+        assertEquals(before, db.items().byId(rowId)!!)
+
+        db.items().update(before.copy(dateModified = modified))
+        ReclaimEngine(target).onRestored(item)
+
+        val back = db.items().byId(rowId)!!
+        assertEquals(ItemState.DONE.name, back.state)
+        assertEquals(original.toString(), back.contentUri)
+        assertEquals(seen(original).fingerprint, back.fingerprint)
+        assertEquals(copy.toString(), back.keptUri)
+    }
+
+    /** Two numbered copies with the original's time: neither is guessed at. */
+    @Test
+    fun aRestoreOfA121NumberedBatchThatMatchesTwoRowsTouchesNeither() = runBlocking {
+        val original = photo("IMG_2000.jpg", seed = 23)
+        val modified = seen(original).modified
+        val ids = listOf("IMG_2001.jpg" to 24, "IMG_2002.jpg" to 25).map { (name, seed) ->
+            val copy = photo(name, seed = seed)
+            val s = seen(copy)
+            db.items().insert(
+                row(s.name, copy, s.fingerprint).copy(
+                    state = ItemState.FREED_KEPT.name,
+                    keptUri = copy.toString(),
+                    dateModified = modified
+                )
+            )
+        }
+        val before = ids.map { db.items().byId(it)!! }
+
+        ReclaimEngine(target).onRestored(legacyHistory("IMG_2000.jpg", original))
+
+        assertEquals(before, ids.map { db.items().byId(it)!! })
+    }
+
+    /**
      * Under DCIM the provider renames a camera name the camera's way, not
      * with " (1)", and the copy was taken back as a stranger's file: Free up
      * in place freed nothing for most camera photos.
