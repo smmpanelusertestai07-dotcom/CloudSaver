@@ -16,6 +16,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.entesaver.core.logic.BackupScope
 import app.entesaver.core.logic.Defaults
 import app.entesaver.core.logic.DeviceDefaults
+import app.entesaver.core.logic.EvidenceRules
 import app.entesaver.core.logic.FolderName
 import app.entesaver.core.logic.MediaSettings
 import app.entesaver.core.logic.OutFolder
@@ -217,7 +218,13 @@ data class Options(
     /** How many "the phone stopped background work" alerts have been posted, ever. */
     val stallAlerts: Int = 0,
     /** When the last of them was posted. */
-    val stallAlertAt: Long = 0
+    val stallAlertAt: Long = 0,
+    /**
+     * The open "Confirm uploads" tap, or null. Stored so the return from
+     * Ente is judged even when the phone ended this process meanwhile; every
+     * pass reads it only to leave those copies alone (EvidenceRules).
+     */
+    val confirmWindow: EvidenceRules.ConfirmWindow? = null
 ) {
     val dailyCapBytes: Long get() = if (dailyCapMb < 0) -1 else dailyCapMb * Defaults.MB
     val minFreeBytes: Long get() = minFreeMb * Defaults.MB
@@ -308,6 +315,8 @@ class OptionsRepo(private val context: Context) {
         val FREEABLE_SAID_BYTES = longPreferencesKey("freeableSaidBytes")
         val STALL_ALERTS = intPreferencesKey("stallAlerts")
         val STALL_ALERT_AT = longPreferencesKey("stallAlertAt")
+        val CONFIRM_OPENED_AT = longPreferencesKey("confirmWindowOpenedAt")
+        val CONFIRM_PRESENT = stringSetPreferencesKey("confirmWindowPresent")
     }
 
     val flow: Flow<Options> = context.dataStore.data.map { p ->
@@ -381,7 +390,13 @@ class OptionsRepo(private val context: Context) {
             reclaimUnderstood = p[K.RECLAIM_UNDERSTOOD] ?: false,
             freeableSaidBytes = p[K.FREEABLE_SAID_BYTES] ?: 0L,
             stallAlerts = p[K.STALL_ALERTS] ?: 0,
-            stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
+            stallAlertAt = p[K.STALL_ALERT_AT] ?: 0,
+            confirmWindow = p[K.CONFIRM_OPENED_AT]?.let { at ->
+                EvidenceRules.ConfirmWindow(
+                    openedAt = at,
+                    presentAtTap = p[K.CONFIRM_PRESENT].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+                )
+            }
         ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }
     }
 
@@ -652,6 +667,33 @@ class OptionsRepo(private val context: Context) {
         if (ids.isEmpty()) return
         val strings = ids.map { it.toString() }.toSet()
         write { it[K.COPIES_NEED_CONSENT] = (it[K.COPIES_NEED_CONSENT] ?: emptySet()) - strings }
+    }
+
+    /**
+     * Stores the "Confirm uploads" window, or forgets it. The tap time and
+     * the copies present then go in one write, so no reader ever sees one
+     * without the other; DataStore has it on disk before this returns.
+     */
+    suspend fun setConfirmWindow(window: EvidenceRules.ConfirmWindow?) {
+        write { p ->
+            if (window == null) {
+                p.remove(K.CONFIRM_OPENED_AT)
+                p.remove(K.CONFIRM_PRESENT)
+            } else {
+                p[K.CONFIRM_OPENED_AT] = window.openedAt
+                p[K.CONFIRM_PRESENT] = window.presentAtTap.map { it.toString() }.toSet()
+            }
+        }
+    }
+
+    /** Forgets the window opened at [openedAt] - not a newer tap's. */
+    suspend fun clearConfirmWindow(openedAt: Long) {
+        write { p ->
+            if (p[K.CONFIRM_OPENED_AT] == openedAt) {
+                p.remove(K.CONFIRM_OPENED_AT)
+                p.remove(K.CONFIRM_PRESENT)
+            }
+        }
     }
 
     /** Options export for the snapshot (user-visible options only). */

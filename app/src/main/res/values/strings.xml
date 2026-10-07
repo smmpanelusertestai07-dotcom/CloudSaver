@@ -133,7 +133,7 @@
     <string name="confirm_none_title">Nothing confirmed yet</string>
     <string name="note_freeable_title">%1$s of space can be freed</string>
     <string name="note_freeable_text">Ente has these photos and videos. Tap to see them and free up space on your phone.</string>
-    <string name="confirm_none_text">No copy has left the Ente Saver folder yet. In Ente Photos, open Settings \u203a Free up space \u203a Free up device space and let it finish, then tap Confirm uploads in Ente again.</string>
+    <string name="confirm_none_text">No copy left the Ente Saver folder while you were in Ente. Tap Confirm uploads in Ente first. Then, in Ente Photos, open Settings \u203a Free up space \u203a Free up device space, let it finish, and come back here.</string>
     <plurals name="confirm_result_line">
         <item quantity="one">%1$d file confirmed as backed up</item>
         <item quantity="other">%1$d files confirmed as backed up</item>

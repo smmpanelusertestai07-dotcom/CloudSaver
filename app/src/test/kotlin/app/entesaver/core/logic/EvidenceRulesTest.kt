@@ -207,6 +207,49 @@ class EvidenceRulesTest {
         assertNull(EvidenceRules.aloneInFlight(listOf(copy(1, hoursAgo = 8)), now))
     }
 
+    // ---- graded neighbours still compete -------------------------------------
+
+    private fun graded(id: Long, hoursAgo: Long = 12 * 24, gone: Boolean = false) =
+        copy(id, gone = gone, hoursAgo = hoursAgo).copy(graded = true)
+
+    @Test
+    fun `an AGED or VERIFIED copy still waiting means nothing is alone`() {
+        // Copy 1 has sat in the folder for twelve days (AGED), or its batch
+        // was paid for by camera photos (VERIFIED). Ente can still send it, so
+        // fresh copy 2 released "alone" beside it is not alone.
+        assertNull(EvidenceRules.aloneInFlight(listOf(graded(1), copy(2)), now))
+    }
+
+    @Test
+    fun `a pace match never upgrades a graded copy`() {
+        assertNull(EvidenceRules.aloneInFlight(listOf(graded(1, hoursAgo = 1)), now))
+    }
+
+    @Test
+    fun `a vanished copy beside a graded one is never its own proof`() {
+        // Ente sent graded copy 1 (the same size) and never had copy 2, which
+        // the person then deleted. The bytes cover copy 2 - nothing more.
+        val result = EvidenceRules.attributeTraffic(
+            listOf(graded(1), copy(2, gone = true)),
+            txSinceEarliest = 3_000_000,
+            now = now
+        )
+        assertEquals(EvidenceRules.Attribution.BYTES_SENT, result[2L])
+        // A graded copy is neither settled nor judged here.
+        assertNull(result[1L])
+    }
+
+    @Test
+    fun `paced proof is possible only while every waiting copy can still be judged`() {
+        assertTrue(EvidenceRules.pacedProofPossible(emptyList(), now))
+        assertTrue(EvidenceRules.pacedProofPossible(listOf(copy(1)), now))
+        for (blocker in listOf(copy(1, hoursAgo = 8), graded(1))) {
+            assertFalse(EvidenceRules.pacedProofPossible(listOf(blocker), now))
+            // The same rule as aloneInFlight: nothing beside it is ever alone.
+            assertNull(EvidenceRules.aloneInFlight(listOf(blocker, copy(2)), now))
+        }
+    }
+
     // ---- the return from Ente's free-up screen ------------------------------
 
     private val tapAt = now - 10 * 60_000L
@@ -253,6 +296,42 @@ class EvidenceRulesTest {
         assertFalse(collected(ours = true))
         assertFalse(collected(evidence = Evidence.VERIFIED))
         assertFalse(collected(evidence = Evidence.CONFIRMED_PACED))
+    }
+
+    private fun held(
+        window: EvidenceRules.ConfirmWindow? = this.window,
+        id: Long = 1,
+        at: Long = now,
+        evidence: Evidence = Evidence.NONE,
+        ours: Boolean = false
+    ) = EvidenceRules.heldForReturn(window, id, at, evidence, ours)
+
+    @Test
+    fun `while the window is open other passes leave its copies for the return`() {
+        // The hourly worker runs while the person is on Ente's free-up
+        // screen: the copies Ente is collecting are not re-sent.
+        assertTrue(held())
+        assertTrue(held(evidence = Evidence.AGED))
+        // Missing at the tap, our own deletion, or real proof: judged normally.
+        assertFalse(held(id = 2))
+        assertFalse(held(ours = true))
+        assertFalse(held(evidence = Evidence.VERIFIED))
+        assertFalse(held(window = null))
+    }
+
+    @Test
+    fun `a closed window holds nothing, so no copy waits on it for good`() {
+        assertTrue(EvidenceRules.isOpen(window, tapAt + Defaults.CONFIRM_WINDOW_MS))
+        assertFalse(EvidenceRules.isOpen(window, tapAt + Defaults.CONFIRM_WINDOW_MS + 1))
+        assertFalse(held(at = tapAt + Defaults.CONFIRM_WINDOW_MS + 1))
+        assertFalse(held(at = tapAt - 1))
+    }
+
+    @Test
+    fun `only a held copy can be collected`() {
+        for (id in listOf(1L, 2L)) for (ev in Evidence.entries) for (ours in listOf(true, false)) {
+            if (collected(id = id, evidence = ev, ours = ours)) assertTrue(held(id = id, evidence = ev, ours = ours))
+        }
     }
 
     @Test

@@ -40,6 +40,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
 import org.junit.Before
@@ -72,6 +73,7 @@ class PipelineE2eTest {
         runBlocking {
             AppDb.get(context).clearAllTables()
             OptionsRepo.get(context).useDefaultFolders()
+            OptionsRepo.get(context).setConfirmWindow(null)
         }
     }
 
@@ -402,8 +404,8 @@ class PipelineE2eTest {
                 after.pastOutputRoots.any { it.trimEnd('/') == Defaults.OUTPUT_DIR }
             )
 
-            val window = MaintainEngine(context).openConfirmWindow()
-            MaintainEngine(context).confirmPass(window)
+            assertNotNull(MaintainEngine(context).openConfirmWindow())
+            MaintainEngine(context).confirmPass()
             MaintainEngine(context).run()
             val waiting = db.items().released().filter { it.displayName.startsWith("e2e_move_") }
             assertEquals("copies still in the old folder are still waiting", 2, waiting.size)
@@ -426,7 +428,7 @@ class PipelineE2eTest {
             for (entry in OutputInventory(context).query(listOf(Defaults.OUTPUT_DIR)).orEmpty()) {
                 context.contentResolver.delete(entry.uri, null, null)
             }
-            MaintainEngine(context).confirmPass(window)
+            assertEquals(2, MaintainEngine(context).returnPass())
             MaintainEngine(context).run()
             assertTrue(
                 "collected copies are no longer waiting",
@@ -473,7 +475,7 @@ class PipelineE2eTest {
             // be rescanning the folder. A rescan that read the copy before the
             // move and writes after it puts the copy's row back where it was.
             awaitGalleryRescan(released.outputRelPath!!)
-            val window = MaintainEngine(context).openConfirmWindow()
+            val window = MaintainEngine(context).openConfirmWindow()!!
             assertTrue("the copy is there at the tap", released.id in window.presentAtTap)
             val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, elsewhere) }
             assertEquals(1, context.contentResolver.update(Uri.parse(released.outputUri), moved, null, null))
@@ -495,6 +497,7 @@ class PipelineE2eTest {
             for (entry in OutputInventory(context).query(listOf(elsewhere)).orEmpty()) {
                 runCatching { context.contentResolver.delete(entry.uri, null, null) }
             }
+            repo.setConfirmWindow(null)
         }
     }
 
@@ -524,13 +527,13 @@ class PipelineE2eTest {
 
         // Cleared by hand before the tap.
         assertEquals(1, context.contentResolver.delete(Uri.parse(before.outputUri), null, null))
-        val window = MaintainEngine(context).openConfirmWindow()
+        val window = MaintainEngine(context).openConfirmWindow()!!
         assertFalse(before.id in window.presentAtTap)
         assertTrue(during.id in window.presentAtTap)
 
         // Collected while the person is in Ente, judged on the return.
         assertEquals(1, context.contentResolver.delete(Uri.parse(during.outputUri), null, null))
-        MaintainEngine(context).confirmPass(window)
+        assertEquals(1, MaintainEngine(context).returnPass())
         assertEquals(Evidence.CONFIRMED_EXACT.name, db.items().byId(during.id)?.evidence)
         assertTrue(
             "a copy gone before the tap is not counted as uploaded",
@@ -545,6 +548,80 @@ class PipelineE2eTest {
             "a copy gone outside the return pass is not counted as uploaded",
             db.items().byId(later.id)?.evidence != Evidence.CONFIRMED_EXACT.name
         )
+    }
+
+    /**
+     * A pass that runs while the person is on Ente's free-up screen - the
+     * hourly worker, the end of a compress run - leaves the copies Ente is
+     * collecting for the return to judge. The return reads the window from
+     * storage, so a fresh engine, as a new process would build, still counts
+     * them; and the window is spent by that one pass.
+     */
+    @Test
+    fun aPassDuringTheEnteVisitLeavesCollectedCopiesForTheReturn() = runBlockingTest {
+        val db = AppDb.get(context)
+        val repo = OptionsRepo.get(context)
+        try {
+            val options = repo.current()
+            MediaFixtures.insertPhoto(context, name = "e2e_held_1.jpg", seed = 51, captureMillis = captureAt)
+            MediaScanner(context, db).scan()
+            val row = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_held_1.jpg" }
+            assertTrue(Stager(context, db).stageOne(row, options))
+            assertEquals(1, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
+            val released = db.items().released().single { it.displayName == "e2e_held_1.jpg" }
+            awaitGalleryRescan(released.outputRelPath!!)
+            val window = MaintainEngine(context).openConfirmWindow()!!
+            assertTrue(released.id in window.presentAtTap)
+            assertEquals(window, repo.current().confirmWindow)
+
+            // Ente collects it, and ordinary passes run before the return.
+            assertEquals(1, context.contentResolver.delete(Uri.parse(released.outputUri), null, null))
+            MaintainEngine(context).run()
+            MaintainEngine(context).confirmPass()
+            val during = db.items().byId(released.id)!!
+            assertEquals("left for the return", ItemState.RELEASED.name, during.state)
+            assertEquals(Evidence.NONE.name, Evidence.parse(during.evidence).name)
+            assertEquals(released.resendCount, during.resendCount)
+
+            assertEquals(1, MaintainEngine(context).returnPass())
+            assertEquals(Evidence.CONFIRMED_EXACT.name, db.items().byId(released.id)?.evidence)
+            assertNull("the window is spent", repo.current().confirmWindow)
+            assertNull("a second return judges nothing", MaintainEngine(context).returnPass())
+        } finally {
+            repo.setConfirmWindow(null)
+        }
+    }
+
+    /**
+     * A window nobody came back to within the hour holds nothing: it is
+     * cleared, and its copies are judged by the normal rules - never
+     * counted as collected, and never left waiting on it for good.
+     */
+    @Test
+    fun aClosedWindowIsClearedAndItsCopiesJudgedNormally() = runBlockingTest {
+        val db = AppDb.get(context)
+        val repo = OptionsRepo.get(context)
+        try {
+            val options = repo.current()
+            MediaFixtures.insertPhoto(context, name = "e2e_late_1.jpg", seed = 61, captureMillis = captureAt)
+            MediaScanner(context, db).scan()
+            val row = db.items().byState(ItemState.NEW.name).single { it.displayName == "e2e_late_1.jpg" }
+            assertTrue(Stager(context, db).stageOne(row, options))
+            assertEquals(1, Releaser(context, db).releaseBatch(options, System.currentTimeMillis()))
+            val released = db.items().released().single { it.displayName == "e2e_late_1.jpg" }
+            awaitGalleryRescan(released.outputRelPath!!)
+            val tappedAt = System.currentTimeMillis() - Defaults.CONFIRM_WINDOW_MS - 1
+            val window = MaintainEngine(context).openConfirmWindow(tappedAt)!!
+            assertTrue(released.id in window.presentAtTap)
+
+            assertEquals(1, context.contentResolver.delete(Uri.parse(released.outputUri), null, null))
+            MaintainEngine(context).run()
+            assertNull("a closed window is cleared", repo.current().confirmWindow)
+            assertNull(MaintainEngine(context).returnPass())
+            assertFalse(db.items().byId(released.id)?.evidence == Evidence.CONFIRMED_EXACT.name)
+        } finally {
+            repo.setConfirmWindow(null)
+        }
     }
 
     @Test

@@ -65,6 +65,29 @@ class PacingTest {
     }
 
     @Test
+    fun `a copy that can never be judged alone does not hold the queue`() {
+        val now = 100_000_000L
+        val fresh = EvidenceRules.Waiting(id = 2, releasedAt = now - 60_000, bytes = 1000, gone = false)
+        val timedOut = fresh.copy(id = 1, releasedAt = now - Pacing.IN_FLIGHT_TIMEOUT_MS - 1)
+        val graded = fresh.copy(id = 3, graded = true)
+        fun slots(waiting: List<EvidenceRules.Waiting>) = Pacing.releaseSlots(
+            slotsFree = Pacing.slotsFree(waiting.filter { !it.graded }.map { it.releasedAt }, now, false),
+            stagedWaiting = 3,
+            perFileProofPossible = EvidenceRules.pacedProofPossible(waiting, now)
+        )
+        // A copy that can still be proved holds the slot for its proof...
+        assertEquals(0, slots(listOf(fresh)))
+        // ...but one that never can - timed out, AGED or VERIFIED - holds
+        // nothing back for days: releases go on at the byte slice.
+        assertNull(slots(listOf(timedOut)))
+        assertNull(slots(listOf(graded)))
+        assertNull(slots(listOf(timedOut, fresh)))
+        // And no copy released beside it is ever paced-proved.
+        assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), now))
+        assertNull(EvidenceRules.aloneInFlight(listOf(graded, fresh), now))
+    }
+
+    @Test
     fun `an unused day carries forward, but only one`() {
         assertEquals(cap, Pacing.carryForward(cap, releasedYesterday = 0))
         assertEquals(cap / 2, Pacing.carryForward(cap, releasedYesterday = cap / 2))

@@ -166,6 +166,11 @@ object Pacing {
     /**
      * How many more copies may go out now: the limit, minus those still
      * waiting, ignoring any that have already timed out.
+     *
+     * A timed-out copy frees its slot, but it is still in the folder, so
+     * nothing released beside it can be proved alone. The caller asks
+     * [EvidenceRules.pacedProofPossible] first and drops the per-item limit
+     * while that is false: releases go on, and no paced proof is claimed.
      */
     fun slotsFree(
         inFlightReleasedAt: List<Long>,

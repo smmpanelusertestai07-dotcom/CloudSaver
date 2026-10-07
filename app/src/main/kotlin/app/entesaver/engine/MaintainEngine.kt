@@ -218,45 +218,76 @@ class MaintainEngine(private val context: Context) {
     }
 
     /**
-     * Quick pass for app open, folder changes and the return from "Confirm
-     * uploads"; returns the confirmed count.
+     * Quick pass for app open and folder changes; returns the confirmed count.
      *
-     * Only the return passes [window], and only once: it is the single pass
-     * allowed to read a missing copy as Ente having collected it. Every other
-     * pass - the hourly worker included - judges by the normal rules.
+     * Only [returnPass] passes [window]: it is the single pass allowed to
+     * read a missing copy as Ente having collected it. Every other pass - the
+     * hourly worker included - judges by the normal rules, and leaves the
+     * copies an open window covers for the return to judge.
      */
     suspend fun confirmPass(window: EvidenceRules.ConfirmWindow? = null): Int = Locks.maintain.withLock {
-        confirmPassLocked(window)
+        confirmPassLocked(window) ?: 0
     }
 
     /**
-     * Opens the "Confirm uploads" window, right before Ente is launched.
+     * Opens the "Confirm uploads" window, stamped [openedAt] at the tap, and
+     * stores it before Ente is launched - so it outlives this process, which
+     * a phone short of memory may well end while Ente is in front.
      *
-     * Whatever is missing already is judged first by the normal rules, and
-     * only copies still in their folders after that are remembered. Ente's
-     * free-up can only collect what is there when the person gets to it; a
-     * copy cleared earlier by hand or by a cleaner app must never be counted
-     * as uploaded because the button was tapped later.
+     * Only copies in their folders right now are remembered. Ente's free-up
+     * can only collect what is there when the person gets to it; a copy
+     * cleared earlier by hand or by a cleaner app is simply left out, and the
+     * normal rules judge it. That needs one read of the folders and nothing
+     * else, so it does not wait behind a running pass: the button answers at
+     * once. A pass running meanwhile can only make the set smaller, never
+     * larger. Null, and nothing stored, when the folders cannot be read.
      */
-    suspend fun openConfirmWindow(): EvidenceRules.ConfirmWindow = Locks.maintain.withLock {
-        confirmPassLocked(null)
+    suspend fun openConfirmWindow(openedAt: Long = System.currentTimeMillis()): EvidenceRules.ConfirmWindow? {
         val o = repo.current()
-        val now = System.currentTimeMillis()
-        val present = listOutputs(o)?.let { entries ->
-            val names = namesByFolder(entries)
-            db.items().released().filter { row ->
-                val name = row.outputName ?: return@filter false
-                name in (names[folderKey(pathOf(row))] ?: emptySet<String>())
-            }.map { it.id }.toSet()
-        }.orEmpty()
-        EvidenceRules.ConfirmWindow(openedAt = now, presentAtTap = present)
+        val entries = listOutputs(o)
+        if (entries == null) {
+            repo.setConfirmWindow(null)
+            return null
+        }
+        val names = namesByFolder(entries)
+        val present = db.items().released().filter { row ->
+            val name = row.outputName ?: return@filter false
+            name in (names[folderKey(pathOf(row))] ?: emptySet<String>())
+        }.map { it.id }.toSet()
+        val window = EvidenceRules.ConfirmWindow(openedAt = openedAt, presentAtTap = present)
+        repo.setConfirmWindow(window)
+        return window
     }
 
-    private suspend fun confirmPassLocked(window: EvidenceRules.ConfirmWindow?): Int {
+    /** Forgets the window [openedAt] opened, when Ente never came up. */
+    suspend fun dropConfirmWindow(openedAt: Long) = repo.clearConfirmWindow(openedAt)
+
+    /**
+     * The pass the first return to the app runs after "Confirm uploads", in
+     * this process or a new one: it credits the copies that were there at the
+     * tap and are gone now, and then the window is spent. Null when there was
+     * no window to judge, or it had closed - then it is cleared, and the
+     * normal rules judge those copies on the next pass.
+     */
+    suspend fun returnPass(): Int? = Locks.maintain.withLock {
+        val window = repo.current().confirmWindow ?: return@withLock null
+        if (!EvidenceRules.isOpen(window, System.currentTimeMillis())) {
+            repo.clearConfirmWindow(window.openedAt)
+            return@withLock null
+        }
+        // Kept when the folders could not be read: the next return, still
+        // inside the hour, tries again.
+        val n = confirmPassLocked(window) ?: return@withLock null
+        repo.clearConfirmWindow(window.openedAt)
+        n
+    }
+
+    /** Null when the folders could not be read, so nothing was judged. */
+    private suspend fun confirmPassLocked(window: EvidenceRules.ConfirmWindow?): Int? {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
-        val entries = listOutputs(o) ?: return 0
+        val entries = listOutputs(o) ?: return null
         step { repairStalePending(now) }
         step { detectGone(o, now, entries, summary, window) }
         step { promoteGone(now) }
@@ -327,27 +358,30 @@ class MaintainEngine(private val context: Context) {
         // Ente's byte count is everything it sent: camera photos, and every
         // other copy of ours still waiting. So the copies without evidence
         // share one count from the oldest of them, settled oldest first, and
-        // only a copy that was alone in flight can call the bytes its own.
+        // only a copy that was alone in flight - AGED and VERIFIED neighbours
+        // included - can call the bytes its own.
         val goneIds = gone.map { it.id }.toSet()
-        val waiting = db.items().released()
-            .filter { evidenceOf(it) == Evidence.NONE }
-            .map { row ->
-                EvidenceRules.Waiting(
-                    id = row.id,
-                    releasedAt = row.releasedAt ?: now,
-                    bytes = row.outputBytes ?: 0L,
-                    gone = row.id in goneIds
-                )
-            }
-        val txShared = if (waiting.any { it.gone }) {
-            txSinceRelease(waiting.minOf { it.releasedAt }, now)
+        val waiting = unprovenWaiting(now, goneIds)
+        val settled = waiting.filter { !it.graded }
+        val txShared = if (settled.any { it.gone }) {
+            txSinceRelease(settled.minOf { it.releasedAt }, now)
         } else {
             null
         }
         val attribution = EvidenceRules.attributeTraffic(waiting, txShared, now)
 
+        // A "Confirm uploads" tap still open, read now rather than at the
+        // start of the pass: the person may have tapped since - which is also
+        // why it is timed by the clock now, not by the pass. Every pass but
+        // the return leaves the copies it covers alone; once it has closed it
+        // is cleared, and they are judged normally.
+        val held = if (window == null) repo.current().confirmWindow else null
+        val heldAt = System.currentTimeMillis()
+        if (held != null && !EvidenceRules.isOpen(held, heldAt)) repo.clearConfirmWindow(held.openedAt)
+
         for (row in gone) {
             val evidence = evidenceOf(row)
+            if (EvidenceRules.heldForReturn(held, row.id, heldAt, evidence, row.appDeletedCopy)) continue
             val releasedAt = row.releasedAt ?: now
             val fileBytes = row.outputBytes ?: 0L
             val collected = window != null && EvidenceRules.collectedByFreeUp(
@@ -631,21 +665,18 @@ class MaintainEngine(private val context: Context) {
      */
     private suspend fun pacedEvidence(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
-        val released = db.items().awaitingEvidence()
-            .mapNotNull { row -> row.releasedAt?.let { row to it } }
+        // Every copy without per-file proof counts, timed out, AGED or
+        // VERIFIED: each is still in the folder, and Ente sending it later
+        // must not be credited to a newer copy that went out "alone" beside it.
+        val waiting = unprovenWaiting(now)
         // A copy that sat there for six hours without its bytes appearing is
         // the accounting failing, not succeeding slowly. The ladder drops.
-        if (released.any { (_, releasedAt) -> Pacing.isTimedOut(releasedAt, now) }) {
+        if (waiting.any { !it.graded && Pacing.isTimedOut(it.releasedAt, now) }) {
             notePacingFailure("a released copy timed out without confirmation")
         }
-        // Every waiting copy counts, timed out or not: one that timed out is
-        // still in the folder, and Ente sending it later must not be credited
-        // to a newer copy that went out "alone" beside it.
-        val waiting = released.map { (row, releasedAt) ->
-            EvidenceRules.Waiting(row.id, releasedAt, row.outputBytes ?: 0L, gone = false)
-        }
         val alone = EvidenceRules.aloneInFlight(waiting, now) ?: return
-        val row = released.first { (row, _) -> row.id == alone.id }.first
+        // Only a copy with no grade at all is ever upgraded by a byte match.
+        val row = db.items().byId(alone.id)?.takeIf { evidenceOf(it) == Evidence.NONE } ?: return
         val fileBytes = row.outputBytes ?: return
         val releasedAt = row.releasedAt ?: return
         val tx = txSinceRelease(releasedAt, now) ?: return
@@ -661,6 +692,25 @@ class MaintainEngine(private val context: Context) {
         releaser.recordDelivered(row, Evidence.CONFIRMED_PACED.name, now)
         noteCleanConfirmation()
     }
+
+    /**
+     * Every released copy without per-file proof, as paced proof, attribution
+     * and release pacing all weigh it - one definition, so the three cannot
+     * disagree about what is in flight. A copy whose release time is not
+     * known counts as graded: it competes, but it has no window to read.
+     */
+    private suspend fun unprovenWaiting(now: Long, goneIds: Set<Long> = emptySet()): List<EvidenceRules.Waiting> =
+        db.items().released()
+            .filter { !evidenceOf(it).isPerFile }
+            .map { row ->
+                EvidenceRules.Waiting(
+                    id = row.id,
+                    releasedAt = row.releasedAt ?: now,
+                    bytes = row.outputBytes ?: 0L,
+                    gone = row.id in goneIds,
+                    graded = evidenceOf(row) != Evidence.NONE || row.releasedAt == null
+                )
+            }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
 
@@ -864,12 +914,18 @@ class MaintainEngine(private val context: Context) {
     private suspend fun pacedRelease(o: Options, now: Long, summary: Summary) {
         val caps = watchdog.caps()
         val oracle = CloudCapability.hasDisappearanceOracle(caps)
-        val inFlight = db.items().awaitingEvidence().mapNotNull { it.releasedAt }
+        // The same copies paced proof weighs. While one of them can never be
+        // judged alone - timed out, or AGED or VERIFIED and still in the
+        // folder - holding the next copy back buys no proof, only a stalled
+        // queue: it goes out at the byte slice, and simply is not paced-proved.
+        val unproven = unprovenWaiting(now)
+        val inFlight = unproven.filter { !it.graded }.map { it.releasedAt }
         val slots = Pacing.slotsFree(inFlight, now, oracle, o.cleanConfirmStreak)
         val maxItems = Pacing.releaseSlots(
             slotsFree = slots,
             stagedWaiting = db.items().countByState(ItemState.STAGED.name),
-            perFileProofPossible = UsageVerifier.hasUsageAccess(context)
+            perFileProofPossible = UsageVerifier.hasUsageAccess(context) &&
+                EvidenceRules.pacedProofPossible(unproven, now)
         )
         val releasedToday = releaser.bytesReleasedToday(now)
         val budget = Pacing.dailyBudgetWithCatchUp(o.dailyCapBytes, carryForward(o, now))

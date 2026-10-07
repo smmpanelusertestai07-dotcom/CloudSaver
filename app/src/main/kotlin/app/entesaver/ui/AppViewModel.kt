@@ -86,6 +86,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -1233,21 +1234,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val confirmResult = MutableStateFlow<Int?>(null)
 
     /**
-     * Held only in memory, and used by exactly one pass: the one the return
-     * from Ente starts. Nothing else - not the hourly worker, not the folder
-     * observer - can read a missing copy as collected by Ente.
+     * The tap being turned into a window, or the return pass running. A
+     * second tap meanwhile is ignored rather than queued, and a resume in
+     * the middle of a tap - the notification shade, say - does not spend the
+     * window before Ente has even opened.
      */
-    private var confirmWindow: EvidenceRules.ConfirmWindow? = null
+    private var confirmJob: Job? = null
+
+    /** Whether this screen is in front: Ente is opened only from the front. */
+    private var inFront = false
 
     fun startConfirmFlow() {
-        viewModelScope.launch {
-            // What is missing before Ente even opens was not collected by it:
-            // it is judged now by the normal rules, and the window only
-            // covers copies still in their folders at this moment.
-            confirmWindow = withContext(Dispatchers.Default) {
-                runCatching { MaintainEngine(ctx).openConfirmWindow() }.getOrNull()
+        if (confirmJob?.isActive == true) return
+        val tappedAt = System.currentTimeMillis()
+        confirmJob = viewModelScope.launch {
+            // One read of the folders, not a pass: it does not wait behind
+            // one, so Ente opens at once. The window is on disk before Ente
+            // opens, so a return to a new process still counts it. Copies
+            // already missing are left out and judged by the normal rules.
+            val engine = MaintainEngine(ctx)
+            val window = withContext(Dispatchers.IO) {
+                runCatching { engine.openConfirmWindow(tappedAt) }.getOrNull()
             }
-            EnteApp.launch(ctx)
+            // A window whose Ente never came up would credit, on the next
+            // return, whatever the person cleared by hand meanwhile.
+            if ((!inFront || !EnteApp.launch(ctx)) && window != null) {
+                withContext(Dispatchers.IO) { runCatching { engine.dropConfirmWindow(window.openedAt) } }
+            }
         }
     }
 
@@ -1262,18 +1275,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun onPaused() {
+        inFront = false
+    }
+
     fun onResumed() {
         // The battery rows are re-read on every return to the app, so a
         // switch flipped on the system page shows as Allowed the moment the
         // person is back - not, as before, only after the next tap.
         refreshPowerRequirements()
         noteScreenOn()
-        val window = confirmWindow
-        if (window != null) {
-            confirmWindow = null
-            viewModelScope.launch(Dispatchers.Default) {
-                val n = runCatching { MaintainEngine(ctx).confirmPass(window) }.getOrDefault(0)
-                confirmResult.value = n
+        inFront = true
+        // The first return after "Confirm uploads" judges what Ente took, in
+        // this process or a new one: the window is read from where the tap
+        // stored it, and spent by that one pass.
+        if (confirmJob?.isActive != true) {
+            confirmJob = viewModelScope.launch(Dispatchers.Default) {
+                if (repo.current().confirmWindow == null) return@launch
+                val n = runCatching { MaintainEngine(ctx).returnPass() }.getOrNull()
+                if (n != null) confirmResult.value = n
             }
         }
         refreshHealth()

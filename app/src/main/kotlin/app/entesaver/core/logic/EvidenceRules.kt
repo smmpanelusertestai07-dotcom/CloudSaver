@@ -77,12 +77,21 @@ object EvidenceRules {
      */
     enum class MissingVerdict { PROOF_OF_UPLOAD, BYTES_SENT, RESEND, GIVE_UP, WE_DELETED_IT }
 
-    /** One released copy of ours that has no evidence yet. */
+    /**
+     * One released copy of ours without per-file proof.
+     *
+     * [graded] is a copy that already carries AGED or VERIFIED. Neither says
+     * Ente has this file - time alone, or a batch's bytes that may have been
+     * camera photos - so it still competes for Ente's traffic. But a byte
+     * match never upgrades it, and it is not settled in the running total:
+     * its window can be days old.
+     */
     data class Waiting(
         val id: Long,
         val releasedAt: Long,
         val bytes: Long,
-        val gone: Boolean
+        val gone: Boolean,
+        val graded: Boolean = false
     )
 
     /** How much of Ente's traffic a vanished copy can claim as its own. */
@@ -91,31 +100,43 @@ object EvidenceRules {
     /**
      * The copy paced proof may judge, or null.
      *
-     * Only ever the one copy of ours still waiting - and every waiting copy
-     * counts, timed out or not. A copy that timed out is still in the folder
-     * and Ente can still send it, so a newer copy released "alone" next to
-     * it would be credited with its bytes. The copy itself must also still
-     * be inside its window: past it, the count has had hours to pick up
-     * camera uploads.
+     * Only ever the one copy of ours still waiting - and every copy without
+     * per-file proof counts: timed out, AGED or VERIFIED alike. Each is still
+     * in the folder and Ente can still send it, so a newer copy released
+     * "alone" next to it would be credited with its bytes. The copy itself
+     * must have no grade yet and still be inside its window: past it, the
+     * count has had hours to pick up camera uploads.
      */
     fun aloneInFlight(waiting: List<Waiting>, now: Long): Waiting? {
         val only = waiting.singleOrNull() ?: return null
-        return if (Pacing.isTimedOut(only.releasedAt, now)) null else only
+        return if (only.graded || Pacing.isTimedOut(only.releasedAt, now)) null else only
     }
+
+    /**
+     * Whether a copy released now could ever be judged alone.
+     *
+     * Not while a copy waits that [aloneInFlight] will never accept: one
+     * that timed out, or carries a grade. Holding releases back for proof
+     * that cannot come would only stall the queue, so release pacing steps
+     * aside, and no paced proof is claimed until those copies have left the
+     * folder.
+     */
+    fun pacedProofPossible(waiting: List<Waiting>, now: Long): Boolean =
+        waiting.none { it.graded || Pacing.isTimedOut(it.releasedAt, now) }
 
     /**
      * Which vanished copies Ente's traffic can pay for.
      *
-     * [txSinceEarliest] is everything Ente sent since the oldest waiting
-     * copy went out, or null when it cannot be measured. Every waiting copy
+     * [txSinceEarliest] is everything Ente sent since the oldest ungraded
+     * copy went out, or null when it cannot be measured. Every ungraded copy
      * competes for those bytes - the ones still in the folder too - and they
      * are settled oldest first against one running total, as batches are: a
      * transmitted byte can only pay for one copy.
      *
      * Even covered, that is only BYTES_SENT: the bytes may have been camera
      * photos. PER_FILE needs what paced proof needs - the copy was the only
-     * one of ours waiting, still inside its window, and the traffic matches
-     * its size both ways.
+     * one of ours waiting, graded ones included, still inside its window,
+     * and the traffic matches its size both ways.
      */
     fun attributeTraffic(
         waiting: List<Waiting>,
@@ -123,11 +144,12 @@ object EvidenceRules {
         now: Long
     ): Map<Long, Attribution> {
         val result = HashMap<Long, Attribution>()
-        for (copy in waiting) if (copy.gone) result[copy.id] = Attribution.UNPROVEN
+        val ungraded = waiting.filter { !it.graded }
+        for (copy in ungraded) if (copy.gone) result[copy.id] = Attribution.UNPROVEN
         if (txSinceEarliest == null || txSinceEarliest < 0) return result
         val alone = aloneInFlight(waiting, now)
         var required = 0L
-        for (copy in waiting.sortedWith(compareBy({ it.releasedAt }, { it.id }))) {
+        for (copy in ungraded.sortedWith(compareBy({ it.releasedAt }, { it.id }))) {
             // A copy of unknown size cannot be covered by anything, and once
             // the total stops covering one copy it covers none after it.
             if (copy.bytes <= 0) break
@@ -144,11 +166,38 @@ object EvidenceRules {
     }
 
     /**
-     * The moment "Confirm uploads" opened Ente, and which copies were still
-     * in their folders right then - after a normal pass had already judged
-     * everything missing before the tap.
+     * The moment "Confirm uploads" was tapped, and which copies were still in
+     * their folders right then. A copy already missing is not in it, so the
+     * normal rules judge it as if the button had never been tapped.
      */
     data class ConfirmWindow(val openedAt: Long, val presentAtTap: Set<Long>)
+
+    /** Whether [window] still stands: soon after the tap, and not before it. */
+    fun isOpen(window: ConfirmWindow?, now: Long): Boolean = window != null &&
+        now >= window.openedAt &&
+        now - window.openedAt <= Defaults.CONFIRM_WINDOW_MS
+
+    /**
+     * Whether a missing copy is left for the return from Ente to judge.
+     *
+     * While the person is on Ente's free-up screen, any other pass - the
+     * hourly worker, the end of a compress run, a pass in a new process -
+     * would judge the copies Ente is collecting by the normal rules and send
+     * them again. So it leaves them exactly as they are, and grants nothing:
+     * only the return pass may read the absence as Ente's. Once the window
+     * has closed they are judged normally, so nothing waits on it for good.
+     */
+    fun heldForReturn(
+        window: ConfirmWindow?,
+        id: Long,
+        now: Long,
+        evidence: Evidence,
+        appDeletedIt: Boolean
+    ): Boolean = window != null &&
+        isOpen(window, now) &&
+        id in window.presentAtTap &&
+        !appDeletedIt &&
+        (evidence == Evidence.NONE || evidence == Evidence.AGED)
 
     /**
      * Whether a copy missing on the return from Ente's free-up screen left
@@ -168,12 +217,7 @@ object EvidenceRules {
         appDeletedIt: Boolean,
         txSinceRelease: Long?,
         fileBytes: Long
-    ): Boolean = window != null &&
-        now >= window.openedAt &&
-        now - window.openedAt <= Defaults.CONFIRM_WINDOW_MS &&
-        id in window.presentAtTap &&
-        !appDeletedIt &&
-        (evidence == Evidence.NONE || evidence == Evidence.AGED) &&
+    ): Boolean = heldForReturn(window, id, now, evidence, appDeletedIt) &&
         (txSinceRelease == null || confirmedExact(txSinceRelease, fileBytes))
 
     // Whether an original may be reclaimed is decided by ReclaimRules.refuse,
