@@ -24,6 +24,7 @@ import app.entesaver.core.logic.GoneReason
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.KeptCopies
 import app.entesaver.core.logic.KnownClouds
+import app.entesaver.core.logic.LeftoverRules
 import app.entesaver.core.logic.MediaProfile
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputMode
@@ -2217,6 +2218,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             repo.setBool(OptionsRepo.K.OLD_FILES_CLEANED, true)
             leftoverUris.value = emptyList()
         }
+    }
+
+    /**
+     * Android's answer to Remove. Cancel, or a partly approved delete, leaves
+     * the card up for the files still there instead of hiding it for good.
+     */
+    fun onLeftoversRemoveResult(asked: List<Uri>, deleted: List<Uri>) {
+        if (LeftoverRules.allRemoved(asked, deleted)) onLeftoversCleaned() else detectLeftoverFiles()
     }
 
     // ---- encrypted backup / restore -----------------------------------------

@@ -1209,7 +1209,12 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 )
                 FlowRow {
                     TextButton(onClick = {
-                        val sender = vm.requestDelete(leftoverUris) { vm.onLeftoversCleaned() }
+                        // A Cancel answers with nothing deleted; only Keep or
+                        // every file gone may end the card (LeftoverRules).
+                        val asked = leftoverUris
+                        val sender = vm.requestDelete(asked) { deleted ->
+                            vm.onLeftoversRemoveResult(asked, deleted)
+                        }
                         sender?.let {
                             cleanupLauncher.launch(IntentSenderRequest.Builder(it).build())
                         }
