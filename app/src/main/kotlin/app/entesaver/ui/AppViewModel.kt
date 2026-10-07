@@ -50,6 +50,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.RatioSample
 import app.entesaver.data.db.Search
+import app.entesaver.data.db.leftFolderAtAfter
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
@@ -242,7 +243,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * True while an AGED or VERIFIED copy waits in the folder. Nothing beside
      * it can be proved by Ente's traffic, so Home offers Ente's own free-up,
-     * which is the one route to proof left.
+     * which is the one route to proof left - for the graded copies too: the
+     * return pass credits every copy without per-file proof that Ente took
+     * (EvidenceRules.collectedByFreeUp).
      */
     val gradedInFolder: StateFlow<Boolean> = db.items().gradedInFolderCountFlow()
         .map { it > 0 }
@@ -1062,11 +1065,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch
             val now = System.currentTimeMillis()
+            val state = if (never) ItemState.SKIP.name else ItemState.NEW.name
             db.items().update(
                 row.copy(
                     neverOptimise = never,
-                    state = if (never) ItemState.SKIP.name else ItemState.NEW.name,
+                    state = state,
                     skipReason = if (never) "user_excluded" else null,
+                    leftFolderAt = row.leftFolderAtAfter(state, now),
                     updatedAt = now
                 )
             )
@@ -2265,6 +2270,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             state = ItemState.DONE.name,
                             goneReason = GoneReason.APP_DELETED.name,
                             outputUri = null,
+                            leftFolderAt = current.leftFolderAtAfter(ItemState.DONE.name, now),
                             updatedAt = now
                         )
                     )

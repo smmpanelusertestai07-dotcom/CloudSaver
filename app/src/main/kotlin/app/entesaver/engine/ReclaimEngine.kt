@@ -21,6 +21,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.ReclaimBatchRow
 import app.entesaver.data.db.ReclaimItemRow
+import app.entesaver.data.db.leftFolderAtAfter
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.HeicSupport
@@ -685,7 +686,12 @@ class ReclaimEngine(private val context: Context) {
                 // A copy that cannot be proved good means the original stays,
                 // and the item goes back for another pass.
                 db.items().update(
-                    row.copy(state = ItemState.NEW.name, evidence = Evidence.NONE.name, updatedAt = now)
+                    row.copy(
+                        state = ItemState.NEW.name,
+                        evidence = Evidence.NONE.name,
+                        leftFolderAt = row.leftFolderAtAfter(ItemState.NEW.name, now),
+                        updatedAt = now
+                    )
                 )
                 skipped += Outcome(row.fingerprint, row.displayName, false, "integrity_failed")
                 continue
@@ -859,9 +865,13 @@ class ReclaimEngine(private val context: Context) {
             val cur = db.items().byId(row.id) ?: return@withTransaction null
             val claimed = identity != null && claimFingerprint(cur.id, identity.fingerprint)
             val fingerprint = identity?.fingerprint?.takeIf { claimed } ?: cur.fingerprint
+            val freed = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name
             db.items().update(
                 cur.copy(
-                    state = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name,
+                    state = freed,
+                    // A copy still waiting in its folder leaves it now, as
+                    // far as every pass that reads the folder is concerned.
+                    leftFolderAt = cur.leftFolderAtAfter(freed, now),
                     // The original is gone either way. In place, the file
                     // standing in for it is present, which is what stops the
                     // maintenance pass reading this as a deletion - but only
@@ -1042,6 +1052,7 @@ class ReclaimEngine(private val context: Context) {
                     // upload it twice.
                     state = ItemState.DONE.name,
                     originalMissing = false,
+                    leftFolderAt = cur.leftFolderAtAfter(ItemState.DONE.name, now),
                     updatedAt = now
                 )
             )

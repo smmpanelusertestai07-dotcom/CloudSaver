@@ -68,7 +68,13 @@ object SnapshotCodec {
          * restored duplicate read as an unexplained skip and sat in Home's
          * problem list for good. Optional, like the keys above.
          */
-        val duplicateOf: String? = null
+        val duplicateOf: String? = null,
+        /**
+         * When the copy left the upload folder. Optional, like the keys
+         * above: a file without it - every one written before 12.2 - reads
+         * as not recorded, which the app reads as it always did.
+         */
+        val leftFolderAt: Long? = null
     )
 
     data class SnapBatch(
@@ -163,6 +169,7 @@ object SnapshotCodec {
             if (i.neverOptimise) o.put("never", true)
             i.outputRelPath?.let { o.put("outRel", it) }
             i.duplicateOf?.let { o.put("dupOf", it) }
+            i.leftFolderAt?.let { o.put("leftAt", it) }
             items.put(o)
         }
         root.put("items", items)
@@ -259,7 +266,8 @@ object SnapshotCodec {
                 keptUri = o.optString("kept", "").ifEmpty { null },
                 neverOptimise = o.optBoolean("never", false),
                 outputRelPath = o.optString("outRel", "").ifEmpty { null },
-                duplicateOf = o.optString("dupOf", "").ifEmpty { null }
+                duplicateOf = o.optString("dupOf", "").ifEmpty { null },
+                leftFolderAt = if (o.has("leftAt")) o.optLong("leftAt") else null
             )
         }
         val batches = mutableListOf<SnapBatch>()

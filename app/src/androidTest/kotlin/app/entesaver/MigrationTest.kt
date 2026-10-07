@@ -3,6 +3,8 @@ package app.entesaver
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
+import androidx.sqlite.driver.AndroidSQLiteDriver
+import androidx.sqlite.execSQL
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.entesaver.core.logic.Evidence
@@ -179,6 +181,60 @@ class MigrationTest {
         )
         assertEquals("a duplicate hash must not be stored twice", 1, db.ledger().all().size)
 
+        // v9's leave time: an upgraded row has none recorded.
+        assertNull(carried.first().leftFolderAt)
+
+        db.close()
+    }
+
+    /**
+     * 8 to 9 on its own, from a database that shipped as version 8: every
+     * row comes through, none with a leave time, and copies that left before
+     * the upgrade are still read as they were - a released row by its last
+     * change, a row that was never released not at all.
+     */
+    @Test
+    fun version8DatabaseGainsTheLeaveTime() = runBlocking {
+        seedVersion2()
+        // Up to 8 with the shipped steps, on the file itself.
+        val path = context.getDatabasePath(dbName).path
+        val raw = AndroidSQLiteDriver().open(path)
+        for (m in AppDb.MIGRATIONS.filter { it.endVersion <= 8 }) m.migrate(raw)
+        // A copy that left the folder under 8: gone, its release time kept,
+        // its row last written at 5000.
+        raw.execSQL(
+            "INSERT INTO `items` (fingerprint, displayName, sizeBytes, dateModified, " +
+                "captureAt, dateAdded, durationMs, mimeType, isVideo, state, evidence, " +
+                "attempts, originalMissing, appDeletedCopy, fromImport, updatedAt, " +
+                "releasedAt, txObserved, resendCount, neverOptimise, predictedBytes, " +
+                "srcPixels, outPixels, priorityAt) " +
+                "VALUES ('fp-2', 'left_under_v8.jpg', 2048, 1, 1, 1, 0, 'image/jpeg', " +
+                "0, '${ItemState.GONE.name}', 'VERIFIED', 0, 0, 0, 0, 5000, 2000, " +
+                "0, 0, 0, 0, 0, 0, 0)"
+        )
+        raw.execSQL("PRAGMA user_version = 8")
+        raw.close()
+
+        val db = Room.databaseBuilder(context, AppDb::class.java, dbName)
+            .addMigrations(*AppDb.MIGRATIONS)
+            .build()
+        val rows = db.items().all().associateBy { it.fingerprint }
+        assertEquals("every row survives", setOf("fp-1", "fp-2"), rows.keys)
+        assertNull(rows.getValue("fp-1").leftFolderAt)
+        assertNull(rows.getValue("fp-2").leftFolderAt)
+        assertEquals(ItemState.GONE.name, rows.getValue("fp-2").state)
+        assertEquals(2000L, rows.getValue("fp-2").releasedAt)
+
+        // The legacy reading: the gone row by its last change, the waiting
+        // one (still RELEASED) not at all.
+        val left = db.items().leftReleasedSince(4000)
+        assertEquals(listOf(rows.getValue("fp-2").id), left.map { it.id })
+        assertEquals(5000L, left.single().leftAt)
+        assertTrue(db.items().leftReleasedSince(5001).isEmpty())
+
+        // And the column is there to write.
+        db.items().update(rows.getValue("fp-2").copy(leftFolderAt = 4500))
+        assertEquals(4500L, db.items().leftReleasedSince(4000).single().leftAt)
         db.close()
     }
 

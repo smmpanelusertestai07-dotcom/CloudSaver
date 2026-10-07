@@ -102,9 +102,11 @@ object EvidenceRules {
 
     /**
      * A copy of ours that was released and has since left the folder - gone,
-     * finished, or sent back to the queue - by its row's last change.
+     * finished, freed, skipped or sent back to the queue.
      *
-     * [leftAt] is that change; it is never earlier than the copy leaving.
+     * [leftAt] is when it left: recorded by the write that took it out of the
+     * folder, and moved by no later one. A copy that left before that was
+     * recorded is dated by its row's last change, which is never earlier.
      * [provenAt] is when the copy got per-file proof, or null without it.
      */
     data class Left(val id: Long, val leftAt: Long, val provenAt: Long?)
@@ -202,6 +204,11 @@ object EvidenceRules {
      * them again. So it leaves them exactly as they are, and grants nothing:
      * only the return pass may read the absence as Ente's. Once the window
      * has closed they are judged normally, so nothing waits on it for good.
+     *
+     * Every copy without per-file proof is held, graded ones too: AGED and
+     * VERIFIED say nothing about this file reaching Ente, and Ente's free-up
+     * removing it is exactly the per-file signal they lack. That is why Home
+     * offers "Confirm uploads" while graded copies wait.
      */
     fun heldForReturn(
         window: ConfirmWindow?,
@@ -213,7 +220,7 @@ object EvidenceRules {
         isOpen(window, now) &&
         id in window.presentAtTap &&
         !appDeletedIt &&
-        (evidence == Evidence.NONE || evidence == Evidence.AGED)
+        !evidence.isPerFile
 
     /**
      * Whether a copy missing on the return from Ente's free-up screen left
@@ -221,9 +228,11 @@ object EvidenceRules {
      *
      * The return is the only evidence, so it is believed narrowly: only on
      * the one pass the return starts, only soon after the tap, only for a
-     * copy that was still there at the tap, and never over a finding with
-     * real proof behind it. Where Ente's traffic can be read, the copy's
-     * bytes must also have gone out.
+     * copy that was still there at the tap, and never over per-file proof,
+     * which needs nothing more. A graded copy - AGED or VERIFIED - is
+     * believed like an ungraded one: neither grade is proof Ente has this
+     * file. Where Ente's traffic can be read, the copy's bytes must also have
+     * gone out.
      */
     fun collectedByFreeUp(
         window: ConfirmWindow?,

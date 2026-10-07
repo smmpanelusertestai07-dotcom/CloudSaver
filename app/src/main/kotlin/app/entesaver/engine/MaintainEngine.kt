@@ -27,6 +27,7 @@ import app.entesaver.core.logic.Stops
 import app.entesaver.data.EnteApp
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
+import app.entesaver.data.db.leftFolderAtAfter
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.MediaScanner
@@ -399,6 +400,7 @@ class MaintainEngine(private val context: Context) {
                     row.copy(
                         state = ItemState.GONE.name,
                         goneReason = GoneReason.USER_DELETED.name,
+                        leftFolderAt = now,
                         updatedAt = now
                     )
                 )
@@ -424,6 +426,7 @@ class MaintainEngine(private val context: Context) {
                         row.copy(
                             state = ItemState.GONE.name,
                             goneReason = GoneReason.APP_DELETED.name,
+                            leftFolderAt = now,
                             updatedAt = now
                         )
                     )
@@ -438,6 +441,7 @@ class MaintainEngine(private val context: Context) {
                             ).name,
                             confirmedAt = now,
                             txObserved = tx,
+                            leftFolderAt = now,
                             updatedAt = now
                         )
                     )
@@ -464,6 +468,7 @@ class MaintainEngine(private val context: Context) {
                                 evidence, Evidence.VERIFIED
                             ).name,
                             txObserved = tx,
+                            leftFolderAt = now,
                             updatedAt = now
                         )
                     )
@@ -480,13 +485,13 @@ class MaintainEngine(private val context: Context) {
                     // Home would count a file that can never move.
                     if (row.originalMissing) {
                         db.items().update(
-                            row.copy(state = ItemState.DONE.name, updatedAt = now)
+                            row.copy(state = ItemState.DONE.name, leftFolderAt = now, updatedAt = now)
                         )
                         continue
                     }
                     if (alreadyInLedger(row)) {
                         db.items().update(
-                            row.copy(state = ItemState.DONE.name, updatedAt = now)
+                            row.copy(state = ItemState.DONE.name, leftFolderAt = now, updatedAt = now)
                         )
                         continue
                     }
@@ -496,7 +501,11 @@ class MaintainEngine(private val context: Context) {
                             evidence = Evidence.NONE.name,
                             goneReason = GoneReason.USER_DELETED.name,
                             outputUri = null,
+                            // Its release time goes, so the queue sees new
+                            // work; when it left stays, for the copy that
+                            // went out beside it.
                             releasedAt = null,
+                            leftFolderAt = now,
                             batchId = null,
                             appDeletedCopy = false,
                             resendCount = row.resendCount + 1,
@@ -515,6 +524,7 @@ class MaintainEngine(private val context: Context) {
                             state = ItemState.SKIP.name,
                             skipReason = "removed_before_upload",
                             outputUri = null,
+                            leftFolderAt = now,
                             updatedAt = now
                         )
                     )
@@ -572,6 +582,7 @@ class MaintainEngine(private val context: Context) {
                         state = ItemState.NEW.name,
                         outputUri = null,
                         releasedAt = null,
+                        leftFolderAt = now,
                         updatedAt = now
                     )
                 )
@@ -736,17 +747,17 @@ class MaintainEngine(private val context: Context) {
     /**
      * Every copy of ours that left the folder since the one copy in [waiting]
      * went out, whatever it is now: Ente may have been sending it, all of it
-     * or any part, while it was there. Its row's last change is when it
-     * left, or later; per-file proof only counts from when it was granted.
-     * With more than one copy waiting nothing is alone anyway, so nothing is
-     * read.
+     * or any part, while it was there. Dated by when it left - which no later
+     * write to the row moves, and a copy sent back to the queue keeps; per-file
+     * proof only counts from when it was granted. With more than one copy
+     * waiting nothing is alone anyway, so nothing is read.
      */
     private suspend fun leftDuring(waiting: List<EvidenceRules.Waiting>): List<EvidenceRules.Left> {
         val since = waiting.singleOrNull()?.releasedAt ?: return emptyList()
         return db.items().leftReleasedSince(since).map { row ->
             EvidenceRules.Left(
                 id = row.id,
-                leftAt = row.updatedAt,
+                leftAt = row.leftAt,
                 provenAt = row.confirmedAt?.takeIf { Evidence.parse(row.evidence).isPerFile }
             )
         }
@@ -1103,6 +1114,7 @@ class MaintainEngine(private val context: Context) {
                         state = ItemState.DONE.name,
                         goneReason = GoneReason.APP_DELETED.name,
                         outputUri = null,
+                        leftFolderAt = current.leftFolderAtAfter(ItemState.DONE.name, now),
                         updatedAt = now
                     )
                 )

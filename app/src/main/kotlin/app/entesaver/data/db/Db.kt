@@ -17,6 +17,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.StageRules
 import kotlinx.coroutines.flow.Flow
 
@@ -89,6 +90,14 @@ data class ItemRow(
     val batchId: Long? = null,
     val releasedAt: Long? = null,
     val confirmedAt: Long? = null,
+    /**
+     * When the copy last left the upload folder: the write that took the row
+     * out of RELEASED, whatever it went to - gone, finished, freed, skipped
+     * or sent back to the queue. Written there and nowhere else, so no later
+     * bookkeeping on the row moves it, and kept when [releasedAt] is cleared.
+     * Null for a row that never left, or left before 12.2 recorded it.
+     */
+    val leftFolderAt: Long? = null,
     val attempts: Int = 0,
     val lastError: String? = null,
     val originalMissing: Boolean = false,
@@ -128,6 +137,14 @@ data class ItemRow(
     val predictedBytes: Long = 0,
     val updatedAt: Long = 0
 )
+
+/**
+ * The [ItemRow.leftFolderAt] a write taking this row to [state] at [now]
+ * carries: [now] when the write takes it out of RELEASED, what it had
+ * otherwise. For writers that do not know the state they found the row in.
+ */
+fun ItemRow.leftFolderAtAfter(state: String, now: Long): Long? =
+    if (this.state == ItemState.RELEASED.name && state != ItemState.RELEASED.name) now else leftFolderAt
 
 /**
  * One reclaim batch, so "what did I delete last week" has an answer.
@@ -282,7 +299,7 @@ data class StateCount(val state: String, val cnt: Int)
  * A released copy that has left the folder since: when its row last changed,
  * and what it was proved with.
  */
-data class LeftRow(val id: Long, val updatedAt: Long, val evidence: String, val confirmedAt: Long?)
+data class LeftRow(val id: Long, val leftAt: Long, val evidence: String, val confirmedAt: Long?)
 
 /** How many released copies wait in one folder. */
 data class FolderCount(val outputRelPath: String, val cnt: Int)
@@ -337,6 +354,14 @@ private const val RECLAIMABLE_BYTES =
         "AND COALESCE(confirmedAt, releasedAt, :settledBefore + 1) <= :settledBefore " +
         "AND (evidence IN ('CONFIRMED_EXACT', 'CONFIRMED', 'CONFIRMED_PACED') " +
         "OR (:includeVerified AND evidence = 'VERIFIED'))"
+
+/**
+ * When a row that is not RELEASED left the folder: [ItemRow.leftFolderAt],
+ * or for a row that left before 12.2 recorded it, a released row's last
+ * change. Null - never matched - for a row that was never released.
+ */
+private const val LEFT_AT =
+    "COALESCE(leftFolderAt, CASE WHEN releasedAt IS NOT NULL THEN updatedAt END)"
 
 @Dao
 interface ItemDao {
@@ -532,12 +557,16 @@ interface ItemDao {
     suspend fun released(): List<ItemRow>
 
     /**
-     * Copies that were released and left the folder at or after [since]: by
-     * the row's last change, which is never earlier than the copy leaving.
+     * Copies that left the folder at or after [since], whatever they are now,
+     * with when they left: [ItemRow.leftFolderAt], kept by every way out of
+     * RELEASED - a copy sent back to the queue too, whose release time is
+     * cleared. A row that left before that was recorded falls back to what
+     * was read before: a released row's last change, which is never earlier
+     * than the copy leaving.
      */
     @Query(
-        "SELECT id, updatedAt, evidence, confirmedAt FROM items " +
-            "WHERE state != 'RELEASED' AND releasedAt IS NOT NULL AND updatedAt >= :since"
+        "SELECT id, $LEFT_AT AS leftAt, evidence, confirmedAt FROM items " +
+            "WHERE state != 'RELEASED' AND $LEFT_AT >= :since"
     )
     suspend fun leftReleasedSince(since: Long): List<LeftRow>
 
@@ -1128,7 +1157,7 @@ interface CloudCapabilityDao {
         LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
         ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -1371,6 +1400,19 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v9 records when each copy left the upload folder, so a copy that
+         * shared Ente's traffic with another is known by when it left - not
+         * by its row's last change, which any bookkeeping moves, and not only
+         * while it keeps a release time, which a copy sent back to the queue
+         * loses. Existing rows stay empty and are read as they were before.
+         */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `leftFolderAt` INTEGER")
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
@@ -1378,7 +1420,7 @@ abstract class AppDb : RoomDatabase() {
          */
         val MIGRATIONS = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9
         )
 
         @Volatile
