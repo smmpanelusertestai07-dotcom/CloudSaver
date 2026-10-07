@@ -73,6 +73,7 @@ import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
 import app.entesaver.util.PowerPages
 import app.entesaver.util.SpaceLimits
+import app.entesaver.util.SqlChunks
 import app.entesaver.util.Storage
 import app.entesaver.util.TamperCheck
 import app.entesaver.util.TrialRecord
@@ -87,6 +88,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -1850,7 +1852,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 TrialRecord.write(ctx, ids)
                 trialIds.value = ids
                 if (staged.isNotEmpty()) {
-                    val rows = db.items().byIds(ids.toList())
+                    val rows = SqlChunks.read(ids) { db.items().byIds(it) }
                     activityLog.record(
                         ActivityLog.Kind.OPTIMISED,
                         detail = ctx.getString(R.string.trial_activity),
@@ -1882,7 +1884,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             Locks.release.withLock {
                 val now = System.currentTimeMillis()
-                for (current in db.items().byIds(ids.toList())) {
+                for (current in SqlChunks.read(ids) { db.items().byIds(it) }) {
                     val path = current.stagePath
                     if (current.state != ItemState.STAGED.name || path == null) continue
                     runCatching { File(path).delete() }
@@ -2128,8 +2130,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .map { o -> o.copiesNeedConsent.mapNotNull { it.toLongOrNull() } }
         .distinctUntilChanged()
         .map { ids ->
-            if (ids.isEmpty()) emptyList() else db.items().byIds(ids).filter { it.outputUri != null }
+            // Nothing bounds how many ids collect here, so they are read a
+            // slice at a time (SqlChunks), and a failed read shows no card
+            // rather than closing the app every time Home opens.
+            SqlChunks.read(ids) { db.items().byIds(it) }.filter { it.outputUri != null }
         }
+        .catch { emit(emptyList()) }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, screenLocal, emptyList())
 
@@ -2206,8 +2212,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // A copy whose original the ledger knows is never a leftover,
             // whatever its state: one restored from a history file may still
             // be waiting for Ente, and removing it would mean Ente never gets it.
-            val known = named.map { it.second }.distinct().chunked(500)
-                .flatMap { db.items().knownFingerprints(it) }.toHashSet()
+            val known = SqlChunks.read(named.map { it.second }.distinct()) { db.items().knownFingerprints(it) }
+                .toHashSet()
             leftoverUris.value = named.filter { it.second !in known }.map { it.first.uri }
         }
     }
@@ -2270,6 +2276,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 SnapshotStore.ImportResult.Unreadable -> {
                     pendingImportUri.value = null
                     transferMessage.value = failLabel
+                }
+                SnapshotStore.ImportResult.TooLarge -> {
+                    pendingImportUri.value = null
+                    transferMessage.value = ctx.getString(R.string.transfer_too_large)
                 }
             }
         }
