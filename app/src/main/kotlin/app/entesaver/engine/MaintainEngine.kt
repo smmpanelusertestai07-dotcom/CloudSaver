@@ -93,9 +93,6 @@ class MaintainEngine(private val context: Context) {
     suspend fun run(): Summary = Locks.maintain.withLock { runLocked() }
 
     private suspend fun runLocked(): Summary {
-        // A card put in since restored copies were matched asks for another
-        // match, kept even if it is out again before the next compress run.
-        step { ReattachEngine.pending(context) }
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
@@ -767,9 +764,9 @@ class MaintainEngine(private val context: Context) {
     private suspend fun leftDuring(waiting: List<EvidenceRules.Waiting>): List<EvidenceRules.Left> {
         val since = waiting.singleOrNull()?.releasedAt ?: return emptyList()
         // A restore lands mid-run, and its copies are matched to the folder
-        // only on the next run - or a volume missing when they were is back.
-        // Until then any of them may be there, sending, so each counts as in
-        // the folder for the whole window. Read before
+        // only on the next run - and looked for again on every run while the
+        // restore is watched. Until then any of them may be there, sending,
+        // so each counts as in the folder for the whole window. Read before
         // the copies that left: the reattach pass dates those it does not
         // find before it marks the restore matched, so a pass finishing in
         // between leaves each in one list or the other.

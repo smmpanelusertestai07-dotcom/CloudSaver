@@ -90,6 +90,9 @@ class HistoryFileE2eTest {
     fun tearDown(): Unit = runBlocking {
         removeAll()
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, onboardingWas)
+        // A restore is watched for a week; the tests after this one are not
+        // about that.
+        repo.setLong(OptionsRepo.K.RESTORED_AT, 0L)
     }
 
     @Test

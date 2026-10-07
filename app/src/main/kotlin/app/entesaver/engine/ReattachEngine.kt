@@ -12,7 +12,6 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.OutputInventory
 import app.entesaver.util.Locks
-import app.entesaver.util.Volumes
 import java.io.File
 import kotlinx.coroutines.sync.withLock
 
@@ -25,34 +24,20 @@ import kotlinx.coroutines.sync.withLock
  * the folder copied across - the filenames are the last thing left, and each
  * one carries its original's fingerprint.
  *
- * Runs once, after the first scan following a recovery - and again when a
- * storage volume is in that was not then, since copies on it were missed.
- * Adopted rows carry no upload evidence: the file being present proves it
- * was made, not sent.
+ * Runs after the first scan following a recovery, and on every compress run
+ * while a restore is watched (ReattachRules.watching): a copy may be on a
+ * card put in later. Adopted rows carry no upload evidence: the file being
+ * present proves it was made, not sent.
  */
 class ReattachEngine(private val context: Context) {
 
     companion object {
         /**
-         * Whether restored copies wait to be matched to the folder. Until they
-         * are, any of them may be in it: MaintainEngine counts each as there.
-         *
-         * A volume in that the last match did not cover asks for a pass, and
-         * the request is kept: a card that goes out again before the next
-         * run may have been sending while it was in.
+         * Whether restored copies wait to be matched to the folder: until the
+         * first pass after a restore, and through its watch. Until then any of
+         * them may be in it: MaintainEngine counts each as there.
          */
-        suspend fun pending(context: Context): Boolean {
-            val repo = OptionsRepo.get(context)
-            val o = repo.current()
-            if (!ReattachRules.matchPending(o.copiesReattached, o.reattachedVolumes, Volumes.mountedNames(context))) {
-                return false
-            }
-            if (o.copiesReattached) {
-                repo.setLong(OptionsRepo.K.VOLUME_SEEN_AT, System.currentTimeMillis())
-                repo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
-            }
-            return true
-        }
+        suspend fun pending(context: Context): Boolean = !OptionsRepo.get(context).current().copiesReattached
     }
 
     suspend fun run() {
@@ -70,9 +55,6 @@ class ReattachEngine(private val context: Context) {
         val db = AppDb.get(context)
         val repo = OptionsRepo.get(context)
         if (!pending(context)) return
-        // Read before the listing: a volume coming in during the pass is not
-        // covered by it, and asks for another.
-        val volumes = Volumes.mountedNames(context)
 
         // A failed query looks identical to an empty folder, so a null answer
         // is left alone rather than recorded as "nothing to adopt". Only the
@@ -86,17 +68,24 @@ class ReattachEngine(private val context: Context) {
             .query(OutputRoots.watched(layout, o.pastOutputRoots, db.items().restoredRoots())) ?: return
 
         val now = System.currentTimeMillis()
+        // A clock set back since the restore restarts its watch rather than
+        // stretching it to wherever the old date falls.
+        val restoredAt = if (o.restoredAt > now) now.also { repo.setLong(OptionsRepo.K.RESTORED_AT, it) } else o.restoredAt
+        val watching = ReattachRules.watching(restoredAt, now)
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
             val row = db.items().byFingerprint(fp) ?: continue
-            if (!ReattachRules.canAdopt(row.state, row.outputBytes != null)) continue
+            val found = entry.name == row.outputName && entry.bytes == row.outputBytes
+            val readopt = row.state == ItemState.DONE.name &&
+                ReattachRules.canReadopt(Evidence.parse(row.evidence), found, row.fromImport)
+            if (!readopt && !ReattachRules.canAdopt(row.state, row.outputBytes != null)) continue
 
             // A staged file on disk is redundant once the released copy is
             // found; leaving it would count twice against the space limit.
             row.stagePath?.let { runCatching { File(it).delete() } }
 
-            val restored = row.state == ItemState.UNKNOWN.name
-            val sameCopy = restored && entry.name == row.outputName && entry.bytes == row.outputBytes
+            val restored = row.state == ItemState.UNKNOWN.name || readopt
+            val sameCopy = restored && found
             val evidence = ReattachRules.evidenceAfterAdopt(row.state, Evidence.parse(row.evidence), sameCopy)
             db.items().update(
                 row.copy(
@@ -126,7 +115,7 @@ class ReattachEngine(private val context: Context) {
         // Restored with evidence, and its copy is in none of the folders
         // (the ones found are RELEASED by now): Ente had it.
         for (row in db.items().restoredWithEvidence()) {
-            val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence))
+            val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence), watching)
             // It may have been in the folder, sending, until this pass looked:
             // dated now, and later bookkeeping cannot move it.
             if (state.name != row.state) {
@@ -138,12 +127,7 @@ class ReattachEngine(private val context: Context) {
         // it counts as having left now, for any window still open.
         db.items().stampRestoredLeft(now)
 
-        // Covered: in before the listing and still in after it. A volume that
-        // came in only minutes ago may not be read by MediaStore yet, so the
-        // restore stays unmatched for a pass once it has settled.
-        repo.setStringSet(OptionsRepo.K.REATTACHED_VOLUMES, volumes intersect Volumes.mountedNames(context))
-        if (now - repo.current().volumeSeenAt >= ReattachRules.VOLUME_SETTLE_MS) {
-            repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
-        }
+        // While the restore is watched, the next run looks again.
+        if (!watching) repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
     }
 }

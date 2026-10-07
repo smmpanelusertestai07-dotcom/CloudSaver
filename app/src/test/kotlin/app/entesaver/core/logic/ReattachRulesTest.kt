@@ -74,15 +74,15 @@ class ReattachRulesTest {
     }
 
     @Test
-    fun `a restored row whose copy is gone is done only with per-file proof`() {
+    fun `a restored row whose copy is gone is done only with evidence, and a weak grade waits for the watch`() {
         for (evidence in Evidence.entries) {
-            // Without it the copy may be on a card that is out, and Ente may
-            // yet send it: it stays to be looked for again.
-            val expected = if (evidence.isPerFile) ItemState.DONE else ItemState.UNKNOWN
-            assertEquals(evidence.name, expected, ReattachRules.stateWhenCopyMissing(evidence))
+            val settled = if (evidence == Evidence.NONE) ItemState.UNKNOWN else ItemState.DONE
+            assertEquals(evidence.name, settled, ReattachRules.stateWhenCopyMissing(evidence, watching = false))
+            // While watched, the copy may be on a card not in yet, and Ente
+            // may yet send it: only per-file proof settles it.
+            val watched = if (evidence.isPerFile) ItemState.DONE else ItemState.UNKNOWN
+            assertEquals(evidence.name, watched, ReattachRules.stateWhenCopyMissing(evidence, watching = true))
         }
-        assertEquals(ItemState.UNKNOWN, ReattachRules.stateWhenCopyMissing(Evidence.VERIFIED))
-        assertEquals(ItemState.DONE, ReattachRules.stateWhenCopyMissing(Evidence.CONFIRMED_PACED))
     }
 
     @Test
@@ -96,17 +96,28 @@ class ReattachRulesTest {
     }
 
     @Test
-    fun restoredCopiesWaitToBeMatchedUntilEveryVolumeWasLookedAt() {
-        val phone = "external_primary"
-        val card = "1234-abcd"
-        // A restore not yet matched.
-        assertTrue(ReattachRules.matchPending(false, setOf(phone, card), setOf(phone, card)))
-        // Matched with every volume that is in now.
-        assertFalse(ReattachRules.matchPending(true, setOf(phone, card), setOf(phone, card)))
-        assertFalse(ReattachRules.matchPending(true, setOf(phone, card), setOf(phone)))
-        // The card was out then and is in now: its copies were missed.
-        assertTrue(ReattachRules.matchPending(true, setOf(phone), setOf(phone, card)))
-        // Matched before the volumes were recorded: once more.
-        assertTrue(ReattachRules.matchPending(true, emptySet(), setOf(phone)))
+    fun `a restore is watched for a week from when it was made`() {
+        val restoredAt = 1_000_000_000_000L
+        assertTrue(ReattachRules.watching(restoredAt, restoredAt))
+        assertTrue(ReattachRules.watching(restoredAt, restoredAt + ReattachRules.RESTORE_WATCH_MS - 1))
+        assertFalse(ReattachRules.watching(restoredAt, restoredAt + ReattachRules.RESTORE_WATCH_MS))
+        // Never restored, or a date ahead of the clock: not watched.
+        assertFalse(ReattachRules.watching(0L, restoredAt))
+        assertFalse(ReattachRules.watching(restoredAt + 1, restoredAt))
+    }
+
+    @Test
+    fun `a settled restored row takes back only its very copy, and only without per-file proof`() {
+        for (evidence in Evidence.entries) {
+            assertEquals(evidence.name, !evidence.isPerFile, ReattachRules.canReadopt(evidence, sameCopy = true, fromImport = true))
+            assertFalse(ReattachRules.canReadopt(evidence, sameCopy = false, fromImport = true))
+            // A row this install made itself was never settled blind.
+            assertFalse(ReattachRules.canReadopt(evidence, sameCopy = true, fromImport = false))
+        }
+        // It keeps what its history recorded, as a restored row does.
+        assertEquals(
+            Evidence.VERIFIED,
+            ReattachRules.evidenceAfterAdopt(ItemState.DONE.name, Evidence.VERIFIED, sameCopy = true)
+        )
     }
 }

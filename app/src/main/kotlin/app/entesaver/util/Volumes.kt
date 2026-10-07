@@ -92,13 +92,6 @@ object Volumes {
         stats.getTotalBytes(StorageManager.UUID_DEFAULT) to stats.getFreeBytes(StorageManager.UUID_DEFAULT)
     }.getOrNull()?.takeIf { (total, free) -> total > 0 && free in 0..total }
 
-    /** The names of the storage volumes in right now; the phone's own if they cannot be read. */
-    fun mountedNames(context: Context): Set<String> = try {
-        MediaStore.getExternalVolumeNames(context)
-    } catch (e: Exception) {
-        setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-    }
-
     fun byName(context: Context, name: String): Vol? =
         list(context).firstOrNull { it.mediaVolumeName == name }
 

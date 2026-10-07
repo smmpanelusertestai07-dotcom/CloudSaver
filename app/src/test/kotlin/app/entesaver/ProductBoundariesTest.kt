@@ -656,6 +656,13 @@ class ProductBoundariesTest {
         val engine = File(main, "engine/MaintainEngine.kt").readText()
         val body = engine.substringAfter("private suspend fun leftDuring(").substringBefore("\n    }\n")
         assertTrue(body, body.contains("if (!ReattachEngine.pending(context))"))
+        // Watched for a week after a restore: the flag is set only by a pass
+        // after the watch, and a restore starts the watch.
+        val reattach = File(main, "engine/ReattachEngine.kt").readText()
+        assertTrue(reattach.contains("if (!watching) repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
+        val store = File(main, "engine/SnapshotStore.kt").readText()
+        assertTrue(store.indexOf("optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())") in 0 until
+            store.indexOf("optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)"))
         assertTrue(body, body.contains("provenAt = null"))
         // Read before the copies that left, which the pass dates before it
         // marks the restore matched: one list or the other always has each.
@@ -941,21 +948,9 @@ class ProductBoundariesTest {
         val locked = reattach.substringAfter("private suspend fun runLocked()")
         assertTrue("the flag is read again under the locks", locked.contains("if (!pending(context)) return"))
         assertTrue(locked.contains("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
-        // The volumes it saw are read before the listing and kept with the
-        // flag, so a card that was out asks for another pass when it is in.
-        val seen = locked.indexOf("val volumes = Volumes.mountedNames(context)")
-        assertTrue(seen in 0 until locked.indexOf("OutputInventory(context)"))
-        // Only what was in throughout counts as covered, and a card that has
-        // just come in gets a pass once it has settled.
-        assertTrue(locked.indexOf("volumes intersect Volumes.mountedNames(context)") in 0 until
-            locked.indexOf("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
-        assertTrue(locked.contains("if (now - repo.current().volumeSeenAt >= ReattachRules.VOLUME_SETTLE_MS)"))
-        // The request a new volume makes is kept, and every maintenance pass
-        // looks for one.
-        val pending = reattach.substringAfter("suspend fun pending(").substringBefore("\n        }\n")
-        assertTrue(pending, pending.contains("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)"))
-        assertTrue(engine.substringAfter("private suspend fun runLocked(): Summary {").substringBefore("val o = repo.current()")
-            .contains("ReattachEngine.pending(context)"))
+        // A settled restored row whose very copy turns up again goes back
+        // under watch.
+        assertTrue(locked.contains("ReattachRules.canReadopt(Evidence.parse(row.evidence), found, row.fromImport)"))
     }
 
     @Test

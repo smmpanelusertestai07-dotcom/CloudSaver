@@ -166,10 +166,8 @@ data class Options(
     val volumeWarnedAt: Long = 0,
     val oldFilesCleaned: Boolean = false,
     val copiesReattached: Boolean = false,
-    /** The storage volumes that were in when restored copies were last matched. */
-    val reattachedVolumes: Set<String> = emptySet(),
-    /** When a volume the last match did not cover was first noticed. */
-    val volumeSeenAt: Long = 0,
+    /** When a history file last brought rows back (ReattachRules.watching). */
+    val restoredAt: Long = 0,
     /** Rows an older restore left inconsistent were set right (StartupRecovery). */
     val queueRepaired: Boolean = false,
     /**
@@ -303,11 +301,12 @@ class OptionsRepo(private val context: Context) {
         val SAFETY_WARNED_AT = longPreferencesKey("safetyPauseWarnedAt")
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
         val OLD_FILES_CLEANED = booleanPreferencesKey("oldFilesCleaned")
-        // Renamed in 12.0 so that every phone matches its copies up once
-        // more: rows restored earlier without proof were never looked at again.
-        val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached12")
-        val REATTACHED_VOLUMES = stringSetPreferencesKey("reattachedVolumes")
-        val VOLUME_SEEN_AT = longPreferencesKey("newVolumeSeenAt")
+        // Renamed in 12.0 and again in 12.2 so that every phone matches its
+        // copies up once more: rows restored earlier without proof were never
+        // looked at again, and rows settled on a weaker grade are taken back
+        // when their very copy is found.
+        val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached122")
+        val RESTORED_AT = longPreferencesKey("historyRestoredAt")
         val QUEUE_REPAIRED = booleanPreferencesKey("queueRepaired122")
         val COPIES_NEED_CONSENT = stringSetPreferencesKey("copiesNeedConsent")
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
@@ -385,8 +384,7 @@ class OptionsRepo(private val context: Context) {
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
             copiesReattached = p[K.COPIES_REATTACHED] ?: false,
-            reattachedVolumes = p[K.REATTACHED_VOLUMES] ?: emptySet(),
-            volumeSeenAt = p[K.VOLUME_SEEN_AT] ?: 0,
+            restoredAt = p[K.RESTORED_AT] ?: 0,
             queueRepaired = p[K.QUEUE_REPAIRED] ?: false,
             copiesNeedConsent = p[K.COPIES_NEED_CONSENT] ?: emptySet(),
             cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,

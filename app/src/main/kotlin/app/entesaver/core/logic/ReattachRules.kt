@@ -14,20 +14,15 @@ package app.entesaver.core.logic
 object ReattachRules {
 
     /**
-     * Whether restored copies still have to be matched to the folder: not
-     * since the last restore ([reattached] false), or a volume is in now
-     * ([volumesNow]) that was not when they were ([volumesThen]) - a copy on
-     * it was taken as gone then, and may be in the folder after all.
+     * How long after a restore its copies are looked for, on every compress
+     * run. A copy may be on a card put in later, or one MediaStore has not
+     * read yet; until the watch ends each counts as in the folder.
      */
-    fun matchPending(reattached: Boolean, volumesThen: Set<String>, volumesNow: Set<String>): Boolean =
-        !reattached || !volumesThen.containsAll(volumesNow)
+    const val RESTORE_WATCH_MS = 7 * 86_400_000L
 
-    /**
-     * How long a volume that has just come in is given before a pass that
-     * did not find a restored copy on it counts: MediaStore lists a card's
-     * files only once it has read them.
-     */
-    const val VOLUME_SETTLE_MS = 10 * 60_000L
+    /** Whether a restore made at [restoredAt] is still watched at [now]. */
+    fun watching(restoredAt: Long, now: Long): Boolean =
+        restoredAt in (now - RESTORE_WATCH_MS + 1)..now
 
     /**
      * Whether [state] may adopt a copy already sitting in the output folder.
@@ -49,6 +44,16 @@ object ReattachRules {
     }
 
     /**
+     * Whether a restored row an earlier pass settled as DONE takes back the
+     * copy found now. Versions before 12.2 did that on any recorded grade,
+     * and a card that was out then can bring the very copy back ([sameCopy]).
+     * Without per-file proof Ente may yet send it, so it goes back under
+     * watch; with it, Ente had it, and nothing is to be watched.
+     */
+    fun canReadopt(recorded: Evidence, sameCopy: Boolean, fromImport: Boolean): Boolean =
+        fromImport && sameCopy && !recorded.isPerFile
+
+    /**
      * The evidence an adopted row is allowed to claim: none.
      *
      * The copy being on disk proves it was made, not that any cloud app ever
@@ -66,17 +71,21 @@ object ReattachRules {
      * record was about some other file, and the filename match adds nothing.
      */
     fun evidenceAfterAdopt(state: String, recorded: Evidence, sameCopy: Boolean): Evidence =
-        if (state == ItemState.UNKNOWN.name && sameCopy) recorded else evidence
+        if ((state == ItemState.UNKNOWN.name || state == ItemState.DONE.name) && sameCopy) recorded else evidence
 
     /**
      * Where a restored row goes when its copy is in none of the output
-     * folders: with per-file proof from its history file, to DONE (Ente had
-     * that very copy, and it has since gone). Otherwise it stays UNKNOWN: the
-     * copy may be on a card that is out, and Ente may yet send it, so it is
-     * looked for again when a volume comes in.
+     * folders. With per-file proof from its history file, to DONE: Ente had
+     * that very copy, and it has since gone. With a weaker grade, to DONE too
+     * once the restore is no longer [watching] - until then the copy may be
+     * on a card not in yet, so it stays UNKNOWN and is looked for again.
+     * Without any, it stays UNKNOWN.
      */
-    fun stateWhenCopyMissing(recorded: Evidence): ItemState =
-        if (recorded.isPerFile) ItemState.DONE else ItemState.UNKNOWN
+    fun stateWhenCopyMissing(recorded: Evidence, watching: Boolean): ItemState = when {
+        recorded.isPerFile -> ItemState.DONE
+        recorded == Evidence.NONE || watching -> ItemState.UNKNOWN
+        else -> ItemState.DONE
+    }
 
     /** The state an adopted row lands in. */
     val state: ItemState = ItemState.RELEASED

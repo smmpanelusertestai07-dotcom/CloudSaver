@@ -92,6 +92,9 @@ class RestoreMergeTest {
     @After
     fun tearDown() {
         db.close()
+        // A restore is watched for a week; the tests after this one are not
+        // about that.
+        runBlocking { OptionsRepo.get(context).setLong(OptionsRepo.K.RESTORED_AT, 0L) }
     }
 
     @Test

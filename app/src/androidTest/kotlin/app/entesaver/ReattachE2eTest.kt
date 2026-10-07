@@ -124,6 +124,8 @@ class ReattachE2eTest {
         db.items().insert(restored("unproven.jpg", Evidence.NONE, "unproven__x.jpg", 10L))
 
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
+        // A restore no longer watched: the pass settles what it did not find.
+        repo.setLong(OptionsRepo.K.RESTORED_AT, 0L)
         ReattachEngine(context).run()
         assertTrue("the run must finish", repo.current().copiesReattached)
 

@@ -482,6 +482,8 @@ class SnapshotStore(
         // running - a restore picked by hand comes after its first. That
         // includes rows already here that this history only gave evidence.
         if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
+            // Watched from now: a copy may be on a card put in later.
+            optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())
             optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
         }
         if (importOptions && snapshot.options.isNotEmpty()) {
