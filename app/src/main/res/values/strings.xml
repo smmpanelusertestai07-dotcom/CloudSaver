@@ -299,6 +299,7 @@
     <string name="reclaim_export_failed">Could not save the list.</string>
     <string name="reclaim_trash">Move to trash</string>
     <string name="reclaim_delete">Delete permanently</string>
+    <string name="reclaim_remove_copies">Remove copies</string>
     <string name="reclaim_continue">Continue</string>
     <string name="reclaim_why_android_asks">Android asks you to confirm because these files belong to your gallery, not to Ente Saver.</string>
     <string name="reclaim_compare">Compare</string>
@@ -334,6 +335,8 @@
     <string name="reclaim_confirm_title">Move these to the trash?</string>
     <string name="reclaim_confirm_delete_title">Delete these permanently?</string>
     <string name="reclaim_confirm_body">Remove %1$s originals and free %2$s?</string>
+    <string name="reclaim_confirm_copies_title">Remove these copies?</string>
+    <string name="reclaim_confirm_copies_body">Delete %1$s Ente Saver copies and free %2$s? Your originals stay. Deleted copies skip the trash.</string>
     <string name="reclaim_confirm_keeps">%1$s keeps the optimised copy of every file removed here.</string>
     <string name="reclaim_confirm_keeps_generic">Ente Photos keeps the optimised copy of every file removed here.</string>
     <string name="reclaim_preview_title">What would happen</string>
@@ -436,6 +439,7 @@
     <string name="history_trashed">In your gallery\'s trash until %1$s</string>
     <string name="history_permanent">Deleted permanently - cannot be restored</string>
     <string name="history_restore">Restore these</string>
+    <string name="history_trash_emptied">Android emptied its trash of these on %1$s</string>
     <string name="history_unknown">Check your gallery\'s trash</string>
     <string name="history_show_files">Show files</string>
     <string name="history_hide_files">Hide files</string>

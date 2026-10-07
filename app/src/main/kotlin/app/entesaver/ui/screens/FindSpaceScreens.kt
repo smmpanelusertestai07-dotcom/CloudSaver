@@ -55,6 +55,7 @@ import androidx.navigation.NavHostController
 import app.entesaver.R
 import app.entesaver.core.logic.DuplicateRules
 import app.entesaver.core.logic.Evidence
+import app.entesaver.core.logic.FreeUpFlow
 import app.entesaver.core.logic.ListFilters
 import app.entesaver.core.logic.MediaProfile
 import app.entesaver.core.logic.Projection
@@ -155,7 +156,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { result -> rvm.onDialogResult(result.resultCode == Activity.RESULT_OK) }
+    ) { result -> rvm.onSystemDialogResult(result.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
         pending?.let { if (rvm.takeDialog(it)) launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
@@ -893,6 +894,8 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
     val loaded by rvm.history.collectAsStateWithLifecycle(null)
     val items by rvm.historyItems.collectAsStateWithLifecycle()
     val pending by rvm.pendingIntent.collectAsStateWithLifecycle()
+    // A removal or restore is still under way; one at a time.
+    val working by rvm.busy.collectAsStateWithLifecycle()
     // Which batch has its files showing. One at a time, because the view
     // model holds the files of one batch at a time.
     var openBatch by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -907,7 +910,12 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { r -> rvm.onRestoreResult(r.resultCode == Activity.RESULT_OK) }
+    ) { r ->
+        // Any pending request can open here, including a Free-up batch that
+        // finished preparing after the person came to this screen. The view
+        // model sends the answer to whichever flow asked.
+        rvm.onSystemDialogResult(r.resultCode == Activity.RESULT_OK)
+    }
     LaunchedEffect(pending) {
         pending?.let { if (rvm.takeDialog(it)) launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
@@ -946,6 +954,9 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
         ) {
             items(batches, key = { it.id }) { batch ->
                 val open = openBatch == batch.id
+                // The list drops a batch once Android has emptied its trash,
+                // but one can run out while the screen is open.
+                val expired = FreeUpFlow.trashExpired(batch.atMs, System.currentTimeMillis())
                 val state = stringResource(if (open) R.string.a11y_expanded else R.string.a11y_collapsed)
                 // The files and the Restore button live inside the card, and
                 // nothing on a closed card said so: it read as a finished
@@ -981,16 +992,21 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        if (batch.trashed) {
+                        if (batch.trashed && expired) {
+                            stringResource(
+                                R.string.history_trash_emptied,
+                                Formats.date(FreeUpFlow.trashUntil(batch.atMs))
+                            )
+                        } else if (batch.trashed) {
                             stringResource(
                                 R.string.history_trashed,
-                                Formats.date(batch.atMs + 30L * 86_400_000L)
+                                Formats.date(FreeUpFlow.trashUntil(batch.atMs))
                             )
                         } else {
                             stringResource(R.string.history_permanent)
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (batch.trashed) {
+                        color = if (batch.trashed && !expired) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.error
@@ -1028,7 +1044,7 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                             Formats.bytes(item.originalBytes)
                         )
                     }
-                    if (batch.trashed && shown.isNotEmpty()) {
+                    if (batch.trashed && !expired && shown.isNotEmpty()) {
                         val restorable = shown.filter { it.restoredAt == null }
                         if (restorable.isEmpty()) {
                             // Nothing left to offer; everything here came back.
@@ -1038,7 +1054,8 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                             // its own text is wider than a 320 dp phone and
                             // the words ran past the edge of the card.
                             OutlinedButton(
-                                onClick = { rvm.restore(restorable) },
+                                onClick = { rvm.restore(batch, restorable) },
+                                enabled = !working,
                                 modifier = Modifier
                                     .padding(top = 8.dp)
                                     .fillMaxWidth()
