@@ -254,6 +254,8 @@
     <string name="activity_removed_early">%1$s kept disappearing before upload</string>
     <string name="activity_pending_repaired">Finished publishing files a previous run left half-written</string>
     <string name="activity_reclaim_skipped">%1$s was left alone - Ente Saver could not confirm it was safe</string>
+    <string name="activity_restore_unmatched">%1$s came back from the trash, but Ente Saver could not match it to its record. It may be optimised again.</string>
+    <string name="activity_reclaim_unrecorded">Ente Saver could not save the last Free up to History.</string>
     <string name="activity_cloud_ok">Ente Photos is uploading again</string>
 
     <!-- cloud health -->

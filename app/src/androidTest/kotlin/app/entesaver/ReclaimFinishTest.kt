@@ -2,11 +2,13 @@ package app.entesaver
 
 import android.content.ContentUris
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.Fingerprint
 import app.entesaver.core.logic.GoneReason
 import app.entesaver.core.logic.ItemState
@@ -14,7 +16,12 @@ import app.entesaver.core.logic.KeptCopies
 import app.entesaver.core.logic.ReclaimRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
+import app.entesaver.data.db.LedgerRow
+import app.entesaver.data.db.ReclaimBatchRow
+import app.entesaver.data.db.ReclaimItemRow
+import app.entesaver.data.prefs.Options
 import app.entesaver.engine.ReclaimEngine
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -154,6 +161,177 @@ class ReclaimFinishTest {
     }
 
     /**
+     * "Remove the light copy" clears keptUri and leaves the row on the copy's
+     * address. A restore read that as "never moved", marked the row DONE on a
+     * deleted file, and the original came back as a new photo to upload.
+     */
+    @Test
+    fun restoringAfterTheLightCopyWasRemovedStillFindsTheOriginal() = runBlocking {
+        val original = photo("reclaim_removed.jpg", seed = 9)
+        val copy = photo("reclaim_removed.jpg", seed = 10)
+        val rowId = db.items().insert(
+            row("reclaim_removed.jpg", original, "removedorig00001").copy(keptUri = copy.toString())
+        )
+        val result = finish(rowId, original, copy, ReclaimRules.Mode.REPLACE_WITH_LIGHT)
+        val item = db.reclaim().itemsOf(result.batchId).single()
+        // What "Remove the light copy" does.
+        val freed = db.items().byId(rowId)!!
+        assertTrue(target.contentResolver.delete(copy, null, null) > 0)
+        db.items().update(
+            freed.copy(
+                keptUri = null,
+                state = KeptCopies.stateAfterRemoval(freed.state),
+                originalMissing = true
+            )
+        )
+
+        ReclaimEngine(target).onRestored(item)
+
+        val back = db.items().byId(rowId)!!
+        assertEquals(ItemState.DONE.name, back.state)
+        assertFalse(back.originalMissing)
+        assertEquals(original.toString(), back.contentUri)
+        assertEquals(seen(original).fingerprint, back.fingerprint)
+    }
+
+    /**
+     * A restored row keeps its first light copy. Freeing it again wrote a
+     * second one over keptUri, and the first became a photo nobody tracked:
+     * optimised and uploaded again. It is used again instead, and a refusal
+     * in the dialog leaves it where it was.
+     */
+    @Test
+    fun freeingARestoredRowAgainReusesItsLightCopy() = runBlocking {
+        val original = photo("reclaim_again.jpg", seed = 11)
+        val copy = photo("reclaim_again.jpg", seed = 12)
+        val sha = "ab".repeat(32)
+        db.ledger().insert(
+            LedgerRow(
+                outputSha256 = sha,
+                fingerprint = "againorig0000001",
+                displayName = "reclaim_again.jpg",
+                outputBytes = 1234L,
+                evidence = Evidence.CONFIRMED_EXACT.name,
+                confirmedAt = 1L
+            )
+        )
+        val rowId = db.items().insert(
+            row("reclaim_again.jpg", original, "againorig0000001").copy(
+                keptUri = copy.toString(),
+                outputSha256 = sha,
+                evidence = Evidence.CONFIRMED_EXACT.name
+            )
+        )
+        val result = finish(rowId, original, copy, ReclaimRules.Mode.REPLACE_WITH_LIGHT)
+        ReclaimEngine(target).onRestored(db.reclaim().itemsOf(result.batchId).single())
+        val restored = db.items().byId(rowId)!!
+        assertEquals(copy.toString(), restored.keptUri)
+
+        val engine = ReclaimEngine(target)
+        val prepared = engine.prepare(
+            listOf(restored), ReclaimRules.Mode.REPLACE_WITH_LIGHT,
+            Options(keptInPlace = true), System.currentTimeMillis()
+        )
+        val pin = prepared.pinned[rowId]
+        assertNotNull("the row must be offered: ${prepared.skipped}", pin)
+        assertEquals("the first copy, not a second one", copy, pin!!.uri)
+        assertTrue(pin.reused)
+        assertTrue(pin.inPlace)
+
+        engine.finish(
+            prepared, emptySet(), ReclaimRules.Mode.REPLACE_WITH_LIGHT, trashed = true,
+            now = System.currentTimeMillis()
+        )
+        assertTrue("a refusal must not delete the copy it did not make", exists(copy))
+        assertEquals(copy.toString(), db.items().byId(rowId)!!.keptUri)
+    }
+
+    /**
+     * 12.1 wrote in-place history under the original's fingerprint, before
+     * the row moved to its copy. Restoring such a batch after the upgrade
+     * found no row, and the original came back as a new photo to upload.
+     */
+    @Test
+    fun aRestoreOfA121InPlaceBatchFindsItsRow() = runBlocking {
+        val original = photo("reclaim_legacy.jpg", seed = 13)
+        val copy = photo("reclaim_legacy.jpg", seed = 14)
+        val copySeen = seen(copy)
+        val rowId = db.items().insert(
+            row(copySeen.name, copy, copySeen.fingerprint).copy(
+                state = ItemState.FREED_KEPT.name,
+                keptUri = copy.toString()
+            )
+        )
+        val item = legacyHistory("reclaim_legacy.jpg", original)
+
+        ReclaimEngine(target).onRestored(item)
+
+        val back = db.items().byId(rowId)!!
+        assertEquals(ItemState.DONE.name, back.state)
+        assertEquals(original.toString(), back.contentUri)
+        assertEquals(seen(original).fingerprint, back.fingerprint)
+        assertEquals(copy.toString(), back.keptUri)
+    }
+
+    /** Two rows that could be it: neither is guessed at. */
+    @Test
+    fun aRestoreOfA121BatchThatMatchesTwoRowsTouchesNeither() = runBlocking {
+        val original = photo("reclaim_twice.jpg", seed = 15)
+        val ids = listOf(16, 17).map { seed ->
+            val copy = photo("reclaim_twice.jpg", seed = seed)
+            val s = seen(copy)
+            db.items().insert(
+                row(s.name, copy, s.fingerprint).copy(
+                    state = ItemState.FREED_KEPT.name,
+                    keptUri = copy.toString()
+                )
+            )
+        }
+        val before = ids.map { db.items().byId(it)!! }
+
+        ReclaimEngine(target).onRestored(legacyHistory("reclaim_twice.jpg", original))
+
+        assertEquals(before, ids.map { db.items().byId(it)!! })
+    }
+
+    /**
+     * Under DCIM the provider renames a camera name the camera's way, not
+     * with " (1)", and the copy was taken back as a stranger's file: Free up
+     * in place freed nothing for most camera photos.
+     */
+    @Test
+    fun anInPlaceCopyOfACameraPhotoKeepsANameThatBelongs() = runBlocking {
+        for ((i, name) in listOf("IMG_20240101_123456.jpg", "IMG_1234.jpg").withIndex()) {
+            val original = photo(name, seed = 18 + i)
+            val fp = "cameraorig00000$i"
+            val staged = File(target.cacheDir, "reclaim_staged_$i.jpg")
+            staged.outputStream().use {
+                MediaFixtures.makeBitmap(64, 64, seed = 30 + i)
+                    .compress(Bitmap.CompressFormat.JPEG, 90, it)
+            }
+            val sha = staged.inputStream().use { Fingerprint.sha256(it) }
+            val rowId = db.items().insert(
+                row(name, original, fp).copy(
+                    stagePath = staged.path,
+                    outputSha256 = sha,
+                    outputName = Fingerprint.outputName(name, fp, "jpg")
+                )
+            )
+
+            val kept = ReclaimEngine(target).pinLightCopy(
+                db.items().byId(rowId)!!, Options(keptInPlace = true), System.currentTimeMillis()
+            )
+            staged.delete()
+
+            assertNotNull("$name: the copy must not be taken back", kept)
+            assertTrue(kept!!.inPlace)
+            val landed = seen(kept.uri).name
+            assertTrue("$name landed as $landed", KeptCopies.belongsTo(landed, name, fp))
+            assertEquals(kept.uri.toString(), db.items().byId(rowId)!!.keptUri)
+        }
+    }
+
+    /**
      * Free up fully on a row whose copy is still in the upload folder: once
      * the row is FREED no folder pass reads it again, so the copy has to go
      * with the original, or it stays on the phone untracked forever.
@@ -221,6 +399,34 @@ class ReclaimFinishTest {
         outputBytes = 1234L,
         updatedAt = 1L
     )
+
+    /** A history entry as 12.1 wrote it: the original's own fingerprint, name and address. */
+    private suspend fun legacyHistory(name: String, original: Uri): ReclaimItemRow {
+        val batchId = db.reclaim().insertBatch(
+            ReclaimBatchRow(
+                atMs = System.currentTimeMillis(),
+                mode = ReclaimRules.Mode.REPLACE_WITH_LIGHT.name,
+                itemCount = 1,
+                freedBytes = 1L,
+                trashed = true
+            )
+        )
+        db.reclaim().insertItems(
+            listOf(
+                ReclaimItemRow(
+                    batchId = batchId,
+                    fingerprint = "legacyorig000001",
+                    displayName = name,
+                    album = "EnteSaverTest",
+                    originalBytes = 3L * 1024 * 1024,
+                    optimisedBytes = 1234L,
+                    contentUri = original.toString(),
+                    trashed = true
+                )
+            )
+        )
+        return db.reclaim().itemsOf(batchId).single()
+    }
 
     /** finish() as the dialog's answer drives it: [original] went, [pinned] is the copy. */
     private suspend fun finish(

@@ -37,7 +37,8 @@ object Locks {
     val maintain = Mutex()
 
     /**
-     * Making one light copy: the scheduled run and the Home trial.
+     * Making one light copy: the scheduled run, the Home trial, and the
+     * Free-up remake of a copy that is no longer on the phone.
      *
      * Both pick the newest waiting photos, so a trial tapped mid-run used to
      * encode the same photo the run was on - two full-size decodes on a

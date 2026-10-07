@@ -1091,13 +1091,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (TamperCheck.isModified(ctx)) return
         viewModelScope.launch(Dispatchers.IO) {
             val uri = keptCopyUri(row)
-            if (uri != null) runCatching { ctx.contentResolver.delete(uri, null, null) }
+            val gone = uri != null &&
+                runCatching { ctx.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
+            // An in-place row stood for the copy itself, so with that file
+            // gone it describes nothing on the phone - and says so, rather
+            // than an address a restore would take for the original's.
+            val inPlace = row.contentUri != null && row.contentUri == row.keptUri
             db.items().update(
                 row.copy(
                     keptUri = null,
-                    // Still reclaimed, just without the local copy now. It
-                    // must not go back in the queue: the cloud has it.
-                    state = ItemState.FREED.name,
+                    state = KeptCopies.stateAfterRemoval(row.state),
+                    originalMissing = row.originalMissing || (inPlace && gone),
                     updatedAt = System.currentTimeMillis()
                 )
             )

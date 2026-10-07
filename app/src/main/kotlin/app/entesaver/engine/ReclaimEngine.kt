@@ -97,8 +97,12 @@ class ReclaimEngine(private val context: Context) {
         return if (file.exists()) file else null
     }
 
-    /** Where a pinned copy landed: its uri, and whether it sits in the original's own album. */
-    data class Pinned(val uri: Uri, val inPlace: Boolean)
+    /**
+     * Where a pinned copy landed: its uri, and whether it sits in the
+     * original's own album. [reused] is a copy an earlier batch made, which a
+     * refusal in Android's dialog must leave exactly where it was.
+     */
+    data class Pinned(val uri: Uri, val inPlace: Boolean, val reused: Boolean = false)
 
     /**
      * Puts a verified light copy into the user's own album before the
@@ -179,34 +183,40 @@ class ReclaimEngine(private val context: Context) {
         val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             ?: return null
         val tempDir = Storage.tempDir(context, options.storageVolume)
-        // A note first, written before the work: running out of memory ends
-        // the process without an exception, and only the note survives it.
-        InFlight.beginRemake(context, row.id, row.isVideo)
-        val result = try {
-            if (row.isVideo) {
-                VideoCompressor.compress(
-                    context, original, row.displayName, row.mimeType, row.sizeBytes,
-                    options.video.spec(), tempDir
-                )
-            } else {
-                // HEIC only where this phone has already passed its test; a
-                // screen is waiting on this, so the test is not run here.
-                // Held to this phone's memory ceiling exactly as the
-                // background pass is: "keep every pixel" on a 200 MP photo
-                // is 800 MB of bitmap, and the low-memory killer, not a
-                // catchable error, is what answers that.
-                PhotoCompressor.compress(
-                    context, original, row.displayName, row.sizeBytes,
-                    DeviceTier.fit(context, options.photo.spec()), HeicSupport.works(context), tempDir
-                )
+        // One encode at a time, the background run's included: two full-size
+        // decodes on a phone sized for one is how both get killed. The memory
+        // ceiling is read inside the lock, once the other decode has let go.
+        val result = Locks.stage.withLock {
+            // A note first, written before the work: running out of memory
+            // ends the process without an exception, and only the note
+            // survives it.
+            InFlight.beginRemake(context, row.id, row.isVideo)
+            try {
+                if (row.isVideo) {
+                    VideoCompressor.compress(
+                        context, original, row.displayName, row.mimeType, row.sizeBytes,
+                        options.video.spec(), tempDir
+                    )
+                } else {
+                    // HEIC only where this phone has already passed its test;
+                    // a screen is waiting on this, so the test is not run
+                    // here. Held to this phone's memory ceiling exactly as
+                    // the background pass is: "keep every pixel" on a 200 MP
+                    // photo is 800 MB of bitmap, and the low-memory killer,
+                    // not a catchable error, is what answers that.
+                    PhotoCompressor.compress(
+                        context, original, row.displayName, row.sizeBytes,
+                        DeviceTier.fit(context, options.photo.spec()), HeicSupport.works(context), tempDir
+                    )
+                }
+            } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+                throw ce
+            } catch (e: Throwable) {
+                null
+            } finally {
+                InFlight.endRemake(context, row.id)
             }
-        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-            throw ce
-        } catch (e: Throwable) {
-            return null
-        } finally {
-            InFlight.endRemake(context, row.id)
-        }
+        } ?: return null
         if (result.file.length() <= 0) {
             result.file.delete()
             return null
@@ -241,7 +251,11 @@ class ReclaimEngine(private val context: Context) {
         // reporting inPlace = false.
         val folder = if (inPlace) originalFolder(row) else null
         val landing = folder ?: "${Defaults.KEPT_DIR}/"
-        val name = if (folder != null) inPlaceName(row, src.name) else src.name
+        val name = if (folder != null) {
+            KeptCopies.inPlaceRequest(folder, inPlaceName(row, src.name))
+        } else {
+            src.name
+        }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeForName(name, row.mimeType))
@@ -417,6 +431,37 @@ class ReclaimEngine(private val context: Context) {
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * The light copy this row already has, when it is still the row's own
+     * file and still opens. Null sends the row through pinLightCopy as usual.
+     * A row that stands for its copy offers that copy as the original, and
+     * the file about to be removed can never be the one kept.
+     */
+    private fun keptCopyToReuse(row: ItemRow): Pinned? {
+        if (row.keptUri == row.contentUri) return null
+        val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
+        val (name, path) = runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.SIZE
+                ),
+                null, null, null
+            )?.use { c ->
+                if (!c.moveToFirst() || c.getLong(2) <= 0) return@use null
+                val name = c.getString(0) ?: return@use null
+                name to c.getString(1)
+            }
+        }.getOrNull() ?: return null
+        if (!KeptCopies.belongsTo(name, row.displayName, row.fingerprint)) return null
+        if (!looksDecodable(uri, name, row.isVideo)) return null
+        val folder = originalFolder(row)
+        val here = path?.let { if (it.endsWith("/")) it else "$it/" }
+        return Pinned(uri, inPlace = folder != null && here == folder, reused = true)
     }
 
     /** Undoes a pinned copy, for when the original's removal was refused. */
@@ -598,7 +643,12 @@ class ReclaimEngine(private val context: Context) {
                 // The verified light copy exists before the removal is even
                 // requested; a row that cannot get one drops out here, named,
                 // and its original is never put in front of Android's dialog.
-                val kept = pinLightCopy(row, options, now, remakeDiedOn)
+                //
+                // A row restored from History still has the light copy its
+                // first batch made. A second copy would take over keptUri and
+                // leave the first one to the scanner as a new photo, to be
+                // optimised and uploaded again; that one is used instead.
+                val kept = keptCopyToReuse(row) ?: pinLightCopy(row, options, now, remakeDiedOn)
                 if (kept == null) {
                     skipped += Outcome(row.fingerprint, row.displayName, false, "light_copy_failed")
                     continue
@@ -644,11 +694,22 @@ class ReclaimEngine(private val context: Context) {
             val uri = row.contentUri
             if (uri == null || uri !in deleted) {
                 // Refused in the dialog: the pinned copy would otherwise be a
-                // second file of the same photo sitting in the gallery.
-                prepared.pinned[row.id]?.let { unpinLightCopy(it.uri) }
-                if (prepared.pinned.containsKey(row.id)) {
-                    db.items().byId(row.id)?.let {
-                        db.items().update(it.copy(keptUri = null, updatedAt = now))
+                // second file of the same photo sitting in the gallery. A
+                // reused copy was there before this batch and stays.
+                val pin = prepared.pinned[row.id]?.takeIf { !it.reused }
+                pin?.let { unpinLightCopy(it.uri) }
+                // Guarded like the settling below: the rows after this one
+                // may have been agreed to.
+                if (pin != null) {
+                    try {
+                        db.items().byId(row.id)?.let {
+                            db.items().update(it.copy(keptUri = null, updatedAt = now))
+                        }
+                    } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+                        throw ce
+                    } catch (e: Exception) {
+                        // The copy is gone, so a keptUri left on it names
+                        // no file any more and protects nothing.
                     }
                 }
                 skipped += Outcome(row.fingerprint, row.displayName, false, "not_confirmed")
@@ -806,31 +867,43 @@ class ReclaimEngine(private val context: Context) {
         done: List<Outcome>
     ): Long {
         if (count <= 0) return 0
-        val batchId = db.reclaim().insertBatch(
-            ReclaimBatchRow(
-                atMs = System.currentTimeMillis(),
-                mode = mode.name,
-                itemCount = count,
-                freedBytes = freed,
-                trashed = trashed
-            )
-        )
         val doneKeys = done.map { it.fingerprint }.toSet()
-        db.reclaim().insertItems(
-            rows.filter { it.fingerprint in doneKeys }.map { row ->
-                ReclaimItemRow(
-                    batchId = batchId,
-                    fingerprint = row.fingerprint,
-                    displayName = row.displayName,
-                    album = row.bucket,
-                    originalBytes = row.sizeBytes,
-                    optimisedBytes = row.outputBytes ?: 0L,
-                    contentUri = row.contentUri,
+        // The batch and its files together, or neither: a batch with no files
+        // under it is a History entry that cannot undo anything.
+        val batchId = db.withTransaction {
+            val id = db.reclaim().insertBatch(
+                ReclaimBatchRow(
+                    atMs = System.currentTimeMillis(),
+                    mode = mode.name,
+                    itemCount = count,
+                    freedBytes = freed,
                     trashed = trashed
                 )
-            }
-        )
-        prune()
+            )
+            db.reclaim().insertItems(
+                rows.filter { it.fingerprint in doneKeys }.map { row ->
+                    ReclaimItemRow(
+                        batchId = id,
+                        fingerprint = row.fingerprint,
+                        displayName = row.displayName,
+                        album = row.bucket,
+                        originalBytes = row.sizeBytes,
+                        optimisedBytes = row.outputBytes ?: 0L,
+                        contentUri = row.contentUri,
+                        trashed = trashed
+                    )
+                }
+            )
+            id
+        }
+        // Tidying old history must never cost the batch just written.
+        try {
+            prune()
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            // The next batch prunes again.
+        }
         return batchId
     }
 
@@ -843,14 +916,31 @@ class ReclaimEngine(private val context: Context) {
     /** A restored original is an original again, and goes back to the queue. */
     suspend fun onRestored(item: ReclaimItemRow, now: Long = System.currentTimeMillis()) {
         db.reclaim().markRestored(item.id, now)
-        val row = db.items().byFingerprint(item.fingerprint) ?: return
+        val row = db.items().byFingerprint(item.fingerprint) ?: legacyInPlaceRow(item)
+        if (row == null) {
+            // No row to point back at the original, so the next scan meets
+            // it as a new photo. That is written down, not left to happen
+            // quietly.
+            activity.record(
+                ActivityLog.Kind.PROBLEM,
+                detail = context.getString(R.string.activity_restore_unmatched, item.displayName)
+            )
+            return
+        }
         // A row freed in place stands for its light copy: finish re-pointed
         // it there so the scanner would not optimise the copy. The original
         // that has just come back is then a file no row describes, and the
         // next scan queued it as new - optimised again and uploaded twice.
         // It is pointed back at the original. keptUri stays, so the scanner
         // still knows the copy beside it for what it is.
-        val inPlace = row.keptUri != null && row.contentUri == row.keptUri
+        //
+        // keptUri alone does not say the row moved: "Remove the light copy"
+        // clears it and leaves the row on the deleted copy's address. The
+        // history holds the original's address, and a row that no longer
+        // has it was moved.
+        val pinned = row.keptUri != null && row.contentUri == row.keptUri
+        val moved = item.contentUri != null && row.contentUri != item.contentUri
+        val inPlace = pinned || moved
         val original = if (inPlace) {
             item.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }?.let { identityOf(it) }
         } else {
@@ -861,8 +951,9 @@ class ReclaimEngine(private val context: Context) {
             val claimed = original != null && claimFingerprint(cur.id, original.fingerprint)
             // Not pointed back - the original cannot be read, or a row with a
             // past already describes it - the row still stands for its kept
-            // copy, and marking it DONE would offer that copy for removal as
-            // if it were an original. It stays as it is.
+            // copy, or for one already removed, and marking it DONE would
+            // offer that file for removal as if it were an original. It stays
+            // as it is.
             if (inPlace && !claimed) return@withTransaction
             val back = if (claimed && original != null) {
                 cur.copy(
@@ -888,4 +979,22 @@ class ReclaimEngine(private val context: Context) {
             )
         }
     }
+
+    /**
+     * The row a 12.1 in-place history entry stands for.
+     *
+     * 12.1 wrote that history under the original's fingerprint, taken before
+     * the row moved to its light copy, so no row carries it now. The row is
+     * still the one freed in place in the same album, with the same copy size,
+     * whose copy carries the original's name. Anything but exactly one such
+     * row is left alone: a guess could point the wrong row at this original.
+     */
+    private suspend fun legacyInPlaceRow(item: ReclaimItemRow): ItemRow? =
+        db.items().keptCopies().filter { r ->
+            r.state == ItemState.FREED_KEPT.name &&
+                r.contentUri == r.keptUri &&
+                r.bucket == item.album &&
+                (r.outputBytes ?: 0L) == item.optimisedBytes &&
+                KeptCopies.belongsTo(r.displayName, item.displayName, r.fingerprint)
+        }.singleOrNull()
 }
