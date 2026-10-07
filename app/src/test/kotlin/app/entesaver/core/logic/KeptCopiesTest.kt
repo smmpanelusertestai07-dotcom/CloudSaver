@@ -1,5 +1,6 @@
 package app.entesaver.core.logic
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,6 +28,52 @@ class KeptCopiesTest {
         // Only the provider's exact suffix: anything else is a different name.
         assertFalse(KeptCopies.belongsTo("IMG_0001 (1)x.jpg", "IMG_0001.jpg", fp))
         assertFalse(KeptCopies.belongsTo("IMG_0001 copy.jpg", "IMG_0001.jpg", fp))
+    }
+
+    @Test
+    fun anInPlaceCopyTheCameraFolderRenamedStillBelongs() {
+        // Under DCIM the provider renames like a camera, not with " (1)".
+        // Read as a stranger, every in-place copy of a camera photo on
+        // these phones was taken back, and Free up freed nothing.
+        assertTrue(KeptCopies.belongsTo("IMG_20240101_123456~2.jpg", "IMG_20240101_123456.jpg", fp))
+        assertTrue(KeptCopies.belongsTo("VID_20240101_123456~3.mp4", "VID_20240101_123456.mp4", fp))
+        assertTrue(KeptCopies.belongsTo("MVIMG_20240101_123456~2.jpg", "MVIMG_20240101_123456.heic", fp))
+        // The provider counts up from the original's own number.
+        assertTrue(KeptCopies.belongsTo("IMG_20240101_123456~3.jpg", "IMG_20240101_123456~2.jpg", fp))
+        // Not a later number, not the same second: a different photo.
+        assertFalse(KeptCopies.belongsTo("IMG_20240101_123456.jpg", "IMG_20240101_123456~2.jpg", fp))
+        assertFalse(KeptCopies.belongsTo("IMG_20240101_123457~2.jpg", "IMG_20240101_123456.jpg", fp))
+        // The camera's next numbered photo is never taken for the copy.
+        assertFalse(KeptCopies.belongsTo("IMG_1235.jpg", "IMG_1234.jpg", fp))
+    }
+
+    @Test
+    fun aNumberedCameraNameAsksForTheProvidersOrdinarySuffix() {
+        // Asked for as itself, "IMG_1234" in DCIM lands as "IMG_1235",
+        // which belongsTo cannot accept. Asked for with " (1)", it lands
+        // under a name that belongs.
+        val asked = KeptCopies.inPlaceRequest("DCIM/Camera/", "IMG_1234.jpg")
+        assertEquals("IMG_1234 (1).jpg", asked)
+        assertTrue(KeptCopies.belongsTo(asked, "IMG_1234.jpg", fp))
+        assertEquals("DSC_0001 (1).jpg", KeptCopies.inPlaceRequest("DCIM/100ANDRO/", "DSC_0001.jpg"))
+        // Outside DCIM, and for every other name, the provider's own rename
+        // already belongs.
+        assertEquals("IMG_1234.jpg", KeptCopies.inPlaceRequest("Pictures/Screenshots/", "IMG_1234.jpg"))
+        assertEquals(
+            "IMG_20240101_123456.jpg",
+            KeptCopies.inPlaceRequest("DCIM/Camera/", "IMG_20240101_123456.jpg")
+        )
+        assertEquals("holiday.jpg", KeptCopies.inPlaceRequest("DCIM/Camera/", "holiday.jpg"))
+        assertEquals("img_1234.jpg", KeptCopies.inPlaceRequest("DCIM/Camera/", "img_1234.jpg"))
+    }
+
+    @Test
+    fun removingTheCopyOfARestoredRowLeavesItDone() {
+        // Its original is back on the phone; calling the row freed would
+        // be a wrong label on a file that is there.
+        assertEquals(ItemState.FREED.name, KeptCopies.stateAfterRemoval(ItemState.FREED_KEPT.name))
+        assertEquals(ItemState.DONE.name, KeptCopies.stateAfterRemoval(ItemState.DONE.name))
+        assertEquals(ItemState.FREED.name, KeptCopies.stateAfterRemoval(ItemState.FREED.name))
     }
 
     @Test

@@ -30,13 +30,16 @@ import app.entesaver.engine.ReclaimEngine
 import app.entesaver.media.MediaScanner
 import app.entesaver.util.Formats
 import app.entesaver.util.TamperCheck
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The one screen in the app that can destroy a user's photo.
@@ -704,15 +707,34 @@ class ReclaimViewModel(
         }
         val ready = prepared ?: return
         prepared = null
+        finishConsented(ready, legacyDeleted.toSet(), trashed = false)
+    }
+
+    /**
+     * Writes down a batch Android has already answered for.
+     *
+     * Past the dialog the originals are gone with the person's consent, so
+     * the bookkeeping runs to its end even if this screen closes meanwhile,
+     * and a failure in it is named in Activity instead of ending the app.
+     */
+    private fun finishConsented(ready: ReclaimEngine.Prepared, deleted: Set<String>, trashed: Boolean) {
+        val mode = pendingMode
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                lastResult.value = engine.finish(
-                    ready, legacyDeleted.toSet(), pendingMode, false, System.currentTimeMillis()
-                )
+                lastResult.value = withContext(NonCancellable) {
+                    engine.finish(ready, deleted, mode, trashed, System.currentTimeMillis())
+                }
                 clearSelection()
-                load()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                ActivityLog(ctx).record(
+                    ActivityLog.Kind.PROBLEM,
+                    detail = ctx.getString(R.string.activity_reclaim_unrecorded)
+                )
             } finally {
                 busy.value = false
+                load()
             }
         }
     }
@@ -760,17 +782,7 @@ class ReclaimViewModel(
         prepared = null
         val deleted = consentConfirmed.toSet()
         consentConfirmed.clear()
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                lastResult.value = engine.finish(
-                    ready, deleted, pendingMode, pendingTrash, System.currentTimeMillis()
-                )
-                clearSelection()
-                load()
-            } finally {
-                busy.value = false
-            }
-        }
+        finishConsented(ready, deleted, pendingTrash)
     }
 
     /**

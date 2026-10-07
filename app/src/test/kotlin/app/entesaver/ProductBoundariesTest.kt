@@ -684,6 +684,33 @@ class ProductBoundariesTest {
         assertTrue(
             scanner.substringAfter("private suspend fun retireReplaced").contains("Locks.stage.withLock")
         )
+        // So does Free up's remake: the screen waiting on it is no reason for
+        // a second full-size decode beside the background one.
+        val remake = File("src/main/kotlin/app/entesaver/engine/ReclaimEngine.kt").readText()
+            .substringAfter("private suspend fun pinSource(")
+            .substringBefore("private suspend fun writeVerified(")
+        val held = remake.indexOf("Locks.stage.withLock")
+        assertTrue("the Free-up remake must hold Locks.stage", held >= 0)
+        for (step in listOf("InFlight.beginRemake(", "DeviceTier.fit(", "VideoCompressor.compress(")) {
+            assertTrue("$step must run inside it", remake.indexOf(step) > held)
+        }
+    }
+
+    @Test
+    fun `a Free up the person agreed to is written down whatever happens next`() {
+        // After Android's dialog the originals are gone. A database error
+        // in the bookkeeping used to end the app with no history and no
+        // undo, and leaving the screen cancelled it halfway.
+        val vm = File(main, "ui/ReclaimViewModel.kt").readText()
+        val consented = vm.substringAfter("private fun finishLegacy(")
+        assertEquals(
+            "every consented batch must finish through the one guarded path",
+            1, Regex("""engine\.finish\(""").findAll(consented).count()
+        )
+        val guarded = consented.substringAfter("private fun finishConsented(").substringBefore("\n    }\n")
+        assertTrue("it must outlive the screen", guarded.contains("withContext(NonCancellable)"))
+        assertTrue("and catch what the bookkeeping throws", guarded.contains("catch (e: Exception)"))
+        assertTrue("and say so in Activity", guarded.contains("R.string.activity_reclaim_unrecorded"))
     }
 
     @Test
