@@ -1,6 +1,7 @@
 package app.entesaver
 
 import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -22,6 +23,7 @@ import app.entesaver.data.db.ReclaimItemRow
 import app.entesaver.data.prefs.Options
 import app.entesaver.engine.ReclaimEngine
 import app.entesaver.media.MediaScanner
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -513,13 +515,46 @@ class ReclaimFinishTest {
 
     /**
      * An original and its 12.1 numbered copy, which 12.1 stamped with the
-     * original's modified time. MediaStore keeps it in seconds, so the two
-     * are written again until they share one.
+     * original's modified time. MediaStore keeps it in seconds and takes it
+     * from the file when it is published, so both files are written and
+     * published back to back - a fixture that went through the full photo
+     * helper (EXIF, then waiting for the scan) took seconds per file and
+     * on Android 12 never landed in the same second. Written again, from
+     * scratch, if a second boundary fell between the two.
      */
     private fun numberedPair(originalName: String, copyName: String): Pair<Uri, Uri> {
+        val resolver = target.contentResolver
+        val images = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        fun jpeg(seed: Int): ByteArray {
+            val bitmap = MediaFixtures.makeBitmap(64, 64, seed)
+            return ByteArrayOutputStream().also {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
+                bitmap.recycle()
+            }.toByteArray()
+        }
+        fun pending(name: String): Uri = requireNotNull(
+            resolver.insert(
+                images,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${MediaFixtures.TEST_ALBUM}/")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            )
+        ) { "MediaStore refused the fixture insert" }
         repeat(10) { i ->
-            val original = photo(originalName, seed = 40 + i)
-            val copy = photo(copyName, seed = 60 + i)
+            val originalBytes = jpeg(40 + i)
+            val copyBytes = jpeg(60 + i)
+            val original = pending(originalName)
+            val copy = pending(copyName)
+            resolver.openOutputStream(original)!!.use { it.write(originalBytes) }
+            resolver.openOutputStream(copy)!!.use { it.write(copyBytes) }
+            val publish = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+            resolver.update(original, publish, null, null)
+            resolver.update(copy, publish, null, null)
+            MediaFixtures.awaitIndexed(target, original, originalName)
+            MediaFixtures.awaitIndexed(target, copy, copyName)
             val modified = seen(original).modified
             if (modified > 0L && modified == seen(copy).modified) return original to copy
             MediaFixtures.cleanUp(target)
