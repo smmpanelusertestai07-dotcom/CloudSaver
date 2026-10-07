@@ -527,11 +527,18 @@ interface ItemDao {
      * Recent photos are what the user is thinking about, so they go first;
      * after that, the biggest files free the most space per minute of work,
      * which beats grinding through a thousand old screenshots.
+     *
+     * [holdOverrun] leaves out a clip that already ran out of time once
+     * (Stager.OUT_OF_TIME). A run without a foreground service asks for the
+     * queue that way first, so such a clip is no longer first in every one of
+     * those runs, burning their whole window; it is taken when nothing else
+     * is left, or by a run with the whole budget.
      */
     @Query(
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
             "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1 " +
-            "AND (:videoMaxMs < 0 OR durationMs BETWEEN 1 AND :videoMaxMs))) " +
+            "AND (:videoMaxMs < 0 OR durationMs BETWEEN 1 AND :videoMaxMs) " +
+            "AND (:holdOverrun = 0 OR lastError IS NULL OR lastError != 'out_of_time'))) " +
             "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
             "AND id NOT IN (:skipIds) " +
             "ORDER BY priorityAt DESC, (captureAt >= :freshAfter) DESC, " +
@@ -548,7 +555,9 @@ interface ItemDao {
         /** The longest video to take, in ms; negative for any length. */
         videoMaxMs: Long,
         /** Rows this run has already passed over. */
-        skipIds: Collection<Long>
+        skipIds: Collection<Long>,
+        /** Leave out clips that already ran out of time once. */
+        holdOverrun: Boolean
     ): List<ItemRow>
 
     @Query(

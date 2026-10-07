@@ -288,6 +288,22 @@ class RunDeciderTest {
     }
 
     @Test
+    fun `a video that did not finish on battery is still charged to the day`() {
+        // A clip that ran out of time spent the encoder all the same; left
+        // uncharged, it could drain every run on battery for ever.
+        assertEquals(RunDecider.Budget(6 * 60_000L, 0), RunDecider.batteryCost(false, true, false, 6 * 60_000L))
+        assertEquals(RunDecider.Budget(6 * 60_000L, 0), RunDecider.batteryCost(false, true, true, 6 * 60_000L))
+        // A photo counts once it is made; on the charger nothing is charged.
+        assertEquals(RunDecider.Budget(0L, 1), RunDecider.batteryCost(false, false, true, 2_000L))
+        assertEquals(RunDecider.Budget(0L, 0), RunDecider.batteryCost(false, false, false, 2_000L))
+        assertEquals(RunDecider.Budget(0L, 0), RunDecider.batteryCost(true, true, false, 6 * 60_000L))
+        // Charged on the plain-run path, the day's video limit then stops it.
+        val spent = RunDecider.batteryCost(false, true, false, 60 * 60_000L)
+        val plan = RunDecider.decide(SpeedMode.SMART, power(pct = 90), spent)
+        assertFalse(plan.videos)
+    }
+
+    @Test
     fun `the smallest phones make videos only while charging`() {
         val battery = RunDecider.Power(
             plugged = false, batteryPct = 90, saverOn = false, thermalThrottled = false,

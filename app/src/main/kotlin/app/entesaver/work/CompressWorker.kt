@@ -219,7 +219,13 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 // past a couple of hundred of them the run has nothing useful
                 // left to try (and the list stays far under SQLite's limit).
                 if (deferred.size + later.size > MAX_DEFERRED) break@loop
-                val batch = nextItems(db, live, plan, videoMaxMs, deferred + later, 5)
+                // A run without a foreground service takes a clip that already
+                // ran out of time once only when nothing else is left: it
+                // would most likely run out again, and first in line it held
+                // up every file behind it in every such run.
+                val passed = deferred + later
+                val batch = nextItems(db, live, plan, videoMaxMs, passed, 5, holdOverrun = !foreground)
+                    .ifEmpty { if (foreground) emptyList() else nextItems(db, live, plan, videoMaxMs, passed, 5) }
                 if (batch.isEmpty()) {
                     // Nothing left that this run can take; whatever is still
                     // waiting gets its reason on Home, found by asking again
@@ -281,11 +287,14 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     val took = System.currentTimeMillis() - itemStart
                     // Free space changes only when something was written.
                     free = Storage.freeBytes(app, live.storageVolume)
+                    // Encoder time on battery is charged whether or not a copy
+                    // came of it, so a clip that keeps failing still meets the
+                    // day's limit.
+                    val cost = RunDecider.batteryCost(power.plugged, row.isVideo, ok, took)
+                    videoMsOnBattery += cost.videoEncodeMs
+                    photosOnBattery += cost.photosOnBattery
                     if (ok) {
                         processed++
-                        if (!power.plugged) {
-                            if (row.isVideo) videoMsOnBattery += took else photosOnBattery++
-                        }
                     } else if (row.isVideo) {
                         // A clip that did not finish - out of time, or a
                         // failed try - is not started again in this run with
@@ -430,7 +439,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         plan: RunDecider.Plan,
         videoMaxMs: Long,
         skip: Collection<Long>,
-        limit: Int
+        limit: Int,
+        holdOverrun: Boolean = false
     ): List<ItemRow> {
         // What the user asked for, narrowed to what this power state allows.
         val photos = plan.photos && o.scope != BackupScope.VIDEOS
@@ -443,7 +453,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             freshAfter = System.currentTimeMillis() - FRESH_WINDOW_MS,
             limit = limit,
             videoMaxMs = videoMaxMs,
-            skipIds = skip
+            skipIds = skip,
+            holdOverrun = holdOverrun
         )
     }
 

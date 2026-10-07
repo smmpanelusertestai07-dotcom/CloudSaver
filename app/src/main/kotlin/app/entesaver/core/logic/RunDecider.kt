@@ -201,6 +201,20 @@ object RunDecider {
             durationMs * 3 / 2 + 60_000L > budgetMs
 
     /**
+     * What one file just cost the day's on-battery allowance. A video's
+     * encoder time is spent whether or not a copy came of it, so a clip that
+     * failed or ran out of time is charged as well: left uncharged, a clip
+     * that never finishes could drain every run on battery and the daily
+     * limit would never stop it. A photo counts only once it is made.
+     */
+    fun batteryCost(plugged: Boolean, isVideo: Boolean, ok: Boolean, tookMs: Long): Budget = when {
+        plugged -> Budget(0L, 0)
+        isVideo -> Budget(tookMs.coerceAtLeast(0L), 0)
+        ok -> Budget(0L, 1)
+        else -> Budget(0L, 0)
+    }
+
+    /**
      * "Run now" is user-initiated, so only hard safety limits apply:
      * charging or at least 15%, and not too hot.
      */

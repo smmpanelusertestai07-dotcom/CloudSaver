@@ -314,7 +314,9 @@ object VideoCompressor {
             // The budget was cut short by the caller's run, not spent on a
             // clip too long for any run. An as-is copy is final, so making
             // one here would back the full-size file up for good; the clip
-            // waits for a run with the whole budget instead.
+            // waits for a run with the whole budget instead. The wait is
+            // counted (Stager), so a phone that never gives that budget sets
+            // the clip aside after three tries rather than retrying it for ever.
             throw OutOfTime(detail)
         }
         val failReason = when {

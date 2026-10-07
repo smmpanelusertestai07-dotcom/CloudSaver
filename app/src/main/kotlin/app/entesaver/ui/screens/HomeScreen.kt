@@ -1331,6 +1331,7 @@ fun skipReasonLabel(reason: String): String = when (reason) {
     "out_of_memory" -> stringResource(R.string.skip_out_of_memory)
     "process_died" -> stringResource(R.string.skip_process_died)
     "encode_failed" -> stringResource(R.string.skip_encode_failed)
+    "out_of_time" -> stringResource(R.string.skip_out_of_time)
     "user_excluded" -> stringResource(R.string.skip_user_excluded)
     "duplicate" -> stringResource(R.string.skip_duplicate)
     "returned_copy" -> stringResource(R.string.skip_returned_copy)
