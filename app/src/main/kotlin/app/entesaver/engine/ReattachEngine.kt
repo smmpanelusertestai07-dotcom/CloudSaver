@@ -36,10 +36,22 @@ class ReattachEngine(private val context: Context) {
         /**
          * Whether restored copies wait to be matched to the folder. Until they
          * are, any of them may be in it: MaintainEngine counts each as there.
+         *
+         * A volume in that the last match did not cover asks for a pass, and
+         * the request is kept: a card that goes out again before the next
+         * run may have been sending while it was in.
          */
         suspend fun pending(context: Context): Boolean {
-            val o = OptionsRepo.get(context).current()
-            return ReattachRules.matchPending(o.copiesReattached, o.reattachedVolumes, Volumes.mountedNames(context))
+            val repo = OptionsRepo.get(context)
+            val o = repo.current()
+            if (!ReattachRules.matchPending(o.copiesReattached, o.reattachedVolumes, Volumes.mountedNames(context))) {
+                return false
+            }
+            if (o.copiesReattached) {
+                repo.setLong(OptionsRepo.K.VOLUME_SEEN_AT, System.currentTimeMillis())
+                repo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
+            }
+            return true
         }
     }
 
@@ -126,7 +138,12 @@ class ReattachEngine(private val context: Context) {
         // it counts as having left now, for any window still open.
         db.items().stampRestoredLeft(now)
 
-        repo.setStringSet(OptionsRepo.K.REATTACHED_VOLUMES, volumes)
-        repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
+        // Covered: in before the listing and still in after it. A volume that
+        // came in only minutes ago may not be read by MediaStore yet, so the
+        // restore stays unmatched for a pass once it has settled.
+        repo.setStringSet(OptionsRepo.K.REATTACHED_VOLUMES, volumes intersect Volumes.mountedNames(context))
+        if (now - repo.current().volumeSeenAt >= ReattachRules.VOLUME_SETTLE_MS) {
+            repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
+        }
     }
 }

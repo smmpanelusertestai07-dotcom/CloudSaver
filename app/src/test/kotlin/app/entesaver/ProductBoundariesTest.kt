@@ -945,8 +945,17 @@ class ProductBoundariesTest {
         // flag, so a card that was out asks for another pass when it is in.
         val seen = locked.indexOf("val volumes = Volumes.mountedNames(context)")
         assertTrue(seen in 0 until locked.indexOf("OutputInventory(context)"))
-        assertTrue(locked.indexOf("repo.setStringSet(OptionsRepo.K.REATTACHED_VOLUMES, volumes)") in 0 until
+        // Only what was in throughout counts as covered, and a card that has
+        // just come in gets a pass once it has settled.
+        assertTrue(locked.indexOf("volumes intersect Volumes.mountedNames(context)") in 0 until
             locked.indexOf("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
+        assertTrue(locked.contains("if (now - repo.current().volumeSeenAt >= ReattachRules.VOLUME_SETTLE_MS)"))
+        // The request a new volume makes is kept, and every maintenance pass
+        // looks for one.
+        val pending = reattach.substringAfter("suspend fun pending(").substringBefore("\n        }\n")
+        assertTrue(pending, pending.contains("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)"))
+        assertTrue(engine.substringAfter("private suspend fun runLocked(): Summary {").substringBefore("val o = repo.current()")
+            .contains("ReattachEngine.pending(context)"))
     }
 
     @Test

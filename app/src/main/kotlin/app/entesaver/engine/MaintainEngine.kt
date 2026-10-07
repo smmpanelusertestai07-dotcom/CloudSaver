@@ -93,6 +93,9 @@ class MaintainEngine(private val context: Context) {
     suspend fun run(): Summary = Locks.maintain.withLock { runLocked() }
 
     private suspend fun runLocked(): Summary {
+        // A card put in since restored copies were matched asks for another
+        // match, kept even if it is out again before the next compress run.
+        step { ReattachEngine.pending(context) }
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()

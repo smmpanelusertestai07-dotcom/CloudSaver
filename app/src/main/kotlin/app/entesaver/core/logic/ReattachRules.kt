@@ -23,6 +23,13 @@ object ReattachRules {
         !reattached || !volumesThen.containsAll(volumesNow)
 
     /**
+     * How long a volume that has just come in is given before a pass that
+     * did not find a restored copy on it counts: MediaStore lists a card's
+     * files only once it has read them.
+     */
+    const val VOLUME_SETTLE_MS = 10 * 60_000L
+
+    /**
      * Whether [state] may adopt a copy already sitting in the output folder.
      *
      * Only rows that have no output of their own. A RELEASED row already knows
@@ -63,11 +70,13 @@ object ReattachRules {
 
     /**
      * Where a restored row goes when its copy is in none of the output
-     * folders: with evidence from its history file, to DONE (Ente had it,
-     * and the copy has since gone); without, it stays UNKNOWN.
+     * folders: with per-file proof from its history file, to DONE (Ente had
+     * that very copy, and it has since gone). Otherwise it stays UNKNOWN: the
+     * copy may be on a card that is out, and Ente may yet send it, so it is
+     * looked for again when a volume comes in.
      */
     fun stateWhenCopyMissing(recorded: Evidence): ItemState =
-        if (recorded == Evidence.NONE) ItemState.UNKNOWN else ItemState.DONE
+        if (recorded.isPerFile) ItemState.DONE else ItemState.UNKNOWN
 
     /** The state an adopted row lands in. */
     val state: ItemState = ItemState.RELEASED

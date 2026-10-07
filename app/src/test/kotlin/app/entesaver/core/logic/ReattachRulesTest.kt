@@ -74,11 +74,15 @@ class ReattachRulesTest {
     }
 
     @Test
-    fun `a restored row whose copy is gone is done only with evidence`() {
-        assertEquals(ItemState.UNKNOWN, ReattachRules.stateWhenCopyMissing(Evidence.NONE))
-        for (evidence in Evidence.entries - Evidence.NONE) {
-            assertEquals(ItemState.DONE, ReattachRules.stateWhenCopyMissing(evidence))
+    fun `a restored row whose copy is gone is done only with per-file proof`() {
+        for (evidence in Evidence.entries) {
+            // Without it the copy may be on a card that is out, and Ente may
+            // yet send it: it stays to be looked for again.
+            val expected = if (evidence.isPerFile) ItemState.DONE else ItemState.UNKNOWN
+            assertEquals(evidence.name, expected, ReattachRules.stateWhenCopyMissing(evidence))
         }
+        assertEquals(ItemState.UNKNOWN, ReattachRules.stateWhenCopyMissing(Evidence.VERIFIED))
+        assertEquals(ItemState.DONE, ReattachRules.stateWhenCopyMissing(Evidence.CONFIRMED_PACED))
     }
 
     @Test
