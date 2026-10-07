@@ -618,4 +618,47 @@ class ProductBoundariesTest {
             assertEquals("$name wraps the first attempt in a chooser", 1, Regex("createChooser").findAll(body).count())
         }
     }
+
+    @Test
+    fun `one light copy is made at a time, from a row read under the lock`() {
+        // The Home trial and the scheduled run both pick the newest photos,
+        // and nothing kept them apart: a trial tapped mid-run encoded the
+        // same photo twice at once, on a phone sized for one decode.
+        val stager = File("src/main/kotlin/app/entesaver/media/Stager.kt").readText()
+        val entry = stager.substringAfter("suspend fun stageOne(").substringBefore("private fun identityOf")
+        assertTrue("stageOne must hold Locks.stage", entry.contains("Locks.stage.withLock"))
+        val lock = entry.indexOf("Locks.stage.withLock")
+        val reread = entry.indexOf("db.items().byId(row.id)")
+        assertTrue("and read the row again once it holds it", reread > lock)
+        assertTrue("and check it is still waiting for the same file", entry.contains("StageRules.verdict("))
+        assertFalse(
+            "the batch row the caller holds must not reach the encoder",
+            entry.contains("stageLocked(row,")
+        )
+        // The scan's retiring of edited-in-place rows takes the same lock.
+        val scanner = File("src/main/kotlin/app/entesaver/media/MediaScanner.kt").readText()
+        assertTrue(
+            scanner.substringAfter("private suspend fun retireReplaced").contains("Locks.stage.withLock")
+        )
+    }
+
+    @Test
+    fun `a video the run cut short waits, and is not counted as a failure`() {
+        // An as-is copy is final: made because the run had five minutes
+        // left, it was the full-size file Ente kept for good.
+        val video = File("src/main/kotlin/app/entesaver/media/VideoCompressor.kt").readText()
+        val end = video.substringAfter("fallback?.let { return it }").substringBefore("private suspend fun runTransform")
+        assertTrue(
+            "the cut-short case must be decided before the as-is copy",
+            end.indexOf("throw OutOfTime(") in 0 until end.indexOf("copyAsIs(")
+        )
+        val stager = File("src/main/kotlin/app/entesaver/media/Stager.kt").readText()
+        val late = stager.indexOf("catch (late: VideoCompressor.OutOfTime)")
+        assertTrue(
+            "Stager must catch it before the general failure",
+            late in 0 until stager.indexOf("catch (e: Exception)", late.coerceAtLeast(0))
+        )
+        val caught = stager.substring(late).substringBefore("catch (e: Exception)")
+        assertFalse("and must not count it as a failed attempt", caught.contains("fail("))
+    }
 }

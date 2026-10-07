@@ -181,6 +181,26 @@ object RunDecider {
         durationMs in 1..plainRunVideoMaxMs(remainingMs, minBudgetMs)
 
     /**
+     * Whether a video that ran out of [budgetMs] should wait for another run
+     * rather than be copied across as it is.
+     *
+     * Only when the budget was less than [fullBudgetMs], the most any run
+     * gives one clip: then a later run can give it more. A clip that ran out
+     * of the whole budget would run out again, so it is copied as before.
+     */
+    fun outOfTimeWaits(budgetMs: Long, fullBudgetMs: Long): Boolean = budgetMs < fullBudgetMs
+
+    /**
+     * Whether a clip of [durationMs] is better left for a later run than
+     * started with [budgetMs]: the same reading as [plainRunVideoMaxMs] - its
+     * own length and a half plus a minute - and only while a later run could
+     * give it more ([outOfTimeWaits]). A clip of unknown length is tried.
+     */
+    fun videoWaitsForLongerRun(durationMs: Long, budgetMs: Long, fullBudgetMs: Long): Boolean =
+        durationMs > 0 && outOfTimeWaits(budgetMs, fullBudgetMs) &&
+            durationMs * 3 / 2 + 60_000L > budgetMs
+
+    /**
      * "Run now" is user-initiated, so only hard safety limits apply:
      * charging or at least 15%, and not too hot.
      */

@@ -12,9 +12,12 @@ import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.KeptCopies
 import app.entesaver.core.logic.KnownClouds
 import app.entesaver.core.logic.ScanSources
+import app.entesaver.core.logic.StageRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
+import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Scans MediaStore images + videos on every external volume (incl. SD card) -
@@ -70,6 +73,8 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         val keptById = kept.mapNotNull { r ->
             r.keptUri?.substringAfterLast('/')?.toLongOrNull()?.let { it to r }
         }.toMap()
+        // What each address holds now, for retireReplaced below.
+        val onPhone = HashMap<String, String>()
         for (f in found) {
             val keptRow = keptByUri[f.uri] ?: keptById[f.mediaStoreId]
             if (keptRow != null &&
@@ -87,6 +92,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 continue
             }
             val fp = Fingerprint.fp16(f.displayName, f.sizeBytes, f.dateModified)
+            onPhone[f.uri] = fp
             val existing = db.items().byFingerprint(fp)
             if (existing == null) {
                 val row = ItemRow(
@@ -135,7 +141,24 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 )
             }
         }
+        retireReplaced(onPhone, now)
         return newItems
+    }
+
+    /**
+     * A photo edited in place keeps its address and gets a new fingerprint,
+     * so the loop above gave it a row of its own - and the old row, still
+     * waiting, pointed at the same file. Both were encoded from the edited
+     * bytes and both copies went to Ente. The old row describes bytes that
+     * are gone, so it is retired here. Under [Locks.stage], so a row being
+     * staged right now finishes first and is then left alone.
+     */
+    private suspend fun retireReplaced(onPhone: Map<String, String>, now: Long) {
+        if (onPhone.isEmpty()) return
+        Locks.stage.withLock {
+            val stale = StageRules.replaced(db.items().waitingAddresses(), onPhone)
+            for (chunk in stale.chunked(500)) db.items().retireReplaced(chunk, now)
+        }
     }
 
     /**

@@ -3,6 +3,7 @@ package app.entesaver
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ColorSpace
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -12,6 +13,7 @@ import app.entesaver.core.logic.PhotoSpec
 import app.entesaver.media.PhotoCompressor
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.random.Random
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -258,6 +260,70 @@ class PhotoCompressorTest {
         assertTrue(!result.asIs)
         assertTrue("at most the cap: ${result.outPixels}", result.outPixels <= 2_000_000L)
         assertTrue("and not far under it: ${result.outPixels}", result.outPixels >= 1_800_000L)
+        result.file.delete()
+    }
+
+    /** A noisy PNG, with a clear square in the middle when [seeThrough]. */
+    private fun sourcePng(name: String, seeThrough: Boolean): File {
+        val w = 600
+        val h = 400
+        // A gradient with grain: lossless PNG has to keep every grain, so a
+        // lossy copy has real room to be smaller.
+        val grain = Random(7)
+        val pixels = IntArray(w * h) { i ->
+            val x = i % w
+            val y = i / w
+            val clear = seeThrough && x in 200 until 400 && y in 100 until 300
+            val r = (x * 255 / w + grain.nextInt(24)).coerceAtMost(255)
+            val g = (y * 255 / h + grain.nextInt(24)).coerceAtMost(255)
+            if (clear) 0 else (0xFF shl 24) or (r shl 16) or (g shl 8) or 0x40
+        }
+        val bitmap = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
+        val file = File(tempDir, name)
+        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        return file
+    }
+
+    @Test
+    fun aSeeThroughPictureIsCopiedAsItIsNeverFlattenedOntoBlack() {
+        // JPEG and HEIC have no alpha: a sticker re-encoded came out on
+        // black, and the original could then be freed.
+        val file = sourcePng("sticker.png", seeThrough = true)
+        val result = compress(file, heicWorks = true, spec = PhotoSpec(PhotoFormat.AUTO, 16, 82))
+        assertTrue("must be kept as it is, got ${result.reason}", result.asIs)
+        assertEquals("transparency", result.reason)
+        assertEquals(file.length(), result.bytes)
+        result.file.delete()
+    }
+
+    @Test
+    fun anOpaquePngIsStillOptimised() {
+        // A screenshot is stored with an alpha channel it never uses; that
+        // alone must not keep it full size.
+        val file = sourcePng("screenshot.png", seeThrough = false)
+        val result = compress(file, spec = PhotoSpec(PhotoFormat.JPEG, 16, 60))
+        assertTrue("must compress, got ${result.reason}", !result.asIs)
+        result.file.delete()
+    }
+
+    @Test
+    fun aWideGamutPhotoIsNotWrittenAsHeic() {
+        // The HEIC encoder labels whatever it is given as sRGB, so a Display
+        // P3 photo came out paler; JPEG carries its colour profile.
+        val w = 1600
+        val h = 1200
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888, false, ColorSpace.get(ColorSpace.Named.DISPLAY_P3))
+        bitmap.setPixels(
+            IntArray(w * h) { i -> (0xFF shl 24) or (((i * 37) and 0xFF) shl 16) or (((i * 173) and 0xFF)) },
+            0, w, 0, 0, w, h
+        )
+        val file = File(tempDir, "p3.jpg")
+        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 98, it) }
+        bitmap.recycle()
+        val result = compress(file, spec = PhotoSpec(PhotoFormat.HEIC, 16, 82), heicWorks = true)
+        assertTrue("must compress, got ${result.reason}", !result.asIs)
+        assertEquals("jpg", result.ext)
         result.file.delete()
     }
 }

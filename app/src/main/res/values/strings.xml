@@ -205,6 +205,8 @@
     <string name="asis_motion_photo">Motion photo - the moving part only survives in the original file</string>
     <string name="asis_depth_photo">Portrait/depth photo - the depth data only survives in the original file</string>
     <string name="asis_multi_picture">Multi-picture file - it holds more than one image</string>
+    <string name="asis_animated">Animated picture - only the original keeps every frame</string>
+    <string name="asis_transparency">See-through picture - only the original keeps the clear areas</string>
     <string name="asis_format">This format is kept as it is</string>
     <string name="asis_already_small">Already small enough</string>
     <string name="asis_not_smaller">Optimising would not have made it smaller</string>

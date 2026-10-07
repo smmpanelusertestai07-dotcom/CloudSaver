@@ -32,6 +32,7 @@ import androidx.media3.transformer.VideoEncoderSettings
 import app.entesaver.core.logic.BitrateCalc
 import app.entesaver.core.logic.HdrPolicy
 import app.entesaver.core.logic.MediaSettings
+import app.entesaver.core.logic.RunDecider
 import app.entesaver.core.logic.VideoCodec
 import app.entesaver.core.logic.VideoCodecResolver
 import app.entesaver.core.logic.VideoSpec
@@ -117,6 +118,9 @@ object VideoCompressor {
      * full-size file.
      */
     const val MIN_TOTAL_MS = 5 * 60_000L
+
+    /** The ladder ran out of a budget the caller had cut short (see [compress]). */
+    class OutOfTime(detail: String) : Exception(detail)
 
     /** Below this there is no point starting another attempt at all. */
     private const val MIN_ATTEMPT_MS = 60_000L
@@ -306,6 +310,13 @@ object VideoCompressor {
             rung++
         }
         fallback?.let { return it }
+        if (outOfTime && RunDecider.outOfTimeWaits(maxTotalMs, DEFAULT_TOTAL_MS)) {
+            // The budget was cut short by the caller's run, not spent on a
+            // clip too long for any run. An as-is copy is final, so making
+            // one here would back the full-size file up for good; the clip
+            // waits for a run with the whole budget instead.
+            throw OutOfTime(detail)
+        }
         val failReason = when {
             outOfTime -> "out_of_time"
             notSmaller -> "not_smaller"

@@ -612,6 +612,8 @@ fun asIsReasonLabel(reason: String): String = when (reason) {
     "motion_photo" -> stringResource(R.string.asis_motion_photo)
     "depth_photo" -> stringResource(R.string.asis_depth_photo)
     "multi_picture" -> stringResource(R.string.asis_multi_picture)
+    "animated" -> stringResource(R.string.asis_animated)
+    "transparency" -> stringResource(R.string.asis_transparency)
     "format_as_is" -> stringResource(R.string.asis_format)
     "already_efficient" -> stringResource(R.string.asis_already_small)
     "not_smaller" -> stringResource(R.string.asis_not_smaller)
