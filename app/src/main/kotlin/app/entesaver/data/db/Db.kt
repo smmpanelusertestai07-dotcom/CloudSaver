@@ -475,6 +475,10 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = 'RELEASED'")
     suspend fun released(): List<ItemRow>
 
+    /** Batches some row belongs to. A batch no row names has nothing to verify. */
+    @Query("SELECT DISTINCT batchId FROM items WHERE batchId IS NOT NULL")
+    suspend fun linkedBatchIds(): List<Long>
+
     /** Every folder a copy still waits in. */
     @Query(
         "SELECT DISTINCT outputRelPath FROM items " +

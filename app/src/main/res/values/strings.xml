@@ -841,6 +841,7 @@
     <string name="transfer_export_ok">Backup saved</string>
     <string name="transfer_import_ok">Settings restored</string>
     <string name="transfer_failed">That is not an Ente Saver backup file, so nothing was changed. Pick the file you saved from Settings, Backup and restore \u2014 its name ends in .json or .csb.</string>
+    <string name="transfer_too_large">That file is too big to be a backup, so nothing was changed.</string>
     <string name="options_footer">No setting ever touches your originals. Quality and format apply to new copies only, and lowering the space Ente Saver may use only clears its own copies sooner.</string>
 
     <!-- cloud calculator (13.C) -->

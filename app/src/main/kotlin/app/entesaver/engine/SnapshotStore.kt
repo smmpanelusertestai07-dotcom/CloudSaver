@@ -6,21 +6,23 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import androidx.room.withTransaction
 import app.entesaver.R
 import app.entesaver.core.logic.Defaults
 import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.GoneReason
+import app.entesaver.core.logic.ImportMerge
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.SecureBackup
 import app.entesaver.core.logic.SnapshotCodec
 import app.entesaver.data.db.AppDb
-import app.entesaver.data.db.BatchRow
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.LedgerRow
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.OutputInventory
+import app.entesaver.util.BoundedRead
 import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
 import java.io.File
@@ -99,7 +101,8 @@ class SnapshotStore(
                 confirmedAt = row.confirmedAt,
                 keptUri = row.keptUri,
                 neverOptimise = row.neverOptimise,
-                outputRelPath = row.outputRelPath
+                outputRelPath = row.outputRelPath,
+                duplicateOf = row.duplicateOf
             )
         }
         val batches = db.batches().all().map { b ->
@@ -295,8 +298,12 @@ class SnapshotStore(
     }
 
     private fun read(uri: Uri): String? = try {
-        context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+        context.contentResolver.openInputStream(uri)?.use {
+            BoundedRead.readAtMost(it, BoundedRead.MAX_BACKUP_BYTES)?.toString(Charsets.UTF_8)
+        }
     } catch (e: Exception) {
+        null
+    } catch (e: OutOfMemoryError) {
         null
     }
 
@@ -359,15 +366,26 @@ class SnapshotStore(
         data object NeedsPassword : ImportResult
         data object WrongPassword : ImportResult
         data object Unreadable : ImportResult
+
+        /** Far bigger than any backup: most likely a photo or video picked by mistake. */
+        data object TooLarge : ImportResult
     }
 
     /** Import from a chosen file; handles both plain and encrypted backups. */
     suspend fun importFrom(uri: Uri, password: String?): ImportResult {
+        // The picker takes any file, so a big one is turned away by its
+        // reported size before a byte is read, and by the count while
+        // reading when the provider reports none (BoundedRead).
+        val reported = reportedSize(uri)
+        if (reported != null && reported > BoundedRead.MAX_BACKUP_BYTES) return ImportResult.TooLarge
         val bytes = try {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return ImportResult.Unreadable
+            val stream = context.contentResolver.openInputStream(uri) ?: return ImportResult.Unreadable
+            stream.use { BoundedRead.readAtMost(it, BoundedRead.MAX_BACKUP_BYTES) }
+                ?: return ImportResult.TooLarge
         } catch (e: Exception) {
             return ImportResult.Unreadable
+        } catch (e: OutOfMemoryError) {
+            return ImportResult.TooLarge
         }
         val json = if (SecureBackup.isEncrypted(bytes)) {
             if (password.isNullOrEmpty()) return ImportResult.NeedsPassword
@@ -377,15 +395,30 @@ class SnapshotStore(
                 return ImportResult.WrongPassword
             } catch (e: Exception) {
                 return ImportResult.Unreadable
+            } catch (e: OutOfMemoryError) {
+                return ImportResult.TooLarge
             }
         } else {
             bytes.toString(Charsets.UTF_8)
         }
+        // A file under the limit can still be too much to decode on a small
+        // heap; the merge is one transaction, so nothing is left half-written.
         return try {
             ImportResult.Success(merge(SnapshotCodec.decode(json)))
         } catch (e: Exception) {
             ImportResult.Unreadable
+        } catch (e: OutOfMemoryError) {
+            ImportResult.TooLarge
         }
+    }
+
+    /** The size the provider reports for [uri], or null when it gives none. */
+    private fun reportedSize(uri: Uri): Long? = try {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
+    } catch (e: Exception) {
+        null
     }
 
     /**
@@ -406,7 +439,12 @@ class SnapshotStore(
         snapshot: SnapshotCodec.Snapshot,
         importOptions: Boolean = true,
         onlyIfSetupUntouched: Boolean = false
-    ): Int = Locks.ledger.withLock { mergeLocked(snapshot, importOptions, onlyIfSetupUntouched) }
+    ): Int = Locks.release.withLock {
+        // The release lock first, in the order Releaser takes the two: a row
+        // still waiting can be handed its history here, and its staged file
+        // removed, only while no release is publishing that file.
+        Locks.ledger.withLock { mergeLocked(snapshot, importOptions, onlyIfSetupUntouched) }
+    }
 
     private suspend fun mergeLocked(
         snapshot: SnapshotCodec.Snapshot,
@@ -414,8 +452,9 @@ class SnapshotStore(
         onlyIfSetupUntouched: Boolean
     ): Int {
         // BB1.5: a snapshot exported under partial access is a fragment, not
-        // an inventory. Merging stays safe because it only ever adds rows or
-        // raises evidence, and the next scan - which only runs under full
+        // an inventory. Merging stays safe because it only ever adds rows,
+        // raises evidence on the same copy, or settles a row still waiting
+        // (ImportMerge), and the next scan - which only runs under full
         // access - fills in what the fragment lacks.
         // Every row lands in one transaction, or none does.
         //
@@ -462,9 +501,9 @@ class SnapshotStore(
         var imported = 0
         val now = System.currentTimeMillis()
         for (raw in snapshot.items) {
-            val mapped = SnapshotCodec.applyImportMapping(raw)
-            val existing = db.items().byFingerprint(mapped.fingerprint)
+            val existing = db.items().byFingerprint(raw.fingerprint)
             if (existing == null) {
+                val mapped = ImportMerge.forInsert(SnapshotCodec.applyImportMapping(raw)) ?: continue
                 val row = ItemRow(
                     fingerprint = mapped.fingerprint,
                     displayName = mapped.displayName,
@@ -481,39 +520,84 @@ class SnapshotStore(
                     outputBytes = mapped.outputBytes,
                     outputSha256 = mapped.outputSha256,
                     outputFolder = mapped.outputFolder?.name,
-                    outputRelPath = mapped.outputRelPath
-                        ?: mapped.outputFolder?.takeIf { mapped.releasedAt != null }
-                            ?.let { Defaults.legacyRelPath(it) },
+                    outputRelPath = restoredRelPath(mapped),
                     releasedAt = mapped.releasedAt,
                     confirmedAt = mapped.confirmedAt,
                     keptUri = mapped.keptUri,
                     neverOptimise = mapped.neverOptimise,
+                    duplicateOf = mapped.duplicateOf,
                     fromImport = true,
                     updatedAt = now
                 )
                 if (db.items().insert(row) != -1L) imported++
             } else {
-                // Upgrade evidence only; never downgrade local knowledge. A
+                // Never downgrade local knowledge (ImportMerge says how). A
                 // "never optimise" in the snapshot is honoured too: it only
                 // ever makes the app do less to a file, which is the one
                 // direction an import may move a choice on its own.
-                val existingEv = Evidence.parse(existing.evidence)
-                val betterEvidence = mapped.evidence.ordinal > existingEv.ordinal
-                val newlyExcluded = mapped.neverOptimise && !existing.neverOptimise
-                if (betterEvidence || newlyExcluded) {
-                    db.items().update(
-                        existing.copy(
-                            evidence = if (betterEvidence) mapped.evidence.name else existing.evidence,
-                            confirmedAt = if (betterEvidence) {
-                                mapped.confirmedAt ?: existing.confirmedAt
-                            } else {
-                                existing.confirmedAt
-                            },
-                            neverOptimise = existing.neverOptimise || mapped.neverOptimise,
-                            updatedAt = now
-                        )
+                val mapped = SnapshotCodec.applyImportMapping(raw)
+                val plan = ImportMerge.plan(
+                    ImportMerge.Local(
+                        state = enumOr(existing.state, ItemState.UNKNOWN),
+                        evidence = Evidence.parse(existing.evidence),
+                        outputSha256 = existing.outputSha256,
+                        neverOptimise = existing.neverOptimise
+                    ),
+                    mapped
+                )
+                if (!plan.changes) continue
+                // A waiting row loses its staged file either way: it is taken
+                // over by the history's copy, or parked as the person asked.
+                // The release lock (merge) keeps a release from using it now.
+                if (plan.takeOver || plan.exclude) {
+                    existing.stagePath?.let { runCatching { File(it).delete() } }
+                }
+                val never = existing.neverOptimise || mapped.neverOptimise
+                val updated = when {
+                    // The scan's location fields stay; the copy's record is
+                    // the history's, as it would be in an empty table.
+                    plan.takeOver -> existing.copy(
+                        state = ImportMerge.takenOverState(mapped).name,
+                        evidence = mapped.evidence.name,
+                        goneReason = raw.goneReason?.name,
+                        skipReason = null,
+                        stagePath = null,
+                        outputUri = null,
+                        outputName = mapped.outputName,
+                        outputBytes = mapped.outputBytes,
+                        outputSha256 = mapped.outputSha256,
+                        outputFolder = mapped.outputFolder?.name,
+                        outputRelPath = restoredRelPath(mapped),
+                        releasedAt = mapped.releasedAt,
+                        confirmedAt = mapped.confirmedAt,
+                        neverOptimise = never,
+                        fromImport = true,
+                        updatedAt = now
+                    )
+                    // As setNeverOptimise parks a row, so the queue skips it.
+                    plan.exclude -> existing.copy(
+                        state = ItemState.SKIP.name,
+                        skipReason = ImportMerge.USER_EXCLUDED,
+                        stagePath = null,
+                        outputName = null,
+                        outputBytes = null,
+                        outputSha256 = null,
+                        outputFolder = null,
+                        neverOptimise = never,
+                        updatedAt = now
+                    )
+                    else -> existing.copy(
+                        evidence = if (plan.raiseEvidence) mapped.evidence.name else existing.evidence,
+                        confirmedAt = if (plan.raiseEvidence) {
+                            mapped.confirmedAt ?: existing.confirmedAt
+                        } else {
+                            existing.confirmedAt
+                        },
+                        neverOptimise = never,
+                        updatedAt = now
                     )
                 }
+                db.items().update(updated)
             }
         }
         // The ledger goes in before anything else can act on it: a restored
@@ -532,19 +616,19 @@ class SnapshotStore(
                 )
             )
         }
-        for (b in snapshot.batches) {
-            db.batches().insert(
-                BatchRow(
-                    releasedAt = b.releasedAt,
-                    totalBytes = b.totalBytes,
-                    folder = b.folder.name,
-                    cloudPackage = b.cloudPackage,
-                    verifiedAt = b.verifiedAt
-                )
-            )
-        }
+        // Batches are written to the file but never read back. No restored
+        // row points at one, so they only ever counted twice against today's
+        // allowance on a second import, and an old phone's unverified batch
+        // moved the start of this phone's traffic window back to its date -
+        // letting traffic sent before any real batch verify one.
         return imported
     }
+
+    /** The folder a restored copy was released into; older files name only the kind. */
+    private fun restoredRelPath(mapped: SnapshotCodec.SnapItem): String? =
+        mapped.outputRelPath
+            ?: mapped.outputFolder?.takeIf { mapped.releasedAt != null }
+                ?.let { Defaults.legacyRelPath(it) }
 
     private inline fun <reified T : Enum<T>> enumOr(value: String?, fallback: T): T =
         enumOrNull<T>(value) ?: fallback

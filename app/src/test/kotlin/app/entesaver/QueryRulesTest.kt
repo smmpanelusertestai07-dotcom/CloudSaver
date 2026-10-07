@@ -81,4 +81,22 @@ class QueryRulesTest {
             unescaped.isEmpty()
         )
     }
+
+    @Test
+    fun `a list of ids is bound to an IN query a slice at a time`() {
+        // Android 10 and 11 refuse more than 999 bind arguments. The ids
+        // waiting for a delete consent went to one query whole, and past
+        // 999 of them Home crashed every time it opened.
+        val calls = Regex("""\.(byIds|knownFingerprints)\(""")
+        val offenders = mutableListOf<String>()
+        for ((name, text) in sources()) {
+            if (name == "Db.kt") continue
+            for (line in text.lines()) {
+                if (calls.containsMatchIn(line) && !line.contains("SqlChunks.read(")) {
+                    offenders += "$name: ${line.trim()}"
+                }
+            }
+        }
+        assertTrue("these bind an unbounded list in one query: $offenders", offenders.isEmpty())
+    }
 }

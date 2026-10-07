@@ -18,11 +18,14 @@ import app.entesaver.core.logic.PhotoSettings
 import app.entesaver.core.logic.VideoCodecChoice
 import app.entesaver.core.logic.VideoPreset
 import app.entesaver.data.db.AppDb
+import app.entesaver.data.db.BatchRow
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.SnapshotStore
 import app.entesaver.ui.Lock
+import app.entesaver.util.BoundedRead
 import java.io.File
+import java.io.RandomAccessFile
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -233,6 +236,65 @@ class LockBackupE2eTest {
         assertEquals("FREED_KEPT", kept?.state)
         val excluded = db.items().byFingerprint("fp-leave-alone.jpg")
         assertEquals("the exclusion must come back", true, excluded?.neverOptimise)
+    }
+
+    @Test
+    fun aRestoreAfterTheFirstScanEndsWhereARestoreIntoAnEmptyTableWould(): Unit = runBlocking {
+        // After a reinstall the scan runs before the person finds Restore in
+        // Settings, so every photo is already a NEW row. Giving that row the
+        // history's evidence and nothing else left it queued: it was encoded
+        // again and a second copy went up. And a "never optimise" set only
+        // the flag, so the excluded photo was optimised all the same.
+        val db = AppDb.get(target)
+        db.items().insert(
+            row("sent.jpg").copy(
+                state = "DONE", evidence = "CONFIRMED_EXACT", outputSha256 = "5e47",
+                outputName = "sent__fp.jpg", outputBytes = 500, releasedAt = 1L, confirmedAt = 2L
+            )
+        )
+        db.items().insert(
+            row("private.jpg").copy(state = "SKIP", skipReason = "user_excluded", neverOptimise = true)
+        )
+        db.items().insert(row("waiting.jpg"))
+        db.batches().insert(BatchRow(releasedAt = 1L, totalBytes = 500, folder = "SINGLE"))
+        assertTrue("export must succeed", exportTo(backupFile(), null))
+        db.clearAllTables()
+
+        // The new install's scan.
+        db.items().insert(row("sent.jpg").copy(contentUri = "content://media/external/images/media/1"))
+        db.items().insert(row("private.jpg").copy(contentUri = "content://media/external/images/media/2"))
+        assertTrue(importFrom(backupFile(), null) is SnapshotStore.ImportResult.Success)
+        // A second restore of the same file changes nothing more.
+        assertTrue(importFrom(backupFile(), null) is SnapshotStore.ImportResult.Success)
+
+        val sent = db.items().byFingerprint("fp-sent.jpg")!!
+        assertEquals("DONE", sent.state)
+        assertEquals("5e47", sent.outputSha256)
+        assertEquals("the scan's location stays", "content://media/external/images/media/1", sent.contentUri)
+        val excluded = db.items().byFingerprint("fp-private.jpg")!!
+        assertEquals("SKIP", excluded.state)
+        assertEquals("user_excluded", excluded.skipReason)
+        val queue = db.items().nextByPriority(
+            photos = true, videos = true, excludedBuckets = listOf("-"), freshAfter = 0L,
+            limit = 10, videoMaxMs = -1L, skipIds = listOf(-1L)
+        )
+        assertTrue("nothing the history settled is queued: $queue", queue.isEmpty())
+        assertEquals(
+            "a queued row with no file here is left to the scan, not restored as a ghost",
+            null, db.items().byFingerprint("fp-waiting.jpg")
+        )
+        assertTrue("batches link to no restored row and are not imported", db.batches().all().isEmpty())
+    }
+
+    @Test
+    fun aFileFarBiggerThanAnyBackupIsTurnedAwayWithoutReadingItAll(): Unit = runBlocking {
+        val huge = File(target.cacheDir, "not-a-backup.mp4")
+        RandomAccessFile(huge, "rw").use { it.setLength(BoundedRead.MAX_BACKUP_BYTES + 1) }
+        try {
+            assertEquals(SnapshotStore.ImportResult.TooLarge, importFrom(huge, null))
+        } finally {
+            huge.delete()
+        }
     }
 
     private fun row(name: String) = ItemRow(

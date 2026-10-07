@@ -677,8 +677,13 @@ class MaintainEngine(private val context: Context) {
      */
     private suspend fun verifyBatches(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
+        // Only batches a row belongs to. Earlier builds restored a history
+        // file's batches with no rows: an old phone's unverified one, dated
+        // before this install, would start the traffic window on its date and
+        // let Ente's earlier uploads pay for this phone's real batches.
+        val linked = db.items().linkedBatchIds().toHashSet()
         val pending = db.batches().unverified()
-            .filter { it.totalBytes > 0 && it.cloudPackage != null }
+            .filter { it.totalBytes > 0 && it.cloudPackage != null && it.id in linked }
             .sortedBy { it.releasedAt }
         if (pending.isEmpty()) return
         // Every released row, once, indexed by the batch it belongs to.

@@ -78,6 +78,25 @@ class SnapshotCodecTest {
     }
 
     @Test
+    fun aDuplicateKeepsTheOriginalItBelongsTo() {
+        // Without the link a restored duplicate read as an unexplained skip,
+        // and Home listed it as a problem for good.
+        val snapshot = SnapshotCodec.Snapshot(
+            version = SnapshotCodec.VERSION,
+            exportedAt = 42,
+            options = emptyMap(),
+            items = listOf(
+                item("4444444444444444", ItemState.SKIP, Evidence.NONE, outputName = null)
+                    .copy(skipReason = "duplicate", duplicateOf = "5555555555555555")
+            ),
+            batches = emptyList()
+        )
+        val decoded = SnapshotCodec.decode(SnapshotCodec.encode(snapshot))
+        assertEquals(snapshot.items, decoded.items)
+        assertEquals("5555555555555555", decoded.items[0].duplicateOf)
+    }
+
+    @Test
     fun olderSnapshotsWithoutTheKeysDecodeAsNothingKept() {
         // Files written before the keys existed must keep reading, and must
         // not invent a kept copy or an exclusion the person never made.
