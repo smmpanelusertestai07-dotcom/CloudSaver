@@ -17,6 +17,19 @@ class KeptCopiesTest {
     }
 
     @Test
+    fun anInPlaceCopyTheGalleryRenamedOnArrivalStillBelongs() {
+        // The copy is written while the original still holds the name, so
+        // MediaProvider adds " (1)". Read as a stranger, the scanner queued
+        // the copy as a new photo and the re-key in finish() then collided
+        // with it on the unique fingerprint index.
+        assertTrue(KeptCopies.belongsTo("IMG_0001 (1).jpg", "IMG_0001.jpg", fp))
+        assertTrue(KeptCopies.belongsTo("IMG_0001 (12).jpg", "IMG_0001.heic", fp))
+        // Only the provider's exact suffix: anything else is a different name.
+        assertFalse(KeptCopies.belongsTo("IMG_0001 (1)x.jpg", "IMG_0001.jpg", fp))
+        assertFalse(KeptCopies.belongsTo("IMG_0001 copy.jpg", "IMG_0001.jpg", fp))
+    }
+
+    @Test
     fun aCopyInTheAppsOwnAlbumBelongsByItsFingerprint() {
         assertTrue(KeptCopies.belongsTo("IMG_0001__$fp.jpg", "IMG_0001.jpg", fp))
         // The gallery's own dedup suffix on the copy's name does not hide it.

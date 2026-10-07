@@ -57,4 +57,24 @@ object FormatResolver {
         PhotoFormat.WEBP -> "webp"
         else -> "jpg"
     }
+
+    /**
+     * The MIME type of a file with this name, for every format this app
+     * writes or copies. MediaProvider makes a file's extension agree with the
+     * type it is given, so a HEIC copy declared as JPEG lands as
+     * "name.heic.jpg" - a name nothing that looks for the copy afterwards
+     * recognises. One table for every insert, so no writer falls behind the
+     * encoders.
+     */
+    fun mimeOf(name: String, fallback: String): String =
+        when (name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "mp4" -> "video/mp4"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "heic", "heif" -> "image/heic"
+            "dng" -> "image/x-adobe-dng"
+            else -> fallback
+        }
 }

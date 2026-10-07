@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import android.provider.MediaStore
 import app.entesaver.R
+import app.entesaver.core.logic.FormatResolver
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputPaths
@@ -369,17 +370,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
     }
 
     companion object {
-        fun mimeFor(name: String, fallback: String): String {
-            return when (name.substringAfterLast('.', "").lowercase()) {
-                "jpg", "jpeg" -> "image/jpeg"
-                "mp4" -> "video/mp4"
-                "png" -> "image/png"
-                "gif" -> "image/gif"
-                "webp" -> "image/webp"
-                "heic", "heif" -> "image/heic"
-                "dng" -> "image/x-adobe-dng"
-                else -> fallback
-            }
-        }
+        fun mimeFor(name: String, fallback: String): String = FormatResolver.mimeOf(name, fallback)
     }
 }

@@ -171,4 +171,29 @@ object ReclaimRules {
     /** Splits a selection into the chunks that are confirmed one at a time. */
     fun <T> batches(uris: List<T>, size: Int = MAX_URIS_PER_REQUEST): List<List<T>> =
         if (uris.isEmpty()) emptyList() else uris.chunked(size.coerceAtLeast(1))
+
+    /**
+     * Whether freeing this row's original would strand its copy in the
+     * upload folder. Every pass that minds that folder reads RELEASED rows
+     * only, so a copy still there when the row becomes FREED is never
+     * counted, watched or removed again - it has to go with the original.
+     */
+    fun leavesUploadCopy(state: String, outputUri: String?): Boolean =
+        state == ItemState.RELEASED.name && outputUri != null
+
+    /**
+     * Whether a row is one the scanner made and nothing has touched since:
+     * queued or set aside, never staged, released or kept. Only such a row
+     * may give way when a freed row needs the fingerprint it holds - anything
+     * further along carries history that must not be thrown away.
+     */
+    fun isUntouchedStray(
+        state: String,
+        outputUri: String?,
+        stagePath: String?,
+        releasedAt: Long?,
+        keptUri: String?
+    ): Boolean =
+        (state == ItemState.NEW.name || state == ItemState.SKIP.name) &&
+            outputUri == null && stagePath == null && releasedAt == null && keptUri == null
 }

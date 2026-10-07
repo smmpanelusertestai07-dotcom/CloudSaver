@@ -36,6 +36,29 @@ class EncoderChoiceTest {
         }
     }
 
+    /**
+     * MediaProvider makes a file's extension agree with the type it is given.
+     * The kept light copy used a table that knew only JPEG and MP4, so a HEIC
+     * or WebP copy of a JPEG original was declared JPEG and landed as
+     * "name.heic.jpg" - a name nothing that tracks the copy could recognise.
+     */
+    @Test
+    fun `every format the app writes has its own MIME type`() {
+        val sentinel = "application/x-not-mapped"
+        for (format in PhotoFormat.entries) {
+            val ext = FormatResolver.extensionOf(format)
+            assertTrue(
+                "$ext has no MIME type of its own",
+                FormatResolver.mimeOf("IMG_0001__0123456789abcdef.$ext", sentinel) != sentinel
+            )
+        }
+        assertEquals("image/heic", FormatResolver.mimeOf("a.heic", "image/jpeg"))
+        assertEquals("image/webp", FormatResolver.mimeOf("a.WEBP", "image/jpeg"))
+        assertEquals("video/mp4", FormatResolver.mimeOf("a.mp4", "video/quicktime"))
+        // Anything unknown keeps what the original said it was.
+        assertEquals("video/quicktime", FormatResolver.mimeOf("a.mov", "video/quicktime"))
+    }
+
     @Test
     fun `HEVC needs a hardware encoder, whatever was asked`() {
         val chip = VideoCodecResolver.Hardware(hevcFits = true)
