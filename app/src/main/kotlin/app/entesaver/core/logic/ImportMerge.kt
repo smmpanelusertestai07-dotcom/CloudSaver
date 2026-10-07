@@ -138,6 +138,24 @@ object ImportMerge {
         if (scannedIsKeptCopy(item)) scannedUri ?: item.keptUri else item.keptUri
 
     /**
+     * When a row restored from [raw] - the history's record before the
+     * import mapping - left the upload folder, at [now].
+     *
+     * A copy the history saw waiting (RELEASED, or restored and not yet
+     * found: UNKNOWN) may still be in the folder, so a leave it recorded
+     * says nothing; it is read by its last change until it is found again
+     * or settled. A copy that had left keeps its recorded time or, from a
+     * history written before 12.2 recorded one, [now]: never earlier than
+     * it left, and no later bookkeeping moves it.
+     */
+    fun leftAtOnImport(raw: SnapshotCodec.SnapItem, now: Long): Long? = when {
+        raw.state == ItemState.RELEASED || raw.state == ItemState.UNKNOWN -> null
+        raw.leftFolderAt != null -> raw.leftFolderAt
+        raw.releasedAt != null -> now
+        else -> null
+    }
+
+    /**
      * The row to insert for [item] when the table has none, or null when it
      * is better left to the scan.
      *

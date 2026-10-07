@@ -17,6 +17,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.StageRules
 import kotlinx.coroutines.flow.Flow
@@ -95,7 +96,10 @@ data class ItemRow(
      * out of RELEASED, whatever it went to - gone, finished, freed, skipped
      * or sent back to the queue. Written there and nowhere else, so no later
      * bookkeeping on the row moves it, and kept when [releasedAt] is cleared.
-     * Null for a row that never left, or left before 12.2 recorded it.
+     * Cleared when the row is released again. A row that left before 12.2
+     * carries its last change at the upgrade, never earlier than it left.
+     * Null for a row that never left, or one whose copy may still be in the
+     * folder (restored, not yet found again).
      */
     val leftFolderAt: Long? = null,
     val attempts: Int = 0,
@@ -357,8 +361,9 @@ private const val RECLAIMABLE_BYTES =
 
 /**
  * When a row that is not RELEASED left the folder: [ItemRow.leftFolderAt],
- * or for a row that left before 12.2 recorded it, a released row's last
- * change. Null - never matched - for a row that was never released.
+ * or for a released row without one - restored, its copy perhaps still in
+ * the folder - its last change, so it keeps counting until it is found
+ * again or settled. Null - never matched - for a row that was never released.
  */
 private const val LEFT_AT =
     "COALESCE(leftFolderAt, CASE WHEN releasedAt IS NOT NULL THEN updatedAt END)"
@@ -1055,10 +1060,27 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger WHERE outputSha256 = :sha LIMIT 1")
     suspend fun bySha(sha: String): LedgerRow?
 
-
+    /** Sets the entry for [sha] to [evidence] where it holds one of [weaker]. */
+    @Query(
+        "UPDATE ledger SET evidence = :evidence, confirmedAt = :at " +
+            "WHERE outputSha256 = :sha AND evidence IN (:weaker)"
+    )
+    suspend fun raise(sha: String, evidence: String, at: Long, weaker: List<String>): Int
 
     @Query("SELECT * FROM ledger")
     suspend fun all(): List<LedgerRow>
+}
+
+/**
+ * Records a delivered copy, or raises the entry it already has when [row]
+ * proves more: a copy verified with its batch and proven on its own later
+ * keeps one entry, with its best proof. Never lowers one.
+ */
+suspend fun LedgerDao.record(row: LedgerRow) {
+    if (insert(row) != -1L) return
+    val grade = Evidence.parse(row.evidence)
+    val weaker = Evidence.entries.filter { it.ordinal < grade.ordinal }.map { it.name }
+    if (weaker.isNotEmpty()) raise(row.outputSha256, grade.name, row.confirmedAt, weaker)
 }
 
 @Dao
@@ -1404,11 +1426,18 @@ abstract class AppDb : RoomDatabase() {
          * shared Ente's traffic with another is known by when it left - not
          * by its row's last change, which any bookkeeping moves, and not only
          * while it keeps a release time, which a copy sent back to the queue
-         * loses. Existing rows stay empty and are read as they were before.
+         * loses. A row that had already left gets its last change now - what
+         * it was read by until today, never earlier than it left - so later
+         * bookkeeping no longer moves it. A restored row (UNKNOWN), whose copy
+         * may still be in the folder, stays empty and is read as before.
          */
         private val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(connection: SQLiteConnection) {
                 connection.execSQL("ALTER TABLE `items` ADD COLUMN `leftFolderAt` INTEGER")
+                connection.execSQL(
+                    "UPDATE `items` SET `leftFolderAt` = `updatedAt` " +
+                        "WHERE `state` NOT IN ('RELEASED', 'UNKNOWN') AND `releasedAt` IS NOT NULL"
+                )
             }
         }
 

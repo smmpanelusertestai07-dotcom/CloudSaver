@@ -627,6 +627,16 @@ class ProductBoundariesTest {
                 for (w in stateWrites(body)) assertTrue("$file: $w", w.contains("leftFolderAtAfter("))
             }
         }
+
+        // Into the folder again, a row carries no earlier leave; a restored
+        // copy found missing is dated when that was found.
+        val releaser = File(main, "media/Releaser.kt").readText()
+        val release = stateWrites(releaser).single { it.contains("ItemState.RELEASED.name") }
+        assertTrue(release, release.contains("leftFolderAt = null"))
+        val reattach = stateWrites(File(main, "engine/ReattachEngine.kt").readText())
+        assertEquals(2, reattach.size)
+        assertTrue(reattach[0], reattach[0].contains("leftFolderAt = null"))
+        assertTrue(reattach[1], reattach[1].contains("leftFolderAt = row.leftFolderAt ?: now"))
     }
 
     /**

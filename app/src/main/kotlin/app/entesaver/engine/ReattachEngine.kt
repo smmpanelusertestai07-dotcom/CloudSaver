@@ -87,6 +87,8 @@ class ReattachEngine(private val context: Context) {
                     // A restored copy is watched from now, like a new one: Ente's
                     // traffic before this install says nothing about it.
                     releasedAt = if (restored) now else row.releasedAt ?: now,
+                    // In the folder again: an earlier leave says nothing about it.
+                    leftFolderAt = null,
                     updatedAt = now
                 )
             )
@@ -96,7 +98,13 @@ class ReattachEngine(private val context: Context) {
         // (the ones found are RELEASED by now): Ente had it.
         for (row in db.items().restoredWithEvidence()) {
             val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence))
-            if (state.name != row.state) db.items().update(row.copy(state = state.name, updatedAt = now))
+            // It left some time before now; dated now, later bookkeeping
+            // cannot move it.
+            if (state.name != row.state) {
+                db.items().update(
+                    row.copy(state = state.name, leftFolderAt = row.leftFolderAt ?: now, updatedAt = now)
+                )
+            }
         }
 
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)

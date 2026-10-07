@@ -34,6 +34,28 @@ class ImportMergeTest {
         )
     )
 
+    /** The history's record as written, before the import mapping. */
+    private fun raw(state: ItemState, releasedAt: Long?, leftAt: Long?) = SnapshotCodec.SnapItem(
+        fingerprint = "0123456789abcdef",
+        displayName = "IMG_1.jpg",
+        sizeBytes = 1000,
+        dateModified = 1700000000,
+        captureAt = 1700000000000,
+        mimeType = "image/jpeg",
+        isVideo = false,
+        state = state,
+        evidence = Evidence.NONE,
+        goneReason = null,
+        skipReason = null,
+        outputName = "IMG_1__0123456789abcdef.jpg",
+        outputBytes = 500L,
+        outputSha256 = "aaaa",
+        outputFolder = OutFolder.PHOTOS,
+        releasedAt = releasedAt,
+        confirmedAt = null,
+        leftFolderAt = leftAt
+    )
+
     private fun scanned(state: ItemState = ItemState.NEW, sha: String? = null, never: Boolean = false) =
         ImportMerge.Local(state, Evidence.NONE, sha, never)
 
@@ -179,5 +201,29 @@ class ImportMergeTest {
         val row = ImportMerge.forInsert(never)!!
         assertEquals(ItemState.SKIP, row.state)
         assertEquals(ImportMerge.USER_EXCLUDED, row.skipReason)
+    }
+
+    @Test
+    fun aCopyTheHistorySawWaitingCarriesNoLeaveTime() {
+        // Re-released after an earlier leave, or restored and not yet found:
+        // the copy may still be in the folder, so a recorded leave is stale.
+        val now = 50_000L
+        assertNull(ImportMerge.leftAtOnImport(raw(ItemState.RELEASED, 30_000L, 20_000L), now))
+        assertNull(ImportMerge.leftAtOnImport(raw(ItemState.UNKNOWN, 30_000L, 20_000L), now))
+        assertNull(ImportMerge.leftAtOnImport(raw(ItemState.RELEASED, 30_000L, null), now))
+    }
+
+    @Test
+    fun aCopyThatHadLeftKeepsItsLeaveOrIsDatedAtTheImport() {
+        val now = 50_000L
+        // Recorded: kept, even with the release time cleared (sent back).
+        assertEquals(20_000L, ImportMerge.leftAtOnImport(raw(ItemState.GONE, 10_000L, 20_000L), now))
+        assertEquals(20_000L, ImportMerge.leftAtOnImport(raw(ItemState.NEW, null, 20_000L), now))
+        // From a history written before 12.2: the import, never earlier than
+        // it left, and fixed from then on.
+        assertEquals(now, ImportMerge.leftAtOnImport(raw(ItemState.DONE, 10_000L, null), now))
+        assertEquals(now, ImportMerge.leftAtOnImport(raw(ItemState.FREED, 10_000L, null), now))
+        // Never released: never left.
+        assertNull(ImportMerge.leftAtOnImport(raw(ItemState.SKIP, null, null), now))
     }
 }

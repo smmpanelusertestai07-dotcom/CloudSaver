@@ -18,6 +18,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.BatchRow
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.LedgerRow
+import app.entesaver.data.db.record
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
@@ -193,7 +194,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
 
     private suspend fun recordDeliveredLocked(row: ItemRow, evidence: String, now: Long) {
         val sha = row.outputSha256 ?: return
-        db.ledger().insert(
+        db.ledger().record(
             LedgerRow(
                 outputSha256 = sha,
                 fingerprint = row.fingerprint,
@@ -355,6 +356,8 @@ class Releaser(private val context: Context, private val db: AppDb) {
                     outputName = actualName,
                     outputRelPath = OutputRoots.normalize(actualPath),
                     releasedAt = now,
+                    // Out again: an earlier leave says nothing about this copy.
+                    leftFolderAt = null,
                     batchId = batchId,
                     stagePath = null,
                     appDeletedCopy = false,

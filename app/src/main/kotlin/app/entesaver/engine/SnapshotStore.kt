@@ -20,6 +20,7 @@ import app.entesaver.core.logic.SnapshotCodec
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.LedgerRow
+import app.entesaver.data.db.record
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.OutputInventory
 import app.entesaver.util.BoundedRead
@@ -529,7 +530,7 @@ class SnapshotStore(
                     outputRelPath = restoredRelPath(mapped),
                     releasedAt = mapped.releasedAt,
                     confirmedAt = mapped.confirmedAt,
-                    leftFolderAt = mapped.leftFolderAt,
+                    leftFolderAt = ImportMerge.leftAtOnImport(raw, now),
                     keptUri = mapped.keptUri,
                     neverOptimise = mapped.neverOptimise,
                     duplicateOf = mapped.duplicateOf,
@@ -582,7 +583,9 @@ class SnapshotStore(
                         confirmedAt = mapped.confirmedAt,
                         // The later of the two: a copy this phone sent back
                         // to the queue keeps the time it left the folder.
-                        leftFolderAt = listOfNotNull(existing.leftFolderAt, mapped.leftFolderAt).maxOrNull(),
+                        leftFolderAt = listOfNotNull(
+                            existing.leftFolderAt, ImportMerge.leftAtOnImport(raw, now)
+                        ).maxOrNull(),
                         neverOptimise = never,
                         fromImport = true,
                         updatedAt = now
@@ -625,7 +628,7 @@ class SnapshotStore(
         // anything is missing.
         for (l in snapshot.ledger) {
             if (l.outputSha256.isEmpty()) continue
-            db.ledger().insert(
+            db.ledger().record(
                 LedgerRow(
                     outputSha256 = l.outputSha256,
                     fingerprint = l.fingerprint,
