@@ -715,15 +715,95 @@ class ProductBoundariesTest {
             scanner.substringAfter("private suspend fun retireReplaced").contains("Locks.stage.withLock")
         )
         // So does Free up's remake: the screen waiting on it is no reason for
-        // a second full-size decode beside the background one.
+        // a second full-size decode beside the background one. It takes its
+        // turn (StageTurn, which holds Locks.stage) rather than wait on the
+        // lock row by row behind a run that keeps encoding.
         val remake = File("src/main/kotlin/app/entesaver/engine/ReclaimEngine.kt").readText()
             .substringAfter("private suspend fun pinSource(")
             .substringBefore("private suspend fun writeVerified(")
-        val held = remake.indexOf("Locks.stage.withLock")
-        assertTrue("the Free-up remake must hold Locks.stage", held >= 0)
+        val held = remake.indexOf("if (!turn.take()) return null")
+        assertTrue("the Free-up remake must hold its turn at Locks.stage", held >= 0)
+        assertFalse("and never wait on the lock for each row", remake.contains("Locks.stage.withLock"))
         for (step in listOf("InFlight.beginRemake(", "DeviceTier.fit(", "VideoCompressor.compress(")) {
             assertTrue("$step must run inside it", remake.indexOf(step) > held)
         }
+    }
+
+    @Test
+    fun `Free up takes the encoder once a batch, and the run gives way`() {
+        // Each remake waited on Locks.stage with no limit, row by row, and
+        // the background run took it back between rows: one more encode -
+        // up to twenty minutes for a clip - ahead of every row, on a bare
+        // spinner (StageTurnTest has the turn itself).
+        val engine = File("src/main/kotlin/app/entesaver/engine/ReclaimEngine.kt").readText()
+        val prepare = engine.substringAfter("suspend fun prepare(").substringBefore("private suspend fun prepareRows(")
+        assertTrue("one turn for the batch", prepare.contains("val turn = stageTurn(onWaiting)"))
+        assertTrue("given back whatever happens", prepare.indexOf("turn.close()") > prepare.indexOf("} finally {"))
+        val rows = engine.substringAfter("private suspend fun prepareRows(").substringBefore("suspend fun finish(")
+        assertTrue("the same turn for every row", rows.contains("pinLightCopy(row, options, now, remakeDiedOn, turn)"))
+        assertTrue("a remake left out for it is named as such", rows.contains("if (turn.refusals > refusedBefore) STAGE_BUSY"))
+        val pin = engine.substringAfter("suspend fun pinLightCopy(").substringBefore("private class PinSource")
+        assertTrue("a caller with no batch gets a turn of its own", pin.contains("val own = turn ?: stageTurn()"))
+        assertTrue("and gives it back", pin.contains("if (turn == null) own.close()"))
+        // The background run starts no new file while Free up wants it.
+        val worker = File("src/main/kotlin/app/entesaver/work/CompressWorker.kt").readText()
+        val yieldAt = worker.indexOf("if (Locks.runShouldYield(itemStart)) break@loop")
+        assertTrue("the run must give way to Free up", yieldAt >= 0)
+        assertTrue("before it starts the file", yieldAt < worker.indexOf("stager.stageInRun("))
+        // The wait is on screen, and so is a remake left out for it.
+        val vm = File("src/main/kotlin/app/entesaver/ui/ReclaimViewModel.kt").readText()
+        assertTrue(vm.contains("{ waitingForStage.value = it }"))
+        val screen = File("src/main/kotlin/app/entesaver/ui/screens/ReclaimScreen.kt").readText()
+        assertTrue(screen.contains("rvm.waitingForStage.collectAsStateWithLifecycle()"))
+        assertTrue(screen.contains("R.string.freeup_waiting_for_stage"))
+        assertTrue(screen.contains("ReclaimEngine.STAGE_BUSY -> stringResource(R.string.skip_stage_busy)"))
+    }
+
+    @Test
+    fun `the run measures a file's time once the encoder is free`() {
+        // The time left and the battery charge were read before stageOne
+        // waited on Locks.stage. Behind a Free-up remake or a restore, the
+        // encoder was handed a budget minutes too large - past the job's
+        // limit, where Android stops it mid-encode - and the wait was charged
+        // to the day's video allowance as encoding.
+        val stager = File("src/main/kotlin/app/entesaver/media/Stager.kt").readText()
+        val run = stager.substringAfter("suspend fun stageInRun(").substringBefore("suspend fun stageHeld(")
+        val lock = run.indexOf("Locks.stage.withLock")
+        assertTrue(lock >= 0)
+        assertTrue("measured inside the lock", run.indexOf("val lockedAt = System.currentTimeMillis()") > lock)
+        assertTrue(run.contains("val remaining = deadlineAt - lockedAt"))
+        assertTrue("asked again before it starts", run.indexOf("if (!fits(remaining))") in 0 until run.indexOf("stageHeld("))
+        assertTrue("a file not started counts no try", run.contains("RunStage(started = false, ok = false, encodeMs = 0L)"))
+        assertTrue(run.contains("encodeMs = System.currentTimeMillis() - lockedAt"))
+        val worker = File("src/main/kotlin/app/entesaver/work/CompressWorker.kt").readText()
+        assertFalse("no budget measured before the wait", worker.contains("runRemainingMs"))
+        assertTrue(worker.contains("RunDecider.batteryCost(power.plugged, row.isVideo, ok, staged.encodeMs)"))
+        assertTrue("a file not started is left for the next run", worker.contains("if (row.isVideo) later += row.id\n                        continue"))
+    }
+
+    @Test
+    fun `self-heal and reattach never write a stale row over a restore`() {
+        // A restore taking a staged row over, or parking it as never
+        // optimise, deletes its staged file mid-transaction. Self-heal read
+        // the row before that, found the file gone and wrote the old row back
+        // as NEW: the excluded photo was encoded and published, or one Ente
+        // had was sent again. Self-heal holds Locks.maintain and may not take
+        // the restore's locks, so its write checks instead.
+        val engine = File("src/main/kotlin/app/entesaver/engine/MaintainEngine.kt").readText()
+        val heal = engine.substringAfter("private suspend fun selfHealStage(").substringBefore("private suspend fun originalsPresence(")
+        assertTrue(heal.contains("db.items().unstageIfStill(row.id, path, now)"))
+        assertFalse("never the row read before", heal.contains("db.items().update("))
+        val dao = File("src/main/kotlin/app/entesaver/data/db/Db.kt").readText()
+        val query = dao.substringBefore("suspend fun unstageIfStill(").substringAfterLast("@Query(")
+        assertTrue(query.contains("WHERE id = :id AND state = 'STAGED' "))
+        assertTrue(query.contains("AND stagePath IS :path"))
+        // Reattach reads rows and writes them back whole; it takes the
+        // restore's locks, in the restore's order, round all of it.
+        val reattach = File("src/main/kotlin/app/entesaver/engine/ReattachEngine.kt").readText()
+        assertTrue(reattach.contains("Locks.stage.withLock { Locks.release.withLock { runLocked() } }"))
+        val locked = reattach.substringAfter("private suspend fun runLocked()")
+        assertTrue("the flag is read again under the locks", locked.contains("if (repo.current().copiesReattached) return"))
+        assertTrue(locked.contains("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
     }
 
     @Test
@@ -789,7 +869,8 @@ class ProductBoundariesTest {
                     val body = text.substring(at, minOf(text.length, at + 1500))
                     assertFalse(
                         "${f.name} takes the stage lock while holding ${outer.substringBefore(".withLock")}",
-                        body.contains("Locks.stage.withLock") || body.contains("Locks.stage.tryLock")
+                        body.contains("Locks.stage.withLock") || body.contains("Locks.stage.tryLock") ||
+                            body.contains("Locks.stage.lock(") || body.contains(".take()")
                     )
                     at = text.indexOf(outer, at + 1)
                 }

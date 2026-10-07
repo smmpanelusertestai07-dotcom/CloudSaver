@@ -11,7 +11,9 @@ import app.entesaver.core.logic.ReattachRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.OutputInventory
+import app.entesaver.util.Locks
 import java.io.File
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Reunites light copies with their originals after the database was lost.
@@ -28,6 +30,17 @@ import java.io.File
 class ReattachEngine(private val context: Context) {
 
     suspend fun run() {
+        if (OptionsRepo.get(context).current().copiesReattached) return
+        // A restore's order: stage, then release. The rows are read and
+        // written back whole below, and a restore merging meanwhile - taking
+        // a row over with its history's proof - was overwritten with a copy
+        // that has none; the flag set at the end then undid the restore's
+        // request for another pass. Held, a restore runs wholly before this
+        // or wholly after it, and after it asks again.
+        Locks.stage.withLock { Locks.release.withLock { runLocked() } }
+    }
+
+    private suspend fun runLocked() {
         val db = AppDb.get(context)
         val repo = OptionsRepo.get(context)
         if (repo.current().copiesReattached) return

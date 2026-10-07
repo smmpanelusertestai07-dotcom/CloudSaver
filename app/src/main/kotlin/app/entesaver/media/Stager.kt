@@ -38,33 +38,62 @@ class Stager(private val context: Context, private val db: AppDb) {
      * Storing it next to the real result is what lets the app tell the user
      * how wrong its estimates have been, instead of implying they are exact.
      *
-     * [runRemainingMs] is how long the caller's own run has left. A video
-     * encode used to be allowed to take as long as it liked - three attempts,
-     * twenty minutes each - which is how a run came back an hour after the
-     * deadline it had set itself. Passing the remaining time down means the
-     * deadline actually governs. A caller with no deadline of its own leaves
-     * it alone and gets the ordinary budget.
-     *
      * One file at a time across the scheduled run and the Home trial
      * ([Locks.stage]), and only a row that is still waiting for the file it
-     * describes ([StageRules]).
+     * describes ([StageRules]). A caller with a deadline uses [stageInRun].
      */
     suspend fun stageOne(
         row: ItemRow,
         options: Options,
-        predictedBytes: Long = 0,
-        runRemainingMs: Long = Long.MAX_VALUE
+        predictedBytes: Long = 0
     ): Boolean = Locks.stage.withLock {
         // stageHeld reads the row again under the lock: the one the caller
         // holds came from a list read before it started, and the other path
         // may have staged it since.
-        stageHeld(row, options, predictedBytes, runRemainingMs)
+        stageHeld(row, options, predictedBytes)
+    }
+
+    /**
+     * What [stageInRun] did: whether the file was started at all, whether
+     * it is now STAGED, and how long the encode itself took.
+     */
+    data class RunStage(val started: Boolean, val ok: Boolean, val encodeMs: Long)
+
+    /**
+     * [stageOne] for the scheduled run, which has a deadline ([deadlineAt]).
+     *
+     * A video encode used to be allowed to take as long as it liked - three
+     * attempts, twenty minutes each - which is how a run came back an hour
+     * after the deadline it had set itself. The time left is handed to the
+     * encoder, so the deadline actually governs.
+     *
+     * It is measured once the lock is held, not before: a Free-up remake, a
+     * restore or the start-up repair can hold it for minutes, and a budget
+     * read before that wait ran past the job's limit, where Android stops it
+     * mid-encode. A file that no longer [fits] what is left is not started
+     * - no try counted, nothing written - and the run leaves it for the
+     * next one. [RunStage.encodeMs] leaves the wait out too, so time spent
+     * waiting is never charged to the day's battery allowance.
+     */
+    suspend fun stageInRun(
+        row: ItemRow,
+        options: Options,
+        predictedBytes: Long,
+        deadlineAt: Long,
+        fits: (remainingMs: Long) -> Boolean
+    ): RunStage = Locks.stage.withLock {
+        val lockedAt = System.currentTimeMillis()
+        val remaining = deadlineAt - lockedAt
+        if (!fits(remaining)) return@withLock RunStage(started = false, ok = false, encodeMs = 0L)
+        val ok = stageHeld(row, options, predictedBytes, remaining)
+        RunStage(started = true, ok = ok, encodeMs = System.currentTimeMillis() - lockedAt)
     }
 
     /**
      * [stageOne] for a caller that already holds [Locks.stage]: the Home
      * trial, which takes it without waiting, so it never sits on "Trying"
-     * behind a video the run is encoding.
+     * behind a video the run is encoding. [runRemainingMs] is the caller's
+     * own time left, measured with the lock held (see [stageInRun]).
      */
     suspend fun stageHeld(
         row: ItemRow,
