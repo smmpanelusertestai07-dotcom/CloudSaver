@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import java.io.InputStream
 import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 
 /**
  * Real-world file traits that change how an item must be handled:
@@ -99,8 +100,48 @@ object MediaTraits {
         if (traits.asIsReason != null) return traits
         // Older Samsung motion photos name their video only in a trailer
         // after the picture, megabytes past the head. One more small read.
-        val tail = readTail(context, uri, TAIL_SCAN) ?: return traits
-        return tailReason(tail)?.let { PhotoTraits(it, false) } ?: traits
+        readTail(context, uri, TAIL_SCAN)?.let(::tailReason)?.let { return PhotoTraits(it, false) }
+        // A HEIC motion photo keeps its video in a box of its own at the end
+        // of the file. That box's name sits at its start, a whole clip before
+        // the tail, so the boxes are walked by their sizes to reach it.
+        if (isIsoMedia(head) && hasTopLevelBox(context, uri, MPVD)) return PhotoTraits("motion_photo", false)
+        return traits
+    }
+
+    /** True when the file is ISO media (HEIC, AVIF, MP4): an "ftyp" box first. */
+    fun isIsoMedia(head: ByteArray): Boolean = head.size >= 12 && regionMatchesAt(head, 4, FTYP)
+
+    /**
+     * True when an ISO media file has a box named [type] at its top level.
+     *
+     * Google's motion photo format puts a HEIC or AVIF photo's video in a
+     * top-level "mpvd" box after all the others; a Samsung trailer that ends
+     * in "SEFT" is still found by [tailReason]. Each box starts with its size
+     * and its name, so a few small reads hop from box to box without touching
+     * the picture or the clip. [readAt] returns up to the asked number of
+     * bytes at an offset, or null. A size that cannot be right, a box that runs to the end of the
+     * file, or too many boxes ends the walk with false: the photo is then
+     * judged as it was before this walk existed.
+     */
+    fun hasTopLevelBox(fileSize: Long, type: ByteArray, readAt: (Long, Int) -> ByteArray?): Boolean {
+        var pos = 0L
+        var boxes = 0
+        while (pos + 8 <= fileSize && boxes < MAX_TOP_BOXES) {
+            boxes++
+            val header = readAt(pos, minOf(16L, fileSize - pos).toInt()) ?: return false
+            if (header.size < 8) return false
+            if (regionMatchesAt(header, 4, type)) return true
+            val size = when (val small = readIntBe(header, 0).toLong() and 0xFFFFFFFFL) {
+                // The box runs to the end of the file: nothing follows it.
+                0L -> return false
+                // The real size is the 64-bit one after the name.
+                1L -> if (header.size < 16) return false else readLongBe(header, 8)
+                else -> small
+            }
+            if (size < 8 || size > fileSize - pos) return false
+            pos += size
+        }
+        return false
     }
 
     fun traitsOf(head: ByteArray): PhotoTraits {
@@ -137,7 +178,7 @@ object MediaTraits {
         regionStarts(head, PNG_SIGNATURE) -> pngHasAnimation(head)
         head.size >= 21 && regionStarts(head, RIFF) && regionMatchesAt(head, 8, WEBP) &&
             regionMatchesAt(head, 12, VP8X) -> (head[20].toInt() and 0x02) != 0
-        head.size >= 12 && regionMatchesAt(head, 4, FTYP) -> ftypBrands(head).any { it in SEQUENCE_BRANDS }
+        isIsoMedia(head) -> ftypBrands(head).any { it in SEQUENCE_BRANDS }
         else -> false
     }
 
@@ -202,6 +243,9 @@ object MediaTraits {
         ((bytes[at].toInt() and 0xFF) shl 24) or ((bytes[at + 1].toInt() and 0xFF) shl 16) or
             ((bytes[at + 2].toInt() and 0xFF) shl 8) or (bytes[at + 3].toInt() and 0xFF)
 
+    private fun readLongBe(bytes: ByteArray, at: Int): Long =
+        ((readIntBe(bytes, at).toLong() and 0xFFFFFFFFL) shl 32) or (readIntBe(bytes, at + 4).toLong() and 0xFFFFFFFFL)
+
     private fun readIntLe(bytes: ByteArray, at: Int): Int =
         (bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8) or
             ((bytes[at + 2].toInt() and 0xFF) shl 16) or ((bytes[at + 3].toInt() and 0xFF) shl 24)
@@ -228,9 +272,15 @@ object MediaTraits {
     /** Samsung's trailer type for a motion photo's video. */
     private const val SEF_MOTION_VIDEO = 0x0A30
 
-    /** The trailer block's own name, and Google's HEIC motion-video box. */
-    private val TAIL_MOTION_MARKER_BYTES = listOf("MotionPhoto_Data", "mpvd")
+    /** The trailer block's own name. */
+    private val TAIL_MOTION_MARKER_BYTES = listOf("MotionPhoto_Data")
         .map { it.toByteArray(Charsets.ISO_8859_1) }
+
+    /** Google's motion-video box in a HEIC or AVIF photo ([hasTopLevelBox]). */
+    private val MPVD = "mpvd".toByteArray(Charsets.ISO_8859_1)
+
+    /** A HEIC has a handful of top-level boxes; past this the file is not one. */
+    private const val MAX_TOP_BOXES = 64
 
     /**
      * The gain map's own XMP namespace and version tag (Ultra HDR), and the
@@ -368,19 +418,35 @@ object MediaTraits {
                 val channel = input.channel
                 val size = channel.size()
                 val n = minOf(size, max.toLong()).toInt()
-                if (n <= 0) return@use null
-                val buffer = ByteBuffer.allocate(n)
-                var at = size - n
-                while (buffer.hasRemaining()) {
-                    val read = channel.read(buffer, at)
-                    if (read <= 0) return@use null
-                    at += read
-                }
-                buffer.array()
+                if (n <= 0) null else readAt(channel, size - n, n)
             }
         }
     } catch (e: Exception) {
         null
+    }
+
+    /** [hasTopLevelBox] on the file itself; false when it cannot be read directly. */
+    private fun hasTopLevelBox(context: Context, uri: Uri, type: ByteArray): Boolean = try {
+        context.contentResolver.openFileDescriptor(uri, "r")?.let { pfd ->
+            ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+                val channel = input.channel
+                hasTopLevelBox(channel.size(), type) { at, n -> readAt(channel, at, n) }
+            }
+        } ?: false
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Exactly [n] bytes at [at], or null when the file ends first. */
+    private fun readAt(channel: FileChannel, at: Long, n: Int): ByteArray? {
+        val buffer = ByteBuffer.allocate(n)
+        var pos = at
+        while (buffer.hasRemaining()) {
+            val read = channel.read(buffer, pos)
+            if (read <= 0) return null
+            pos += read
+        }
+        return buffer.array()
     }
 
     /**
