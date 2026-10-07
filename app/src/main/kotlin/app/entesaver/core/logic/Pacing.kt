@@ -111,29 +111,29 @@ object Pacing {
     }
 
     /**
-     * The release limit for this pass, from the copies still
-     * [EvidenceRules.competing] for Ente's traffic.
+     * The release limit for this pass, from every released copy still
+     * [EvidenceRules.Waiting] for per-file proof.
      *
      * A copy without a grade holds a slot until it times out, and a VERIFIED
      * one until its own window after verification ends: then the next copy
-     * goes out alone, and can be proved. An AGED copy holds no slot - it may
-     * sit there for weeks - but it never lifts the limit either: copies
-     * released in bulk beside it would only become the next blockers.
+     * goes out, and is judged beside it. An AGED copy holds no slot - it may
+     * sit there for weeks. Neither graded kind ever lifts the limit: copies
+     * released in bulk beside them would only become the next blockers.
      *
      * The limit is lifted only while a copy without a grade has timed out.
      * That copy will not leave for days, and nothing released beside it can
      * be proved, so holding the queue for it would only stall it.
      */
     fun releaseLimit(
-        competing: List<EvidenceRules.Waiting>,
+        waiting: List<EvidenceRules.Waiting>,
         now: Long,
         canMeasure: Boolean,
         cloudHasFreeUpOracle: Boolean,
         cleanStreak: Int,
         stagedWaiting: Int
     ): Int? {
-        val held = competing.mapNotNull { if (it.graded) it.verifiedAt else it.releasedAt }
-        val stalled = competing.any { !it.graded && isTimedOut(it.releasedAt, now) }
+        val held = waiting.mapNotNull { if (it.graded) it.verifiedAt else it.releasedAt }
+        val stalled = waiting.any { !it.graded && isTimedOut(it.releasedAt, now) }
         return releaseSlots(
             slotsFree = slotsFree(held, now, cloudHasFreeUpOracle, cleanStreak),
             stagedWaiting = stagedWaiting,

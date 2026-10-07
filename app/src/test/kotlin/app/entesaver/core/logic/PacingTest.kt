@@ -67,8 +67,8 @@ class PacingTest {
 
     private val hour = 3_600_000L
 
-    private fun limit(competing: List<EvidenceRules.Waiting>, now: Long, staged: Int = 3) = Pacing.releaseLimit(
-        competing = competing,
+    private fun limit(waiting: List<EvidenceRules.Waiting>, now: Long, staged: Int = 3) = Pacing.releaseLimit(
+        waiting = waiting,
         now = now,
         canMeasure = true,
         cloudHasFreeUpOracle = false,
@@ -88,19 +88,19 @@ class PacingTest {
         // on at the byte slice, and nothing beside it is ever paced-proved.
         assertNull(limit(listOf(timedOut), now))
         assertNull(limit(listOf(timedOut, fresh), now))
-        assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), now))
+        assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), now, tx = 1000))
         // An AGED copy holds no slot, but never lifts the limit: copies sent
         // in bulk beside it would only be the next ones nothing can judge.
         assertEquals(1, limit(listOf(aged), now))
         assertEquals(0, limit(listOf(aged, fresh), now))
-        assertNull(EvidenceRules.aloneInFlight(listOf(aged, fresh), now))
+        assertNull(EvidenceRules.aloneInFlight(listOf(aged, fresh), now, tx = 1000))
     }
 
     @Test
-    fun `a VERIFIED copy left in the folder does not end paced proof for good`() {
+    fun `a VERIFIED copy left in the folder paces releases and still explains its bytes`() {
         // Copy 1 went out alone, but Ente also sent camera photos, so it was
         // only VERIFIED by its batch - and it stays in the folder, below the
-        // space cap, for weeks. Ente then goes quiet.
+        // space cap, for weeks. Ente may still send it at any time.
         val verifiedAt = 50 * hour
         val v = EvidenceRules.Waiting(
             id = 1, releasedAt = verifiedAt - hour, bytes = 3_000_000, gone = false,
@@ -109,12 +109,11 @@ class PacingTest {
         var waiting = listOf(v)
         var releasedAt: Long? = null
         // Hourly passes. Until its window ends the copy holds the one slot,
-        // so the next copy waits instead of going out beside it; never
-        // without a limit, which is how bulk releases made more such copies.
+        // then the next copy holds it; never without a limit, which is how
+        // bulk releases made more such copies.
         for (h in 1..10) {
             val now = verifiedAt + h * hour
-            val competing = EvidenceRules.competing(waiting, now)
-            val slots = limit(competing, now)
+            val slots = limit(waiting, now)
             assertTrue("pass $h: $slots", slots != null && slots <= 1)
             if (slots == 1 && releasedAt == null) {
                 assertTrue("pass $h", now - verifiedAt >= Pacing.IN_FLIGHT_TIMEOUT_MS)
@@ -123,15 +122,27 @@ class PacingTest {
             }
         }
         assertNotNull("a copy goes out once the window has ended", releasedAt)
-        val b = releasedAt!!
-        // The new copy went out alone, and is judged alone: its bytes alone
-        // are what Ente sent, so it can be paced-proved again.
-        val now = b + 2 * hour
-        val alone = EvidenceRules.aloneInFlight(EvidenceRules.competing(waiting, now), now)
-        assertEquals(2L, alone?.id)
-        assertTrue(EvidenceRules.confirmedPaced(txSinceRelease = 3_000_000, fileBytes = alone!!.bytes))
-        // Upgraded from 12.1 with such copies already there: the same.
-        assertEquals(1, limit(EvidenceRules.competing(listOf(v), verifiedAt + 30 * 24 * hour), verifiedAt + 30 * 24 * hour))
+        val now = releasedAt!! + 2 * hour
+        // Ente sending copy 1 is about copy 2's size, and copy 1 sending with
+        // copy 2 is not copy 2's size: copy 2 is credited with neither.
+        assertNull(EvidenceRules.aloneInFlight(waiting, now, tx = v.bytes))
+        assertNull(EvidenceRules.aloneInFlight(waiting, now, tx = v.bytes + 3_000_000))
+        // A copy that copy 1 cannot be mistaken for is credited: one too
+        // small for copy 1 to be what went out, or bytes that cover both.
+        val small = waiting.map { if (it.id == 2L) it.copy(bytes = 1_000_000) else it }
+        assertEquals(2L, EvidenceRules.aloneInFlight(small, now, tx = 1_000_000)?.id)
+        val large = waiting.map { if (it.id == 2L) it.copy(bytes = 10_000_000) else it }
+        assertNull(EvidenceRules.aloneInFlight(large, now, tx = 10_000_000))
+        assertEquals(2L, EvidenceRules.aloneInFlight(large, now, tx = v.bytes + 10_000_000)?.id)
+        // Copy 2 timing out unproved is what lifts the limit, not copy 1.
+        assertNull(limit(waiting, releasedAt + Pacing.IN_FLIGHT_TIMEOUT_MS))
+        // Upgraded from 12.1 with such a copy already there: it holds no
+        // slot, never lifts the limit, and still explains its own bytes.
+        val later = verifiedAt + 30 * 24 * hour
+        val fresh = EvidenceRules.Waiting(id = 3, releasedAt = later, bytes = 3_000_000, gone = false)
+        assertEquals(1, limit(listOf(v), later))
+        assertEquals(0, limit(listOf(v, fresh), later))
+        assertNull(EvidenceRules.aloneInFlight(listOf(v, fresh), later + hour, tx = v.bytes))
     }
 
     @Test

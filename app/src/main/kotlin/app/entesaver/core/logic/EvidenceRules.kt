@@ -82,12 +82,14 @@ object EvidenceRules {
      *
      * [graded] is a copy that already carries AGED or VERIFIED. Neither says
      * Ente has this file - time alone, or a batch's bytes that may have been
-     * camera photos - so it still competes for Ente's traffic. But a byte
-     * match never upgrades it, and it is not settled in the running total:
-     * its window can be days old.
+     * camera photos - so it competes for Ente's traffic for as long as it is
+     * in the folder, however long ago it was graded. But a byte match never
+     * upgrades it, and it is not settled in the running total: its window
+     * can be days old.
      *
      * [verifiedAt] is set only on a VERIFIED copy: when its batch was
-     * verified. [competing] reads it; an AGED copy has none.
+     * verified. Only [Pacing.releaseLimit] reads it, for how long the copy
+     * holds a release slot; it never ends the copy's competition.
      */
     data class Waiting(
         val id: Long,
@@ -98,45 +100,42 @@ object EvidenceRules {
         val verifiedAt: Long? = null
     )
 
-    /**
-     * The waiting copies that still compete for Ente's traffic.
-     *
-     * An AGED copy never showed its bytes going out, so Ente may send it at
-     * any time: it competes for as long as it is in the folder. Ente's
-     * traffic did cover a VERIFIED copy's batch, so it has most likely gone
-     * out, and all it could still bring is a late send. It competes for one
-     * in-flight window after its batch was verified, and not for a copy
-     * released after that window. Without this, one VERIFIED
-     * copy left in the folder would keep every newer copy from ever being
-     * judged alone, for as long as the folder keeps it - which is usually
-     * for good.
-     *
-     * Judged from when the oldest ungraded copy went out, not from now: a
-     * VERIFIED copy that still competed when a copy was released keeps
-     * competing for that copy's whole window.
-     */
-    fun competing(waiting: List<Waiting>, now: Long): List<Waiting> {
-        val from = minOf(now, waiting.filter { !it.graded }.minOfOrNull { it.releasedAt } ?: now)
-        return waiting.filter { it.verifiedAt == null || !Pacing.isTimedOut(it.verifiedAt, from) }
-    }
-
     /** How much of Ente's traffic a vanished copy can claim as its own. */
     enum class Attribution { PER_FILE, BYTES_SENT, UNPROVEN }
 
     /**
-     * The copy paced proof may judge, or null.
-     *
-     * Only ever the one copy of ours still waiting - and every copy without
-     * per-file proof that is still [competing] counts: timed out, AGED or
-     * VERIFIED alike. Each is still in the folder and Ente can still send
-     * it, so a newer copy released
-     * "alone" next to it would be credited with its bytes. The copy itself
-     * must have no grade yet and still be inside its window: past it, the
-     * count has had hours to pick up camera uploads.
+     * Graded copies beside which paced proof can still be judged. With more,
+     * some of them together could add up to any total, and that cannot be
+     * ruled out: proof waits until the folder holds fewer.
      */
-    fun aloneInFlight(waiting: List<Waiting>, now: Long): Waiting? {
-        val only = waiting.singleOrNull() ?: return null
-        return if (only.graded || Pacing.isTimedOut(only.releasedAt, now)) null else only
+    const val MAX_GRADED_BESIDE_PROOF = 3
+
+    /**
+     * The copy paced proof may judge for [tx], what Ente sent since it went
+     * out, or null.
+     *
+     * Only ever the one copy of ours without a grade, still inside its
+     * window - past it, the count has had hours to pick up camera uploads -
+     * and only when [tx] matches its size both ways.
+     *
+     * Every graded copy is still in the folder, and Ente can send it at any
+     * time, so it must not be what [tx] was. Each one must be too big to
+     * have sent [tx] alone, or small enough that [tx] covers it and this
+     * copy both; all of them together must not match [tx] either. A graded
+     * copy of unknown size could be anything, and past
+     * [MAX_GRADED_BESIDE_PROOF] the subsets cannot be ruled out.
+     */
+    fun aloneInFlight(waiting: List<Waiting>, now: Long, tx: Long): Waiting? {
+        val (graded, ungraded) = waiting.partition { it.graded }
+        val only = ungraded.singleOrNull() ?: return null
+        if (Pacing.isTimedOut(only.releasedAt, now) || !confirmedPaced(tx, only.bytes)) return null
+        if (graded.size > MAX_GRADED_BESIDE_PROOF || graded.any { it.bytes <= 0 }) return null
+        val explained = graded.any {
+            tx >= PACED_MIN_RATIO * it.bytes && tx < it.bytes + PACED_MIN_RATIO * only.bytes
+        }
+        if (explained) return null
+        if (graded.isNotEmpty() && confirmedPaced(tx, graded.sumOf { it.bytes })) return null
+        return only
     }
 
     /**
@@ -149,9 +148,8 @@ object EvidenceRules {
      * transmitted byte can only pay for one copy.
      *
      * Even covered, that is only BYTES_SENT: the bytes may have been camera
-     * photos. PER_FILE needs what paced proof needs - the copy was the only
-     * one of ours waiting, graded ones included, still inside its window,
-     * and the traffic matches its size both ways.
+     * photos. PER_FILE needs what paced proof needs: [aloneInFlight] picks
+     * the copy, with every graded copy weighed against the same bytes.
      */
     fun attributeTraffic(
         waiting: List<Waiting>,
@@ -162,7 +160,7 @@ object EvidenceRules {
         val ungraded = waiting.filter { !it.graded }
         for (copy in ungraded) if (copy.gone) result[copy.id] = Attribution.UNPROVEN
         if (txSinceEarliest == null || txSinceEarliest < 0) return result
-        val alone = aloneInFlight(waiting, now)
+        val alone = aloneInFlight(waiting, now, txSinceEarliest)
         var required = 0L
         for (copy in ungraded.sortedWith(compareBy({ it.releasedAt }, { it.id }))) {
             // A copy of unknown size cannot be covered by anything, and once
@@ -171,11 +169,7 @@ object EvidenceRules {
             required += copy.bytes
             if (!batchVerified(txSinceEarliest, required)) break
             if (!copy.gone) continue
-            result[copy.id] = if (alone?.id == copy.id && confirmedPaced(txSinceEarliest, copy.bytes)) {
-                Attribution.PER_FILE
-            } else {
-                Attribution.BYTES_SENT
-            }
+            result[copy.id] = if (alone?.id == copy.id) Attribution.PER_FILE else Attribution.BYTES_SENT
         }
         return result
     }

@@ -514,21 +514,34 @@ class ProductBoundariesTest {
      * One VERIFIED or AGED copy left in the folder used to switch off paced
      * proof and the per-item limit for as long as the folder kept it - in
      * practice for good, and the copies then sent in bulk became the next
-     * blockers. Paced proof, attribution and pacing read one list, filtered
-     * by EvidenceRules.competing, and only Pacing.releaseLimit lifts the limit.
+     * blockers. Then a timer took a VERIFIED copy out of the list a window
+     * after its batch was verified - though the batch may have been paid by
+     * camera photos, and Ente's late send of the copy was credited to a newer
+     * one. Paced proof, attribution and pacing read one list that time never
+     * shortens; aloneInFlight weighs every graded copy against the bytes, and
+     * only Pacing.releaseLimit lifts the limit.
      */
     @Test
     fun `graded copies in the folder do not end paced proof for good`() {
         val engine = File("src/main/kotlin/app/entesaver/engine/MaintainEngine.kt").readText()
         val waiting = engine.substringAfter("private suspend fun unprovenWaiting(").substringBefore("// ---- d)")
         assertTrue(waiting.contains("db.batches().verifiedOfReleased()"))
-        assertTrue(waiting.contains("return EvidenceRules.competing(waiting, now)"))
+        assertTrue(waiting.contains("return waiting\n"))
+        assertFalse(waiting.contains("isTimedOut"))
+        assertFalse(engine.contains("EvidenceRules.competing("))
+        val rules = File("src/main/kotlin/app/entesaver/core/logic/EvidenceRules.kt").readText()
+        assertFalse(rules.contains("fun competing("))
+        assertFalse(rules.contains("verifiedAt, "))
         val release = engine.substringAfter("private suspend fun pacedRelease(").substringBefore("val releasedToday")
         assertTrue(release.contains("Pacing.releaseLimit("))
         assertFalse(release.contains("Pacing.releaseSlots("))
         for (fn in listOf("private suspend fun pacedEvidence(", "private suspend fun pacedRelease(")) {
             assertTrue(fn, engine.substringAfter(fn).substringBefore("\n    }\n").contains("unprovenWaiting(now)"))
         }
+        // Paced proof and attribution hand the measured bytes to the one rule.
+        val paced = engine.substringAfter("private suspend fun pacedEvidence(").substringBefore("\n    }\n")
+        assertTrue(paced.contains("EvidenceRules.aloneInFlight(waiting, now, tx)"))
+        assertTrue(rules.contains("val alone = aloneInFlight(waiting, now, txSinceEarliest)"))
     }
 
     /**

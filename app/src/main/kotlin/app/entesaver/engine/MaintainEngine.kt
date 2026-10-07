@@ -358,8 +358,8 @@ class MaintainEngine(private val context: Context) {
         // Ente's byte count is everything it sent: camera photos, and every
         // other copy of ours still waiting. So the copies without evidence
         // share one count from the oldest of them, settled oldest first, and
-        // only a copy that was alone in flight - AGED neighbours, and VERIFIED
-        // ones still in their window, included - can call the bytes its own.
+        // only a copy that was alone in flight - beside graded neighbours
+        // whose bytes cannot be what Ente sent - can call the bytes its own.
         val goneIds = gone.map { it.id }.toSet()
         val waiting = unprovenWaiting(now, goneIds)
         val settled = waiting.filter { !it.graded }
@@ -666,7 +666,7 @@ class MaintainEngine(private val context: Context) {
     private suspend fun pacedEvidence(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         // Every copy without per-file proof counts, timed out, AGED or
-        // VERIFIED within its window: each is still in the folder, and Ente
+        // VERIFIED however long ago: each is still in the folder, and Ente
         // sending it later must not be credited to a newer copy that went out
         // "alone" beside it.
         val waiting = unprovenWaiting(now)
@@ -675,13 +675,12 @@ class MaintainEngine(private val context: Context) {
         if (waiting.any { !it.graded && Pacing.isTimedOut(it.releasedAt, now) }) {
             notePacingFailure("a released copy timed out without confirmation")
         }
-        val alone = EvidenceRules.aloneInFlight(waiting, now) ?: return
+        val candidate = waiting.singleOrNull { !it.graded } ?: return
+        if (Pacing.isTimedOut(candidate.releasedAt, now)) return
+        val tx = txSinceRelease(candidate.releasedAt, now) ?: return
+        val alone = EvidenceRules.aloneInFlight(waiting, now, tx) ?: return
         // Only a copy with no grade at all is ever upgraded by a byte match.
         val row = db.items().byId(alone.id)?.takeIf { evidenceOf(it) == Evidence.NONE } ?: return
-        val fileBytes = row.outputBytes ?: return
-        val releasedAt = row.releasedAt ?: return
-        val tx = txSinceRelease(releasedAt, now) ?: return
-        if (!EvidenceRules.confirmedPaced(tx, fileBytes)) return
         db.items().update(
             row.copy(
                 evidence = Evidence.CONFIRMED_PACED.name,
@@ -695,13 +694,15 @@ class MaintainEngine(private val context: Context) {
     }
 
     /**
-     * Every released copy without per-file proof that still competes for
-     * Ente's traffic, as paced proof, attribution and release pacing all
-     * weigh it - one definition, so the three cannot disagree about what is
-     * in flight. A copy whose release time is not known counts as graded: it
-     * competes, but it has no window to read.
+     * Every released copy without per-file proof, as paced proof, attribution
+     * and release pacing all weigh it - one definition, so the three cannot
+     * disagree about what is in flight. Time never takes a copy out: a
+     * graded one competes for Ente's traffic for as long as it is released.
+     * A copy whose release time is not known counts as graded: it competes,
+     * but it has no window to read.
      *
-     * A VERIFIED copy is dated by its batch's verification. Where that is
+     * A VERIFIED copy is dated by its batch's verification, which only
+     * decides how long it holds a release slot. Where that is
      * not recorded - a row adopted or restored from a history file - by the
      * row's last change instead, which is never earlier; and never before
      * the copy's own release.
@@ -728,7 +729,7 @@ class MaintainEngine(private val context: Context) {
                 }
             )
         }
-        return EvidenceRules.competing(waiting, now)
+        return waiting
     }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
@@ -933,13 +934,14 @@ class MaintainEngine(private val context: Context) {
         val caps = watchdog.caps()
         val oracle = CloudCapability.hasDisappearanceOracle(caps)
         // The same copies paced proof weighs. A VERIFIED copy holds the next
-        // one back only for its own window, so that one can then go out
-        // alone; an AGED copy holds nothing back, but never lifts the limit.
+        // one back only for its own window, so that one can then go out and
+        // be judged beside it; an AGED copy holds nothing back. Neither ever
+        // lifts the limit.
         // Only a copy that timed out without a grade does: holding the queue
         // for it would stall it for days, so copies go out at the byte slice,
         // and simply are not paced-proved.
         val maxItems = Pacing.releaseLimit(
-            competing = unprovenWaiting(now),
+            waiting = unprovenWaiting(now),
             now = now,
             canMeasure = UsageVerifier.hasUsageAccess(context),
             cloudHasFreeUpOracle = oracle,
