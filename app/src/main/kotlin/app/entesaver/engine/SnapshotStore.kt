@@ -102,7 +102,8 @@ class SnapshotStore(
                 keptUri = row.keptUri,
                 neverOptimise = row.neverOptimise,
                 outputRelPath = row.outputRelPath,
-                duplicateOf = row.duplicateOf
+                duplicateOf = row.duplicateOf,
+                leftFolderAt = row.leftFolderAt
             )
         }
         val batches = db.batches().all().map { b ->
@@ -528,6 +529,7 @@ class SnapshotStore(
                     outputRelPath = restoredRelPath(mapped),
                     releasedAt = mapped.releasedAt,
                     confirmedAt = mapped.confirmedAt,
+                    leftFolderAt = mapped.leftFolderAt,
                     keptUri = mapped.keptUri,
                     neverOptimise = mapped.neverOptimise,
                     duplicateOf = mapped.duplicateOf,
@@ -578,6 +580,9 @@ class SnapshotStore(
                         outputRelPath = restoredRelPath(mapped),
                         releasedAt = mapped.releasedAt,
                         confirmedAt = mapped.confirmedAt,
+                        // The later of the two: a copy this phone sent back
+                        // to the queue keeps the time it left the folder.
+                        leftFolderAt = listOfNotNull(existing.leftFolderAt, mapped.leftFolderAt).maxOrNull(),
                         neverOptimise = never,
                         fromImport = true,
                         updatedAt = now

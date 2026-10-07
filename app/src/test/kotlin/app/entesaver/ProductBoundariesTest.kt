@@ -546,16 +546,87 @@ class ProductBoundariesTest {
         val gone = engine.substringAfter("private suspend fun detectGone(").substringBefore("\n    }\n")
         assertTrue(gone.contains("EvidenceRules.attributeTraffic(waiting, leftDuring(waiting), txShared, now)"))
         // A copy that left the folder during the window is read, whatever
-        // state it is in now, by the row's last change.
-        val db = File("src/main/kotlin/app/entesaver/data/db/Db.kt").readText()
-        assertTrue(db.contains("WHERE state != 'RELEASED' AND releasedAt IS NOT NULL AND updatedAt >= :since"))
+        // state it is in now, by when it left (LeftFolderQueryTest runs the
+        // query; the test below holds every writer to recording it).
         val left = engine.substringAfter("private suspend fun leftDuring(").substringBefore("\n    }\n")
         assertTrue(left.contains("db.items().leftReleasedSince(since)"))
-        assertTrue(left.contains("leftAt = row.updatedAt"))
+        assertTrue(left.contains("leftAt = row.leftAt"))
+        assertFalse(left.contains("updatedAt"))
         // No size arithmetic decides that a neighbour sent nothing.
         assertFalse(rules.contains("MAX_GRADED"))
         val home = File("src/main/kotlin/app/entesaver/ui/screens/HomeScreen.kt").readText()
         assertTrue(home.contains("gradedInFolder = gradedInFolder"))
+    }
+
+    /**
+     * The block of the `copy(` call a `state = ` argument sits in, so a
+     * write can be read as a whole.
+     */
+    private fun copyBlockAround(text: String, at: Int): String {
+        val start = text.lastIndexOf("copy(", at)
+        var depth = 0
+        for (i in start + "copy".length until text.length) {
+            when (text[i]) {
+                '(' -> depth++
+                ')' -> if (--depth == 0) return text.substring(start, i + 1)
+            }
+        }
+        return text.substring(start)
+    }
+
+    private fun stateWrites(body: String): List<String> =
+        Regex("""(?<!val )\bstate = """).findAll(body).map { copyBlockAround(body, it.range.first) }.toList()
+
+    /**
+     * When a copy left the folder decides whether Ente's traffic can be
+     * credited to the copy beside it, so every write that takes a row out of
+     * RELEASED records it - a copy sent back to the queue too, whose release
+     * time goes - and no other write moves it. It used to be read from the
+     * row's last change, which any bookkeeping bumps, and only while the row
+     * kept its release time, which a re-send clears.
+     */
+    @Test
+    fun `every way out of the folder records when the copy left`() {
+        val engine = File(main, "engine/MaintainEngine.kt").readText()
+        fun fn(name: String) = engine.substringAfter("private suspend fun $name(").substringBefore("\n    }\n")
+        // The passes that take RELEASED rows somewhere else.
+        var leaving = 0
+        for (name in listOf("detectGone", "repairStalePending", "lazyDelete")) {
+            val writes = stateWrites(fn(name))
+            assertTrue("$name writes a state", writes.isNotEmpty())
+            for (w in writes) {
+                assertTrue("$name: a leave must record when: $w", w.contains("leftFolderAt = "))
+                assertFalse("$name: a leave must keep its record: $w", w.contains("leftFolderAt = null"))
+            }
+            leaving += writes.size
+        }
+        assertEquals("detectGone's eight ways out, the stale-pending repair and lazy delete", 10, leaving)
+        // Passes over rows that are not in the folder never touch it.
+        for (name in listOf("promoteGone", "originalsPresence", "verifyBatches", "ageEvidence", "pacedEvidence")) {
+            assertFalse(name, fn(name).contains("leftFolderAt"))
+        }
+        assertEquals(
+            "recorded nowhere but on the way out",
+            leaving,
+            Regex("""leftFolderAt = """).findAll(engine).count()
+        )
+
+        // Free up settles RELEASED rows too, and a restore or a failed copy
+        // check may meet one: each records the leave, if it is one.
+        val reclaim = File(main, "engine/ReclaimEngine.kt").readText()
+        val reclaimWrites = stateWrites(reclaim)
+        assertEquals(3, reclaimWrites.size)
+        for (w in reclaimWrites) assertTrue(w, w.contains("leftFolderAt = cur.leftFolderAtAfter(") || w.contains("leftFolderAt = row.leftFolderAtAfter("))
+
+        // So do the screens' writers that can meet a RELEASED row.
+        for (file in listOf("ui/AppViewModel.kt", "ui/ReclaimViewModel.kt")) {
+            val text = File(main, file).readText()
+            for (marker in listOf("fun setNeverOptimise(", "private fun finishConsentCopies(")) {
+                if (!text.contains(marker)) continue
+                val body = text.substringAfter(marker).substringBefore("\n    }\n")
+                for (w in stateWrites(body)) assertTrue("$file: $w", w.contains("leftFolderAtAfter("))
+            }
+        }
     }
 
     /**

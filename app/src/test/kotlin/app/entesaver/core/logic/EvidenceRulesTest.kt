@@ -330,6 +330,19 @@ class EvidenceRulesTest {
     }
 
     @Test
+    fun `a neighbour sent back to the queue mid-window leaves nothing alone`() {
+        // N (40 MB) and B (5 MB) both went out ungraded. Ente sent 5 MB of N,
+        // then N was deleted in the gallery and sent back to the queue, its
+        // release time cleared. B is now the only copy waiting, and the 5 MB
+        // match its size - every byte of it N's. N is read by when it left.
+        val b = copy(2, bytes = 5_000_000, hoursAgo = 2)
+        val resent = left(1, hoursAgo = 1)
+        assertNotAlone(emptyList(), b, tx = 5_000_000, left = listOf(resent))
+        // A pending copy repaired back to the queue is read the same way.
+        assertNotAlone(emptyList(), b, tx = 5_000_000, left = listOf(left(3, hoursAgo = 0)))
+    }
+
+    @Test
     fun `a copy proved before the window does not count`() {
         // Ente had copy 1 before copy 2 went out; it left the folder later
         // (Ente's free-up), but Ente does not send a file it already has.
@@ -375,8 +388,26 @@ class EvidenceRulesTest {
     @Test
     fun `a copy there at the tap and gone on the return was collected`() {
         assertTrue(collected())
-        // A copy that had only aged has no proof to protect.
+        // A copy that had only aged, or whose batch's bytes may have been
+        // camera photos, has no per-file proof to protect: Ente's free-up
+        // taking it is the proof it was missing.
         assertTrue(collected(evidence = Evidence.AGED))
+        assertTrue(collected(evidence = Evidence.VERIFIED))
+    }
+
+    @Test
+    fun `graded copies Home sends the person to confirm are confirmed`() {
+        // Home offers "Confirm uploads" while AGED or VERIFIED copies wait,
+        // because traffic can no longer prove anything beside them. The
+        // return must then credit them, or the person is told that nothing
+        // left the folder and sent round the same loop again.
+        for (ev in listOf(Evidence.NONE, Evidence.AGED, Evidence.VERIFIED)) {
+            assertTrue("$ev is held for the return", held(evidence = ev))
+            assertTrue("$ev is collected", collected(evidence = ev))
+            // Still only when Ente's traffic, where readable, covers it.
+            assertFalse("$ev needs its bytes", collected(evidence = ev, tx = 899))
+            assertTrue("$ev with its bytes", collected(evidence = ev, tx = 900))
+        }
     }
 
     @Test
@@ -402,8 +433,8 @@ class EvidenceRulesTest {
     @Test
     fun `the shortcut never overrides our own deletion or real proof`() {
         assertFalse(collected(ours = true))
-        assertFalse(collected(evidence = Evidence.VERIFIED))
         assertFalse(collected(evidence = Evidence.CONFIRMED_PACED))
+        assertFalse(collected(evidence = Evidence.CONFIRMED_EXACT))
     }
 
     private fun held(
@@ -420,10 +451,13 @@ class EvidenceRulesTest {
         // screen: the copies Ente is collecting are not re-sent.
         assertTrue(held())
         assertTrue(held(evidence = Evidence.AGED))
-        // Missing at the tap, our own deletion, or real proof: judged normally.
+        assertTrue(held(evidence = Evidence.VERIFIED))
+        // Missing at the tap, our own deletion, or per-file proof: judged
+        // normally.
         assertFalse(held(id = 2))
         assertFalse(held(ours = true))
-        assertFalse(held(evidence = Evidence.VERIFIED))
+        assertFalse(held(evidence = Evidence.CONFIRMED_PACED))
+        assertFalse(held(evidence = Evidence.CONFIRMED_EXACT))
         assertFalse(held(window = null))
     }
 

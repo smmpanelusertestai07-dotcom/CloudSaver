@@ -22,6 +22,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.ReclaimBatchRow
 import app.entesaver.data.db.ReclaimItemRow
+import app.entesaver.data.db.leftFolderAtAfter
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
 import app.entesaver.engine.DuplicateScanner
@@ -1088,11 +1089,13 @@ class ReclaimViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch
             val now = System.currentTimeMillis()
+            val state = if (never) ItemState.SKIP.name else ItemState.NEW.name
             db.items().update(
                 row.copy(
                     neverOptimise = never,
-                    state = if (never) ItemState.SKIP.name else ItemState.NEW.name,
+                    state = state,
                     skipReason = if (never) "user_excluded" else null,
+                    leftFolderAt = row.leftFolderAtAfter(state, now),
                     updatedAt = now
                 )
             )
