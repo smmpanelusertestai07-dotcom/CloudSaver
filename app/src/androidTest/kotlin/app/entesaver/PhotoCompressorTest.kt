@@ -61,6 +61,21 @@ class PhotoCompressorTest {
     }
 
     /**
+     * Paints [bitmap] one row at a time, pixel `i` counted across the whole
+     * picture. A 6 MP picture as one IntArray is 24 MB of Java heap, more than
+     * an emulator with a 16 MB heap limit will give; the bitmap itself lives
+     * outside that heap.
+     */
+    private fun fillRows(bitmap: Bitmap, pixel: (Int) -> Int) {
+        val w = bitmap.width
+        val row = IntArray(w)
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until w) row[x] = pixel(y * w + x)
+            bitmap.setPixels(row, 0, w, 0, y, w, 1)
+        }
+    }
+
+    /**
      * A JPEG on disk, at the size and quality asked for, carrying [exifBytes]
      * of metadata the compressor is obliged to copy onto whatever it produces.
      */
@@ -74,13 +89,12 @@ class PhotoCompressorTest {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         // Flat colour compresses to almost nothing, which would make even a
         // pointless re-encode look like a win. Noise does not.
-        val pixels = IntArray(width * height) { i ->
+        fillRows(bitmap) { i ->
             val r = (i * 37) and 0xFF
             val g = (i * 91) and 0xFF
             val b = (i * 173) and 0xFF
             (0xFF shl 24) or (r shl 16) or (g shl 8) or b
         }
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
         val file = File(tempDir, name)
         FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }
         bitmap.recycle()
@@ -314,10 +328,7 @@ class PhotoCompressorTest {
         val w = 1600
         val h = 1200
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888, false, ColorSpace.get(ColorSpace.Named.DISPLAY_P3))
-        bitmap.setPixels(
-            IntArray(w * h) { i -> (0xFF shl 24) or (((i * 37) and 0xFF) shl 16) or (((i * 173) and 0xFF)) },
-            0, w, 0, 0, w, h
-        )
+        fillRows(bitmap) { i -> (0xFF shl 24) or (((i * 37) and 0xFF) shl 16) or (((i * 173) and 0xFF)) }
         val file = File(tempDir, "p3.jpg")
         FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 98, it) }
         bitmap.recycle()
