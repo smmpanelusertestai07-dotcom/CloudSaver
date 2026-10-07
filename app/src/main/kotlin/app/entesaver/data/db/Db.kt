@@ -362,8 +362,10 @@ private const val RECLAIMABLE_BYTES =
 /**
  * When a row that is not RELEASED left the folder: [ItemRow.leftFolderAt],
  * or for a released row without one - restored, its copy perhaps still in
- * the folder - its last change, so it keeps counting until it is found
- * again or settled. Null - never matched - for a row that was never released.
+ * the folder - its last change. Null - never matched - for a row that was
+ * never released. Until the reattach pass has matched restored rows to the
+ * folder, MaintainEngine counts each as there throughout (see
+ * [ItemDao.restoredUnmatched]).
  */
 private const val LEFT_AT =
     "COALESCE(leftFolderAt, CASE WHEN releasedAt IS NOT NULL THEN updatedAt END)"
@@ -602,6 +604,13 @@ interface ItemDao {
             "WHERE state = 'UNKNOWN' AND outputRelPath IS NOT NULL"
     )
     suspend fun restoredRoots(): List<String>
+
+    /**
+     * Rows restored from a history file whose copy may still be in the
+     * folder: until the reattach pass has looked, nothing says it is not.
+     */
+    @Query("SELECT id FROM items WHERE state = 'UNKNOWN' AND releasedAt IS NOT NULL")
+    suspend fun restoredUnmatched(): List<Long>
 
     /** Rows restored from a history file that came with some upload evidence. */
     @Query(

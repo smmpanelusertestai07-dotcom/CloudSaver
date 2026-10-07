@@ -35,7 +35,12 @@ class ImportMergeTest {
     )
 
     /** The history's record as written, before the import mapping. */
-    private fun raw(state: ItemState, releasedAt: Long?, leftAt: Long?) = SnapshotCodec.SnapItem(
+    private fun raw(
+        state: ItemState,
+        releasedAt: Long?,
+        leftAt: Long?,
+        evidence: Evidence = Evidence.VERIFIED
+    ) = SnapshotCodec.SnapItem(
         fingerprint = "0123456789abcdef",
         displayName = "IMG_1.jpg",
         sizeBytes = 1000,
@@ -44,7 +49,7 @@ class ImportMergeTest {
         mimeType = "image/jpeg",
         isVideo = false,
         state = state,
-        evidence = Evidence.NONE,
+        evidence = evidence,
         goneReason = null,
         skipReason = null,
         outputName = "IMG_1__0123456789abcdef.jpg",
@@ -211,6 +216,10 @@ class ImportMergeTest {
         assertNull(ImportMerge.leftAtOnImport(raw(ItemState.RELEASED, 30_000L, 20_000L), now))
         assertNull(ImportMerge.leftAtOnImport(raw(ItemState.UNKNOWN, 30_000L, 20_000L), now))
         assertNull(ImportMerge.leftAtOnImport(raw(ItemState.RELEASED, 30_000L, null), now))
+        // Gone or done without proof is restored UNKNOWN too: the reattach
+        // pass may yet find its copy in this phone's folder.
+        assertNull(ImportMerge.leftAtOnImport(raw(ItemState.GONE, 10_000L, 20_000L, Evidence.NONE), now))
+        assertNull(ImportMerge.leftAtOnImport(raw(ItemState.DONE, 10_000L, 20_000L, Evidence.NONE), now))
     }
 
     @Test

@@ -754,12 +754,20 @@ class MaintainEngine(private val context: Context) {
      */
     private suspend fun leftDuring(waiting: List<EvidenceRules.Waiting>): List<EvidenceRules.Left> {
         val since = waiting.singleOrNull()?.releasedAt ?: return emptyList()
-        return db.items().leftReleasedSince(since).map { row ->
+        val left = db.items().leftReleasedSince(since).map { row ->
             EvidenceRules.Left(
                 id = row.id,
                 leftAt = row.leftAt,
                 provenAt = row.confirmedAt?.takeIf { Evidence.parse(row.evidence).isPerFile }
             )
+        }
+        if (repo.current().copiesReattached) return left
+        // A restore lands mid-run, and its copies are matched to the folder
+        // only on the next run. Until then any of them may be there, sending,
+        // so each counts as in the folder for the whole window.
+        val stillThere = maxOf(System.currentTimeMillis(), since)
+        return left + db.items().restoredUnmatched().map { id ->
+            EvidenceRules.Left(id = id, leftAt = stillThere, provenAt = null)
         }
     }
 

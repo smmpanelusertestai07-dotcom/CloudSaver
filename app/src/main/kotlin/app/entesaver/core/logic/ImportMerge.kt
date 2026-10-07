@@ -141,15 +141,16 @@ object ImportMerge {
      * When a row restored from [raw] - the history's record before the
      * import mapping - left the upload folder, at [now].
      *
-     * A copy the history saw waiting (RELEASED, or restored and not yet
-     * found: UNKNOWN) may still be in the folder, so a leave it recorded
-     * says nothing; it is read by its last change until it is found again
-     * or settled. A copy that had left keeps its recorded time or, from a
-     * history written before 12.2 recorded one, [now]: never earlier than
-     * it left, and no later bookkeeping moves it.
+     * A row restored UNKNOWN - a copy the history saw waiting, or one it saw
+     * go without proof - is one the reattach pass may still find in the
+     * folder, so a leave the history recorded says nothing about this
+     * phone's folder; it carries none until that pass has looked. A copy
+     * that had left keeps its recorded time or, from a history written
+     * before 12.2 recorded one, [now]: never earlier than it left, and no
+     * later bookkeeping moves it.
      */
     fun leftAtOnImport(raw: SnapshotCodec.SnapItem, now: Long): Long? = when {
-        raw.state == ItemState.RELEASED || raw.state == ItemState.UNKNOWN -> null
+        StateMachine.importedState(raw.state, raw.evidence).first == ItemState.UNKNOWN -> null
         raw.leftFolderAt != null -> raw.leftFolderAt
         raw.releasedAt != null -> now
         else -> null

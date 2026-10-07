@@ -640,6 +640,23 @@ class ProductBoundariesTest {
     }
 
     /**
+     * A restore can land mid-run, and its copies are matched to the folder
+     * only on the next run. Read by their last change, they stopped counting
+     * for a copy released after the restore, and Ente sending one of them
+     * could be credited to that copy.
+     */
+    @Test
+    fun `restored copies count as in the folder until they are matched`() {
+        val engine = File(main, "engine/MaintainEngine.kt").readText()
+        val body = engine.substringAfter("private suspend fun leftDuring(").substringBefore("\n    }\n")
+        assertTrue(body, body.contains("if (repo.current().copiesReattached) return left"))
+        assertTrue(body, body.contains("db.items().restoredUnmatched()"))
+        assertTrue(body, body.contains("provenAt = null"))
+        // Paced proof and attribution both read it.
+        assertEquals(2, Regex("""leftDuring\(waiting\)""").findAll(engine).count())
+    }
+
+    /**
      * "Confirm uploads" opens Ente straight away. Taking the window used to
      * wait for a running pass to finish, so the button looked dead - and a
      * window taken late, with Ente opened from the background or not at all,

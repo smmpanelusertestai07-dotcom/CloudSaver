@@ -78,6 +78,21 @@ class LeftFolderQueryTest {
     }
 
     @Test
+    fun restoredCopiesNotYetMatchedAreListed() = runBlocking {
+        // Restored from a history with a release time: its copy may be here.
+        val restored = released("restored").copy(state = ItemState.UNKNOWN.name, fromImport = true)
+        db.items().update(restored)
+        // Restored without one: it never had a copy.
+        val neverOut = released("neverOut").copy(state = ItemState.UNKNOWN.name, releasedAt = null)
+        db.items().update(neverOut)
+        // Waiting and settled rows are read elsewhere.
+        released("waiting")
+        val gone = released("gone")
+        db.items().update(gone.copy(state = ItemState.GONE.name, leftFolderAt = leftAt))
+        assertEquals(listOf(restored.id), db.items().restoredUnmatched())
+    }
+
+    @Test
     fun everyWayOutOfTheFolderIsRead() = runBlocking {
         val now = leftAt
         val expected = mutableMapOf<String, Long>()
