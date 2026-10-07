@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.os.Process
 import android.provider.MediaStore
+import androidx.room.withTransaction
 import app.entesaver.core.logic.Fingerprint
+import app.entesaver.core.logic.ImportMerge
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputMode
@@ -53,14 +55,36 @@ class Stager(private val context: Context, private val db: AppDb) {
         predictedBytes: Long = 0,
         runRemainingMs: Long = Long.MAX_VALUE
     ): Boolean = Locks.stage.withLock {
-        // Read again under the lock: the row the caller holds came from a
-        // list read before it started, and the other path may have staged
-        // it since. Everything written below starts from this fresh row.
-        val fresh = db.items().byId(row.id) ?: return@withLock false
+        // stageHeld reads the row again under the lock: the one the caller
+        // holds came from a list read before it started, and the other path
+        // may have staged it since.
+        stageHeld(row, options, predictedBytes, runRemainingMs)
+    }
+
+    /**
+     * [stageOne] for a caller that already holds [Locks.stage]: the Home
+     * trial, which takes it without waiting, so it never sits on "Trying"
+     * behind a video the run is encoding.
+     */
+    suspend fun stageHeld(
+        row: ItemRow,
+        options: Options,
+        predictedBytes: Long = 0,
+        runRemainingMs: Long = Long.MAX_VALUE
+    ): Boolean {
+        check(Locks.stage.isLocked) { "Locks.stage must be held" }
+        val fresh = db.items().byId(row.id) ?: return false
         val uriString = fresh.contentUri
         if (uriString == null) {
             if (fresh.state == ItemState.NEW.name) skip(fresh, "no_uri")
-            return@withLock false
+            return false
+        }
+        // The queue reads the state, so a row still waiting with the flag
+        // set (a restore by 12.1 wrote those) is parked here as the person
+        // asked, never encoded.
+        if (fresh.neverOptimise) {
+            if (fresh.state == ItemState.NEW.name) skip(fresh, ImportMerge.USER_EXCLUDED)
+            return false
         }
         val uri = Uri.parse(uriString)
         val now = identityOf(uri)
@@ -70,7 +94,7 @@ class Stager(private val context: Context, private val db: AppDb) {
                 now?.first, now?.second
             )
         ) {
-            StageRules.Verdict.TAKEN -> return@withLock false
+            StageRules.Verdict.TAKEN -> return false
             StageRules.Verdict.CHANGED -> {
                 // Edited in place while it waited. The bytes this row
                 // describes are gone, and the edited file has a row of its
@@ -85,9 +109,9 @@ class Stager(private val context: Context, private val db: AppDb) {
                         updatedAt = System.currentTimeMillis()
                     )
                 )
-                return@withLock false
+                return false
             }
-            StageRules.Verdict.STAGE -> stageLocked(fresh, uri, options, predictedBytes, runRemainingMs)
+            StageRules.Verdict.STAGE -> return stageLocked(fresh, uri, options, predictedBytes, runRemainingMs)
         }
     }
 
@@ -157,9 +181,7 @@ class Stager(private val context: Context, private val db: AppDb) {
             // about the clip, so no attempt is counted: it stays in the queue
             // for a run with the whole budget, rather than going out full
             // size as an as-is copy for good.
-            db.items().update(
-                row.copy(lastError = OUT_OF_TIME, updatedAt = System.currentTimeMillis())
-            )
+            settle(row) { it.copy(lastError = OUT_OF_TIME, updatedAt = System.currentTimeMillis()) }
             return false
         } catch (e: Exception) {
             fail(row, ENCODE_FAILED, e.message ?: e.javaClass.simpleName)
@@ -188,8 +210,8 @@ class Stager(private val context: Context, private val db: AppDb) {
             }
             val sha = FileInputStream(stageFile).use { Fingerprint.sha256(it) }
             val folder = folderFor(row.isVideo, options.outputMode)
-            db.items().update(
-                row.copy(
+            val written = settle(row) { cur ->
+                cur.copy(
                     state = ItemState.STAGED.name,
                     stagePath = stageFile.absolutePath,
                     outputName = stageFile.name,
@@ -211,8 +233,12 @@ class Stager(private val context: Context, private val db: AppDb) {
                     lastError = if (result.asIs) result.reason else null,
                     updatedAt = System.currentTimeMillis()
                 )
-            )
-            true
+            }
+            // Settled some other way while it encoded: taken over or parked
+            // by a restore, excluded, or its original gone. The copy is not
+            // wanted, and staged it would be published.
+            if (!written) stageFile.delete()
+            written
         } catch (ce: CancellationException) {
             throw ce
         } catch (e: Exception) {
@@ -243,22 +269,47 @@ class Stager(private val context: Context, private val db: AppDb) {
      * different message made its own line on Home.
      */
     private suspend fun fail(row: ItemRow, reason: String, detail: String = reason) {
-        val attempts = row.attempts + 1
         val now = System.currentTimeMillis()
-        if (attempts >= 3) {
-            db.items().update(
-                row.copy(
+        settle(row) { cur ->
+            val attempts = cur.attempts + 1
+            if (attempts >= 3) {
+                cur.copy(
                     state = ItemState.SKIP.name,
                     skipReason = reason,
                     attempts = attempts,
                     lastError = detail,
                     updatedAt = now
                 )
-            )
-        } else {
-            db.items().update(row.copy(attempts = attempts, lastError = detail, updatedAt = now))
+            } else {
+                cur.copy(attempts = attempts, lastError = detail, updatedAt = now)
+            }
         }
     }
+
+    /**
+     * Writes [change] onto the row as it is now, and only while it still
+     * waits for the file that was just encoded; false when it does not.
+     *
+     * An encode takes seconds, a video up to twenty minutes, and the row
+     * read before it is stale by the end. Written back whole, it undid
+     * whatever happened meanwhile - "Never optimise", the original going -
+     * and the copy was published anyway. The check and the write share one
+     * transaction, so nothing lands between them.
+     */
+    private suspend fun settle(row: ItemRow, change: (ItemRow) -> ItemRow): Boolean =
+        db.withTransaction {
+            val cur = db.items().byId(row.id)
+            if (cur == null ||
+                !StageRules.stillWaiting(
+                    cur.state, cur.neverOptimise, cur.originalMissing, cur.fingerprint, row.fingerprint
+                )
+            ) {
+                false
+            } else {
+                db.items().update(change(cur))
+                true
+            }
+        }
 
     companion object {
         /** Why a file was set aside after three tries (see [fail]). */

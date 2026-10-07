@@ -651,6 +651,60 @@ class ProductBoundariesTest {
     }
 
     @Test
+    fun `an encode never writes its stale row over one a restore settled meanwhile`() {
+        // Stager read the row once, encoded for up to twenty minutes, and
+        // wrote that row back whole. A restore taking it over as one Ente
+        // already had, or parking it as never optimise, was undone, and the
+        // copy was published anyway.
+        val stager = File("src/main/kotlin/app/entesaver/media/Stager.kt").readText()
+        val after = stager.substringAfter("private suspend fun stageLocked(").substringBefore("private suspend fun skip(")
+        assertFalse(
+            "every write after the encode must go through settle()",
+            after.contains("db.items().update(")
+        )
+        assertTrue(after.contains("val written = settle(row) { cur ->"))
+        assertTrue("an unwanted copy is not left to be published", after.contains("if (!written) stageFile.delete()"))
+        val settle = stager.substringAfter("private suspend fun settle(")
+        assertTrue(settle.contains("db.withTransaction {"))
+        assertTrue(settle.contains("StageRules.stillWaiting("))
+        val fail = stager.substringAfter("private suspend fun fail(").substringBefore("private suspend fun settle(")
+        assertFalse("a failure counts on the row as it is now", fail.contains("db.items().update("))
+    }
+
+    @Test
+    fun `a restore and the start-up repair wait for the encode, in one lock order`() {
+        // stage, then release, then ledger. Nothing holding release or
+        // ledger takes stage, and an encode holding stage takes nothing.
+        val names = listOf("Locks.stage.withLock", "Locks.release.withLock", "Locks.ledger.withLock")
+        val store = File("src/main/kotlin/app/entesaver/engine/SnapshotStore.kt").readText()
+        val merge = store.substringAfter("suspend fun merge(").substringBefore("private suspend fun mergeLocked(")
+        val order = names.map { merge.indexOf(it) }
+        assertTrue("merge must take stage, release, ledger in that order: $order", order.all { it >= 0 } && order == order.sorted())
+        val recovery = File("src/main/kotlin/app/entesaver/engine/StartupRecovery.kt").readText()
+        val repair = recovery.substringAfter("private suspend fun repairQueueOnce()").substringBefore("    /**")
+        val repairOrder = names.map { repair.indexOf(it) }
+        assertTrue("the repair takes them the same way: $repairOrder", repairOrder.all { it >= 0 } && repairOrder == repairOrder.sorted())
+        assertTrue("the flag is set only after the repair landed", repair.indexOf("QUEUE_REPAIRED") > repair.indexOf("db.withTransaction"))
+        assertTrue(recovery.contains("runCatching { repairQueueOnce() }"))
+        // Nothing that holds one of the other locks reaches the stage lock.
+        val main = File("src/main/kotlin/app/entesaver")
+        for (f in main.walkTopDown().filter { it.isFile && it.extension == "kt" }) {
+            val text = f.readText()
+            for (outer in listOf("Locks.release.withLock {", "Locks.ledger.withLock {", "Locks.maintain.withLock {")) {
+                var at = text.indexOf(outer)
+                while (at >= 0) {
+                    val body = text.substring(at, minOf(text.length, at + 1500))
+                    assertFalse(
+                        "${f.name} takes the stage lock while holding ${outer.substringBefore(".withLock")}",
+                        body.contains("Locks.stage.withLock") || body.contains("Locks.stage.tryLock")
+                    )
+                    at = text.indexOf(outer, at + 1)
+                }
+            }
+        }
+    }
+
+    @Test
     fun `a video the run cut short waits, and is not counted as a failure`() {
         // An as-is copy is final: made because the run had five minutes
         // left, it was the full-size file Ente kept for good.

@@ -1390,6 +1390,7 @@
     <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. The copies stay inside the app until you start, and your originals are never touched.</string>
     <string name="trial_choose_albums">Choose albums</string>
     <string name="trial_run">Try it on a few photos</string>
+    <string name="trial_busy">Ente Saver is optimising a file right now. Try again when it has finished.</string>
 
     <!-- About: requirements and technical facts, stated plainly -->
     <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>

@@ -439,11 +439,16 @@ class SnapshotStore(
         snapshot: SnapshotCodec.Snapshot,
         importOptions: Boolean = true,
         onlyIfSetupUntouched: Boolean = false
-    ): Int = Locks.release.withLock {
-        // The release lock first, in the order Releaser takes the two: a row
-        // still waiting can be handed its history here, and its staged file
-        // removed, only while no release is publishing that file.
-        Locks.ledger.withLock { mergeLocked(snapshot, importOptions, onlyIfSetupUntouched) }
+    ): Int = Locks.stage.withLock {
+        // The stage lock first: a row being encoded right now is written
+        // back from the row Stager read before the encode, which would undo
+        // a takeover or an exclusion made here meanwhile. Then the release
+        // lock, in the order Releaser takes the two: a row still waiting can
+        // be handed its history here, and its staged file removed, only
+        // while no release is publishing that file.
+        Locks.release.withLock {
+            Locks.ledger.withLock { mergeLocked(snapshot, importOptions, onlyIfSetupUntouched) }
+        }
     }
 
     private suspend fun mergeLocked(
@@ -541,7 +546,9 @@ class SnapshotStore(
                         state = enumOr(existing.state, ItemState.UNKNOWN),
                         evidence = Evidence.parse(existing.evidence),
                         outputSha256 = existing.outputSha256,
-                        neverOptimise = existing.neverOptimise
+                        neverOptimise = existing.neverOptimise,
+                        outputName = existing.outputName,
+                        outputBytes = existing.outputBytes
                     ),
                     mapped
                 )
@@ -558,6 +565,7 @@ class SnapshotStore(
                     // the history's, as it would be in an empty table.
                     plan.takeOver -> existing.copy(
                         state = ImportMerge.takenOverState(mapped).name,
+                        keptUri = ImportMerge.keptUriAfterTakeOver(mapped, existing.contentUri),
                         evidence = mapped.evidence.name,
                         goneReason = raw.goneReason?.name,
                         skipReason = null,
@@ -588,6 +596,13 @@ class SnapshotStore(
                     )
                     else -> existing.copy(
                         evidence = if (plan.raiseEvidence) mapped.evidence.name else existing.evidence,
+                        // An adopted copy found its file, not its hash; the
+                        // history's is what lines it up with the ledger.
+                        outputSha256 = if (plan.raiseEvidence) {
+                            existing.outputSha256 ?: mapped.outputSha256
+                        } else {
+                            existing.outputSha256
+                        },
                         confirmedAt = if (plan.raiseEvidence) {
                             mapped.confirmedAt ?: existing.confirmedAt
                         } else {

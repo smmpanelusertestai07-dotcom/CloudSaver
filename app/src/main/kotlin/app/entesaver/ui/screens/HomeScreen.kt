@@ -142,6 +142,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val running by vm.running.collectAsStateWithLifecycle()
     val trialSize by vm.trialSize.collectAsStateWithLifecycle()
     val testRunning by vm.testRunning.collectAsStateWithLifecycle()
+    val testBusy by vm.testBusy.collectAsStateWithLifecycle()
     val testItems by vm.testRun.collectAsStateWithLifecycle()
     val power by vm.powerRequirements.collectAsStateWithLifecycle()
     var explain by remember { mutableStateOf<Int?>(null) }
@@ -918,6 +919,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             TrialCard(
                 size = trialSize,
                 running = testRunning,
+                busy = testBusy,
                 results = testItems,
                 onRun = { vm.startTestRun() },
                 albumsChosen = trialAlbums.isEmpty() ||

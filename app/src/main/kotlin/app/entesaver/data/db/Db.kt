@@ -368,6 +368,43 @@ interface ItemDao {
     )
     suspend fun retireReplaced(ids: List<Long>, now: Long): Int
 
+    /**
+     * The one-time repair of rows a 12.1 restore wrote (StartupRecovery).
+     *
+     * That restore gave a waiting row the history's "never optimise" and
+     * evidence without settling it: the photo stayed in the queue and was
+     * sent anyway, and its new copy, already "proven", was never watched.
+     * It also restored waiting rows with no address, which no scan can ever
+     * match, and duplicates without the original they belong to.
+     */
+    @Query("SELECT * FROM items WHERE neverOptimise = 1 AND state IN ('NEW', 'STAGED')")
+    suspend fun waitingButExcluded(): List<ItemRow>
+
+    /** Parks those rows as setNeverOptimise does; their staged files go first. */
+    @Query(
+        "UPDATE items SET state = 'SKIP', skipReason = 'user_excluded', stagePath = NULL, " +
+            "outputName = NULL, outputBytes = NULL, outputSha256 = NULL, outputFolder = NULL, " +
+            "updatedAt = :now WHERE neverOptimise = 1 AND state IN ('NEW', 'STAGED')"
+    )
+    suspend fun parkWaitingExcluded(now: Long): Int
+
+    /** A row still waiting has no copy Ente could have, so no evidence either. */
+    @Query(
+        "UPDATE items SET evidence = 'NONE', confirmedAt = NULL, updatedAt = :now " +
+            "WHERE state IN ('NEW', 'STAGED') AND evidence IS NOT NULL " +
+            "AND evidence NOT IN ('', 'NONE')"
+    )
+    suspend fun clearWaitingEvidence(now: Long): Int
+
+    /** Restored rows nothing can ever match or explain; a scan rebuilds the real ones. */
+    @Query(
+        "DELETE FROM items WHERE fromImport = 1 AND contentUri IS NULL AND mediaStoreId IS NULL " +
+            "AND neverOptimise = 0 AND keptUri IS NULL AND outputSha256 IS NULL " +
+            "AND (state = 'NEW' OR (state = 'SKIP' AND skipReason = 'no_uri') " +
+            "OR (state = 'SKIP' AND skipReason = 'duplicate' AND duplicateOf IS NULL))"
+    )
+    suspend fun deleteRestoredGhosts(): Int
+
     @Query("SELECT * FROM items WHERE id = :id LIMIT 1")
     suspend fun byId(id: Long): ItemRow?
 

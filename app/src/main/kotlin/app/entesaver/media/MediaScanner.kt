@@ -40,8 +40,14 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         val isVideo: Boolean
     )
 
-    /** Upserts everything into the DB; returns the number of new items. */
-    suspend fun scan(): Int {
+    /**
+     * Upserts everything into the DB; returns the number of new items.
+     *
+     * [stageHeld] is for a caller already holding [Locks.stage] - the Home
+     * trial, which takes it without waiting so it never queues behind a long
+     * encode. The lock is not re-entrant.
+     */
+    suspend fun scan(stageHeld: Boolean = false): Int {
         // Under partial access ("Select photos") MediaStore answers every
         // query as if the handful the user picked were the whole gallery.
         // Scanning would record that handful as a complete inventory, and
@@ -141,7 +147,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 )
             }
         }
-        retireReplaced(onPhone, now)
+        retireReplaced(onPhone, now, stageHeld)
         return newItems
     }
 
@@ -153,12 +159,13 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
      * are gone, so it is retired here. Under [Locks.stage], so a row being
      * staged right now finishes first and is then left alone.
      */
-    private suspend fun retireReplaced(onPhone: Map<String, String>, now: Long) {
+    private suspend fun retireReplaced(onPhone: Map<String, String>, now: Long, stageHeld: Boolean) {
         if (onPhone.isEmpty()) return
-        Locks.stage.withLock {
+        suspend fun retire() {
             val stale = StageRules.replaced(db.items().waitingAddresses(), onPhone)
             for (chunk in stale.chunked(500)) db.items().retireReplaced(chunk, now)
         }
+        if (stageHeld) retire() else Locks.stage.withLock { retire() }
     }
 
     /**

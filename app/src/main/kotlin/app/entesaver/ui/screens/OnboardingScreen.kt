@@ -241,6 +241,7 @@ fun OnboardingScreen(vm: AppViewModel) {
     DisposableEffect(Unit) { onDispose { vm.dismissTransferMessage() } }
     val testItems by vm.testRun.collectAsStateWithLifecycle()
     val testRunning by vm.testRunning.collectAsStateWithLifecycle()
+    val testBusy by vm.testBusy.collectAsStateWithLifecycle()
     val trialSize by vm.trialSize.collectAsStateWithLifecycle()
 
     Column(
@@ -891,6 +892,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 TrialCard(
                     size = trialSize,
                     running = testRunning,
+                    busy = testBusy,
                     results = testItems,
                     onRun = { vm.startTestRun() },
                     // Nothing has been scanned during setup, so the waiting
