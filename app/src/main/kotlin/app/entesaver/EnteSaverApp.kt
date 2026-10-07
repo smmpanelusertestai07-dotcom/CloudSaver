@@ -13,6 +13,7 @@ import app.entesaver.util.Formats
 import app.entesaver.util.Notifications
 import app.entesaver.work.Scheduler
 import app.entesaver.work.WorkerNames
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,7 +21,16 @@ import kotlinx.coroutines.launch
 
 class EnteSaverApp : Application(), Configuration.Provider {
 
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * Start-up runs in every process, background wakes included. On a full or
+     * damaged phone a settings or database write can throw here, and an
+     * uncaught throw would end every start before the person could get in to
+     * free space. A failed step is dropped instead: nothing was scheduled or
+     * deleted on its account, and the next start tries again.
+     */
+    val appScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, _ -> }
+    )
 
     override fun onCreate() {
         super.onCreate()
@@ -62,9 +72,20 @@ class EnteSaverApp : Application(), Configuration.Provider {
      * WorkManager starts on first use with this configuration (the library's
      * own start-up hook is removed in the manifest), so work an older version
      * scheduled under its old class names still runs (WorkerNames).
+     *
+     * When internal storage is full or damaged, WorkManager cannot open or
+     * tidy its own database and, with no handler, throws on its own thread -
+     * a crash a second after every start, on exactly the phones this app is
+     * for. Background work just waits until storage recovers instead. The
+     * scheduling handler covers phones whose job limit or system service
+     * refuses a job; the work is enqueued again on the next start.
      */
     override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder().setWorkerFactory(WorkerNames).build()
+        get() = Configuration.Builder()
+            .setWorkerFactory(WorkerNames)
+            .setInitializationExceptionHandler { }
+            .setSchedulingExceptionHandler { }
+            .build()
 
     /**
      * Android says memory is about to run out while the app is working:

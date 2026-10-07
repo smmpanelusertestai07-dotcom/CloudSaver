@@ -2,10 +2,12 @@ package app.entesaver.data.prefs
 
 import android.annotation.SuppressLint
 import android.content.Context
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -30,7 +32,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-private val Context.dataStore by preferencesDataStore(name = "options")
+/**
+ * A damaged options file is started afresh rather than thrown on every read:
+ * otherwise each start, background wakes included, crashes until the person
+ * clears the app's storage. Starting afresh asks setup again and claims no
+ * proof; the history in the database is untouched.
+ */
+private val Context.dataStore by preferencesDataStore(
+    name = "options",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }
+)
 
 /** All user options (section 6) + small persisted runtime state. */
 data class Options(
