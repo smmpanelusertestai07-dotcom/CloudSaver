@@ -62,6 +62,7 @@
     <string name="skip_out_of_memory">Too big for this phone\'s memory</string>
     <string name="skip_process_died">The app was stopped while making it</string>
     <string name="skip_encode_failed">Could not be made smaller</string>
+    <string name="skip_out_of_time">Too long to make smaller in the time Android gives</string>
     <string name="skip_user_excluded_one">You chose to skip this file</string>
     <string name="skip_other">Skipped to be safe</string>
     <string name="skip_user_excluded">You chose to skip these</string>

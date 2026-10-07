@@ -153,13 +153,14 @@ class Stager(private val context: Context, private val db: AppDb) {
         } catch (ce: CancellationException) {
             throw ce
         } catch (late: VideoCompressor.OutOfTime) {
-            // The run had too little left for this clip. That says nothing
-            // about the clip, so no attempt is counted: it stays in the queue
-            // for a run with the whole budget, rather than going out full
-            // size as an as-is copy for good.
-            db.items().update(
-                row.copy(lastError = OUT_OF_TIME, updatedAt = System.currentTimeMillis())
-            )
+            // The run had too little left for this clip. It stays in the
+            // queue for a run with the whole budget, rather than going out
+            // full size as an as-is copy for good - but the try is counted.
+            // A phone whose runs never get a foreground service never gives
+            // that budget, and an uncounted clip was then started again in
+            // every run, for ever. After the usual three tries it is set
+            // aside with its own reason: the original stays, no copy is made.
+            fail(row, OUT_OF_TIME)
             return false
         } catch (e: Exception) {
             fail(row, ENCODE_FAILED, e.message ?: e.javaClass.simpleName)
@@ -243,21 +244,7 @@ class Stager(private val context: Context, private val db: AppDb) {
      * different message made its own line on Home.
      */
     private suspend fun fail(row: ItemRow, reason: String, detail: String = reason) {
-        val attempts = row.attempts + 1
-        val now = System.currentTimeMillis()
-        if (attempts >= 3) {
-            db.items().update(
-                row.copy(
-                    state = ItemState.SKIP.name,
-                    skipReason = reason,
-                    attempts = attempts,
-                    lastError = detail,
-                    updatedAt = now
-                )
-            )
-        } else {
-            db.items().update(row.copy(attempts = attempts, lastError = detail, updatedAt = now))
-        }
+        db.items().update(struck(row, reason, detail, System.currentTimeMillis()))
     }
 
     companion object {
@@ -265,8 +252,30 @@ class Stager(private val context: Context, private val db: AppDb) {
         const val ENCODE_FAILED = "encode_failed"
         const val OUT_OF_MEMORY = "out_of_memory"
 
-        /** A clip left waiting because the run ran short (see [stageOne]). */
+        /**
+         * A clip left waiting because the run ran short (see [stageOne]);
+         * also why it is set aside once that has happened three times.
+         */
         const val OUT_OF_TIME = "out_of_time"
+
+        /** Tries a file gets before it is set aside (see [fail]). */
+        const val MAX_TRIES = 3
+
+        /** [row] after one more failed try at [now] (see [fail]). */
+        fun struck(row: ItemRow, reason: String, detail: String, now: Long): ItemRow {
+            val attempts = row.attempts + 1
+            return if (attempts >= MAX_TRIES) {
+                row.copy(
+                    state = ItemState.SKIP.name,
+                    skipReason = reason,
+                    attempts = attempts,
+                    lastError = detail,
+                    updatedAt = now
+                )
+            } else {
+                row.copy(attempts = attempts, lastError = detail, updatedAt = now)
+            }
+        }
 
         fun folderFor(isVideo: Boolean, mode: OutputMode): OutFolder = when {
             mode == OutputMode.SINGLE -> OutFolder.SINGLE

@@ -276,7 +276,7 @@ class LockBackupE2eTest {
         assertEquals("user_excluded", excluded.skipReason)
         val queue = db.items().nextByPriority(
             photos = true, videos = true, excludedBuckets = listOf("-"), freshAfter = 0L,
-            limit = 10, videoMaxMs = -1L, skipIds = listOf(-1L)
+            limit = 10, videoMaxMs = -1L, skipIds = listOf(-1L), holdOverrun = false
         )
         assertTrue("nothing the history settled is queued: $queue", queue.isEmpty())
         assertEquals(

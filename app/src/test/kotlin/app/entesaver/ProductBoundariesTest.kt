@@ -651,7 +651,7 @@ class ProductBoundariesTest {
     }
 
     @Test
-    fun `a video the run cut short waits, and is not counted as a failure`() {
+    fun `a video the run cut short waits, and the wait is a counted try`() {
         // An as-is copy is final: made because the run had five minutes
         // left, it was the full-size file Ente kept for good.
         val video = File("src/main/kotlin/app/entesaver/media/VideoCompressor.kt").readText()
@@ -667,6 +667,9 @@ class ProductBoundariesTest {
             late in 0 until stager.indexOf("catch (e: Exception)", late.coerceAtLeast(0))
         )
         val caught = stager.substring(late).substringBefore("catch (e: Exception)")
-        assertFalse("and must not count it as a failed attempt", caught.contains("fail("))
+        // Counted, so a phone whose runs never give the whole budget sets the
+        // clip aside after three tries instead of starting it in every run.
+        assertTrue("and must count it as a try", caught.contains("fail(row, OUT_OF_TIME)"))
+        assertFalse("never as an as-is copy", caught.contains("copyAsIs("))
     }
 }

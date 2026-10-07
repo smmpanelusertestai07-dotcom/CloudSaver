@@ -276,6 +276,26 @@ class ScopeQueriesTest {
         )
     }
 
+    @Test
+    fun aClipThatRanOutOfTimeIsHeldBackOnlyWhenAsked() = runBlocking {
+        // The biggest clip in the backlog, which a plain run already tried
+        // and ran out of time on; first in line, it held up everything.
+        db.items().insert(
+            photo("long.mp4", "Camera", 6_000).copy(
+                mimeType = "video/mp4", isVideo = true, durationMs = 3 * 60_000L,
+                sizeBytes = 900_000_000, lastError = "out_of_time"
+            )
+        )
+        suspend fun next(hold: Boolean) = db.items().nextByPriority(
+            photos = true, videos = true, excludedBuckets = listOf("-"), freshAfter = 0L,
+            limit = 10, videoMaxMs = 4 * 60_000L, skipIds = listOf(-1L), holdOverrun = hold
+        ).map { it.displayName }
+        assertEquals("long.mp4", next(hold = false).first())
+        val held = next(hold = true)
+        assertTrue("held back, and the photos behind it still come: $held", "long.mp4" !in held)
+        assertEquals(5, held.size)
+    }
+
     private fun ledgerRow(sha: String, fingerprint: String) = LedgerRow(
         outputSha256 = sha,
         fingerprint = fingerprint,
