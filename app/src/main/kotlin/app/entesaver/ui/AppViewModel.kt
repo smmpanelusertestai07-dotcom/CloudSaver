@@ -1222,12 +1222,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- confirm-uploads flow ----------------------------------------------
 
     val confirmResult = MutableStateFlow<Int?>(null)
-    private var confirmPending = false
+
+    /**
+     * Held only in memory, and used by exactly one pass: the one the return
+     * from Ente starts. Nothing else - not the hourly worker, not the folder
+     * observer - can read a missing copy as collected by Ente.
+     */
+    private var confirmWindow: EvidenceRules.ConfirmWindow? = null
 
     fun startConfirmFlow() {
         viewModelScope.launch {
-            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
-            confirmPending = true
+            // What is missing before Ente even opens was not collected by it:
+            // it is judged now by the normal rules, and the window only
+            // covers copies still in their folders at this moment.
+            confirmWindow = withContext(Dispatchers.Default) {
+                runCatching { MaintainEngine(ctx).openConfirmWindow() }.getOrNull()
+            }
             EnteApp.launch(ctx)
         }
     }
@@ -1249,10 +1259,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // person is back - not, as before, only after the next tap.
         refreshPowerRequirements()
         noteScreenOn()
-        if (confirmPending) {
-            confirmPending = false
+        val window = confirmWindow
+        if (window != null) {
+            confirmWindow = null
             viewModelScope.launch(Dispatchers.Default) {
-                val n = runCatching { MaintainEngine(ctx).confirmPass() }.getOrDefault(0)
+                val n = runCatching { MaintainEngine(ctx).confirmPass(window) }.getOrDefault(0)
                 confirmResult.value = n
             }
         }

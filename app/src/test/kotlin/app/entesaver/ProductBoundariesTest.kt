@@ -460,6 +460,31 @@ class ProductBoundariesTest {
         }
     }
 
+    /**
+     * The return from "Confirm uploads" is the only moment a missing copy is
+     * read as collected by Ente. It used to be a 24-hour window every pass
+     * read from a setting, so the hourly worker counted copies a person had
+     * cleared by hand as uploaded - and offered their originals a month later.
+     */
+    @Test
+    fun `only the return from Ente reads a missing copy as collected`() {
+        val engine = File("src/main/kotlin/app/entesaver/engine/MaintainEngine.kt").readText()
+        val vm = File("src/main/kotlin/app/entesaver/ui/AppViewModel.kt").readText()
+        assertFalse("no pass may read the window from a setting", engine.contains("confirmFlowStartedAt"))
+        val hourly = engine.substringAfter("private suspend fun runLocked").substringBefore("private inline fun step")
+        assertTrue(hourly.contains("step { detectGone(o, now, entries, summary) }"))
+        // The window is taken before Ente opens, and handed to one pass only.
+        val start = vm.substringAfter("fun startConfirmFlow()").substringBefore("fun dismissConfirmResult")
+        assertTrue(start.indexOf("openConfirmWindow()") in 0 until start.indexOf("EnteApp.launch(ctx)"))
+        assertEquals(1, Regex("""confirmPass\(window\)""").findAll(vm).count())
+        val resumed = vm.substringAfter("fun onResumed()").substringBefore("fun onMediaChanged")
+        assertTrue(
+            "the window is cleared before its pass runs",
+            resumed.indexOf("confirmWindow = null") in 0 until resumed.indexOf("confirmPass(window)")
+        )
+        assertTrue(vm.substringAfter("fun quickMaintain()").take(200).contains("confirmPass() }"))
+    }
+
     @Test
     fun `the maintenance pass runs one at a time`() {
         // Locks exists because "WorkManager's unique names stop two workers
@@ -474,7 +499,7 @@ class ProductBoundariesTest {
         // another pass has just released - back to NEW, staged file forgotten -
         // and the cloud receives it a second time.
         val engine = File("src/main/kotlin/app/entesaver/engine/MaintainEngine.kt").readText()
-        val entries = listOf("run()", "confirmPass()")
+        val entries = listOf("run()", "confirmPass()", "openConfirmWindow()")
         val ungated = entries.filterNot { entry ->
             Regex(
                 """suspend fun ${Regex.escape(entry.dropLast(2))}\([^)]*\)[^\n]*""" +

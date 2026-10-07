@@ -121,7 +121,6 @@ data class Options(
     // runtime / bookkeeping
     val onboardingDone: Boolean = false,
     val onboardingStep: Int = 0,
-    val confirmFlowStartedAt: Long = 0,
     val lastRunAt: Long = 0,
     /**
      * When a pass Android started last chose to wait on purpose - Battery
@@ -269,7 +268,6 @@ class OptionsRepo(private val context: Context) {
         val KEPT_CARD_SEEN = booleanPreferencesKey("keptCardSeen")
         val FIRST_CHAIN_STATE = stringPreferencesKey("firstChainState")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
-        val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
         val LAST_RUN_AT = longPreferencesKey("lastRunAt")
         val LAST_WAKE_AT = longPreferencesKey("lastWakeAt")
         val LAST_STOP_REASON = stringPreferencesKey("lastStopReason")
@@ -346,7 +344,6 @@ class OptionsRepo(private val context: Context) {
             pauseAll = p[K.PAUSE_ALL] ?: false,
             onboardingDone = p[K.ONBOARDING_DONE] ?: false,
             onboardingStep = p[K.ONBOARDING_STEP] ?: 0,
-            confirmFlowStartedAt = p[K.CONFIRM_STARTED_AT] ?: 0,
             lastRunAt = p[K.LAST_RUN_AT] ?: 0,
             lastWakeAt = p[K.LAST_WAKE_AT] ?: 0,
             lastStopReason = p[K.LAST_STOP_REASON] ?: "",
