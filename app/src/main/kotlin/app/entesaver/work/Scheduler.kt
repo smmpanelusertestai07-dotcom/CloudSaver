@@ -12,6 +12,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.entesaver.core.logic.SpeedMode
 import app.entesaver.data.prefs.Options
+import app.entesaver.util.failSoft
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.Flow
 
@@ -137,6 +138,9 @@ object Scheduler {
      * the same lock, but it was not watched - so through the whole of a run
      * started by taking a photo, Home offered a button whose work the running
      * one would refuse. The name is the only thing that differed.
+     *
+     * Reads "not running" while WorkManager's database cannot be opened on
+     * full or damaged storage, rather than crashing the screen ([failSoft]).
      */
     fun runningFlow(context: Context): Flow<Boolean> {
         val wm = WorkManager.getInstance(context)
@@ -147,7 +151,7 @@ object Scheduler {
         ) { periodic, manual, triggered ->
             (periodic + manual + triggered)
                 .any { it.state == WorkInfo.State.RUNNING }
-        }
+        }.failSoft(false)
     }
 
     fun maintainNow(context: Context) {

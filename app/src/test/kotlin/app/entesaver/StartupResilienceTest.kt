@@ -27,6 +27,16 @@ class StartupResilienceTest {
     }
 
     @Test
+    fun `the screen watching WorkManager does not crash when its database cannot open`() {
+        // The handler above only covers WorkManager's own thread. Home's
+        // "running" flow queries the same database from the ViewModel, and
+        // without failSoft that throw ended the app every time it opened.
+        val scheduler = File(main, "work/Scheduler.kt").readText()
+        val running = scheduler.substringAfter("fun runningFlow(").substringBefore("\n    fun ")
+        assertTrue("runningFlow needs failSoft", running.contains(".failSoft("))
+    }
+
+    @Test
     fun `a failed start-up step does not crash the app`() {
         val app = File(main, "EnteSaverApp.kt").readText()
         val scope = app.substringAfter("val appScope = CoroutineScope(").substringBefore("\n    )")

@@ -162,6 +162,42 @@ class EncoderChoiceTest {
     }
 
     @Test
+    fun `a HEIC motion photo is found by its video box, however long the clip`() {
+        fun box(type: String, payload: ByteArray) = be32(8 + payload.size) + ascii(type) + payload
+        fun wideBox(type: String, payload: ByteArray) =
+            be32(1) + ascii(type) + be32(0) + be32(16 + payload.size) + payload
+        val ftyp = box("ftyp", ascii("heic") + be32(0) + ascii("mif1") + ascii("heic"))
+        val meta = box("meta", be32(0) + box("hdlr", ByteArray(24)) + box("iloc", ByteArray(40)))
+        // Picture tiles past the 512 KB head, then Google's layout: the whole
+        // MP4 inside one top-level "mpvd" box, longer than the 64 KB tail.
+        val mdat = box("mdat", ByteArray(600_000))
+        val clip = box("ftyp", ascii("mp42") + be32(0) + ascii("isom")) +
+            box("mdat", ByteArray(150_000) { (it % 251).toByte() }) + box("moov", ByteArray(4_000))
+        val mpvd = box("mpvd", clip)
+        fun reader(file: ByteArray): (Long, Int) -> ByteArray? = { at, n ->
+            file.copyOfRange(at.toInt(), minOf(file.size, at.toInt() + n))
+        }
+        fun has(file: ByteArray) = MediaTraits.hasTopLevelBox(file.size.toLong(), ascii("mpvd"), reader(file))
+
+        val motion = ftyp + meta + mdat + mpvd
+        assertTrue(MediaTraits.isIsoMedia(motion))
+        assertTrue(has(motion))
+        // Neither the head nor the tail names the video: only the walk finds it.
+        assertNull(MediaTraits.traitsOf(motion.copyOf(512 * 1024)).asIsReason)
+        assertNull(MediaTraits.tailReason(motion.copyOfRange(motion.size - 64 * 1024, motion.size)))
+        // Picture data written with a 64-bit size.
+        assertTrue(has(ftyp + meta + wideBox("mdat", ByteArray(70_000)) + mpvd))
+
+        // An ordinary HEIC, and boxes whose sizes cannot be right, are not motion photos.
+        assertFalse(has(ftyp + meta + mdat))
+        assertFalse(has(ftyp + be32(0) + ascii("mdat") + ByteArray(100) + mpvd))
+        assertFalse(has(ftyp + be32(4) + ascii("mdat") + ByteArray(100) + mpvd))
+        assertFalse(has(ftyp + be32(Int.MAX_VALUE) + ascii("mdat") + ByteArray(100) + mpvd))
+        assertFalse(has(ftyp + ByteArray(5)))
+        assertFalse(MediaTraits.isIsoMedia(ascii("an ordinary photo")))
+    }
+
+    @Test
     fun `a wide-gamut photo is not written as HEIC, and see-through pixels are found`() {
         assertEquals(PhotoFormat.JPEG, FormatResolver.forColourSpace(PhotoFormat.HEIC, srgb = false))
         assertEquals(PhotoFormat.HEIC, FormatResolver.forColourSpace(PhotoFormat.HEIC, srgb = true))
