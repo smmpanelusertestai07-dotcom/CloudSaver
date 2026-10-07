@@ -172,18 +172,24 @@ tasks.withType<Test>().configureEach {
     inputs.dir(rootProject.file(".github/scripts"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleScripts")
-    // The naming rule reads every file in the repository; these are the ones
-    // no other input above covers.
+    // The naming rule reads every file git tracks, wherever it sits: a list
+    // of named files kept missing the next one (gradle.properties, gradlew,
+    // a new LICENSE), and a commit touching only that file replayed the
+    // last pass from the cache. So the whole working tree is the input,
+    // less what git ignores and what only builds or tools write. Not the
+    // git index: it holds per-checkout timestamps and would never cache.
     inputs.files(
-        rootProject.file(".gitignore"),
-        rootProject.file("build.gradle.kts"),
-        rootProject.file("settings.gradle.kts"),
-        rootProject.file("gradle/libs.versions.toml"),
-        file("build.gradle.kts"),
-        file("proguard-rules.pro")
+        rootProject.fileTree(".") {
+            exclude(
+                ".git", ".git/**", "**/build/**", "**/.gradle/**", "**/.kotlin/**", ".idea/**",
+                ".claude/worktrees/**", "artifacts/**", "captures/**", "app/release/**",
+                "app/schemas/**", "**/.cxx/**", "**/.externalNativeBuild/**", "local.properties",
+                "**/*.iml", "**/.DS_Store", "**/*.jks", "**/*.keystore"
+            )
+        }
     )
         .withPathSensitivity(PathSensitivity.RELATIVE)
-        .withPropertyName("sourceTextRuleBuildFiles")
+        .withPropertyName("sourceTextRuleRepositoryTree")
     inputs.dir(file("src/main/kotlin"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleSources")

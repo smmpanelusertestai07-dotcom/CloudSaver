@@ -1,6 +1,7 @@
 package app.entesaver
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -106,5 +107,58 @@ class CiRuntimeTest {
         val suite = script.indexOf("connectedDebugAndroidTest")
         assertTrue("the emulator harness must hide the system's error dialogs", hide >= 0)
         assertTrue("and must do so before the instrumented suite starts", suite > hide)
+    }
+
+    @Test
+    fun `a release is tagged at the commit its APK was built from`() {
+        // Without --target GitHub creates a missing tag at the branch head at
+        // the moment of the call. The release job waits for every emulator
+        // leg, so a push that lands meanwhile got the tag and the source
+        // archive while the APK and its hash came from the commit before.
+        val root = repoRoot()
+        assertTrue("repository root not found from app/", root != null)
+        val workflow = File(root, ".github/workflows/build.yml").readText()
+        val create = workflow.substringAfter("gh release create", "").substringBefore("--repo")
+        assertTrue("the workflow must publish its release with gh release create", create.isNotEmpty())
+        assertTrue(
+            "the release tag must name the commit this run built",
+            create.contains("--target \"\$GITHUB_SHA\"")
+        )
+    }
+
+    @Test
+    fun `the release APK walk finishes setup and reaches every tab`() {
+        // A fresh install opens on setup, which has no tab bar. The walk used
+        // to tap where the tabs would be, landed on setup every time and
+        // passed, so no screen past launch was ever drawn from R8 code.
+        val root = repoRoot()
+        assertTrue("repository root not found from app/", root != null)
+        val script = File(root, ".github/scripts/emulator-e2e.sh").readText()
+        val install = script.indexOf("adb install -r -g EnteSaver-release.apk")
+        val walk = script.indexOf("python3 .github/scripts/release-tab-walk.py")
+        val promises = script.indexOf("android.permission.INTERNET")
+        assertTrue("the release APK must be installed with its permissions granted", install >= 0)
+        assertTrue("the release walk must run after the install", walk > install)
+        assertTrue("and before the installed package's promises are read", promises > walk)
+        assertFalse("tabs are found by their labels, not by screen fraction", script.contains("TAB_Y"))
+
+        // Every label the walk looks for has to be one the app still shows:
+        // a renamed button would leave it swiping at setup until it fails.
+        val walker = File(root, ".github/scripts/release-tab-walk.py").readText()
+        val strings = File(root, "app/src/main/res/values/strings.xml").readText()
+        for (list in listOf("FORWARD", "TABS")) {
+            val names = Regex("""^$list = \[(.*)]$""", RegexOption.MULTILINE).find(walker)
+                ?.groupValues?.get(1)
+                ?.let { Regex(""""(\w+)"""").findAll(it).map { m -> m.groupValues[1] }.toList() }
+            assertTrue("the walk must list its $list labels", !names.isNullOrEmpty())
+            for (name in names!!) {
+                assertTrue("strings.xml has no \"$name\" for the walk", strings.contains("name=\"$name\""))
+            }
+        }
+        assertTrue(
+            "the walk must fail when the tabs never appear",
+            walker.contains("never reached its tabs") && walker.contains("sys.exit(1)")
+        )
+        assertTrue("and when a tab does not open", walker.contains("tab never opened"))
     }
 }

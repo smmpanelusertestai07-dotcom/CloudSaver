@@ -425,7 +425,13 @@ jobs:
             echo "To publish a new build, raise versionName in app/build.gradle.kts."
             exit 0
           fi
+          # Tagged at the commit this run built, not at whatever main points
+          # to now. Without --target GitHub creates a missing tag from the
+          # branch head at the moment of this call, and a push that landed
+          # while the emulator legs ran would get the tag and the source
+          # archive, while the APK and its hash came from the commit before.
           gh release create "$TAG" "EnteSaver-v${VERSION}-release.apk" \
+            --target "$GITHUB_SHA" \
             --title "Ente Saver $TAG" \
             --notes-file RELEASE_NOTES.md \
             --repo "$GITHUB_REPOSITORY"
