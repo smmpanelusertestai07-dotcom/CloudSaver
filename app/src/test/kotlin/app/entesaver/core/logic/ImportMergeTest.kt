@@ -50,12 +50,77 @@ class ImportMergeTest {
     }
 
     @Test
-    fun `a staged row is taken over too, and a released copy waiting for Ente comes back for the watch`() {
+    fun `a staged row is taken over too, and a proven copy still waiting comes back for the watch`() {
         assertTrue(ImportMerge.plan(scanned(ItemState.STAGED, "bbbb"), item(ItemState.DONE, Evidence.VERIFIED)).takeOver)
-        val waiting = item(ItemState.RELEASED)
+        val waiting = item(ItemState.RELEASED, Evidence.VERIFIED)
         assertEquals(ItemState.UNKNOWN, waiting.state)
         assertTrue(ImportMerge.plan(scanned(), waiting).takeOver)
         assertEquals(ItemState.UNKNOWN, ImportMerge.takenOverState(waiting))
+    }
+
+    @Test
+    fun `an original whose copy Ente was never proven to have stays in the queue`() {
+        // Taken over, the row sat UNKNOWN (no evidence) or DONE (aged) with
+        // its original never sent again, after a phone move that left the
+        // copy behind. In the queue it is sent; the ledger still stops a
+        // byte-identical copy going up twice.
+        for (evidence in listOf(Evidence.NONE, Evidence.AGED)) {
+            for (state in listOf(ItemState.RELEASED, ItemState.DONE, ItemState.GONE, ItemState.FREED)) {
+                val plan = ImportMerge.plan(scanned(), item(state, evidence))
+                assertFalse("$state/$evidence", plan.takeOver)
+                assertFalse("$state/$evidence", plan.changes)
+            }
+        }
+        assertTrue(ImportMerge.plan(scanned(), item(ItemState.DONE, Evidence.CONFIRMED_PACED)).takeOver)
+    }
+
+    @Test
+    fun `a copy the reattach pass adopted gets the history of that same copy`() {
+        // Adopted from the folder, it has the file's name and size but no
+        // hash, so the hash test alone never matched it: it waited for
+        // traffic Ente, which had it already, would never send.
+        val history = item(ItemState.DONE, Evidence.CONFIRMED_EXACT)
+        val adopted = ImportMerge.Local(
+            ItemState.RELEASED, Evidence.NONE, null, false,
+            outputName = "IMG_1__0123456789abcdef.jpg", outputBytes = 500L
+        )
+        assertTrue(ImportMerge.sameCopy(adopted, history))
+        assertTrue(ImportMerge.plan(adopted, history).raiseEvidence)
+        assertFalse("another size is another copy", ImportMerge.plan(adopted.copy(outputBytes = 501L), history).raiseEvidence)
+        assertFalse(ImportMerge.plan(adopted.copy(outputName = "IMG_1__0123456789abcdef (1).jpg"), history).raiseEvidence)
+        assertFalse("only a released copy is matched by name", ImportMerge.sameCopy(adopted.copy(state = ItemState.DONE), history))
+        assertFalse("a hash, when there is one, decides", ImportMerge.sameCopy(adopted.copy(outputSha256 = "bbbb"), history))
+    }
+
+    @Test
+    fun `a light copy kept in place is still the kept copy, never an original to free`() {
+        // In place, the row was re-keyed to the copy's own fingerprint, so a
+        // scan after a reinstall meets the copy under it. Taken over as DONE,
+        // the person's only local version was offered to free as an original.
+        val inPlace = item(ItemState.FREED_KEPT, Evidence.CONFIRMED_EXACT).copy(
+            fingerprint = "fedcba9876543210",
+            keptUri = "content://media/external/images/media/7"
+        )
+        assertTrue(ImportMerge.scannedIsKeptCopy(inPlace))
+        assertTrue(ImportMerge.plan(scanned(), inPlace).takeOver)
+        assertEquals(ItemState.FREED_KEPT, ImportMerge.takenOverState(inPlace))
+        assertEquals(
+            "this phone's address for the file, not the old phone's",
+            "content://media/external/images/media/42",
+            ImportMerge.keptUriAfterTakeOver(inPlace, "content://media/external/images/media/42")
+        )
+        // A copy in its own album leaves the row on the original's
+        // fingerprint: what the scan found is the original, found again.
+        val ownAlbum = item(ItemState.FREED_KEPT, Evidence.CONFIRMED_EXACT).copy(
+            keptUri = "content://media/external/images/media/7"
+        )
+        assertFalse(ImportMerge.scannedIsKeptCopy(ownAlbum))
+        assertEquals(ItemState.DONE, ImportMerge.takenOverState(ownAlbum))
+        assertEquals(
+            "and the kept copy stays tracked",
+            ownAlbum.keptUri,
+            ImportMerge.keptUriAfterTakeOver(ownAlbum, "content://media/external/images/media/42")
+        )
     }
 
     @Test

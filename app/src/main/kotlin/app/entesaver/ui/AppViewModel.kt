@@ -1870,6 +1870,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val testRunning = MutableStateFlow(false)
 
+    /** The last tap found a run making a copy, so the trial did not start. */
+    val testBusy = MutableStateFlow(false)
+
     fun startTestRun() {
         // One trial at a time: a second run would pick three more photos and
         // leave the first three copies with nothing that could remove them.
@@ -1878,29 +1881,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         testRunning.value = true
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                val o = repo.current()
-                MediaScanner(ctx, db).scan()
-                val stager = Stager(ctx, db)
-                // The card promises photos "from the albums you chose". The
-                // scan above just inventoried the whole phone, so the pick
-                // must not read from beyond the ticked albums.
-                val picked = db.items().newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)
-                val staged = picked.filter { stager.stageOne(it, o) }
-                val ids = staged.map { it.id }.toSet()
-                TrialRecord.write(ctx, ids)
-                trialIds.value = ids
-                if (staged.isNotEmpty()) {
-                    val rows = SqlChunks.read(ids) { db.items().byIds(it) }
-                    activityLog.record(
-                        ActivityLog.Kind.OPTIMISED,
-                        detail = ctx.getString(R.string.trial_activity),
-                        count = rows.size,
-                        bytes = rows.sumOf { (it.sizeBytes - (it.outputBytes ?: it.sizeBytes)).coerceAtLeast(0) }
-                    )
+                // One copy is made at a time (Locks.stage), and a run in the
+                // middle of a video holds that for up to twenty minutes - all
+                // of it with this card on "Trying". Asked without waiting, and
+                // held for the whole trial, scan included.
+                if (!Locks.stage.tryLock()) {
+                    testBusy.value = true
+                    return@launch
+                }
+                testBusy.value = false
+                try {
+                    runTrial()
+                } finally {
+                    Locks.stage.unlock()
                 }
             } finally {
                 testRunning.value = false
             }
+        }
+    }
+
+    /** The trial itself; the caller holds [Locks.stage]. */
+    private suspend fun runTrial() {
+        val o = repo.current()
+        MediaScanner(ctx, db).scan(stageHeld = true)
+        val stager = Stager(ctx, db)
+        // The card promises photos "from the albums you chose". The scan
+        // above just inventoried the whole phone, so the pick must not read
+        // from beyond the ticked albums.
+        val picked = db.items().newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)
+        val staged = picked.filter { stager.stageHeld(it, o) }
+        val ids = staged.map { it.id }.toSet()
+        TrialRecord.write(ctx, ids)
+        trialIds.value = ids
+        if (staged.isNotEmpty()) {
+            val rows = SqlChunks.read(ids) { db.items().byIds(it) }
+            activityLog.record(
+                ActivityLog.Kind.OPTIMISED,
+                detail = ctx.getString(R.string.trial_activity),
+                count = rows.size,
+                bytes = rows.sumOf { (it.sizeBytes - (it.outputBytes ?: it.sizeBytes)).coerceAtLeast(0) }
+            )
         }
     }
 

@@ -19,7 +19,10 @@ object ImportMerge {
         val state: ItemState,
         val evidence: Evidence,
         val outputSha256: String?,
-        val neverOptimise: Boolean
+        val neverOptimise: Boolean,
+        /** The copy this row knows of, by name and size, when it has no hash. */
+        val outputName: String? = null,
+        val outputBytes: Long? = null
     )
 
     /** What to change on a row already in the table. */
@@ -53,19 +56,24 @@ object ImportMerge {
      * history after the import mapping.
      *
      * Evidence describes one copy, so it only moves onto a row holding that
-     * very copy (same hash). A row with a different copy of its own keeps
+     * very copy ([sameCopy]). A row with a different copy of its own keeps
      * what it has, and the normal watch decides about that copy.
+     *
+     * A waiting row takes the history over only when the history proves
+     * Ente had the copy. A copy that was still waiting for Ente proves
+     * nothing: taken over, the row sat UNKNOWN or DONE with its original
+     * never sent again. Left waiting, it is sent; the restored ledger still
+     * stops a byte-identical copy going up twice, and a copy still in the
+     * folder is adopted by the next reattach pass.
      */
     fun plan(local: Local, item: SnapshotCodec.SnapItem): Plan {
         val waiting = local.state in WAITING
-        val history = item.state in WITH_HISTORY &&
-            (item.evidence != Evidence.NONE || item.outputSha256 != null)
+        val history = item.state in WITH_HISTORY && item.evidence.ordinal >= Evidence.VERIFIED.ordinal
         val takeOver = waiting && history
         val addNeverFlag = item.neverOptimise && !local.neverOptimise
         val raiseEvidence = !takeOver &&
             item.evidence.ordinal > local.evidence.ordinal &&
-            local.outputSha256 != null &&
-            local.outputSha256 == item.outputSha256
+            sameCopy(local, item)
         return Plan(
             takeOver = takeOver,
             raiseEvidence = raiseEvidence,
@@ -76,16 +84,58 @@ object ImportMerge {
     }
 
     /**
+     * Whether [local] holds the copy [item] describes. By hash where the row
+     * has one. A copy the reattach pass adopted has none - it found the
+     * file, not its bytes - so it is matched the way that pass matches: the
+     * same name, which carries the fingerprint, and the same size.
+     */
+    fun sameCopy(local: Local, item: SnapshotCodec.SnapItem): Boolean = when {
+        local.outputSha256 != null -> local.outputSha256 == item.outputSha256
+        local.state != ItemState.RELEASED -> false
+        else -> item.outputSha256 != null &&
+            local.outputName != null && local.outputName == item.outputName &&
+            local.outputBytes != null && local.outputBytes == item.outputBytes
+    }
+
+    /**
+     * Whether the file the scan matched to [item] is its kept light copy.
+     *
+     * A copy kept in place takes over its row: the row is re-keyed to the
+     * copy's own fingerprint, so a scan after a reinstall meets the copy
+     * under that fingerprint, as a photo with the original's name. Its
+     * upload copy's name still carries the fingerprint the original had,
+     * which is how the two are told apart. A copy in its own album leaves
+     * the row on the original's fingerprint, and a scan matching that is
+     * the original found again.
+     */
+    fun scannedIsKeptCopy(item: SnapshotCodec.SnapItem): Boolean {
+        if (item.state != ItemState.FREED_KEPT || item.keptUri == null) return false
+        val made = item.outputName?.let { Fingerprint.fpFromOutputName(it) } ?: return false
+        return !made.equals(item.fingerprint, ignoreCase = true)
+    }
+
+    /**
      * The state a taken-over row lands in. A reclaimed original that the
      * scan has just found again is back on the phone, so it is DONE like
      * any other the cloud already had - or UNKNOWN when nothing proved
-     * that, as the import mapping does for DONE.
+     * that, as the import mapping does for DONE. A kept copy found again is
+     * still the kept copy, never an original to free.
      */
-    fun takenOverState(item: SnapshotCodec.SnapItem): ItemState = when (item.state) {
-        ItemState.FREED, ItemState.FREED_KEPT ->
+    fun takenOverState(item: SnapshotCodec.SnapItem): ItemState = when {
+        scannedIsKeptCopy(item) -> ItemState.FREED_KEPT
+        item.state == ItemState.FREED || item.state == ItemState.FREED_KEPT ->
             if (item.evidence == Evidence.NONE) ItemState.UNKNOWN else ItemState.DONE
         else -> item.state
     }
+
+    /**
+     * The kept copy a taken-over row remembers. For a copy kept in place it
+     * is the file the scan just matched, by this phone's own address; the
+     * history's address may be another phone's. A copy in its own album
+     * keeps the history's address, which KeptCopies checks before use.
+     */
+    fun keptUriAfterTakeOver(item: SnapshotCodec.SnapItem, scannedUri: String?): String? =
+        if (scannedIsKeptCopy(item)) scannedUri ?: item.keptUri else item.keptUri
 
     /**
      * The row to insert for [item] when the table has none, or null when it

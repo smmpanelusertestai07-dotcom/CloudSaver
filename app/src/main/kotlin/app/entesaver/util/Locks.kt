@@ -43,7 +43,10 @@ object Locks {
      * encode the same photo the run was on - two full-size decodes on a
      * phone sized for one, one note of which file was in progress for two
      * encodes, and two copies written to the same name. One encode at a time.
-     * Nothing taken while holding it takes another lock.
+     *
+     * A restore and the start-up repair rewrite waiting rows, so they take
+     * it too, before [release] and then [ledger]. Nothing holding either of
+     * those takes this one, and an encode holding it takes nothing else.
      */
     val stage = Mutex()
 }

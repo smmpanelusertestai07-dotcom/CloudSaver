@@ -43,6 +43,20 @@ object StageRules {
         else -> Verdict.CHANGED
     }
 
+    /**
+     * Whether a row read after an encode may still take its result: it is
+     * still waiting, still wanted, and still the file that was encoded
+     * ([encodedFingerprint]). Anything else settled it while the encode ran.
+     */
+    fun stillWaiting(
+        state: String,
+        neverOptimise: Boolean,
+        originalMissing: Boolean,
+        fingerprint: String,
+        encodedFingerprint: String
+    ): Boolean = state == ItemState.NEW.name && !neverOptimise && !originalMissing &&
+        fingerprint == encodedFingerprint
+
     /** A row still waiting, as much of it as [replaced] needs. */
     data class Waiting(val id: Long, val fingerprint: String, val contentUri: String)
 

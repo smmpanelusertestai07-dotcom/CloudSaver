@@ -62,4 +62,19 @@ class StageRulesTest {
         assertEquals(listOf(1L), StageRules.replaced(waiting, onPhone))
         assertEquals(emptyList<Long>(), StageRules.replaced(waiting, emptyMap()))
     }
+
+    @Test
+    fun `an encode keeps its result only for a row still waiting for that file`() {
+        // The row was read before an encode of up to twenty minutes. A
+        // restore, a "Never optimise" or a missing original settled it
+        // meanwhile, and writing the stale row back undid that.
+        val fp = "0123456789abcdef"
+        assertEquals(true, StageRules.stillWaiting(new, false, false, fp, fp))
+        for (state in listOf(ItemState.DONE, ItemState.UNKNOWN, ItemState.SKIP, ItemState.STAGED, ItemState.FREED_KEPT)) {
+            assertEquals(state.name, false, StageRules.stillWaiting(state.name, false, false, fp, fp))
+        }
+        assertEquals("excluded meanwhile", false, StageRules.stillWaiting(new, true, false, fp, fp))
+        assertEquals("original gone meanwhile", false, StageRules.stillWaiting(new, false, true, fp, fp))
+        assertEquals("another file now", false, StageRules.stillWaiting(new, false, false, "fedcba9876543210", fp))
+    }
 }
