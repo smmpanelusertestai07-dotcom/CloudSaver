@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Ente Saver's icon pack: one gallery-style icon for Ente Photos.
+    Ente Saver's icon pack: one gallery-style icon for Ente Photos, and for
+    nothing else.
 
-    Exactly ONE item, on purpose. The Realme / Oppo / OnePlus launcher
-    (ColorOS 13-15, Realme UI 4-6, OxygenOS 13-15) lists every appfilter
-    entry, plus one more per package, as a separate icon when a person edits
-    one app's icon - 18 entries showed up as 20 copies of the same picture.
-    That launcher also matches by package, so this one line themes the Play
-    Store build of Ente whatever icon Ente itself is set to. Other launchers
-    (Nova, Lawnchair, Kvaesitso...) offer the single icon in drawable.xml.
+    Only <item> lines, on purpose. iconback, iconmask, iconupon and scale
+    tell a launcher to restyle every app the pack does not list; without
+    them, a launcher applying this pack changes Ente Photos' icon and leaves
+    every other app - Ente Saver included - exactly as it is.
+
+    Exactly ONE item. Launchers key an icon by the component they launch,
+    and Ente's is its enabled alias, IconGreen unless Ente's own icon
+    setting picked another (its release builds take the launcher entry off
+    MainActivity). The Realme / Oppo / OnePlus launcher's per-app editor
+    lists every entry, plus one more per package, as a separate copy of the
+    picture - 18 entries once showed up as 20 copies - so one entry is one
+    copy. Ente's other builds, or Ente set to another icon of its own, take
+    the picture by hand from drawable.xml.
 -->
 <resources>
     <item component="ComponentInfo{io.ente.photos/io.ente.photos.IconGreen}" drawable="iconpack_photos" />

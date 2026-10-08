@@ -112,6 +112,23 @@ class IconPackTest {
     }
 
     @Test
+    fun `the pack restyles Ente Photos and no other app`() {
+        val filter = xml("src/main/res/xml/appfilter.xml")
+        // iconback, iconmask, iconupon and scale make a launcher restyle
+        // every app the pack does not list. Plain items only, so applying the
+        // pack touches Ente and nothing else - Ente Saver included.
+        val tags = (0 until filter.childNodes.length).map { filter.childNodes.item(it) }
+            .filterIsInstance<Element>().map { it.tagName }.toSet()
+        assertEquals(setOf("item"), tags)
+        assertTrue(filter.children("item").none { it.getAttribute("component").contains(appId) })
+        // The pack is found through its own actions and is never a second
+        // icon on the home screen.
+        val pack = aliases.single { it.getAttribute("android:name") == "$appId.IconPackActivity" }
+        val screen = manifest.children("activity").single { it.getAttribute("android:name") == ".IconPackActivity" }
+        assertTrue(!pack.isLauncher() && !screen.isLauncher())
+    }
+
+    @Test
     fun `every picture the pack names exists and survives shrinking`() {
         val named = (
             xml("src/main/res/xml/appfilter.xml").children("item") +
