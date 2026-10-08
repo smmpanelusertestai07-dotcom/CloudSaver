@@ -24,7 +24,7 @@ class BrandingTest {
         Regex("""applicationId = "app\.cloudsaver""""),
         Regex("""PKG=app\.cloudsaver\b"""),
         Regex("""targetPackage="app\.cloudsaver""""),
-        Regex("""\bapp\.cloudsaver\.(MainActivity|AliasSaver|OpenEnteActivity|IconPackActivity)\b"""),
+        Regex("""\bapp\.cloudsaver\.(MainActivity|OpenEnteActivity|IconPackActivity)\b"""),
         // Work that WorkManager already holds on updated phones.
         Regex("""\bapp\.cloudsaver\.work\.(CompressWorker|MaintainWorker)\b"""),
         Regex("""\bcloudsaver\.(compress|maintain|trigger|now)\b"""),

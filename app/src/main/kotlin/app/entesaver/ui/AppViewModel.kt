@@ -67,7 +67,6 @@ import app.entesaver.media.OutputInventory
 import app.entesaver.media.PlannedEncode
 import app.entesaver.media.Stager
 import app.entesaver.ui.components.AccessNotice
-import app.entesaver.util.AppLooks
 import app.entesaver.util.DeviceTier
 import app.entesaver.util.Errand
 import app.entesaver.util.FirstFrame
@@ -1394,21 +1393,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissEnteOnlyNotice() {
         viewModelScope.launch(Dispatchers.IO) {
             repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
-        }
-    }
-
-    // ---- Ente Saver's own name and icon -----------------------------------------
-
-    val look = MutableStateFlow(AppLooks.DEFAULT)
-
-    fun refreshLook() {
-        viewModelScope.launch(Dispatchers.IO) { look.value = AppLooks.chosen(ctx) }
-    }
-
-    fun chooseLook(choice: AppLooks.Look) {
-        viewModelScope.launch(Dispatchers.IO) {
-            AppLooks.choose(ctx, choice)
-            look.value = AppLooks.chosen(ctx)
         }
     }
 

@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Ente Saver</string>
-    <string name="app_name_storage" translatable="false">Storage Saver</string>
-    <string name="app_name_cloud" translatable="false">Cloud Saver</string>
-    <string name="app_name_photo" translatable="false">Photo Saver</string>
 
     <!-- common -->
     <string name="ok">OK</string>
@@ -584,9 +581,6 @@
     </plurals>
     <string name="folder_change_note">After saving, turn the new folder on in Ente: Settings, Backup, Backed up folders. The old folder is watched until Ente has every copy in it.</string>
     <string name="folder_save">Save</string>
-    <string name="opt_looks">Home-screen name</string>
-    <string name="opt_looks_hint">The name under Ente Saver\'s icon on your home screen.</string>
-    <string name="looks_note">Changes when you leave the app. The home screen may take a minute to show it.</string>
     <string name="icon_pack_name">Ente Saver icons</string>
     <string name="shortcut_label_title">Name</string>
     <string name="shortcut_label_photos">Photos</string>
@@ -996,8 +990,6 @@
     <string name="gallery_ml_b">Turn on machine learning in Ente (Settings \u203a Machine learning) for face recognition and magic search. It runs on the phone itself, and it works on Ente Saver\'s copies too.</string>
     <string name="gallery_freeup_t">When copies leave the folder</string>
     <string name="gallery_freeup_b">Ente\'s Free up device space also removes Ente Saver\'s copies once they are uploaded. That is expected \u2014 it is exactly how Ente Saver knows they arrived.</string>
-    <string name="gallery_saver_t">Ente Saver\'s home-screen name</string>
-    <string name="gallery_saver_b">Ente Saver can also show on your home screen under the name earlier versions had. Here, open Settings \u203a Appearance \u203a Home-screen name. The icon stays the same.</string>
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>

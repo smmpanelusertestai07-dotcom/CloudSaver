@@ -1,6 +1,6 @@
 package app.entesaver
 
-import app.entesaver.util.AppLooks
+import app.entesaver.util.LauncherEntry
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.File
@@ -13,8 +13,8 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The home screen's side of the app: the name and icon a person picks, the
- * icon pack that dresses Ente up as a gallery, and the pictures both use.
+ * The home screen's side of the app: Ente Saver's one icon and name, the icon
+ * pack that dresses Ente up as a gallery, and the pictures both use.
  * Launchers read these by name, from outside the app, so nothing at build
  * time notices when one goes missing.
  */
@@ -35,32 +35,38 @@ class IconPackTest {
         .find(File("build.gradle.kts").readText())!!.groupValues[1]
 
     private val aliases = manifest.children("activity-alias")
-    private val lookAliases = aliases.filter { it.getAttribute("android:targetActivity") == ".HostActivity" }
 
     private fun Element.isLauncher(): Boolean =
         children("category").any { it.getAttribute("android:name") == "android.intent.category.LAUNCHER" }
 
     @Test
-    fun `every look is a launcher alias of the one real activity`() {
-        assertEquals(
-            AppLooks.Look.entries.map { it.component }.toSet(),
-            lookAliases.map { it.getAttribute("android:name") }.toSet()
-        )
-        for (alias in lookAliases) {
-            assertEquals(".HostActivity", alias.getAttribute("android:targetActivity"))
-            assertTrue("${alias.getAttribute("android:name")} must be on the home screen", alias.isLauncher())
-        }
-        val host = manifest.children("activity").single { it.getAttribute("android:name") == ".HostActivity" }
-        assertTrue("the real activity has no icon of its own, or there would be two", !host.isLauncher())
+    fun `Ente Saver has exactly one home-screen icon, under the name launchers know from version 1`() {
+        val launchers = (manifest.children("activity") + aliases).filter { it.isLauncher() }
+        val entry = launchers.single()
+        // The old activity name: home-screen icons and shortcuts made before
+        // any update keep pointing at something that exists.
+        assertEquals("$appId.MainActivity", entry.getAttribute("android:name"))
+        assertEquals(LauncherEntry.COMPONENT, entry.getAttribute("android:name"))
+        assertEquals(".HostActivity", entry.getAttribute("android:targetActivity"))
+        assertTrue("it must be on from the first install", entry.getAttribute("android:enabled") != "false")
+        assertEquals("@string/app_name", entry.getAttribute("android:label"))
+        assertEquals("@mipmap/ic_launcher", entry.getAttribute("android:icon"))
+        assertEquals("@mipmap/ic_launcher_round", entry.getAttribute("android:roundIcon"))
     }
 
     @Test
-    fun `a fresh install shows exactly one icon - the default look, under the old name`() {
-        val enabled = lookAliases.filter { it.getAttribute("android:enabled") != "false" }
-        assertEquals(listOf(AppLooks.DEFAULT.component), enabled.map { it.getAttribute("android:name") })
-        // The old activity name: home screen icons and shortcuts made before
-        // the update keep pointing at something that exists.
-        assertEquals("$appId.MainActivity", AppLooks.DEFAULT.component)
+    fun `an icon an older version switched off comes back right after the update`() {
+        // 11.0-12.2 switched this entry off when another name was picked;
+        // those names are gone, so Android's update broadcast puts it back
+        // before anyone looks for the icon.
+        val receiver = manifest.children("receiver").single { it.getAttribute("android:name") == ".util.LauncherEntry\$Updated" }
+        assertEquals("false", receiver.getAttribute("android:exported"))
+        assertEquals(
+            listOf("android.intent.action.MY_PACKAGE_REPLACED"),
+            receiver.children("action").map { it.getAttribute("android:name") }
+        )
+        val app = File("src/main/kotlin/app/entesaver/EnteSaverApp.kt").readText()
+        assertTrue("and at every start", app.contains("LauncherEntry.ensureVisible(this@EnteSaverApp)"))
     }
 
     @Test
@@ -143,17 +149,18 @@ class IconPackTest {
     }
 
     @Test
-    fun `Ente Saver has one icon, and only its name can change`() {
-        assertEquals(
-            listOf(R.string.app_name, R.string.app_name_storage, R.string.app_name_cloud, R.string.app_name_photo),
-            AppLooks.Look.entries.map { it.nameRes }
-        )
-        // A name chosen before 12.1 keeps its component: "CloudSaver" became "Cloud Saver".
-        assertEquals("$appId.AliasSaver", AppLooks.Look.CLOUD_SAVER.component)
-        for (alias in lookAliases) {
-            assertEquals("@mipmap/ic_launcher", alias.getAttribute("android:icon"))
-            assertEquals("@mipmap/ic_launcher_round", alias.getAttribute("android:roundIcon"))
-        }
+    fun `Ente Saver has one name and nothing in it changes its own icon`() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        assertTrue(strings.contains("""<string name="app_name" translatable="false">Ente Saver</string>"""))
+        assertTrue("no other home-screen names", !Regex("""name="app_name_""").containsMatchIn(strings))
+        val sources = File("src/main/kotlin").walkTopDown().filter { it.extension == "kt" }.map { it.readText() }.toList()
+        // Only LauncherEntry touches a component's enabled state, and only to
+        // put the one icon back.
+        val switchers = File("src/main/kotlin").walkTopDown()
+            .filter { it.extension == "kt" && it.readText().contains("setComponentEnabledSetting") }
+            .map { it.name }.toList()
+        assertEquals(listOf("LauncherEntry.kt"), switchers)
+        assertTrue(sources.none { it.contains("AppLooks") })
         assertTrue(File("src/main/res/mipmap-anydpi/ic_shortcut_photos.xml").isFile)
     }
 

@@ -6,10 +6,10 @@ import androidx.work.Configuration
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
 import app.entesaver.engine.StartupRecovery
-import app.entesaver.util.AppLooks
 import app.entesaver.util.DeviceTier
 import app.entesaver.util.FirstFrame
 import app.entesaver.util.Formats
+import app.entesaver.util.LauncherEntry
 import app.entesaver.util.Notifications
 import app.entesaver.work.Scheduler
 import app.entesaver.work.WorkerNames
@@ -43,7 +43,7 @@ class EnteSaverApp : Application(), Configuration.Provider {
         appScope.launch {
             // Never a phone with Ente Saver installed and no icon to open it
             // by. Package-manager calls, so off the main thread.
-            AppLooks.ensureVisible(this@EnteSaverApp)
+            LauncherEntry.ensureVisible(this@EnteSaverApp)
             // Recovery first: after clear-data or a reinstall the database is
             // empty and the hidden snapshot is the only state there is, so it
             // has to be back before anything schedules work against it.
