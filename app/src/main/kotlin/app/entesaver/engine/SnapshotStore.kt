@@ -488,8 +488,15 @@ class SnapshotStore(
         // running - a restore picked by hand comes after its first. That
         // includes rows already here that this history only gave evidence.
         if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
-            // Watched from now: a copy may be on a card put in later.
-            if (restoredCopies) optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())
+            val was = optionsRepo.current()
+            when {
+                // Watched from now: a copy may be on a card put in later.
+                restoredCopies -> optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())
+                // Nothing came back, and no restore waits for its first pass:
+                // marked as looked at, so the pass does not take the rows an
+                // earlier version's restore left for a restore still to watch.
+                was.restoredAt == 0L && was.copiesReattached -> optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, 1L)
+            }
             optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
         }
         if (importOptions && snapshot.options.isNotEmpty()) {

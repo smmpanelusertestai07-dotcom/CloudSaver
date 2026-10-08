@@ -69,16 +69,17 @@ class ReattachEngine(private val context: Context) {
             .query(OutputRoots.watched(layout, o.pastOutputRoots, db.items().restoredRoots())) ?: return
 
         val now = System.currentTimeMillis()
-        // A clock set back since the restore restarts its watch rather than
-        // stretching it to wherever the old date falls; a restore an earlier
-        // version made, not matched yet, is watched from now.
-        val restoredAt = when {
-            o.restoredAt > now -> now
-            o.restoredAt == 0L && db.items().restoredUnmatched().isNotEmpty() -> now
-            else -> o.restoredAt
+        // A restore an earlier version made, not matched yet, is watched
+        // from now.
+        val restoredAt = if (o.restoredAt == 0L && db.items().restoredUnmatched().isNotEmpty()) {
+            now.also { repo.setLong(OptionsRepo.K.RESTORED_AT, it) }
+        } else {
+            o.restoredAt
         }
-        if (restoredAt != o.restoredAt) repo.setLong(OptionsRepo.K.RESTORED_AT, restoredAt)
-        val watching = ReattachRules.watching(restoredAt, now)
+        // A date ahead of the clock - the clock set back since - keeps the
+        // watch open, and is kept: a clock set right again lands in the same
+        // week rather than past it.
+        val watching = ReattachRules.watching(minOf(restoredAt, now), now)
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
             val row = db.items().byFingerprint(fp) ?: continue
