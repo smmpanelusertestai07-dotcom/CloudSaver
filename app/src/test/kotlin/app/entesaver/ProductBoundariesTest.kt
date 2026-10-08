@@ -671,6 +671,13 @@ class ProductBoundariesTest {
         assertTrue(mark, mark.contains("restoredCopies -> p[K.RESTORED_AT] = now"))
         assertTrue(mark, mark.contains("(p[K.RESTORED_AT] ?: 0L) == 0L && (p[K.COPIES_REATTACHED] ?: false) -> p[K.RESTORED_AT] = 1L"))
         assertTrue(mark, mark.contains("p[K.COPIES_REATTACHED] = false"))
+        // The flag is cleared last: the branch before it reads it.
+        val asked = mark.indexOf("p[K.COPIES_REATTACHED] = false")
+        assertTrue(mark, mark.indexOf("restoredCopies -> p[K.RESTORED_AT] = now") in 0 until asked)
+        assertTrue(mark, mark.indexOf("-> p[K.RESTORED_AT] = 1L") in 0 until asked)
+        // And both the check and the write sit inside the uncancellable block.
+        val held = store.substringAfter("withContext(NonCancellable) {").substringBefore("if (importOptions &&")
+        assertTrue(held, held.contains("countByState(") && held.contains("optionsRepo.markRestored("))
         // A date ahead of the clock is never written back.
         assertTrue(reattach.contains("ReattachRules.watching(minOf(restoredAt, now), now)"))
         assertTrue(body, body.contains("provenAt = null"))
