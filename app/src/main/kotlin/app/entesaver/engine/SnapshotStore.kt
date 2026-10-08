@@ -27,7 +27,9 @@ import app.entesaver.util.BoundedRead
 import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
 import java.io.File
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * State durability. Room is the source of truth; the daily history file
@@ -487,17 +489,14 @@ class SnapshotStore(
         // next run (ReattachEngine), however long this install has been
         // running - a restore picked by hand comes after its first. That
         // includes rows already here that this history only gave evidence.
-        if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
-            val was = optionsRepo.current()
-            when {
-                // Watched from now: a copy may be on a card put in later.
-                restoredCopies -> optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())
-                // Nothing came back, and no restore waits for its first pass:
-                // marked as looked at, so the pass does not take the rows an
-                // earlier version's restore left for a restore still to watch.
-                was.restoredAt == 0L && was.copiesReattached -> optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, 1L)
+        // Once the rows are in, the request for a pass goes in too: leaving
+        // the screen must not cancel it between the two.
+        withContext(NonCancellable) {
+            if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
+                // Watched from now when copies came back: one may be on a card
+                // put in later.
+                optionsRepo.markRestored(restoredCopies, System.currentTimeMillis())
             }
-            optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
         }
         if (importOptions && snapshot.options.isNotEmpty()) {
             optionsRepo.importMap(withoutForeignFolders(snapshot.options), onlyIfSetupUntouched)

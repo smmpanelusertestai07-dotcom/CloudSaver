@@ -621,6 +621,21 @@ class OptionsRepo(private val context: Context) {
         write { it[key] = value }
     }
 
+    /**
+     * A history merged: asks for a reattach pass and, in the same write,
+     * dates the restore. [restoredCopies] - copies came back not matched yet
+     * - starts a watch from [now]. Otherwise, with no restore dated and none
+     * waiting for its pass, the restore is marked looked at, so the pass does
+     * not take rows an earlier version's restore left for one to watch.
+     */
+    suspend fun markRestored(restoredCopies: Boolean, now: Long) = write { p ->
+        when {
+            restoredCopies -> p[K.RESTORED_AT] = now
+            (p[K.RESTORED_AT] ?: 0L) == 0L && (p[K.COPIES_REATTACHED] ?: false) -> p[K.RESTORED_AT] = 1L
+        }
+        p[K.COPIES_REATTACHED] = false
+    }
+
     suspend fun setStringSet(
         key: Preferences.Key<Set<String>>,
         value: Set<String>

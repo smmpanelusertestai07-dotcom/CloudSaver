@@ -662,12 +662,15 @@ class ProductBoundariesTest {
         assertTrue(reattach.contains("if (!watching) repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
         val store = File(main, "engine/SnapshotStore.kt").readText()
         // Only a history that brought copies back starts the watch; one that
-        // did not marks the restore looked at, before the flag asks for a pass.
-        val started = store.indexOf("restoredCopies -> optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())")
-        val looked = store.indexOf("was.restoredAt == 0L && was.copiesReattached -> optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, 1L)")
-        val asked = store.indexOf("optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)")
-        assertTrue(started in 0 until asked)
-        assertTrue(looked in 0 until asked)
+        // did not marks the restore looked at. Date and request go in one
+        // write, which leaving the screen cannot cut short.
+        assertTrue(store.contains("optionsRepo.markRestored(restoredCopies, System.currentTimeMillis())"))
+        assertTrue(store.substringBefore("optionsRepo.markRestored(").substringAfterLast("withContext(").startsWith("NonCancellable)"))
+        val repoText = File(main, "data/prefs/OptionsRepo.kt").readText()
+        val mark = repoText.substringAfter("suspend fun markRestored(").substringBefore("\n    }\n")
+        assertTrue(mark, mark.contains("restoredCopies -> p[K.RESTORED_AT] = now"))
+        assertTrue(mark, mark.contains("(p[K.RESTORED_AT] ?: 0L) == 0L && (p[K.COPIES_REATTACHED] ?: false) -> p[K.RESTORED_AT] = 1L"))
+        assertTrue(mark, mark.contains("p[K.COPIES_REATTACHED] = false"))
         // A date ahead of the clock is never written back.
         assertTrue(reattach.contains("ReattachRules.watching(minOf(restoredAt, now), now)"))
         assertTrue(body, body.contains("provenAt = null"))
