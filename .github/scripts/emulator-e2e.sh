@@ -80,6 +80,98 @@ if [ "$tests_failed" -ne 0 ]; then
   exit 1
 fi
 
+BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+
+# Android must take an APK signed with a rotated key as an update to one
+# signed with the key before it - the promise behind replacing the release
+# key. Proven here on every Android this app supports, with two throwaway
+# keys and the release's own signing recipe (sign-apk.sh), so it holds
+# before the real keys are ever switched. The reverse must be refused: the
+# old key keeps no right to replace the new one.
+echo "::group::Key rotation: a rotated key's APK updates the old key's"
+ROT=$(mktemp -d)
+export ROT_OLD_PASS ROT_NEW_PASS
+ROT_OLD_PASS=$(openssl rand -hex 16)
+ROT_NEW_PASS=$(openssl rand -hex 16)
+rot_step() { "$@" || { echo "::error::Rotation check could not prepare its APKs: $1 failed"; exit 1; }; }
+rot_step keytool -genkeypair -keystore "$ROT/old.jks" -storetype JKS -alias old \
+  -keyalg RSA -keysize 2048 -validity 3650 -storepass "$ROT_OLD_PASS" -keypass "$ROT_OLD_PASS" \
+  -dname "CN=Rotation check old"
+rot_step keytool -genkeypair -keystore "$ROT/new.p12" -storetype PKCS12 -alias new \
+  -keyalg RSA -keysize 2048 -validity 3650 -storepass "$ROT_NEW_PASS" -keypass "$ROT_NEW_PASS" \
+  -dname "CN=Rotation check new"
+rot_step "$BT/apksigner" rotate --out "$ROT/lineage" \
+  --old-signer --ks "$ROT/old.jks" --ks-key-alias old --ks-pass env:ROT_OLD_PASS --key-pass env:ROT_OLD_PASS \
+  --new-signer --ks "$ROT/new.p12" --ks-key-alias new --ks-pass env:ROT_NEW_PASS
+SIGN_KS="$ROT/old.jks" SIGN_KS_ALIAS=old KEYSTORE_PASSWORD="$ROT_OLD_PASS" KEY_PASSWORD="$ROT_OLD_PASS" SIGN_LINEAGE="" \
+  rot_step bash .github/scripts/sign-apk.sh EnteSaver-release.apk "$ROT/old-key.apk"
+SIGN_KS="$ROT/new.p12" SIGN_KS_ALIAS=new KEYSTORE_PASSWORD="$ROT_NEW_PASS" KEY_PASSWORD="$ROT_NEW_PASS" SIGN_LINEAGE="$ROT/lineage" \
+  rot_step bash .github/scripts/sign-apk.sh EnteSaver-release.apk "$ROT/rotated.apk"
+adb uninstall "$PKG" > /dev/null 2>&1 || true
+adb install "$ROT/old-key.apk" > "$ROT/one.log" 2>&1
+if ! grep -q "^Success" "$ROT/one.log"; then
+  echo "::error::The old-key APK of the rotation check did not install"
+  cat "$ROT/one.log"
+  exit 1
+fi
+adb install -r "$ROT/rotated.apk" > "$ROT/two.log" 2>&1
+if ! grep -q "^Success" "$ROT/two.log"; then
+  echo "::error::Android refused an APK signed with a rotated key as an update to the old key's"
+  cat "$ROT/two.log"
+  exit 1
+fi
+adb install -r "$ROT/old-key.apk" > "$ROT/three.log" 2>&1
+if grep -q "^Success" "$ROT/three.log"; then
+  echo "::error::An APK signed with the old key replaced the rotated one; the old key must have no say once it has handed over"
+  exit 1
+fi
+adb uninstall "$PKG" > /dev/null 2>&1 || true
+rm -rf "$ROT"
+echo "Rotation check passed: rotated key accepted as an update, old key refused afterwards."
+echo "::endgroup::"
+
+# The update a phone really gets: this build installed over the last
+# published release, whatever key either was signed with. A release that
+# cannot do this would leave uninstalling - and losing what the app knew -
+# as the only way on, so it fails here rather than on someone's phone.
+echo "::group::Update over the last published release"
+if [ "${THROWAWAY_KEY:-false}" = "true" ]; then
+  echo "::notice::This build was signed with a throwaway key; it is never published, so it is not checked against the last release."
+else
+  PREV_DIR=$(mktemp -d)
+  if gh release download --repo "$GITHUB_REPOSITORY" --pattern 'EnteSaver-v*-release.apk' --dir "$PREV_DIR" > /dev/null 2>&1 \
+     && PREV=$(ls "$PREV_DIR"/*.apk 2> /dev/null | head -1) && [ -n "$PREV" ]; then
+    code_of() { "$BT/aapt2" dump badging "$1" 2> /dev/null | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1; }
+    PREV_CODE=$(code_of "$PREV")
+    NEW_CODE=$(code_of EnteSaver-release.apk)
+    if [ -z "$PREV_CODE" ] || [ -z "$NEW_CODE" ] || [ "$PREV_CODE" -gt "$NEW_CODE" ]; then
+      echo "::notice::The last release ($PREV_CODE) is newer than this build ($NEW_CODE); no update to check."
+    else
+      adb uninstall "$PKG" > /dev/null 2>&1 || true
+      adb install -g "$PREV" > "$PREV_DIR/one.log" 2>&1
+      if ! grep -q "^Success" "$PREV_DIR/one.log"; then
+        echo "::error::The last published release did not install"
+        cat "$PREV_DIR/one.log"
+        exit 1
+      fi
+      # Opened once, so the update meets an app that has started.
+      adb shell am start -n "$PKG/.MainActivity" > /dev/null 2>&1 || true
+      sleep 8
+      adb install -r -g EnteSaver-release.apk > "$PREV_DIR/two.log" 2>&1
+      if ! grep -q "^Success" "$PREV_DIR/two.log"; then
+        echo "::error::This build cannot be installed as an update over the last published release ($(basename "$PREV"))"
+        cat "$PREV_DIR/two.log"
+        exit 1
+      fi
+      echo "This build installs over $(basename "$PREV") as an update."
+    fi
+  else
+    echo "::notice::No published release to update from."
+  fi
+  rm -rf "$PREV_DIR"
+fi
+echo "::endgroup::"
+
 echo "::group::Install the signed release APK and launch it"
 adb uninstall "$PKG" 2>/dev/null || true
 # -g grants the runtime permissions up front, so setup's media step offers

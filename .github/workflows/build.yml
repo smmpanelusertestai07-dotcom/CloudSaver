@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+env:
+  # The certificate every installed Ente Saver was first signed with (public).
+  # A release must be signed by it, or by a key it handed over to.
+  ORIGINAL_CERT_SHA256: ca5d0814e1ab7028ff367f6df56d5428ed8f200b0714e7c28dfeb6f44014c7d5
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
@@ -20,6 +25,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       throwaway_key: ${{ steps.keystore.outputs.generated }}
+      sign_mode: ${{ steps.keystore.outputs.mode }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -35,6 +41,17 @@ jobs:
 
       # Keystore first: the signing-cert SHA-256 is embedded into the APK
       # (tamper evidence), so it must exist before the build.
+      #
+      # Three ways to sign, decided here:
+      # - rotated: NEW_KEYSTORE_B64 is set. The release is signed with that key
+      #   and a key-rotation lineage from the original key, so Android takes it
+      #   as an update to every earlier version. The lineage is the committed
+      #   .github/signing/ente-saver.lineage when there is one; otherwise the
+      #   original key (KEYSTORE_B64) signs it here, in this run.
+      # - original: only KEYSTORE_B64 is set - the key every release before
+      #   the rotation was signed with.
+      # - throwaway: no secrets (a fork). A key that lives for this run only;
+      #   the release step refuses to publish with it.
       - name: Prepare signing keystore
         id: keystore
         env:
@@ -42,15 +59,71 @@ jobs:
           SECRET_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           SECRET_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          NEW_KEYSTORE_B64: ${{ secrets.NEW_KEYSTORE_B64 }}
+          NEW_KEYSTORE_PASSWORD: ${{ secrets.NEW_KEYSTORE_PASSWORD }}
         run: |
           set -eu
-          if [ -n "${KEYSTORE_B64:-}" ]; then
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          cert_of() {
+            keytool -exportcert -keystore "$1" -alias "$2" -storepass "$3" -rfc \
+              | openssl x509 -noout -fingerprint -sha256 \
+              | cut -d= -f2 | tr -d ':' | tr 'A-F' 'a-f'
+          }
+          COMMITTED_LINEAGE=.github/signing/ente-saver.lineage
+          LINEAGE=""
+          LINEAGE_MADE=false
+          if [ -n "${NEW_KEYSTORE_B64:-}" ]; then
+            echo "$NEW_KEYSTORE_B64" | base64 -d > release-next.p12
+            KS_PASS="$NEW_KEYSTORE_PASSWORD"
+            KEY_ALIAS=entesaver
+            KEY_PASS="$KS_PASS"
+            SIGN_KS=release-next.p12
+            NEXT_CERT=$(cert_of release-next.p12 "$KEY_ALIAS" "$KS_PASS")
+            if [ -f "$COMMITTED_LINEAGE" ]; then
+              CHAIN=$("$BT/apksigner" lineage --in "$COMMITTED_LINEAGE" --print-certs \
+                | sed -n 's/^Signer #[0-9]* in lineage certificate SHA-256 digest: //p')
+              if [ "$(echo "$CHAIN" | head -1)" != "$ORIGINAL_CERT_SHA256" ] \
+                 || [ "$(echo "$CHAIN" | tail -1)" != "$NEXT_CERT" ]; then
+                echo "::error title=Lineage does not fit the new key::$COMMITTED_LINEAGE must run from the original key ($ORIGINAL_CERT_SHA256) to the key in NEW_KEYSTORE_B64 ($NEXT_CERT)."
+                exit 1
+              fi
+              LINEAGE="$COMMITTED_LINEAGE"
+              echo "Signing with the new key and the committed rotation lineage."
+            elif [ -n "${KEYSTORE_B64:-}" ]; then
+              echo "$KEYSTORE_B64" | base64 -d > release-original.jks
+              OLD_ALIAS="${SECRET_KEY_ALIAS:-cloudsaver}"
+              export OLD_KS_PASS="$SECRET_KEYSTORE_PASSWORD"
+              export OLD_KEY_PASS="${SECRET_KEY_PASSWORD:-$SECRET_KEYSTORE_PASSWORD}"
+              export NEXT_KS_PASS="$KS_PASS"
+              OLD_CERT=$(cert_of release-original.jks "$OLD_ALIAS" "$OLD_KS_PASS")
+              if [ "$OLD_CERT" != "$ORIGINAL_CERT_SHA256" ]; then
+                echo "::error title=KEYSTORE_B64 is not the original key::Its certificate ($OLD_CERT) is not the one every installed Ente Saver was signed with ($ORIGINAL_CERT_SHA256), so it cannot hand over to the new key."
+                exit 1
+              fi
+              "$BT/apksigner" rotate --out rotation.lineage \
+                --old-signer --ks release-original.jks --ks-key-alias "$OLD_ALIAS" \
+                  --ks-pass env:OLD_KS_PASS --key-pass env:OLD_KEY_PASS \
+                --new-signer --ks release-next.p12 --ks-key-alias "$KEY_ALIAS" \
+                  --ks-pass env:NEXT_KS_PASS
+              rm -f release-original.jks
+              LINEAGE=rotation.lineage
+              LINEAGE_MADE=true
+              echo "Signing with the new key; the original key signed the rotation lineage in this run."
+            else
+              echo "::error title=New key without a handover::NEW_KEYSTORE_B64 is set, but there is neither a committed $COMMITTED_LINEAGE nor the original key in KEYSTORE_B64 to make one. Android would refuse this build as an update."
+              exit 1
+            fi
+            MODE=rotated
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "${KEYSTORE_B64:-}" ]; then
             echo "$KEYSTORE_B64" | base64 -d > release.jks
             KS_PASS="$SECRET_KEYSTORE_PASSWORD"
             # The alias inside the release key, under the name it was made
             # with; it is part of the key and cannot be renamed.
             KEY_ALIAS="${SECRET_KEY_ALIAS:-cloudsaver}"
             KEY_PASS="${SECRET_KEY_PASSWORD:-$KS_PASS}"
+            SIGN_KS=release.jks
+            MODE=original
             echo "generated=false" >> "$GITHUB_OUTPUT"
             echo "Using keystore from repository secrets."
           else
@@ -62,6 +135,8 @@ jobs:
               -keyalg RSA -keysize 4096 -validity 9125 \
               -storepass "$KS_PASS" -keypass "$KEY_PASS" \
               -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"
+            SIGN_KS=release.jks
+            MODE=throwaway
             echo "generated=true" >> "$GITHUB_OUTPUT"
             echo "No signing secrets found - minted a throwaway key for THIS RUN only."
             echo "It is not written anywhere but this runner, and the release step will refuse to publish with it."
@@ -70,12 +145,15 @@ jobs:
             echo "KEYSTORE_PASSWORD=$KS_PASS"
             echo "KEY_ALIAS=$KEY_ALIAS"
             echo "KEY_PASSWORD=$KEY_PASS"
+            echo "SIGN_KS=$SIGN_KS"
+            echo "SIGN_LINEAGE=$LINEAGE"
+            echo "SIGN_MODE=$MODE"
+            echo "LINEAGE_MADE=$LINEAGE_MADE"
           } >> "$GITHUB_ENV"
-          CERT_SHA=$(keytool -exportcert -keystore release.jks -alias "$KEY_ALIAS" \
-              -storepass "$KS_PASS" -rfc \
-            | openssl x509 -noout -fingerprint -sha256 \
-            | cut -d= -f2 | tr -d ':' | tr 'A-F' 'a-f')
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          CERT_SHA=$(cert_of "$SIGN_KS" "$KEY_ALIAS" "$KS_PASS")
           echo "CERT_SHA256=$CERT_SHA" >> "$GITHUB_ENV"
+          echo "Signing mode: $MODE"
           echo "Signing cert SHA-256: $CERT_SHA"
 
       - name: Lint, unit tests, release build
@@ -83,7 +161,7 @@ jobs:
           ./gradlew --no-daemon lint testDebugUnitTest assembleRelease
           -PsigningCertSha256=${{ env.CERT_SHA256 }}
 
-      - name: Sign APK (apksigner, v2+v3)
+      - name: Sign APK (apksigner - v2+v3, or v3 with the rotation lineage)
         run: |
           set -eu
           VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
@@ -102,18 +180,32 @@ jobs:
           # and produces no file - caught by signing a real APK by hand
           # rather than by reading the flag name and assuming.
           "$BT/zipalign" -f -P 16 4 "$UNSIGNED" EnteSaver-aligned.apk
-          "$BT/apksigner" sign \
-            --ks release.jks \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --ks-key-alias "$KEY_ALIAS" \
-            --key-pass env:KEY_PASSWORD \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            --out "$APK_NAME" \
-            EnteSaver-aligned.apk
+          # The one signing recipe, shared with the emulator's rotation check.
+          SIGN_KS_ALIAS="$KEY_ALIAS" bash .github/scripts/sign-apk.sh EnteSaver-aligned.apk "$APK_NAME"
           "$BT/apksigner" verify --print-certs "$APK_NAME"
           # The emulator job installs a fixed name, so keep one alongside it.
           cp "$APK_NAME" EnteSaver-release.apk
+
+      # Every release must install over the Ente Saver already on phones:
+      # signed by the original key, or by a key the original handed over to.
+      # A new key added without the handover would otherwise ship and be
+      # refused on every phone. (A throwaway-key build never publishes; the
+      # release job refuses it.)
+      - name: The APK can update every installed Ente Saver
+        if: steps.keystore.outputs.mode != 'throwaway'
+        run: bash .github/scripts/check-signer.sh "$APK_NAME" "$ORIGINAL_CERT_SHA256"
+
+      # A lineage the original key signed in this run. It holds two public
+      # certificates and that signature - nothing secret - and committed as
+      # .github/signing/ente-saver.lineage it lets later builds sign with the
+      # new key alone, should the original key ever leave the secrets.
+      - name: Keep the rotation lineage made in this run
+        if: env.LINEAGE_MADE == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ente-saver-rotation-lineage
+          path: rotation.lineage
+          if-no-files-found: error
 
       - name: Alignment gate (16 KiB pages, Android 16)
         run: |
@@ -154,6 +246,8 @@ jobs:
           KEYSTORE_NOTE=""
           if [ "${{ steps.keystore.outputs.generated }}" = "true" ]; then
             KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other Ente Saver build - Android refuses an update whose signer differs. Generate one key on your own machine and add it as repository secrets; the release step refuses to publish until you do."
+          elif [ "$SIGN_MODE" = "rotated" ]; then
+            KEYSTORE_NOTE="Signed with the Ente Saver key, which the original key (${ORIGINAL_CERT_SHA256}) handed over to through Android key rotation (APK Signature Scheme v3), so it still installs over every earlier version."
           fi
           cat > RELEASE_NOTES.md <<EOF
           Ente Saver, made for Ente Photos. It installs over every earlier
@@ -190,6 +284,7 @@ jobs:
             echo "- APK size: ${APK_SIZE} bytes"
             echo "- APK SHA-256: \`${APK_SHA256}\`"
             echo "- Signing cert SHA-256: \`${CERT_SHA256}\`"
+            echo "- Signing: ${SIGN_MODE}$([ "$SIGN_MODE" = rotated ] && echo " (lineage from \`${ORIGINAL_CERT_SHA256}\`)")"
             if [ "${{ steps.keystore.outputs.generated }}" = "true" ]; then
               echo ""
               echo "### No signing key is configured, so this build cannot be published"
@@ -320,6 +415,10 @@ jobs:
 
       - name: Run instrumented suite + live install on a real emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # The update-over-the-last-release check downloads that release.
+          GH_TOKEN: ${{ github.token }}
+          THROWAWAY_KEY: ${{ needs.build.outputs.throwaway_key }}
         with:
           api-level: ${{ matrix.image || matrix.api }}
           target: google_apis
