@@ -14,6 +14,10 @@ env:
   # The certificate every installed Ente Saver was first signed with (public).
   # A release must be signed by it, or by a key it handed over to.
   ORIGINAL_CERT_SHA256: ca5d0814e1ab7028ff367f6df56d5428ed8f200b0714e7c28dfeb6f44014c7d5
+  # The one key the original hands over to (public certificate, made for
+  # 12.3). A handover cannot be taken back once phones have it, so only this
+  # key, never whatever happens to be in NEW_KEYSTORE_B64, receives it.
+  NEXT_CERT_SHA256: 71e76aa0076e4c28a098c6d1c400001661516505f92fe2d810fc9e46d478041b
 
 concurrency:
   group: build-${{ github.ref }}
@@ -79,11 +83,18 @@ jobs:
             KEY_PASS="$KS_PASS"
             SIGN_KS=release-next.p12
             NEXT_CERT=$(cert_of release-next.p12 "$KEY_ALIAS" "$KS_PASS")
+            if [ "$NEXT_CERT" != "$NEXT_CERT_SHA256" ]; then
+              echo "::error title=NEW_KEYSTORE_B64 is not the prepared new key::It holds certificate '$NEXT_CERT' (empty: NEW_KEYSTORE_PASSWORD does not open it, or its key is not named entesaver), but the original key hands over only to $NEXT_CERT_SHA256 - the entesaver-release.p12 from the secrets file. Put that file's base64 and password in NEW_KEYSTORE_B64 and NEW_KEYSTORE_PASSWORD."
+              exit 1
+            fi
             if [ -f "$COMMITTED_LINEAGE" ]; then
+              # Only the digests are read; apksigner's wording around them
+              # changes between versions (check-signer.sh).
               CHAIN=$("$BT/apksigner" lineage --in "$COMMITTED_LINEAGE" --print-certs \
-                | sed -n 's/^Signer #[0-9]* in lineage certificate SHA-256 digest: //p')
-              if [ "$(echo "$CHAIN" | head -1)" != "$ORIGINAL_CERT_SHA256" ] \
-                 || [ "$(echo "$CHAIN" | tail -1)" != "$NEXT_CERT" ]; then
+                | sed -n -E 's/.*certificate SHA-256 digest: ([0-9a-fA-F]{64})[[:space:]]*$/\1/p' \
+                | tr 'A-F' 'a-f')
+              if ! printf '%s\n' "$CHAIN" | grep -qx "$ORIGINAL_CERT_SHA256" \
+                 || ! printf '%s\n' "$CHAIN" | grep -qx "$NEXT_CERT"; then
                 echo "::error title=Lineage does not fit the new key::$COMMITTED_LINEAGE must run from the original key ($ORIGINAL_CERT_SHA256) to the key in NEW_KEYSTORE_B64 ($NEXT_CERT)."
                 exit 1
               fi
@@ -123,6 +134,16 @@ jobs:
             KEY_ALIAS="${SECRET_KEY_ALIAS:-cloudsaver}"
             KEY_PASS="${SECRET_KEY_PASSWORD:-$KS_PASS}"
             SIGN_KS=release.jks
+            # Any other key here would build an APK no phone takes as an
+            # update; say so now, in words, rather than at the final check.
+            OLD_CERT=$(cert_of release.jks "$KEY_ALIAS" "$KS_PASS")
+            if [ "$OLD_CERT" = "$NEXT_CERT_SHA256" ]; then
+              echo "::error title=The new key is in KEYSTORE_B64::KEYSTORE_B64 holds the new Ente Saver key. It belongs in NEW_KEYSTORE_B64 (with its password in NEW_KEYSTORE_PASSWORD); KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD keep the original key from your own backup, which signs the handover."
+              exit 1
+            elif [ "$OLD_CERT" != "$ORIGINAL_CERT_SHA256" ]; then
+              echo "::error title=KEYSTORE_B64 is not the original key::It holds certificate '$OLD_CERT' (empty: KEYSTORE_PASSWORD or KEY_ALIAS does not open it), but every installed Ente Saver was signed with $ORIGINAL_CERT_SHA256, and Android takes an update only from that key or one it handed over to."
+              exit 1
+            fi
             MODE=original
             echo "generated=false" >> "$GITHUB_OUTPUT"
             echo "Using keystore from repository secrets."
