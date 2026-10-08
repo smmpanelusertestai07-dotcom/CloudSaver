@@ -40,33 +40,46 @@ class IconPackTest {
         children("category").any { it.getAttribute("android:name") == "android.intent.category.LAUNCHER" }
 
     @Test
-    fun `Ente Saver has exactly one home-screen icon, under the name launchers know from version 1`() {
+    fun `a fresh install has one home-screen icon, under the name launchers know from version 1`() {
         val launchers = (manifest.children("activity") + aliases).filter { it.isLauncher() }
-        val entry = launchers.single()
+        val entry = launchers.single { it.getAttribute("android:enabled") != "false" }
         // The old activity name: home-screen icons and shortcuts made before
         // any update keep pointing at something that exists.
         assertEquals("$appId.MainActivity", entry.getAttribute("android:name"))
         assertEquals(LauncherEntry.COMPONENT, entry.getAttribute("android:name"))
         assertEquals(".HostActivity", entry.getAttribute("android:targetActivity"))
-        assertTrue("it must be on from the first install", entry.getAttribute("android:enabled") != "false")
         assertEquals("@string/app_name", entry.getAttribute("android:label"))
         assertEquals("@mipmap/ic_launcher", entry.getAttribute("android:icon"))
         assertEquals("@mipmap/ic_launcher_round", entry.getAttribute("android:roundIcon"))
+
+        // Every other entry is a name 11.0-12.2 let a person pick: off by
+        // default, and on a phone that picked it, Ente Saver with the Ente
+        // Saver icon and the same long-press shortcuts.
+        val old = launchers - entry
+        assertEquals(LauncherEntry.OLD_NAMES.toSet(), old.map { it.getAttribute("android:name") }.toSet())
+        for (alias in old) {
+            val name = alias.getAttribute("android:name")
+            assertEquals(name, "false", alias.getAttribute("android:enabled"))
+            assertEquals(name, ".HostActivity", alias.getAttribute("android:targetActivity"))
+            assertEquals(name, "@string/app_name", alias.getAttribute("android:label"))
+            assertEquals(name, "@mipmap/ic_launcher", alias.getAttribute("android:icon"))
+            assertEquals(name, "@mipmap/ic_launcher_round", alias.getAttribute("android:roundIcon"))
+            assertTrue(name, alias.children("meta-data").any { it.getAttribute("android:name") == "android.app.shortcuts" })
+        }
     }
 
     @Test
-    fun `an icon an older version switched off comes back right after the update`() {
-        // 11.0-12.2 switched this entry off when another name was picked;
-        // those names are gone, so Android's update broadcast puts it back
-        // before anyone looks for the icon.
-        val receiver = manifest.children("receiver").single { it.getAttribute("android:name") == ".util.LauncherEntry\$Updated" }
-        assertEquals("false", receiver.getAttribute("android:exported"))
-        assertEquals(
-            listOf("android.intent.action.MY_PACKAGE_REPLACED"),
-            receiver.children("action").map { it.getAttribute("android:name") }
-        )
+    fun `an install that picked another name keeps its icon, whatever the update's timing`() {
+        // Android keeps an entry's on/off state across an update, and the
+        // manifest keeps every old name declared, so nothing has to run after
+        // the update - a force-stopped app gets no update broadcast at all.
+        assertTrue(manifest.children("receiver").none { it.getAttribute("android:name").contains("LauncherEntry") })
+        // The safety net at every start only ever switches the main entry on,
+        // never an entry off: switching would take an icon off the home screen.
+        val source = File("src/main/kotlin/app/entesaver/util/LauncherEntry.kt").readText()
+        assertTrue(!source.contains("COMPONENT_ENABLED_STATE_DISABLED"))
         val app = File("src/main/kotlin/app/entesaver/EnteSaverApp.kt").readText()
-        assertTrue("and at every start", app.contains("LauncherEntry.ensureVisible(this@EnteSaverApp)"))
+        assertTrue(app.contains("LauncherEntry.ensureVisible(this@EnteSaverApp)"))
     }
 
     @Test

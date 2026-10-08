@@ -165,9 +165,7 @@ if [ -n "$PREV" ]; then
   adb shell am start -n "$PKG/.MainActivity" > /dev/null 2>&1 || true
   sleep 8
   # As on a phone that picked another home-screen name in 11.0-12.2: that
-  # name's alias on, the Ente Saver entry off. The aliases are gone from 12.3
-  # on, so the update itself must bring the Ente Saver icon back. Only a last
-  # release that still has such an alias can stage this.
+  # name's entry on, the main one off.
   OTHER_NAME=""
   if adb shell su root pm enable "$PKG/app.entesaver.AliasStorageSaver" 2> /dev/null | grep -q "new state: enabled" \
      && adb shell su root pm disable "$PKG/app.cloudsaver.MainActivity" 2> /dev/null | grep -q "new state: disabled"; then
@@ -175,31 +173,35 @@ if [ -n "$PREV" ]; then
   else
     echo "::notice::No other home-screen name staged (the last release has none, or this image cannot switch it)."
   fi
+  # As after Force stop or an OEM cleaner: the update then reaches an app
+  # that no broadcast wakes, so the icon must not depend on any code running.
+  adb shell am force-stop "$PKG" > /dev/null 2>&1 || true
   adb install -r -g "$ROT/old-key.apk" > "$PREV_DIR/two.log" 2>&1
   if ! grep -q "^Success" "$PREV_DIR/two.log"; then
     echo "::error::This build does not install as an update over the last published release ($(basename "$PREV"))"
     cat "$PREV_DIR/two.log"
     exit 1
   fi
-  if [ -n "$OTHER_NAME" ]; then
-    back=""
-    for _ in $(seq 1 20); do
-      if adb shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" \
-         | grep -q "MainActivity"; then
-        back=yes
-        break
-      fi
-      sleep 1
-    done
-    if [ -z "$back" ]; then
-      echo "::error::After the update, an Ente Saver that had picked another home-screen name has no icon to open it by"
-      exit 1
-    fi
-    echo "An install that had picked another name has its Ente Saver icon back after the update."
+  # Exactly one home-screen entry after the update: the one this phone had,
+  # the picked name's when there was one, so its icon stays where it was.
+  launchers=$(adb shell cmd package query-activities -a android.intent.action.MAIN \
+    -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r')
+  count=$(printf '%s\n' "$launchers" | sed -n 's/^\([0-9][0-9]*\) activities found.*/\1/p' | head -1)
+  entry=$(printf '%s\n' "$launchers" | sed -n 's/^ *name=\(.*\)$/\1/p' | head -1)
+  if [ "${count:-0}" != 1 ] || [ -z "$entry" ]; then
+    echo "::error::After the update the app has ${count:-no} home-screen entries; it must have exactly one"
+    printf '%s\n' "$launchers" | head -20
+    exit 1
   fi
-  # The updated app, on the data the last release left, starts and stays up.
+  if [ -n "$OTHER_NAME" ] && [ "$entry" != "app.entesaver.AliasStorageSaver" ]; then
+    echo "::error::After the update the picked name's entry is gone ($entry is on instead); the person's home-screen icon would go with it"
+    exit 1
+  fi
+  echo "After the update the app has one home-screen entry: $entry."
+  # The updated app, opened from that entry on the data the last release
+  # left, starts and stays up.
   adb logcat -c || true
-  adb shell am start -n "$PKG/.MainActivity" > /dev/null 2>&1 || true
+  adb shell am start -n "$PKG/$entry" > /dev/null 2>&1 || true
   sleep 8
   if ! adb shell pidof "$PKG" > /dev/null 2>&1 || adb logcat -d -b crash | grep -q "$PKG"; then
     echo "::error::The update installed, but the updated app did not start cleanly"

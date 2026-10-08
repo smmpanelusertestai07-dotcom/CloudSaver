@@ -105,11 +105,67 @@
 
              The one icon, named Ente Saver: same component name since
              version 1, so the home-screen icon and its shortcuts survive the
-             update. (11.0-12.2 offered other names, each an alias that
-             switched this one off; LauncherEntry switches it back on.) -->
+             update. -->
         <activity-alias
             android:name="app.cloudsaver.MainActivity"
             android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- The names 11.0-12.2 let a person pick for the home screen, each
+             its own entry that switched the one above off. The choice is gone,
+             but an install that made it still opens through that entry -
+             Android keeps a component's on/off state across an update - so
+             each stays declared, off by default, and reads Ente Saver with the
+             Ente Saver icon. Nothing switches any of them anymore: the
+             home-screen icon stays where the person put it, and no timing of
+             the update (a force-stopped app gets no update broadcast) can
+             leave a phone without an icon. Their names are permanent. -->
+        <activity-alias
+            android:name="app.entesaver.AliasStorageSaver"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.cloudsaver.AliasSaver"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".HostActivity">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.entesaver.AliasPhotoSaver"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
@@ -204,18 +260,6 @@
         <receiver
             android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver"
             tools:node="remove" />
-
-        <!-- Right after an update, before anyone looks for the icon: an
-             install that had picked another home-screen name before 12.3 gets
-             its Ente Saver icon back (LauncherEntry). Sent by Android itself,
-             so not exported. -->
-        <receiver
-            android:name=".util.LauncherEntry$Updated"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
 
         <!-- "Mute for 7 days" on an alert. Not exported: only our own
              PendingIntent ever fires it. -->

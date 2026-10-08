@@ -1,56 +1,64 @@
 package app.entesaver.util
 
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 
 /**
- * Ente Saver's one home-screen entry: the launcher alias every install has
- * had since version 1, under the one name, Ente Saver.
+ * Ente Saver's home-screen entry, under the one name, Ente Saver.
  *
  * Versions 11.0 to 12.2 let the person pick another home-screen name, each
- * its own launcher alias, and picking one switched this entry off. Those
- * aliases are gone, so an install that had picked one would be left with no
- * icon to open it by. [ensureVisible] switches this entry back on - at every
- * start, and right after the update ([Updated]), before anyone looks for it.
+ * its own launcher entry that switched the main one off. The choice is gone,
+ * but Android keeps a component's on/off state across an update, so an
+ * install that made it still opens through that entry. The manifest keeps
+ * those entries declared, off by default, reading Ente Saver with the Ente
+ * Saver icon, and nothing switches them: the person's home-screen icon stays
+ * where they put it, and no timing of the update can leave a phone without
+ * an icon to open the app by.
  */
 object LauncherEntry {
 
     /**
-     * The alias's full class name, exactly as the manifest declares it.
+     * The main entry's full class name, exactly as the manifest declares it.
      * Launchers keep home-screen icons and shortcuts by it, so it never
      * changes; it is in the app's permanent id, not the code's package.
      */
     const val COMPONENT = "app.cloudsaver.MainActivity"
 
+    /** The entries of the names 11.0-12.2 offered; off unless one was picked. */
+    val OLD_NAMES = listOf(
+        "app.entesaver.AliasStorageSaver",
+        "app.cloudsaver.AliasSaver",
+        "app.entesaver.AliasPhotoSaver"
+    )
+
     /** Where 11.0-12.2 kept a chosen name waiting to be applied. */
     private const val OLD_LOOKS_PREFS = "looks"
 
+    /**
+     * A safety net, at every start: should no entry be on at all, the main
+     * one comes back. An install that opens through an old name's entry
+     * keeps it; switching would take its icon off the home screen.
+     */
     fun ensureVisible(context: Context) {
         val pm = context.packageManager
-        val entry = ComponentName(context.packageName, COMPONENT)
         runCatching {
-            if (pm.getComponentEnabledSetting(entry) != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+            val main = ComponentName(context.packageName, COMPONENT)
+            val mainState = pm.getComponentEnabledSetting(main)
+            val mainOn = mainState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
+                mainState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            val oldOn = OLD_NAMES.any {
+                pm.getComponentEnabledSetting(ComponentName(context.packageName, it)) ==
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+            if (!mainOn && !oldOn) {
                 pm.setComponentEnabledSetting(
-                    entry,
+                    main,
                     PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
                     PackageManager.DONT_KILL_APP
                 )
             }
         }
         runCatching { context.deleteSharedPreferences(OLD_LOOKS_PREFS) }
-    }
-
-    /**
-     * Android's word that this app was just updated. It comes before anyone
-     * opens the app - which, with the icon switched off by an old choice of
-     * name, they could not.
-     */
-    class Updated : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) ensureVisible(context)
-        }
     }
 }

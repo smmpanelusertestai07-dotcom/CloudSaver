@@ -24,7 +24,7 @@ class BrandingTest {
         Regex("""applicationId = "app\.cloudsaver""""),
         Regex("""PKG=app\.cloudsaver\b"""),
         Regex("""targetPackage="app\.cloudsaver""""),
-        Regex("""\bapp\.cloudsaver\.(MainActivity|OpenEnteActivity|IconPackActivity)\b"""),
+        Regex("""\bapp\.cloudsaver\.(MainActivity|AliasSaver|OpenEnteActivity|IconPackActivity)\b"""),
         // Work that WorkManager already holds on updated phones.
         Regex("""\bapp\.cloudsaver\.work\.(CompressWorker|MaintainWorker)\b"""),
         Regex("""\bcloudsaver\.(compress|maintain|trigger|now)\b"""),
@@ -59,7 +59,9 @@ class BrandingTest {
             if (git.waitFor() != 0) null else names.split('\u0000').filter { it.isNotEmpty() }
         }.getOrNull()
         assertTrue("git must be able to list the repository", tracked != null)
-        val binary = setOf("png", "jpg", "webp", "jar", "jks", "keystore", "ttf", "otf", "so")
+        // A key-rotation lineage holds the original certificate, whose name
+        // is the old one; it is binary, and part of the key.
+        val binary = setOf("png", "jpg", "webp", "jar", "jks", "keystore", "lineage", "ttf", "otf", "so")
         val oldName = Regex("(?i)cloud\\s*saver")
         val offenders = tracked!!
             .filterNot { it.substringAfterLast('.').lowercase() in binary || it.endsWith("/BrandingTest.kt") }

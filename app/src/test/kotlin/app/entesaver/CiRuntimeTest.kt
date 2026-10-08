@@ -134,10 +134,14 @@ class CiRuntimeTest {
         val root = repoRoot()
         assertTrue("repository root not found from app/", root != null)
         val script = File(root, ".github/scripts/emulator-e2e.sh").readText()
-        val install = script.indexOf("adb install -r -g EnteSaver-release.apk")
+        // The install the walk runs on, in its own group: the update checks
+        // before it install the same file and then remove it again.
+        val group = script.indexOf("::group::Install the signed release APK and launch it")
+        val install = script.indexOf("adb install -r -g EnteSaver-release.apk", group)
         val walk = script.indexOf("python3 .github/scripts/release-tab-walk.py")
         val promises = script.indexOf("android.permission.INTERNET")
-        assertTrue("the release APK must be installed with its permissions granted", install >= 0)
+        assertTrue("the release install must have its own group", group >= 0)
+        assertTrue("the release APK must be installed with its permissions granted", install > group)
         assertTrue("the release walk must run after the install", walk > install)
         assertTrue("and before the installed package's promises are read", promises > walk)
         assertFalse("tabs are found by their labels, not by screen fraction", script.contains("TAB_Y"))
