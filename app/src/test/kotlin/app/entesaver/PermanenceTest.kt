@@ -157,7 +157,7 @@ class PermanenceTest {
         assertTrue(
             "the rows must go in under db.withTransaction, so an interrupted " +
                 "restore leaves the table empty for the next launch to retry",
-            merge.contains("db.withTransaction { mergeRows(snapshot) }")
+            merge.substringAfter("db.withTransaction {", "").substringBefore("}").contains("mergeRows(snapshot)")
         )
         val rows = store.substringAfter("private suspend fun mergeRows(")
         assertFalse(

@@ -105,19 +105,4 @@ class ReattachRulesTest {
         assertFalse(ReattachRules.watching(0L, restoredAt))
         assertFalse(ReattachRules.watching(restoredAt + 1, restoredAt))
     }
-
-    @Test
-    fun `a settled restored row takes back only its very copy, and only without per-file proof`() {
-        for (evidence in Evidence.entries) {
-            assertEquals(evidence.name, !evidence.isPerFile, ReattachRules.canReadopt(evidence, sameCopy = true, fromImport = true))
-            assertFalse(ReattachRules.canReadopt(evidence, sameCopy = false, fromImport = true))
-            // A row this install made itself was never settled blind.
-            assertFalse(ReattachRules.canReadopt(evidence, sameCopy = true, fromImport = false))
-        }
-        // It keeps what its history recorded, as a restored row does.
-        assertEquals(
-            Evidence.VERIFIED,
-            ReattachRules.evidenceAfterAdopt(ItemState.DONE.name, Evidence.VERIFIED, sameCopy = true)
-        )
-    }
 }

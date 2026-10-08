@@ -80,8 +80,9 @@ class LockBackupE2eTest {
         backupFile().delete()
         AppDb.get(target).clearAllTables()
         // A restore is watched for a week; the tests after this one are not
-        // about that.
-        repo.setLong(OptionsRepo.K.RESTORED_AT, 0L)
+        // about that (an old date, not none: an unset one is a restore made
+        // by an earlier version, watched from its first pass).
+        repo.setLong(OptionsRepo.K.RESTORED_AT, 1L)
     }
 
     // ---- the lock ------------------------------------------------------------

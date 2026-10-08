@@ -44,16 +44,6 @@ object ReattachRules {
     }
 
     /**
-     * Whether a restored row an earlier pass settled as DONE takes back the
-     * copy found now. Versions before 12.2 did that on any recorded grade,
-     * and a card that was out then can bring the very copy back ([sameCopy]).
-     * Without per-file proof Ente may yet send it, so it goes back under
-     * watch; with it, Ente had it, and nothing is to be watched.
-     */
-    fun canReadopt(recorded: Evidence, sameCopy: Boolean, fromImport: Boolean): Boolean =
-        fromImport && sameCopy && !recorded.isPerFile
-
-    /**
      * The evidence an adopted row is allowed to claim: none.
      *
      * The copy being on disk proves it was made, not that any cloud app ever
@@ -71,7 +61,7 @@ object ReattachRules {
      * record was about some other file, and the filename match adds nothing.
      */
     fun evidenceAfterAdopt(state: String, recorded: Evidence, sameCopy: Boolean): Evidence =
-        if ((state == ItemState.UNKNOWN.name || state == ItemState.DONE.name) && sameCopy) recorded else evidence
+        if (state == ItemState.UNKNOWN.name && sameCopy) recorded else evidence
 
     /**
      * Where a restored row goes when its copy is in none of the output

@@ -27,7 +27,8 @@ import kotlinx.coroutines.sync.withLock
  * Runs after the first scan following a recovery, and on every compress run
  * while a restore is watched (ReattachRules.watching): a copy may be on a
  * card put in later. Adopted rows carry no upload evidence: the file being
- * present proves it was made, not sent.
+ * present proves it was made, not sent. Rows already settled are never
+ * written: Free up may be acting on them.
  */
 class ReattachEngine(private val context: Context) {
 
@@ -69,23 +70,26 @@ class ReattachEngine(private val context: Context) {
 
         val now = System.currentTimeMillis()
         // A clock set back since the restore restarts its watch rather than
-        // stretching it to wherever the old date falls.
-        val restoredAt = if (o.restoredAt > now) now.also { repo.setLong(OptionsRepo.K.RESTORED_AT, it) } else o.restoredAt
+        // stretching it to wherever the old date falls; a restore an earlier
+        // version made, not matched yet, is watched from now.
+        val restoredAt = when {
+            o.restoredAt > now -> now
+            o.restoredAt == 0L && db.items().restoredUnmatched().isNotEmpty() -> now
+            else -> o.restoredAt
+        }
+        if (restoredAt != o.restoredAt) repo.setLong(OptionsRepo.K.RESTORED_AT, restoredAt)
         val watching = ReattachRules.watching(restoredAt, now)
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
             val row = db.items().byFingerprint(fp) ?: continue
-            val found = entry.name == row.outputName && entry.bytes == row.outputBytes
-            val readopt = row.state == ItemState.DONE.name &&
-                ReattachRules.canReadopt(Evidence.parse(row.evidence), found, row.fromImport)
-            if (!readopt && !ReattachRules.canAdopt(row.state, row.outputBytes != null)) continue
+            if (!ReattachRules.canAdopt(row.state, row.outputBytes != null)) continue
 
             // A staged file on disk is redundant once the released copy is
             // found; leaving it would count twice against the space limit.
             row.stagePath?.let { runCatching { File(it).delete() } }
 
-            val restored = row.state == ItemState.UNKNOWN.name || readopt
-            val sameCopy = restored && found
+            val restored = row.state == ItemState.UNKNOWN.name
+            val sameCopy = restored && entry.name == row.outputName && entry.bytes == row.outputBytes
             val evidence = ReattachRules.evidenceAfterAdopt(row.state, Evidence.parse(row.evidence), sameCopy)
             db.items().update(
                 row.copy(

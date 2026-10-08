@@ -661,7 +661,9 @@ class ProductBoundariesTest {
         val reattach = File(main, "engine/ReattachEngine.kt").readText()
         assertTrue(reattach.contains("if (!watching) repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
         val store = File(main, "engine/SnapshotStore.kt").readText()
-        assertTrue(store.indexOf("optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())") in 0 until
+        // Only a history that brought copies back starts the watch.
+        assertTrue(store.contains("if (restoredCopies) optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())"))
+        assertTrue(store.indexOf("if (restoredCopies) optionsRepo.setLong") in 0 until
             store.indexOf("optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)"))
         assertTrue(body, body.contains("provenAt = null"))
         // Read before the copies that left, which the pass dates before it
@@ -948,9 +950,9 @@ class ProductBoundariesTest {
         val locked = reattach.substringAfter("private suspend fun runLocked()")
         assertTrue("the flag is read again under the locks", locked.contains("if (!pending(context)) return"))
         assertTrue(locked.contains("repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)"))
-        // A settled restored row whose very copy turns up again goes back
-        // under watch.
-        assertTrue(locked.contains("ReattachRules.canReadopt(Evidence.parse(row.evidence), found, row.fromImport)"))
+        // Rows already settled are never written: Free up may be acting on
+        // them, and this pass reads and writes whole rows.
+        assertFalse(locked.contains("ItemState.DONE.name &&"))
     }
 
     @Test

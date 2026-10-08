@@ -476,14 +476,20 @@ class SnapshotStore(
         // the whole snapshot or leaves the table empty for the next launch
         // to try again. Settings go in after it - they live in DataStore,
         // which has no part in a Room transaction.
-        val imported = db.withTransaction { mergeRows(snapshot) }
+        // Whether this history brought back copies not matched to the folder
+        // yet: only those start a watch, so importing a backup again does not.
+        val (imported, restoredCopies) = db.withTransaction {
+            val before = db.items().restoredUnmatched().toSet()
+            val merged = mergeRows(snapshot)
+            merged to (db.items().restoredUnmatched().toSet() - before).isNotEmpty()
+        }
         // Restored rows are matched to the copies still in the folder on the
         // next run (ReattachEngine), however long this install has been
         // running - a restore picked by hand comes after its first. That
         // includes rows already here that this history only gave evidence.
         if (imported > 0 || db.items().countByState(ItemState.UNKNOWN.name) > 0) {
             // Watched from now: a copy may be on a card put in later.
-            optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())
+            if (restoredCopies) optionsRepo.setLong(OptionsRepo.K.RESTORED_AT, System.currentTimeMillis())
             optionsRepo.setBool(OptionsRepo.K.COPIES_REATTACHED, false)
         }
         if (importOptions && snapshot.options.isNotEmpty()) {
