@@ -25,7 +25,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # A named image, not ubuntu-latest: "latest" moves to a newer Ubuntu
+    # (24.04 to 26.04 from 19 October 2026) with other preinstalled tools,
+    # and a release build should change only when this file does. 26.04 is
+    # the newest LTS, so this label stays supported the longest.
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
       throwaway_key: ${{ steps.keystore.outputs.generated }}
@@ -355,7 +359,7 @@ jobs:
     # nothing about the phones the other rows describe.
     name: end-to-end on Android ${{ matrix.api }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # the build's image (see there)
     timeout-minutes: 75
     # Android 17 (API 37) runs ahead of the target, to see early what the
     # next version changes; until it is the target it may fail without
@@ -423,8 +427,11 @@ jobs:
       - name: Install the system image
         run: |
           image="android-${{ matrix.image || matrix.api }}"
+          # cmdline-tools/latest where the image has it, else its newest
+          # numbered copy.
+          sdkmanager=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
           for try in 1 2 3; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            if yes | "$sdkmanager" --install \
                  "system-images;$image;google_apis;x86_64" > /dev/null \
                && [ -d "$ANDROID_HOME/system-images/$image/google_apis/x86_64" ]; then
               exit 0
@@ -480,7 +487,7 @@ jobs:
     name: publish release
     needs: [build, emulator]
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # the build's image (see there)
     steps:
       # A release nobody can install as an update is not a release.
       #
