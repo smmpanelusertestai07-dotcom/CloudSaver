@@ -78,6 +78,49 @@ class SnapshotCodecTest {
     }
 
     @Test
+    fun aDuplicateKeepsTheOriginalItBelongsTo() {
+        // Without the link a restored duplicate read as an unexplained skip,
+        // and Home listed it as a problem for good.
+        val snapshot = SnapshotCodec.Snapshot(
+            version = SnapshotCodec.VERSION,
+            exportedAt = 42,
+            options = emptyMap(),
+            items = listOf(
+                item("4444444444444444", ItemState.SKIP, Evidence.NONE, outputName = null)
+                    .copy(skipReason = "duplicate", duplicateOf = "5555555555555555")
+            ),
+            batches = emptyList()
+        )
+        val decoded = SnapshotCodec.decode(SnapshotCodec.encode(snapshot))
+        assertEquals(snapshot.items, decoded.items)
+        assertEquals("5555555555555555", decoded.items[0].duplicateOf)
+    }
+
+    @Test
+    fun whenACopyLeftTheFolderSurvivesTheRoundTrip() {
+        // The one time no later write may move: a restore that lost it would
+        // read every copy that ever left as having left at the restore.
+        val snapshot = SnapshotCodec.Snapshot(
+            version = SnapshotCodec.VERSION,
+            exportedAt = 42,
+            options = emptyMap(),
+            items = listOf(
+                item("6666666666666666", ItemState.DONE, Evidence.VERIFIED)
+                    .copy(leftFolderAt = 1700000002000),
+                item("7777777777777777", ItemState.NEW, Evidence.NONE)
+                    .copy(releasedAt = null, leftFolderAt = 1700000003000),
+                item("8888888888888888", ItemState.RELEASED, Evidence.NONE)
+            ),
+            batches = emptyList()
+        )
+        val decoded = SnapshotCodec.decode(SnapshotCodec.encode(snapshot))
+        assertEquals(snapshot.items, decoded.items)
+        assertEquals(1700000002000, decoded.items[0].leftFolderAt)
+        assertEquals(1700000003000, decoded.items[1].leftFolderAt)
+        assertEquals(null, decoded.items[2].leftFolderAt)
+    }
+
+    @Test
     fun olderSnapshotsWithoutTheKeysDecodeAsNothingKept() {
         // Files written before the keys existed must keep reading, and must
         // not invent a kept copy or an exclusion the person never made.
@@ -90,6 +133,8 @@ class SnapshotCodecTest {
         assertEquals(1, decoded.items.size)
         assertEquals(null, decoded.items[0].keptUri)
         assertEquals(false, decoded.items[0].neverOptimise)
+        // Nor a leave time: the app reads the row as it did before 12.2.
+        assertEquals(null, decoded.items[0].leftFolderAt)
     }
 
     @Test

@@ -96,6 +96,11 @@ class HostActivity : AppCompatActivity() {
         vm.onResumed()
     }
 
+    override fun onPause() {
+        super.onPause()
+        vm.onPaused()
+    }
+
     override fun onStop() {
         super.onStop()
         try {

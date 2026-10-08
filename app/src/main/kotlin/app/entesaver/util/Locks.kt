@@ -1,5 +1,8 @@
 package app.entesaver.util
 
+import android.os.SystemClock
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -35,4 +38,48 @@ object Locks {
      * this one at its entry points cannot deadlock against them.
      */
     val maintain = Mutex()
+
+    /**
+     * Making one light copy: the scheduled run, the Home trial, and the
+     * Free-up remake of a copy that is no longer on the phone.
+     *
+     * Both pick the newest waiting photos, so a trial tapped mid-run used to
+     * encode the same photo the run was on - two full-size decodes on a
+     * phone sized for one, one note of which file was in progress for two
+     * encodes, and two copies written to the same name. One encode at a time.
+     *
+     * A restore, the start-up repair and the reattach pass rewrite waiting
+     * rows, so they take it too, before [release] (and then [ledger]).
+     * Nothing holding either of those, or [maintain], takes this one, and an
+     * encode holding it takes nothing else.
+     *
+     * Free up takes it once per batch, never waiting long ([StageTurn]).
+     */
+    val stage = Mutex()
+
+    /** Free-up batches waiting for, or holding, [stage] ([StageTurn]). */
+    val freeUpWaiting = AtomicInteger(0)
+
+    /**
+     * Until when the background run starts no new file, after a batch gave
+     * up waiting, by [runClock].
+     */
+    val runYieldsUntil = AtomicLong(0L)
+
+    /**
+     * The clock [runYieldsUntil] is kept by: time since the phone started,
+     * which no one can set. On the wall clock, a clock set back a day after
+     * a batch gave up held every background run up for that day as well.
+     * Tests put their own clock here.
+     */
+    @Volatile
+    var runClock: () -> Long = { SystemClock.elapsedRealtime() }
+
+    /**
+     * Whether the background run should start no new file now: someone is
+     * in front of Free up waiting for the encoder, which is what they asked
+     * for, and the run can pick its queue up again on its next pass.
+     */
+    fun runShouldYield(now: Long = runClock()): Boolean =
+        freeUpWaiting.get() > 0 || now < runYieldsUntil.get()
 }

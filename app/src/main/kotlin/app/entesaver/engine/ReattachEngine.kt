@@ -11,7 +11,9 @@ import app.entesaver.core.logic.ReattachRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.OutputInventory
+import app.entesaver.util.Locks
 import java.io.File
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Reunites light copies with their originals after the database was lost.
@@ -22,15 +24,38 @@ import java.io.File
  * the folder copied across - the filenames are the last thing left, and each
  * one carries its original's fingerprint.
  *
- * Runs once, after the first scan following a recovery. Adopted rows carry no
- * upload evidence: the file being present proves it was made, not sent.
+ * Runs after the first scan following a recovery, and on every compress run
+ * while a restore is watched (ReattachRules.watching): a copy may be on a
+ * card put in later. Adopted rows carry no upload evidence: the file being
+ * present proves it was made, not sent. Rows already settled are never
+ * written: Free up may be acting on them.
  */
 class ReattachEngine(private val context: Context) {
 
+    companion object {
+        /**
+         * Whether restored copies wait to be matched to the folder: until the
+         * first pass after a restore, and through its watch. Until then any of
+         * them may be in it: MaintainEngine counts each as there.
+         */
+        suspend fun pending(context: Context): Boolean = !OptionsRepo.get(context).current().copiesReattached
+    }
+
     suspend fun run() {
+        if (!pending(context)) return
+        // A restore's order: stage, then release. The rows are read and
+        // written back whole below, and a restore merging meanwhile - taking
+        // a row over with its history's proof - was overwritten with a copy
+        // that has none; the flag set at the end then undid the restore's
+        // request for another pass. Held, a restore runs wholly before this
+        // or wholly after it, and after it asks again.
+        Locks.stage.withLock { Locks.release.withLock { runLocked() } }
+    }
+
+    private suspend fun runLocked() {
         val db = AppDb.get(context)
         val repo = OptionsRepo.get(context)
-        if (repo.current().copiesReattached) return
+        if (!pending(context)) return
 
         // A failed query looks identical to an empty folder, so a null answer
         // is left alone rather than recorded as "nothing to adopt". Only the
@@ -44,6 +69,17 @@ class ReattachEngine(private val context: Context) {
             .query(OutputRoots.watched(layout, o.pastOutputRoots, db.items().restoredRoots())) ?: return
 
         val now = System.currentTimeMillis()
+        // A restore an earlier version made, not matched yet, is watched
+        // from now.
+        val restoredAt = if (o.restoredAt == 0L && db.items().restoredUnmatched().isNotEmpty()) {
+            now.also { repo.setLong(OptionsRepo.K.RESTORED_AT, it) }
+        } else {
+            o.restoredAt
+        }
+        // A date ahead of the clock - the clock set back since - keeps the
+        // watch open, and is kept: a clock set right again lands in the same
+        // week rather than past it.
+        val watching = ReattachRules.watching(minOf(restoredAt, now), now)
         for (entry in entries) {
             val fp = Fingerprint.fpFromOutputName(entry.name) ?: continue
             val row = db.items().byFingerprint(fp) ?: continue
@@ -74,6 +110,8 @@ class ReattachEngine(private val context: Context) {
                     // A restored copy is watched from now, like a new one: Ente's
                     // traffic before this install says nothing about it.
                     releasedAt = if (restored) now else row.releasedAt ?: now,
+                    // In the folder again: an earlier leave says nothing about it.
+                    leftFolderAt = null,
                     updatedAt = now
                 )
             )
@@ -82,10 +120,19 @@ class ReattachEngine(private val context: Context) {
         // Restored with evidence, and its copy is in none of the folders
         // (the ones found are RELEASED by now): Ente had it.
         for (row in db.items().restoredWithEvidence()) {
-            val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence))
-            if (state.name != row.state) db.items().update(row.copy(state = state.name, updatedAt = now))
+            val state = ReattachRules.stateWhenCopyMissing(Evidence.parse(row.evidence), watching)
+            // It may have been in the folder, sending, until this pass looked:
+            // dated now, and later bookkeeping cannot move it.
+            if (state.name != row.state) {
+                db.items().update(row.copy(state = state.name, leftFolderAt = now, updatedAt = now))
+            }
         }
+        // So may every other restored copy this pass did not find. Until now
+        // each counted as in the folder (MaintainEngine.leftDuring); from now
+        // it counts as having left now, for any window still open.
+        db.items().stampRestoredLeft(now)
 
-        repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
+        // While the restore is watched, the next run looks again.
+        if (!watching) repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
     }
 }

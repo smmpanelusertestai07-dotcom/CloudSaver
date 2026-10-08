@@ -80,7 +80,9 @@ fun TrialCard(
     /** Tapping a result opens the before-and-after of that photo. */
     onOpen: ((AppViewModel.TestItem) -> Unit)? = null,
     /** Throws the trial's copies away and puts the photos back in the queue. */
-    onDiscard: (() -> Unit)? = null
+    onDiscard: (() -> Unit)? = null,
+    /** The last tap found a run making a copy, so nothing was tried. */
+    busy: Boolean = false
 ) {
     AppCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -140,6 +142,15 @@ fun TrialCard(
                 } else {
                     Text(stringResource(R.string.trial_run))
                 }
+            }
+            // Said, not waited out: a run can be on one video for minutes.
+            if (busy && !running) {
+                Text(
+                    stringResource(R.string.trial_busy),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
         }
         results?.takeIf { it.isNotEmpty() }?.let { list ->

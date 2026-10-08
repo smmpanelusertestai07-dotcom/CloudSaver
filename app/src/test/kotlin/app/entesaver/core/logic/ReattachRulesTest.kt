@@ -74,10 +74,14 @@ class ReattachRulesTest {
     }
 
     @Test
-    fun `a restored row whose copy is gone is done only with evidence`() {
-        assertEquals(ItemState.UNKNOWN, ReattachRules.stateWhenCopyMissing(Evidence.NONE))
-        for (evidence in Evidence.entries - Evidence.NONE) {
-            assertEquals(ItemState.DONE, ReattachRules.stateWhenCopyMissing(evidence))
+    fun `a restored row whose copy is gone is done only with evidence, and a weak grade waits for the watch`() {
+        for (evidence in Evidence.entries) {
+            val settled = if (evidence == Evidence.NONE) ItemState.UNKNOWN else ItemState.DONE
+            assertEquals(evidence.name, settled, ReattachRules.stateWhenCopyMissing(evidence, watching = false))
+            // While watched, the copy may be on a card not in yet, and Ente
+            // may yet send it: only per-file proof settles it.
+            val watched = if (evidence.isPerFile) ItemState.DONE else ItemState.UNKNOWN
+            assertEquals(evidence.name, watched, ReattachRules.stateWhenCopyMissing(evidence, watching = true))
         }
     }
 
@@ -89,5 +93,16 @@ class ReattachRulesTest {
         val name = Fingerprint.outputName("IMG_0042.jpg", fp, "jpg")
         assertEquals(fp, Fingerprint.fpFromOutputName(name))
         assertEquals(fp, Fingerprint.fpFromOutputName("IMG_0042__$fp (1).jpg"))
+    }
+
+    @Test
+    fun `a restore is watched for a week from when it was made`() {
+        val restoredAt = 1_000_000_000_000L
+        assertTrue(ReattachRules.watching(restoredAt, restoredAt))
+        assertTrue(ReattachRules.watching(restoredAt, restoredAt + ReattachRules.RESTORE_WATCH_MS - 1))
+        assertFalse(ReattachRules.watching(restoredAt, restoredAt + ReattachRules.RESTORE_WATCH_MS))
+        // Never restored, or a date ahead of the clock: not watched.
+        assertFalse(ReattachRules.watching(0L, restoredAt))
+        assertFalse(ReattachRules.watching(restoredAt + 1, restoredAt))
     }
 }

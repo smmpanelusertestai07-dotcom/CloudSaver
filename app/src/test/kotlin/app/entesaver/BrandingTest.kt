@@ -80,6 +80,6 @@ class BrandingTest {
         assertTrue(workflow.contains("EnteSaver-v\$VERSION-release.apk"))
         assertTrue(workflow.contains("Ente Saver \$TAG"))
         val e2e = File(root, ".github/scripts/emulator-e2e.sh").readText()
-        assertTrue(e2e.contains("adb install -r EnteSaver-release.apk"))
+        assertTrue(e2e.contains("adb install -r -g EnteSaver-release.apk"))
     }
 }

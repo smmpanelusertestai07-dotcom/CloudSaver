@@ -14,6 +14,17 @@ package app.entesaver.core.logic
 object ReattachRules {
 
     /**
+     * How long after a restore its copies are looked for, on every compress
+     * run. A copy may be on a card put in later, or one MediaStore has not
+     * read yet; until the watch ends each counts as in the folder.
+     */
+    const val RESTORE_WATCH_MS = 7 * 86_400_000L
+
+    /** Whether a restore made at [restoredAt] is still watched at [now]. */
+    fun watching(restoredAt: Long, now: Long): Boolean =
+        restoredAt in (now - RESTORE_WATCH_MS + 1)..now
+
+    /**
      * Whether [state] may adopt a copy already sitting in the output folder.
      *
      * Only rows that have no output of their own. A RELEASED row already knows
@@ -54,11 +65,17 @@ object ReattachRules {
 
     /**
      * Where a restored row goes when its copy is in none of the output
-     * folders: with evidence from its history file, to DONE (Ente had it,
-     * and the copy has since gone); without, it stays UNKNOWN.
+     * folders. With per-file proof from its history file, to DONE: Ente had
+     * that very copy, and it has since gone. With a weaker grade, to DONE too
+     * once the restore is no longer [watching] - until then the copy may be
+     * on a card not in yet, so it stays UNKNOWN and is looked for again.
+     * Without any, it stays UNKNOWN.
      */
-    fun stateWhenCopyMissing(recorded: Evidence): ItemState =
-        if (recorded == Evidence.NONE) ItemState.UNKNOWN else ItemState.DONE
+    fun stateWhenCopyMissing(recorded: Evidence, watching: Boolean): ItemState = when {
+        recorded.isPerFile -> ItemState.DONE
+        recorded == Evidence.NONE || watching -> ItemState.UNKNOWN
+        else -> ItemState.DONE
+    }
 
     /** The state an adopted row lands in. */
     val state: ItemState = ItemState.RELEASED

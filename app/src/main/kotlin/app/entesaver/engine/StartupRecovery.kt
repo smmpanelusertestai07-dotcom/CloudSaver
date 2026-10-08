@@ -3,14 +3,17 @@ package app.entesaver.engine
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
+import androidx.room.withTransaction
 import app.entesaver.core.logic.Defaults
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.ScanSources
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.MediaScanner
+import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
 import java.io.File
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Runs once per launch, before anything else touches the database.
@@ -32,6 +35,8 @@ class StartupRecovery(private val context: Context) {
         // Read the old visible snapshot before deleting it: on an upgrade it
         // may be the only state left.
         val restored = restoreIfEmpty()
+        // Tried again next launch if it fails; the steps below still run.
+        runCatching { repairQueueOnce() }
         val placeholders = removeLegacyPlaceholders()
         removeLegacyVisibleSnapshot()
         purgeOutputFolderItems()
@@ -78,6 +83,37 @@ class StartupRecovery(private val context: Context) {
             repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, current + excluded.keys)
         }
         return purged
+    }
+
+    /**
+     * Sets right, once, the rows a restore by 12.1 left inconsistent (the
+     * DAO calls say which). A restore now settles them as it merges, but
+     * nothing revisits rows already written that way: an excluded photo kept
+     * being sent, and its "proven" copy was never watched.
+     *
+     * Under the locks a restore takes, in its order, so no encode or release
+     * is working on these rows meanwhile. One transaction, and the flag only
+     * after it lands, so a failure is simply tried again next launch.
+     */
+    private suspend fun repairQueueOnce() {
+        val db = AppDb.get(context)
+        val repo = OptionsRepo.get(context)
+        if (repo.current().queueRepaired) return
+        Locks.stage.withLock {
+            Locks.release.withLock {
+                Locks.ledger.withLock {
+                    val now = System.currentTimeMillis()
+                    db.withTransaction {
+                        val staged = db.items().waitingButExcluded().mapNotNull { it.stagePath }
+                        db.items().parkWaitingExcluded(now)
+                        db.items().clearWaitingEvidence(now)
+                        db.items().deleteRestoredGhosts()
+                        staged
+                    }.forEach { runCatching { File(it).delete() } }
+                }
+            }
+        }
+        repo.setBool(OptionsRepo.K.QUEUE_REPAIRED, true)
     }
 
     /**

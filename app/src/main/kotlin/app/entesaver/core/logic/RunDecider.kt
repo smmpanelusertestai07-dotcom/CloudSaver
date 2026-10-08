@@ -181,6 +181,64 @@ object RunDecider {
         durationMs in 1..plainRunVideoMaxMs(remainingMs, minBudgetMs)
 
     /**
+     * Whether a video that ran out of [budgetMs] should wait for another run
+     * rather than be copied across as it is.
+     *
+     * Only when the budget was less than [fullBudgetMs], the most any run
+     * gives one clip: then a later run can give it more. A clip that ran out
+     * of the whole budget would run out again, so it is copied as before.
+     */
+    fun outOfTimeWaits(budgetMs: Long, fullBudgetMs: Long): Boolean = budgetMs < fullBudgetMs
+
+    /**
+     * Whether a clip of [durationMs] is better left for a later run than
+     * started with [budgetMs]: the same reading as [plainRunVideoMaxMs] - its
+     * own length and a half plus a minute - and only while a later run could
+     * give it more ([outOfTimeWaits]). A clip of unknown length is tried.
+     */
+    fun videoWaitsForLongerRun(durationMs: Long, budgetMs: Long, fullBudgetMs: Long): Boolean =
+        durationMs > 0 && outOfTimeWaits(budgetMs, fullBudgetMs) &&
+            durationMs * 3 / 2 + 60_000L > budgetMs
+
+    /**
+     * Whether a file can still be started with [remainingMs] of the run left,
+     * asked once the encoder is free (Stager.stageInRun): the same tests the
+     * run made before it waited, [fitsPlainRun] without a foreground service
+     * and [videoWaitsForLongerRun] with one, against what the wait has left.
+     * [budgetMs] is what the encoder would be given now. A run past its
+     * deadline starts nothing.
+     */
+    fun canStart(
+        isVideo: Boolean,
+        durationMs: Long,
+        remainingMs: Long,
+        foreground: Boolean,
+        budgetMs: Long,
+        minBudgetMs: Long,
+        fullBudgetMs: Long
+    ): Boolean = when {
+        remainingMs <= 0 -> false
+        !isVideo -> true
+        !foreground -> fitsPlainRun(durationMs, remainingMs, minBudgetMs)
+        else -> !videoWaitsForLongerRun(durationMs, budgetMs, fullBudgetMs)
+    }
+
+    /**
+     * What one file just cost the day's on-battery allowance. A video's
+     * encoder time is spent whether or not a copy came of it, so a clip that
+     * failed or ran out of time is charged as well: left uncharged, a clip
+     * that never finishes could drain every run on battery and the daily
+     * limit would never stop it. A photo counts only once it is made.
+     * [tookMs] is the encode's own time, never a wait for the encoder.
+     */
+    fun batteryCost(plugged: Boolean, isVideo: Boolean, ok: Boolean, tookMs: Long): Budget = when {
+        plugged -> Budget(0L, 0)
+        isVideo -> Budget(tookMs.coerceAtLeast(0L), 0)
+        ok -> Budget(0L, 1)
+        else -> Budget(0L, 0)
+    }
+
+    /**
      * "Run now" is user-initiated, so only hard safety limits apply:
      * charging or at least 15%, and not too hot.
      */

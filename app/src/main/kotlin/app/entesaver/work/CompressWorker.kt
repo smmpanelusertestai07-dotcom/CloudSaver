@@ -29,6 +29,7 @@ import app.entesaver.media.MediaScanner
 import app.entesaver.media.Stager
 import app.entesaver.media.VideoCompressor
 import app.entesaver.util.DeviceTier
+import app.entesaver.util.Locks
 import app.entesaver.util.Notifications
 import app.entesaver.util.Permissions
 import app.entesaver.util.SpaceLimits
@@ -159,6 +160,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             runCatching { repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(planned)) }
         }
         val deferred = HashSet<Long>()
+        // Videos left for the next run: kept apart from [deferred], which
+        // tells Home the phone is short of space.
+        val later = HashSet<Long>()
         val profile = runCatching { ProfileBuilder(app).current(options) }
             .getOrDefault(MediaProfile.Profile())
         var processed = 0
@@ -215,8 +219,23 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 // Files skipped for space this run are left out of the query;
                 // past a couple of hundred of them the run has nothing useful
                 // left to try (and the list stays far under SQLite's limit).
-                if (deferred.size > MAX_DEFERRED) break@loop
-                val batch = nextItems(db, live, plan, videoMaxMs, deferred, 5)
+                if (deferred.size + later.size > MAX_DEFERRED) break@loop
+                // A run without a foreground service takes a clip that already
+                // ran out of time once only when nothing else is left: it
+                // would most likely run out again, and first in line it held
+                // up every file behind it in every such run. Even then, once
+                // a day at most (Stager.plainTryDue): every idle run used to
+                // spend its whole window on the same clip. One tried less
+                // than a day ago waits for the next run.
+                val passed = deferred + later
+                val found = nextItems(db, live, plan, videoMaxMs, passed, 5, holdOverrun = !foreground)
+                    .ifEmpty { if (foreground) emptyList() else nextItems(db, live, plan, videoMaxMs, passed, 5) }
+                val resting = if (foreground) emptyList() else found.filterNot { Stager.plainTryDue(it, now) }
+                if (resting.isNotEmpty()) {
+                    later += resting.map { it.id }
+                    continue@loop
+                }
+                val batch = found
                 if (batch.isEmpty()) {
                     // Nothing left that this run can take; whatever is still
                     // waiting gets its reason on Home, found by asking again
@@ -236,11 +255,30 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 for (row in batch) {
                     if (System.currentTimeMillis() >= deadline || isStopped) break@loop
                     val itemStart = System.currentTimeMillis()
+                    // Someone in front of Free up is waiting for the encoder
+                    // to remake a light copy, or gave up waiting a moment
+                    // ago. They asked for it; this run starts no new file,
+                    // finishes as usual, and the next run carries on. Asked
+                    // by its own clock, which setting the time cannot move.
+                    if (Locks.runShouldYield()) break@loop
                     if (row.isVideo && !foreground &&
                         !RunDecider.fitsPlainRun(row.durationMs, deadline - itemStart, VideoCompressor.MIN_TOTAL_MS)
                     ) {
                         // Time has moved on since the query; the next one
                         // asks for shorter clips.
+                        continue
+                    }
+                    if (row.isVideo && foreground &&
+                        RunDecider.videoWaitsForLongerRun(
+                            row.durationMs,
+                            VideoCompressor.budgetFor(deadline - itemStart),
+                            VideoCompressor.DEFAULT_TOTAL_MS
+                        )
+                    ) {
+                        // Too long for what is left of this run, and a later
+                        // run gives it more. Started anyway, it would only
+                        // run out of time; it is first in line next run.
+                        later += row.id
                         continue
                     }
                     val ratio = if (row.isVideo) profile.videos.ratio else profile.photos.ratio
@@ -258,18 +296,41 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     // encoder, so a single stubborn video can no longer sit
                     // there for three twenty-minute attempts while the
                     // deadline and the foreground-service allowance both run
-                    // out underneath it.
-                    val ok = stager.stageOne(
-                        row, live, predicted, runRemainingMs = deadline - itemStart
-                    )
-                    val took = System.currentTimeMillis() - itemStart
+                    // out underneath it. A clip that runs out of time counts
+                    // a try only in a run with a foreground service; a plain
+                    // run holds it back instead (Stager.heldBack). Measured
+                    // once the encoder is free,
+                    // and the file is asked again whether it still fits: a
+                    // Free-up remake or a restore may have held it for
+                    // minutes.
+                    val staged = stager.stageInRun(row, live, predicted, deadline, overrunCounts = foreground) { left ->
+                        RunDecider.canStart(
+                            row.isVideo, row.durationMs, left, foreground,
+                            VideoCompressor.budgetFor(left),
+                            VideoCompressor.MIN_TOTAL_MS, VideoCompressor.DEFAULT_TOTAL_MS
+                        )
+                    }
+                    if (!staged.started) {
+                        // Not tried, so not counted; the next run takes it.
+                        if (row.isVideo) later += row.id
+                        continue
+                    }
+                    val ok = staged.ok
                     // Free space changes only when something was written.
                     free = Storage.freeBytes(app, live.storageVolume)
+                    // Encoder time on battery is charged whether or not a copy
+                    // came of it, so a clip that keeps failing still meets the
+                    // day's limit - the encode's own time, not the wait for it.
+                    val cost = RunDecider.batteryCost(power.plugged, row.isVideo, ok, staged.encodeMs)
+                    videoMsOnBattery += cost.videoEncodeMs
+                    photosOnBattery += cost.photosOnBattery
                     if (ok) {
                         processed++
-                        if (!power.plugged) {
-                            if (row.isVideo) videoMsOnBattery += took else photosOnBattery++
-                        }
+                    } else if (row.isVideo) {
+                        // A clip that did not finish - out of time, or a
+                        // failed try - is not started again in this run with
+                        // even less time left; the next run takes it.
+                        later += row.id
                     }
                     // Re-check power between items, not just between batches.
                     val mid = System.currentTimeMillis()
@@ -409,7 +470,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         plan: RunDecider.Plan,
         videoMaxMs: Long,
         skip: Collection<Long>,
-        limit: Int
+        limit: Int,
+        holdOverrun: Boolean = false
     ): List<ItemRow> {
         // What the user asked for, narrowed to what this power state allows.
         val photos = plan.photos && o.scope != BackupScope.VIDEOS
@@ -422,7 +484,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             freshAfter = System.currentTimeMillis() - FRESH_WINDOW_MS,
             limit = limit,
             videoMaxMs = videoMaxMs,
-            skipIds = skip
+            skipIds = skip,
+            holdOverrun = holdOverrun
         )
     }
 

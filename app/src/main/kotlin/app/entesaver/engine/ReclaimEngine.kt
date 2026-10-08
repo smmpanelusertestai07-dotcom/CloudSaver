@@ -6,23 +6,30 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.room.withTransaction
 import app.entesaver.R
 import app.entesaver.core.logic.Defaults
 import app.entesaver.core.logic.Evidence
 import app.entesaver.core.logic.Fingerprint
+import app.entesaver.core.logic.FormatResolver
+import app.entesaver.core.logic.GoneReason
 import app.entesaver.core.logic.ItemState
+import app.entesaver.core.logic.KeptCopies
 import app.entesaver.core.logic.OriginalCheck
 import app.entesaver.core.logic.ReclaimRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.ReclaimBatchRow
 import app.entesaver.data.db.ReclaimItemRow
+import app.entesaver.data.db.leftFolderAtAfter
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.media.HeicSupport
 import app.entesaver.media.PhotoCompressor
 import app.entesaver.media.VideoCompressor
+import app.entesaver.util.DeviceTier
 import app.entesaver.util.Locks
+import app.entesaver.util.StageTurn
 import app.entesaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
@@ -43,6 +50,12 @@ class ReclaimEngine(private val context: Context) {
         /** SHA-256 of zero bytes: a hash "match" of two empty files is not proof. */
         private const val EMPTY_SHA256 =
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+        /** The longest a batch waits for the file the background run is on. */
+        const val STAGE_WAIT_MS = 60_000L
+
+        /** Why a remake was left out: the encoder was busy with another file. */
+        const val STAGE_BUSY = "stage_busy"
     }
 
     private val db = AppDb.get(context)
@@ -92,8 +105,12 @@ class ReclaimEngine(private val context: Context) {
         return if (file.exists()) file else null
     }
 
-    /** Where a pinned copy landed: its uri, and whether it sits in the original's own album. */
-    data class Pinned(val uri: Uri, val inPlace: Boolean)
+    /**
+     * Where a pinned copy landed: its uri, and whether it sits in the
+     * original's own album. [reused] is a copy an earlier batch made, which a
+     * refusal in Android's dialog must leave exactly where it was.
+     */
+    data class Pinned(val uri: Uri, val inPlace: Boolean, val reused: Boolean = false)
 
     /**
      * Puts a verified light copy into the user's own album before the
@@ -117,14 +134,34 @@ class ReclaimEngine(private val context: Context) {
      * as an image or video. The original's removal is requested only after
      * this returns - a copy that cannot be proved keeps its original.
      */
-    suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Pinned? {
-        val src = pinSource(row, options) ?: return null
-        return try {
-            writeVerified(row, src, now, options.keptInPlace)
+    suspend fun pinLightCopy(
+        row: ItemRow,
+        options: Options,
+        now: Long,
+        remakeDiedOn: Long? = null,
+        turn: StageTurn? = null
+    ): Pinned? {
+        // A caller with no batch of its own takes a turn for this one copy.
+        val own = turn ?: stageTurn()
+        try {
+            val src = pinSource(row, options, remakeDiedOn, own) ?: return null
+            return try {
+                writeVerified(row, src, now, options.keptInPlace)
+            } finally {
+                src.temp?.delete()
+            }
         } finally {
-            src.temp?.delete()
+            if (turn == null) own.close()
         }
     }
+
+    /**
+     * Free up's turn at the encoder: a minute at most for the file under
+     * way, and then the background run waits as long as one file can take,
+     * so a second try finds it free.
+     */
+    private fun stageTurn(onWaiting: (Boolean) -> Unit = {}) =
+        StageTurn(STAGE_WAIT_MS, VideoCompressor.DEFAULT_TOTAL_MS, onWaiting)
 
     /** One provable byte source for a light copy. [temp] is deleted after use. */
     private class PinSource(
@@ -134,7 +171,12 @@ class ReclaimEngine(private val context: Context) {
         val temp: File? = null
     )
 
-    private suspend fun pinSource(row: ItemRow, options: Options): PinSource? {
+    private suspend fun pinSource(
+        row: ItemRow,
+        options: Options,
+        remakeDiedOn: Long?,
+        turn: StageTurn
+    ): PinSource? {
         val resolver = context.contentResolver
         val recorded = row.outputSha256
 
@@ -162,9 +204,24 @@ class ReclaimEngine(private val context: Context) {
 
         // Nothing provable is left on the phone; remake from the original.
         if (row.originalMissing) return null
+        // The last remake of this very file took the app down. It sits this
+        // batch out - named as a failed light copy, its original kept - and
+        // the next try meets the lower ceiling that crash has just set.
+        if (row.id == remakeDiedOn) return null
         val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             ?: return null
         val tempDir = Storage.tempDir(context, options.storageVolume)
+        // One encode at a time, the background run's included: two full-size
+        // decodes on a phone sized for one is how both get killed. The batch
+        // takes its turn once and keeps it (StageTurn); a remake that cannot
+        // have it keeps its original, named, rather than hold the screen up
+        // behind a clip. The memory ceiling is read once the turn is held,
+        // after the other decode has let go.
+        if (!turn.take()) return null
+        // A note first, written before the work: running out of memory
+        // ends the process without an exception, and only the note
+        // survives it.
+        InFlight.beginRemake(context, row.id, row.isVideo)
         val result = try {
             if (row.isVideo) {
                 VideoCompressor.compress(
@@ -172,18 +229,24 @@ class ReclaimEngine(private val context: Context) {
                     options.video.spec(), tempDir
                 )
             } else {
-                // HEIC only where this phone has already passed its test; a
-                // screen is waiting on this, so the test is not run here.
+                // HEIC only where this phone has already passed its test;
+                // a screen is waiting on this, so the test is not run
+                // here. Held to this phone's memory ceiling exactly as
+                // the background pass is: "keep every pixel" on a 200 MP
+                // photo is 800 MB of bitmap, and the low-memory killer,
+                // not a catchable error, is what answers that.
                 PhotoCompressor.compress(
                     context, original, row.displayName, row.sizeBytes,
-                    options.photo.spec(), HeicSupport.works(context), tempDir
+                    DeviceTier.fit(context, options.photo.spec()), HeicSupport.works(context), tempDir
                 )
             }
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
             throw ce
         } catch (e: Throwable) {
-            return null
-        }
+            null
+        } finally {
+            InFlight.endRemake(context, row.id)
+        } ?: return null
         if (result.file.length() <= 0) {
             result.file.delete()
             return null
@@ -218,7 +281,11 @@ class ReclaimEngine(private val context: Context) {
         // reporting inPlace = false.
         val folder = if (inPlace) originalFolder(row) else null
         val landing = folder ?: "${Defaults.KEPT_DIR}/"
-        val name = if (folder != null) inPlaceName(row, src.name) else src.name
+        val name = if (folder != null) {
+            KeptCopies.inPlaceRequest(folder, inPlaceName(row, src.name))
+        } else {
+            src.name
+        }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeForName(name, row.mimeType))
@@ -249,6 +316,19 @@ class ReclaimEngine(private val context: Context) {
                 ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
                 null, null
             )
+            // The name the provider actually gave the file, which need not be
+            // the one asked for. Everything that later looks for this copy -
+            // the scanner's skip, "Remove the light copy" - knows it by that
+            // name, so a copy under a name they cannot recognise would be a
+            // photo nobody tracks. It is taken back, and the original stays.
+            val landedName = resolver.query(
+                target, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            if (landedName == null ||
+                !KeptCopies.belongsTo(landedName, row.displayName, row.fingerprint)
+            ) {
+                error("landed name differs")
+            }
             resolver.update(
                 target,
                 ContentValues().apply {
@@ -341,13 +421,12 @@ class ReclaimEngine(private val context: Context) {
      * The copy's own type, from the name it will carry. The row's MIME is the
      * original's: after a HEIC-to-JPEG conversion the two disagree, and a
      * gallery that trusts the declared type over the extension shows nothing.
+     * The full table, not just JPEG and MP4: a HEIC or WebP copy declared as
+     * the original's JPEG landed as "name.heic.jpg", which neither the
+     * scanner's skip nor "Remove the light copy" could recognise.
      */
     private fun mimeForName(name: String, fallback: String): String =
-        when (name.substringAfterLast('.', "").lowercase()) {
-            "jpg", "jpeg" -> "image/jpeg"
-            "mp4" -> "video/mp4"
-            else -> fallback
-        }
+        FormatResolver.mimeOf(name, fallback)
 
     /**
      * Cheap decode probe on the formats this app itself encodes. Anything
@@ -382,6 +461,37 @@ class ReclaimEngine(private val context: Context) {
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * The light copy this row already has, when it is still the row's own
+     * file and still opens. Null sends the row through pinLightCopy as usual.
+     * A row that stands for its copy offers that copy as the original, and
+     * the file about to be removed can never be the one kept.
+     */
+    private fun keptCopyToReuse(row: ItemRow): Pinned? {
+        if (row.keptUri == row.contentUri) return null
+        val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
+        val (name, path, size) = runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.SIZE
+                ),
+                null, null, null
+            )?.use { c ->
+                if (!c.moveToFirst() || c.getLong(2) <= 0) return@use null
+                val name = c.getString(0) ?: return@use null
+                Triple(name, c.getString(1), c.getLong(2))
+            }
+        }.getOrNull() ?: return null
+        if (!KeptCopies.isRowsCopy(name, size, row.displayName, row.fingerprint, row.outputBytes)) return null
+        if (!looksDecodable(uri, name, row.isVideo)) return null
+        val folder = originalFolder(row)
+        val here = path?.let { if (it.endsWith("/")) it else "$it/" }
+        return Pinned(uri, inPlace = folder != null && here == folder, reused = true)
     }
 
     /** Undoes a pinned copy, for when the original's removal was refused. */
@@ -506,13 +616,41 @@ class ReclaimEngine(private val context: Context) {
         rows: List<ItemRow>,
         mode: ReclaimRules.Mode,
         options: Options,
-        now: Long
+        now: Long,
+        onWaiting: (Boolean) -> Unit = {}
     ): Prepared {
         val uris = mutableListOf<Uri>()
         val ready = mutableListOf<ItemRow>()
         val pinned = mutableMapOf<Long, Pinned>()
         val skipped = mutableListOf<Outcome>()
+        // Read before the first remake of this batch overwrites it.
+        val remakeDiedOn = if (mode == ReclaimRules.Mode.REPLACE_WITH_LIGHT) {
+            InFlight.recoverRemake(context)
+        } else {
+            null
+        }
+        // Taken at the first remake, if any, and kept to the end of the batch.
+        val turn = stageTurn(onWaiting)
+        try {
+            prepareRows(rows, mode, options, now, remakeDiedOn, turn, uris, ready, pinned, skipped)
+        } finally {
+            turn.close()
+        }
+        return Prepared(uris, ready, pinned, skipped)
+    }
 
+    private suspend fun prepareRows(
+        rows: List<ItemRow>,
+        mode: ReclaimRules.Mode,
+        options: Options,
+        now: Long,
+        remakeDiedOn: Long?,
+        turn: StageTurn,
+        uris: MutableList<Uri>,
+        ready: MutableList<ItemRow>,
+        pinned: MutableMap<Long, Pinned>,
+        skipped: MutableList<Outcome>
+    ) {
         for (row in rows) {
             val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             if (original == null) {
@@ -548,7 +686,12 @@ class ReclaimEngine(private val context: Context) {
                 // A copy that cannot be proved good means the original stays,
                 // and the item goes back for another pass.
                 db.items().update(
-                    row.copy(state = ItemState.NEW.name, evidence = Evidence.NONE.name, updatedAt = now)
+                    row.copy(
+                        state = ItemState.NEW.name,
+                        evidence = Evidence.NONE.name,
+                        leftFolderAt = row.leftFolderAtAfter(ItemState.NEW.name, now),
+                        updatedAt = now
+                    )
                 )
                 skipped += Outcome(row.fingerprint, row.displayName, false, "integrity_failed")
                 continue
@@ -557,9 +700,16 @@ class ReclaimEngine(private val context: Context) {
                 // The verified light copy exists before the removal is even
                 // requested; a row that cannot get one drops out here, named,
                 // and its original is never put in front of Android's dialog.
-                val kept = pinLightCopy(row, options, now)
+                //
+                // A row restored from History still has the light copy its
+                // first batch made. A second copy would take over keptUri and
+                // leave the first one to the scanner as a new photo, to be
+                // optimised and uploaded again; that one is used instead.
+                val refusedBefore = turn.refusals
+                val kept = keptCopyToReuse(row) ?: pinLightCopy(row, options, now, remakeDiedOn, turn)
                 if (kept == null) {
-                    skipped += Outcome(row.fingerprint, row.displayName, false, "light_copy_failed")
+                    val why = if (turn.refusals > refusedBefore) STAGE_BUSY else "light_copy_failed"
+                    skipped += Outcome(row.fingerprint, row.displayName, false, why)
                     continue
                 }
                 pinned[row.id] = kept
@@ -567,7 +717,6 @@ class ReclaimEngine(private val context: Context) {
             uris += original
             ready += row
         }
-        return Prepared(uris, ready, pinned, skipped)
     }
 
     /**
@@ -603,11 +752,22 @@ class ReclaimEngine(private val context: Context) {
             val uri = row.contentUri
             if (uri == null || uri !in deleted) {
                 // Refused in the dialog: the pinned copy would otherwise be a
-                // second file of the same photo sitting in the gallery.
-                prepared.pinned[row.id]?.let { unpinLightCopy(it.uri) }
-                if (prepared.pinned.containsKey(row.id)) {
-                    db.items().byId(row.id)?.let {
-                        db.items().update(it.copy(keptUri = null, updatedAt = now))
+                // second file of the same photo sitting in the gallery. A
+                // reused copy was there before this batch and stays.
+                val pin = prepared.pinned[row.id]?.takeIf { !it.reused }
+                pin?.let { unpinLightCopy(it.uri) }
+                // Guarded like the settling below: the rows after this one
+                // may have been agreed to.
+                if (pin != null) {
+                    try {
+                        db.items().byId(row.id)?.let {
+                            db.items().update(it.copy(keptUri = null, updatedAt = now))
+                        }
+                    } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+                        throw ce
+                    } catch (e: Exception) {
+                        // The copy is gone, so a keptUri left on it names
+                        // no file any more and protects nothing.
                     }
                 }
                 skipped += Outcome(row.fingerprint, row.displayName, false, "not_confirmed")
@@ -620,39 +780,25 @@ class ReclaimEngine(private val context: Context) {
                 row.sizeBytes
             }
             val inPlace = prepared.pinned[row.id]?.takeIf { it.inPlace }
-            db.items().byId(row.id)?.let {
-                // A copy that landed in the original's own album is a file the
-                // scanner will meet again on its next pass, in a folder it is
-                // meant to read. Left as it is, that pass would fingerprint it
-                // as something new, queue it, and optimise an already
-                // optimised photo - losing quality on every round and sending
-                // a second copy of a file the cloud already holds. Re-pointing
-                // the row at the new file, under the fingerprint the scanner
-                // will compute for it, is what makes the two meet as the same
-                // photo. The state stays a finished one, so nothing re-queues.
-                val identity = inPlace?.let { p -> identityOf(p.uri) }
-                db.items().update(
-                    it.copy(
-                        state = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name,
-                        // The original is gone either way. In place, the file
-                        // standing in for it is present, which is what stops
-                        // the maintenance pass reading this as a deletion -
-                        // but only when that file could actually be read
-                        // back. An identity we failed to read is not a file
-                        // we may call present.
-                        originalMissing = identity == null,
-                        fingerprint = identity?.fingerprint ?: it.fingerprint,
-                        contentUri = identity?.uri?.toString() ?: it.contentUri,
-                        mediaStoreId = identity?.mediaStoreId ?: it.mediaStoreId,
-                        displayName = identity?.displayName ?: it.displayName,
-                        sizeBytes = identity?.sizeBytes ?: it.sizeBytes,
-                        dateModified = identity?.dateModified ?: it.dateModified,
-                        updatedAt = now
-                    )
-                )
+            // Android has already removed the original, with the person's
+            // consent, so from here on this row is done whatever its
+            // bookkeeping does. A database error on one row used to throw out
+            // of the whole batch: the rows after it were never marked, and
+            // the history - the in-app undo - was never written.
+            val settled = try {
+                settleFreed(row, kept, inPlace, now)
+            } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                null
             }
-            done += Outcome(row.fingerprint, row.displayName, true)
-            recorded += row
+            freed += settled?.copyBytesFreed ?: 0L
+            // History remembers the row by the fingerprint it now carries, so
+            // a restore can find it again (onRestored); the name, size and
+            // address stay the original's, because that is what comes back.
+            val historyKey = settled?.fingerprint ?: row.fingerprint
+            done += Outcome(historyKey, row.displayName, true)
+            recorded += row.copy(fingerprint = historyKey)
         }
 
         val batchId = recordBatch(mode, done.size, freed, trashed, recorded, done)
@@ -670,6 +816,110 @@ class ReclaimEngine(private val context: Context) {
         return Result(freed, done, skipped, trashed, batchId)
     }
 
+    /** What finishing one row left behind: its fingerprint now, and upload-copy bytes freed. */
+    private data class Settled(val fingerprint: String, val copyBytesFreed: Long)
+
+    /**
+     * Marks one row whose original Android removed.
+     *
+     * A copy still in the upload folder goes too. Every pass that minds that
+     * folder - the space limit, lazy delete, gone detection - only looks at
+     * RELEASED rows, so once this row is FREED a copy left there would be a
+     * file nothing ever counts, watches or removes: "nothing kept locally"
+     * with a copy kept, or a second light copy beside the pinned one. Its
+     * bytes are in the cloud (ReclaimRules demanded that proof before the
+     * original was offered), and the pinned copy, where there is one, was
+     * made before this point.
+     */
+    private suspend fun settleFreed(
+        row: ItemRow,
+        kept: Boolean,
+        inPlace: Pinned?,
+        now: Long
+    ): Settled? {
+        val start = db.items().byId(row.id) ?: return null
+        var copyGone = false
+        val copy = start.outputUri
+        val clearCopy = ReclaimRules.leavesUploadCopy(start.state, copy)
+        if (clearCopy) {
+            // Marked first, so the copy's absence reads as ours.
+            db.items().update(start.copy(appDeletedCopy = true, updatedAt = now))
+            // A refusal (another install's file) leaves it where it was, as it
+            // always did: Home's consent list would finish the row as DONE and
+            // lose the FREED record of its original.
+            copyGone = runCatching {
+                context.contentResolver.delete(Uri.parse(copy), null, null) > 0
+            }.getOrDefault(false)
+        }
+        // A copy that landed in the original's own album is a file the
+        // scanner will meet again on its next pass, in a folder it is meant
+        // to read. Left as it is, that pass would fingerprint it as something
+        // new, queue it, and optimise an already optimised photo - losing
+        // quality on every round and sending a second copy of a file the
+        // cloud already holds. Re-pointing the row at the new file, under the
+        // fingerprint the scanner will compute for it, is what makes the two
+        // meet as the same photo. The state stays a finished one, so nothing
+        // re-queues.
+        val identity = inPlace?.let { p -> identityOf(p.uri) }
+        return db.withTransaction {
+            val cur = db.items().byId(row.id) ?: return@withTransaction null
+            val claimed = identity != null && claimFingerprint(cur.id, identity.fingerprint)
+            val fingerprint = identity?.fingerprint?.takeIf { claimed } ?: cur.fingerprint
+            val freed = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name
+            db.items().update(
+                cur.copy(
+                    state = freed,
+                    // A copy still waiting in its folder leaves it now, as
+                    // far as every pass that reads the folder is concerned.
+                    leftFolderAt = cur.leftFolderAtAfter(freed, now),
+                    // The original is gone either way. In place, the file
+                    // standing in for it is present, which is what stops the
+                    // maintenance pass reading this as a deletion - but only
+                    // when that file could actually be read back. An identity
+                    // we failed to read is not a file we may call present.
+                    originalMissing = identity == null,
+                    // The scanner's own value for the file - unless another
+                    // row holds it and may not be moved (claimFingerprint).
+                    fingerprint = fingerprint,
+                    contentUri = identity?.uri?.toString() ?: cur.contentUri,
+                    mediaStoreId = identity?.mediaStoreId ?: cur.mediaStoreId,
+                    displayName = identity?.displayName ?: cur.displayName,
+                    sizeBytes = identity?.sizeBytes ?: cur.sizeBytes,
+                    dateModified = identity?.dateModified ?: cur.dateModified,
+                    outputUri = if (copyGone) null else cur.outputUri,
+                    goneReason = if (copyGone) GoneReason.APP_DELETED.name else cur.goneReason,
+                    appDeletedCopy = if (clearCopy) copyGone else cur.appDeletedCopy,
+                    updatedAt = now
+                )
+            )
+            Settled(fingerprint, copyBytesFreed = if (copyGone) start.outputBytes ?: 0L else 0L)
+        }
+    }
+
+    /**
+     * Whether row [rowId] may take [fingerprint], which the unique index
+     * lets only one row hold.
+     *
+     * Another holder is the scanner having met a light copy first - in the
+     * window between the copy landing and the person answering Android's
+     * dialog. A row nothing was ever done with is that stray, and goes: the
+     * copy is this row's file. A row that has been worked on is left alone,
+     * and this one keeps the fingerprint it had; it is still pinned to its
+     * file by keptUri, so the scanner skips the copy either way.
+     */
+    private suspend fun claimFingerprint(rowId: Long, fingerprint: String): Boolean {
+        val other = db.items().byFingerprint(fingerprint) ?: return true
+        if (other.id == rowId) return true
+        if (!ReclaimRules.isUntouchedStray(
+                other.state, other.outputUri, other.stagePath, other.releasedAt, other.keptUri
+            )
+        ) {
+            return false
+        }
+        db.items().delete(other)
+        return true
+    }
+
     private suspend fun recordBatch(
         mode: ReclaimRules.Mode,
         count: Int,
@@ -679,31 +929,43 @@ class ReclaimEngine(private val context: Context) {
         done: List<Outcome>
     ): Long {
         if (count <= 0) return 0
-        val batchId = db.reclaim().insertBatch(
-            ReclaimBatchRow(
-                atMs = System.currentTimeMillis(),
-                mode = mode.name,
-                itemCount = count,
-                freedBytes = freed,
-                trashed = trashed
-            )
-        )
         val doneKeys = done.map { it.fingerprint }.toSet()
-        db.reclaim().insertItems(
-            rows.filter { it.fingerprint in doneKeys }.map { row ->
-                ReclaimItemRow(
-                    batchId = batchId,
-                    fingerprint = row.fingerprint,
-                    displayName = row.displayName,
-                    album = row.bucket,
-                    originalBytes = row.sizeBytes,
-                    optimisedBytes = row.outputBytes ?: 0L,
-                    contentUri = row.contentUri,
+        // The batch and its files together, or neither: a batch with no files
+        // under it is a History entry that cannot undo anything.
+        val batchId = db.withTransaction {
+            val id = db.reclaim().insertBatch(
+                ReclaimBatchRow(
+                    atMs = System.currentTimeMillis(),
+                    mode = mode.name,
+                    itemCount = count,
+                    freedBytes = freed,
                     trashed = trashed
                 )
-            }
-        )
-        prune()
+            )
+            db.reclaim().insertItems(
+                rows.filter { it.fingerprint in doneKeys }.map { row ->
+                    ReclaimItemRow(
+                        batchId = id,
+                        fingerprint = row.fingerprint,
+                        displayName = row.displayName,
+                        album = row.bucket,
+                        originalBytes = row.sizeBytes,
+                        optimisedBytes = row.outputBytes ?: 0L,
+                        contentUri = row.contentUri,
+                        trashed = trashed
+                    )
+                }
+            )
+            id
+        }
+        // Tidying old history must never cost the batch just written.
+        try {
+            prune()
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            // The next batch prunes again.
+        }
         return batchId
     }
 
@@ -716,16 +978,112 @@ class ReclaimEngine(private val context: Context) {
     /** A restored original is an original again, and goes back to the queue. */
     suspend fun onRestored(item: ReclaimItemRow, now: Long = System.currentTimeMillis()) {
         db.reclaim().markRestored(item.id, now)
-        val row = db.items().byFingerprint(item.fingerprint) ?: return
-        db.items().update(
-            row.copy(
-                // Its copy is still evidenced, so it is finished, not new
-                // work: re-optimising a file the cloud already has would
-                // upload it twice.
-                state = ItemState.DONE.name,
-                originalMissing = false,
-                updatedAt = now
+        val row = db.items().byFingerprint(item.fingerprint) ?: legacyInPlaceRow(item)
+        if (row == null) {
+            // No row to point back at the original, so the next scan meets
+            // it as a new photo. That is written down, not left to happen
+            // quietly.
+            activity.record(
+                ActivityLog.Kind.PROBLEM,
+                detail = context.getString(R.string.activity_restore_unmatched, item.displayName)
             )
+            return
+        }
+        // A row freed in place stands for its light copy: finish re-pointed
+        // it there so the scanner would not optimise the copy. The original
+        // that has just come back is then a file no row describes, and the
+        // next scan queued it as new - optimised again and uploaded twice.
+        // It is pointed back at the original. keptUri stays, so the scanner
+        // still knows the copy beside it for what it is.
+        //
+        // keptUri alone does not say the row moved: "Remove the light copy"
+        // clears it and leaves the row on the deleted copy's address. The
+        // history holds the original's address, and a row that no longer
+        // has it was moved.
+        val pinned = row.keptUri != null && row.contentUri == row.keptUri
+        val moved = item.contentUri != null && row.contentUri != item.contentUri
+        val inPlace = pinned || moved
+        val original = if (inPlace) {
+            item.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }?.let { identityOf(it) }
+        } else {
+            null
+        }
+        // The file the row stood for. A 12.1 copy numbered under DCIM is
+        // known after this only by its number and size, and a copy remade
+        // from the original is not the size first staged.
+        val copy = if (pinned && original != null) {
+            row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() }?.let { identityOf(it) }
+        } else {
+            null
+        }
+        db.withTransaction {
+            val cur = db.items().byId(row.id) ?: return@withTransaction
+            val claimed = original != null && claimFingerprint(cur.id, original.fingerprint)
+            // Not pointed back - the original cannot be read, or a row with a
+            // past already describes it - the row still stands for its kept
+            // copy, or for one already removed, and marking it DONE would
+            // offer that file for removal as if it were an original. It stays
+            // as it is.
+            if (inPlace && !claimed) return@withTransaction
+            val back = if (claimed && original != null) {
+                val kept = copy?.takeIf { it.uri.toString() == cur.keptUri && cur.contentUri == cur.keptUri }
+                cur.copy(
+                    outputBytes = kept?.let {
+                        KeptCopies.outputBytesAfterRestore(
+                            cur.outputBytes, cur.displayName,
+                            it.displayName, it.sizeBytes, it.dateModified,
+                            original.displayName, original.dateModified
+                        )
+                    } ?: cur.outputBytes,
+                    fingerprint = original.fingerprint,
+                    contentUri = original.uri.toString(),
+                    mediaStoreId = original.mediaStoreId,
+                    displayName = original.displayName,
+                    sizeBytes = original.sizeBytes,
+                    dateModified = original.dateModified
+                )
+            } else {
+                cur
+            }
+            db.items().update(
+                back.copy(
+                    // Its copy is still evidenced, so it is finished, not new
+                    // work: re-optimising a file the cloud already has would
+                    // upload it twice.
+                    state = ItemState.DONE.name,
+                    originalMissing = false,
+                    leftFolderAt = cur.leftFolderAtAfter(ItemState.DONE.name, now),
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
+    /**
+     * The row a 12.1 in-place history entry stands for.
+     *
+     * 12.1 wrote that history under the original's fingerprint, taken before
+     * the row moved to its light copy, so no row carries it now. The row is
+     * still the one freed in place in the same album, with the same copy size,
+     * whose copy carries the original's name - or, under DCIM, the number the
+     * provider counted up to, with the original's modified time. Anything but
+     * exactly one such row is left alone: a guess could point the wrong row at
+     * this original.
+     */
+    private suspend fun legacyInPlaceRow(item: ReclaimItemRow): ItemRow? {
+        // Read only when a numbered name needs the original's time.
+        val restored by lazy {
+            item.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }?.let { identityOf(it) }
+        }
+        fun countedUp(r: ItemRow) = KeptCopies.isLegacyCountUp(
+            r.displayName, item.displayName, r.dateModified, restored?.dateModified ?: 0L
         )
+        return db.items().keptCopies().filter { r ->
+            r.state == ItemState.FREED_KEPT.name &&
+                r.contentUri == r.keptUri &&
+                r.bucket == item.album &&
+                (r.outputBytes ?: 0L) == item.optimisedBytes &&
+                (KeptCopies.belongsTo(r.displayName, item.displayName, r.fingerprint) || countedUp(r))
+        }.singleOrNull()
     }
 }

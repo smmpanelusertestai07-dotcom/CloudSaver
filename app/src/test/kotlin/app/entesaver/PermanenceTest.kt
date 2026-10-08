@@ -157,7 +157,7 @@ class PermanenceTest {
         assertTrue(
             "the rows must go in under db.withTransaction, so an interrupted " +
                 "restore leaves the table empty for the next launch to retry",
-            merge.contains("db.withTransaction { mergeRows(snapshot) }")
+            merge.substringAfter("db.withTransaction {", "").substringBefore("}").contains("mergeRows(snapshot)")
         )
         val rows = store.substringAfter("private suspend fun mergeRows(")
         assertFalse(
@@ -169,6 +169,15 @@ class PermanenceTest {
         assertTrue(store.contains("neverOptimise = row.neverOptimise"))
         assertTrue(rows.contains("keptUri = mapped.keptUri"))
         assertTrue(rows.contains("neverOptimise = mapped.neverOptimise"))
+        // Batches link to no restored row. Imported, they counted twice on a
+        // second restore, and an old phone's unverified one let Ente's earlier
+        // traffic verify this phone's batches - so they stay in the file only,
+        // and the verifier looks only at batches some row belongs to.
+        assertFalse(rows.contains("db.batches().insert"))
+        val verify = File(main, "engine/MaintainEngine.kt").readText()
+            .substringAfter("private suspend fun verifyBatches(")
+            .substringBefore("private suspend fun ageEvidence(")
+        assertTrue(verify.contains("it.id in linked"))
     }
 
     @Test

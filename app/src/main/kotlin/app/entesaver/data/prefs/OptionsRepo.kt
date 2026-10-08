@@ -2,10 +2,12 @@ package app.entesaver.data.prefs
 
 import android.annotation.SuppressLint
 import android.content.Context
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,6 +16,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.entesaver.core.logic.BackupScope
 import app.entesaver.core.logic.Defaults
 import app.entesaver.core.logic.DeviceDefaults
+import app.entesaver.core.logic.EvidenceRules
 import app.entesaver.core.logic.FolderName
 import app.entesaver.core.logic.MediaSettings
 import app.entesaver.core.logic.OutFolder
@@ -30,7 +33,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-private val Context.dataStore by preferencesDataStore(name = "options")
+/**
+ * A damaged options file is started afresh rather than thrown on every read:
+ * otherwise each start, background wakes included, crashes until the person
+ * clears the app's storage. Starting afresh asks setup again and claims no
+ * proof; the history in the database is untouched.
+ */
+private val Context.dataStore by preferencesDataStore(
+    name = "options",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }
+)
 
 /** All user options (section 6) + small persisted runtime state. */
 data class Options(
@@ -121,7 +133,6 @@ data class Options(
     // runtime / bookkeeping
     val onboardingDone: Boolean = false,
     val onboardingStep: Int = 0,
-    val confirmFlowStartedAt: Long = 0,
     val lastRunAt: Long = 0,
     /**
      * When a pass Android started last chose to wait on purpose - Battery
@@ -155,6 +166,10 @@ data class Options(
     val volumeWarnedAt: Long = 0,
     val oldFilesCleaned: Boolean = false,
     val copiesReattached: Boolean = false,
+    /** When a history file last brought rows back (ReattachRules.watching). */
+    val restoredAt: Long = 0,
+    /** Rows an older restore left inconsistent were set right (StartupRecovery). */
+    val queueRepaired: Boolean = false,
     /**
      * Row ids of copies the maintenance pass chose to clear and could not.
      *
@@ -207,7 +222,13 @@ data class Options(
     /** How many "the phone stopped background work" alerts have been posted, ever. */
     val stallAlerts: Int = 0,
     /** When the last of them was posted. */
-    val stallAlertAt: Long = 0
+    val stallAlertAt: Long = 0,
+    /**
+     * The open "Confirm uploads" tap, or null. Stored so the return from
+     * Ente is judged even when the phone ended this process meanwhile; every
+     * pass reads it only to leave those copies alone (EvidenceRules).
+     */
+    val confirmWindow: EvidenceRules.ConfirmWindow? = null
 ) {
     val dailyCapBytes: Long get() = if (dailyCapMb < 0) -1 else dailyCapMb * Defaults.MB
     val minFreeBytes: Long get() = minFreeMb * Defaults.MB
@@ -269,7 +290,6 @@ class OptionsRepo(private val context: Context) {
         val KEPT_CARD_SEEN = booleanPreferencesKey("keptCardSeen")
         val FIRST_CHAIN_STATE = stringPreferencesKey("firstChainState")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
-        val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
         val LAST_RUN_AT = longPreferencesKey("lastRunAt")
         val LAST_WAKE_AT = longPreferencesKey("lastWakeAt")
         val LAST_STOP_REASON = stringPreferencesKey("lastStopReason")
@@ -284,6 +304,8 @@ class OptionsRepo(private val context: Context) {
         // Renamed in 12.0 so that every phone matches its copies up once
         // more: rows restored earlier without proof were never looked at again.
         val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached12")
+        val RESTORED_AT = longPreferencesKey("historyRestoredAt")
+        val QUEUE_REPAIRED = booleanPreferencesKey("queueRepaired122")
         val COPIES_NEED_CONSENT = stringSetPreferencesKey("copiesNeedConsent")
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
         val RELEASED_SINCE_SAMPLE = intPreferencesKey("releasedSinceSample")
@@ -299,6 +321,8 @@ class OptionsRepo(private val context: Context) {
         val FREEABLE_SAID_BYTES = longPreferencesKey("freeableSaidBytes")
         val STALL_ALERTS = intPreferencesKey("stallAlerts")
         val STALL_ALERT_AT = longPreferencesKey("stallAlertAt")
+        val CONFIRM_OPENED_AT = longPreferencesKey("confirmWindowOpenedAt")
+        val CONFIRM_PRESENT = stringSetPreferencesKey("confirmWindowPresent")
     }
 
     val flow: Flow<Options> = context.dataStore.data.map { p ->
@@ -346,7 +370,6 @@ class OptionsRepo(private val context: Context) {
             pauseAll = p[K.PAUSE_ALL] ?: false,
             onboardingDone = p[K.ONBOARDING_DONE] ?: false,
             onboardingStep = p[K.ONBOARDING_STEP] ?: 0,
-            confirmFlowStartedAt = p[K.CONFIRM_STARTED_AT] ?: 0,
             lastRunAt = p[K.LAST_RUN_AT] ?: 0,
             lastWakeAt = p[K.LAST_WAKE_AT] ?: 0,
             lastStopReason = p[K.LAST_STOP_REASON] ?: "",
@@ -359,6 +382,8 @@ class OptionsRepo(private val context: Context) {
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
             copiesReattached = p[K.COPIES_REATTACHED] ?: false,
+            restoredAt = p[K.RESTORED_AT] ?: 0,
+            queueRepaired = p[K.QUEUE_REPAIRED] ?: false,
             copiesNeedConsent = p[K.COPIES_NEED_CONSENT] ?: emptySet(),
             cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,
             releasedSinceSample = p[K.RELEASED_SINCE_SAMPLE] ?: 0,
@@ -373,7 +398,13 @@ class OptionsRepo(private val context: Context) {
             reclaimUnderstood = p[K.RECLAIM_UNDERSTOOD] ?: false,
             freeableSaidBytes = p[K.FREEABLE_SAID_BYTES] ?: 0L,
             stallAlerts = p[K.STALL_ALERTS] ?: 0,
-            stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
+            stallAlertAt = p[K.STALL_ALERT_AT] ?: 0,
+            confirmWindow = p[K.CONFIRM_OPENED_AT]?.let { at ->
+                EvidenceRules.ConfirmWindow(
+                    openedAt = at,
+                    presentAtTap = p[K.CONFIRM_PRESENT].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+                )
+            }
         ).also { OutputRoots.remember(it.layout, it.pastOutputRoots) }
     }
 
@@ -590,6 +621,21 @@ class OptionsRepo(private val context: Context) {
         write { it[key] = value }
     }
 
+    /**
+     * A history merged: asks for a reattach pass and, in the same write,
+     * dates the restore. [restoredCopies] - copies came back not matched yet
+     * - starts a watch from [now]. Otherwise, with no restore dated and none
+     * waiting for its pass, the restore is marked looked at, so the pass does
+     * not take rows an earlier version's restore left for one to watch.
+     */
+    suspend fun markRestored(restoredCopies: Boolean, now: Long) = write { p ->
+        when {
+            restoredCopies -> p[K.RESTORED_AT] = now
+            (p[K.RESTORED_AT] ?: 0L) == 0L && (p[K.COPIES_REATTACHED] ?: false) -> p[K.RESTORED_AT] = 1L
+        }
+        p[K.COPIES_REATTACHED] = false
+    }
+
     suspend fun setStringSet(
         key: Preferences.Key<Set<String>>,
         value: Set<String>
@@ -644,6 +690,33 @@ class OptionsRepo(private val context: Context) {
         if (ids.isEmpty()) return
         val strings = ids.map { it.toString() }.toSet()
         write { it[K.COPIES_NEED_CONSENT] = (it[K.COPIES_NEED_CONSENT] ?: emptySet()) - strings }
+    }
+
+    /**
+     * Stores the "Confirm uploads" window, or forgets it. The tap time and
+     * the copies present then go in one write, so no reader ever sees one
+     * without the other; DataStore has it on disk before this returns.
+     */
+    suspend fun setConfirmWindow(window: EvidenceRules.ConfirmWindow?) {
+        write { p ->
+            if (window == null) {
+                p.remove(K.CONFIRM_OPENED_AT)
+                p.remove(K.CONFIRM_PRESENT)
+            } else {
+                p[K.CONFIRM_OPENED_AT] = window.openedAt
+                p[K.CONFIRM_PRESENT] = window.presentAtTap.map { it.toString() }.toSet()
+            }
+        }
+    }
+
+    /** Forgets the window opened at [openedAt] - not a newer tap's. */
+    suspend fun clearConfirmWindow(openedAt: Long) {
+        write { p ->
+            if (p[K.CONFIRM_OPENED_AT] == openedAt) {
+                p.remove(K.CONFIRM_OPENED_AT)
+                p.remove(K.CONFIRM_PRESENT)
+            }
+        }
     }
 
     /** Options export for the snapshot (user-visible options only). */

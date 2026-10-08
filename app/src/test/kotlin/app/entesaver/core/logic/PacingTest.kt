@@ -2,6 +2,7 @@ package app.entesaver.core.logic
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -64,6 +65,114 @@ class PacingTest {
         assertEquals(1, Pacing.slotsFree(stale, now, cloudHasFreeUpOracle = false))
     }
 
+    private val hour = 3_600_000L
+
+    private fun limit(waiting: List<EvidenceRules.Waiting>, now: Long, staged: Int = 3) = Pacing.releaseLimit(
+        waiting = waiting,
+        now = now,
+        canMeasure = true,
+        cloudHasFreeUpOracle = false,
+        cleanStreak = 0,
+        stagedWaiting = staged
+    )
+
+    @Test
+    fun `only a copy timed out without a grade lifts the limit`() {
+        val now = 100_000_000L
+        val fresh = EvidenceRules.Waiting(id = 2, releasedAt = now - 60_000, bytes = 1000, gone = false)
+        val timedOut = fresh.copy(id = 1, releasedAt = now - Pacing.IN_FLIGHT_TIMEOUT_MS - 1)
+        val aged = fresh.copy(id = 3, releasedAt = now - 12 * 24 * hour, graded = true)
+        // A copy that can still be proved holds the slot for its proof...
+        assertEquals(0, limit(listOf(fresh), now))
+        // ...but one that timed out holds nothing back for days: releases go
+        // on at the byte slice, and nothing beside it is ever paced-proved.
+        assertNull(limit(listOf(timedOut), now))
+        assertNull(limit(listOf(timedOut, fresh), now))
+        assertNull(EvidenceRules.aloneInFlight(listOf(timedOut, fresh), emptyList(), now, tx = 1000))
+        // An AGED copy holds no slot, but never lifts the limit: copies sent
+        // in bulk beside it would only be the next ones nothing can judge.
+        assertEquals(1, limit(listOf(aged), now))
+        assertEquals(0, limit(listOf(aged, fresh), now))
+        assertNull(EvidenceRules.aloneInFlight(listOf(aged, fresh), emptyList(), now, tx = 1000))
+    }
+
+    @Test
+    fun `a VERIFIED copy left in the folder paces releases and proves nothing beside it`() {
+        // Copy 1 went out alone, but Ente also sent camera photos, so it was
+        // only VERIFIED by its batch - and it stays in the folder, below the
+        // space cap, for weeks. Ente may still send it, or any part of it, at
+        // any time.
+        val verifiedAt = 50 * hour
+        val v = EvidenceRules.Waiting(
+            id = 1, releasedAt = verifiedAt - hour, bytes = 3_000_000, gone = false,
+            graded = true, verifiedAt = verifiedAt
+        )
+        var waiting = listOf(v)
+        var releasedAt: Long? = null
+        // Hourly passes. Until its window ends the copy holds the one slot,
+        // then the next copy holds it; never without a limit, which is how
+        // bulk releases made more such copies.
+        for (h in 1..10) {
+            val now = verifiedAt + h * hour
+            val slots = limit(waiting, now)
+            assertTrue("pass $h: $slots", slots != null && slots <= 1)
+            if (slots == 1 && releasedAt == null) {
+                assertTrue("pass $h", now - verifiedAt >= Pacing.IN_FLIGHT_TIMEOUT_MS)
+                releasedAt = now
+                waiting = waiting + EvidenceRules.Waiting(id = 2, releasedAt = now, bytes = 3_000_000, gone = false)
+            }
+        }
+        assertNotNull("a copy goes out once the window has ended", releasedAt)
+        val now = releasedAt!! + 2 * hour
+        // Whatever went out and whatever the sizes, copy 2 is not credited:
+        // copy 1 may have sent any amount of it.
+        for (bytes in listOf(1_000_000L, 3_000_000L, 10_000_000L)) {
+            val sized = waiting.map { if (it.id == 2L) it.copy(bytes = bytes) else it }
+            for (tx in listOf(bytes, v.bytes + bytes, (bytes * 1.2).toLong())) {
+                assertNull("$bytes/$tx", EvidenceRules.aloneInFlight(sized, emptyList(), now, tx))
+            }
+        }
+        // Copy 2 timing out unproved is what lifts the limit, not copy 1.
+        assertNull(limit(waiting, releasedAt + Pacing.IN_FLIGHT_TIMEOUT_MS))
+        // Upgraded from 12.1 with such a copy already there: it holds no
+        // slot and never lifts the limit.
+        val later = verifiedAt + 30 * 24 * hour
+        val fresh = EvidenceRules.Waiting(id = 3, releasedAt = later, bytes = 3_000_000, gone = false)
+        assertEquals(1, limit(listOf(v), later))
+        assertEquals(0, limit(listOf(v, fresh), later))
+        assertNull(EvidenceRules.aloneInFlight(listOf(v, fresh), emptyList(), later + hour, tx = 3_000_000))
+    }
+
+    @Test
+    fun `releases keep flowing while graded copies block proof`() {
+        // A folder of AGED and long-VERIFIED copies: nothing can be proved
+        // by traffic beside them, and the queue does not wait for that. Each
+        // copy released holds the slot for its own window, then the next
+        // one goes out.
+        val start = 100 * 24 * hour
+        val blockers = listOf(
+            EvidenceRules.Waiting(
+                id = 1, releasedAt = start - 40 * 24 * hour, bytes = 40_000_000, gone = false, graded = true
+            ),
+            EvidenceRules.Waiting(
+                id = 2, releasedAt = start - 40 * 24 * hour, bytes = 3_000_000, gone = false,
+                graded = true, verifiedAt = start - 30 * 24 * hour
+            )
+        )
+        var waiting = blockers
+        var lastRelease = start - Pacing.IN_FLIGHT_TIMEOUT_MS
+        for (h in 0 until 48) {
+            val now = start + h * hour
+            val slots = limit(waiting, now)
+            if (slots == null || slots > 0) {
+                lastRelease = now
+                waiting = waiting + EvidenceRules.Waiting(id = 10L + h, releasedAt = now, bytes = 5_000_000, gone = false)
+                assertNull(EvidenceRules.aloneInFlight(waiting, emptyList(), now + hour, tx = 5_000_000))
+            }
+            assertTrue("pass $h", now - lastRelease <= Pacing.IN_FLIGHT_TIMEOUT_MS)
+        }
+    }
+
     @Test
     fun `an unused day carries forward, but only one`() {
         assertEquals(cap, Pacing.carryForward(cap, releasedYesterday = 0))
@@ -88,7 +197,7 @@ class PacingTest {
             Pacing.releaseSlots(
                 slotsFree = 0,
                 stagedWaiting = Pacing.BACKLOG_BURST_ITEMS + 1,
-                perFileProofPossible = true
+                pacingPossible = true
             )
         )
     }
@@ -97,11 +206,11 @@ class PacingTest {
     fun `a short queue is paced, so each file can be proved`() {
         assertEquals(
             1,
-            Pacing.releaseSlots(slotsFree = 1, stagedWaiting = 3, perFileProofPossible = true)
+            Pacing.releaseSlots(slotsFree = 1, stagedWaiting = 3, pacingPossible = true)
         )
         assertEquals(
             0,
-            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 3, perFileProofPossible = true)
+            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 3, pacingPossible = true)
         )
     }
 
@@ -109,7 +218,7 @@ class PacingTest {
     fun `without a way to measure, pacing buys nothing and is skipped`() {
         assertEquals(
             null,
-            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 1, perFileProofPossible = false)
+            Pacing.releaseSlots(slotsFree = 0, stagedWaiting = 1, pacingPossible = false)
         )
     }
 

@@ -129,6 +129,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val processed = processedRead ?: 0
     val noAlbumsTicked by vm.noAlbumsTicked.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
+    val gradedInFolder by vm.gradedInFolder.collectAsStateWithLifecycle()
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
     val leftoverUris by vm.leftoverUris.collectAsStateWithLifecycle()
     val consentCopies by vm.consentCopies.collectAsStateWithLifecycle()
@@ -142,6 +143,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val running by vm.running.collectAsStateWithLifecycle()
     val trialSize by vm.trialSize.collectAsStateWithLifecycle()
     val testRunning by vm.testRunning.collectAsStateWithLifecycle()
+    val testBusy by vm.testBusy.collectAsStateWithLifecycle()
     val testItems by vm.testRun.collectAsStateWithLifecycle()
     val power by vm.powerRequirements.collectAsStateWithLifecycle()
     var explain by remember { mutableStateOf<Int?>(null) }
@@ -918,6 +920,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             TrialCard(
                 size = trialSize,
                 running = testRunning,
+                busy = testBusy,
                 results = testItems,
                 onRun = { vm.startTestRun() },
                 albumsChosen = trialAlbums.isEmpty() ||
@@ -1117,13 +1120,22 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // Not a button, and not always present: this exists only where the
         // app cannot see the uploads for itself. With usage access granted
         // the check is automatic, and offering it anyway would imply the
-        // automatic part does not work.
-        if (HomeAction.showVerifyLink(!health.usageAccessOff, cloudRemovesItsUploads = !health.cloudMissing)) {
+        // automatic part does not work - unless a graded copy in the folder
+        // stops Ente's traffic proving anything, and Ente's free-up is the
+        // one route left.
+        if (HomeAction.showVerifyLink(
+                !health.usageAccessOff,
+                cloudRemovesItsUploads = !health.cloudMissing,
+                gradedInFolder = gradedInFolder
+            )
+        ) {
             TextButton(onClick = { vm.startConfirmFlow() }) {
                 Text(stringResource(R.string.btn_verify_link))
             }
             Text(
-                stringResource(R.string.verify_link_hint),
+                stringResource(
+                    if (health.usageAccessOff) R.string.verify_link_hint else R.string.verify_link_hint_graded
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1209,7 +1221,12 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 )
                 FlowRow {
                     TextButton(onClick = {
-                        val sender = vm.requestDelete(leftoverUris) { vm.onLeftoversCleaned() }
+                        // A Cancel answers with nothing deleted; only Keep or
+                        // every file gone may end the card (LeftoverRules).
+                        val asked = leftoverUris
+                        val sender = vm.requestDelete(asked) { deleted ->
+                            vm.onLeftoversRemoveResult(asked, deleted)
+                        }
                         sender?.let {
                             cleanupLauncher.launch(IntentSenderRequest.Builder(it).build())
                         }
@@ -1326,6 +1343,7 @@ fun skipReasonLabel(reason: String): String = when (reason) {
     "out_of_memory" -> stringResource(R.string.skip_out_of_memory)
     "process_died" -> stringResource(R.string.skip_process_died)
     "encode_failed" -> stringResource(R.string.skip_encode_failed)
+    "out_of_time" -> stringResource(R.string.skip_out_of_time)
     "user_excluded" -> stringResource(R.string.skip_user_excluded)
     "duplicate" -> stringResource(R.string.skip_duplicate)
     "returned_copy" -> stringResource(R.string.skip_returned_copy)

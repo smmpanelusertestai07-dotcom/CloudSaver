@@ -62,7 +62,19 @@ object SnapshotCodec {
          * The folder the copy was released into. Optional, like the two
          * above: a file without it is read as the old single-name folders.
          */
-        val outputRelPath: String? = null
+        val outputRelPath: String? = null,
+        /**
+         * The original a byte-identical duplicate belongs to. Without it a
+         * restored duplicate read as an unexplained skip and sat in Home's
+         * problem list for good. Optional, like the keys above.
+         */
+        val duplicateOf: String? = null,
+        /**
+         * When the copy left the upload folder. Optional, like the keys
+         * above: a file without it - every one written before 12.2 - reads
+         * as not recorded, which the app reads as it always did.
+         */
+        val leftFolderAt: Long? = null
     )
 
     data class SnapBatch(
@@ -156,6 +168,8 @@ object SnapshotCodec {
             i.keptUri?.let { o.put("kept", it) }
             if (i.neverOptimise) o.put("never", true)
             i.outputRelPath?.let { o.put("outRel", it) }
+            i.duplicateOf?.let { o.put("dupOf", it) }
+            i.leftFolderAt?.let { o.put("leftAt", it) }
             items.put(o)
         }
         root.put("items", items)
@@ -251,7 +265,9 @@ object SnapshotCodec {
                 confirmedAt = if (o.has("confAt")) o.optLong("confAt") else null,
                 keptUri = o.optString("kept", "").ifEmpty { null },
                 neverOptimise = o.optBoolean("never", false),
-                outputRelPath = o.optString("outRel", "").ifEmpty { null }
+                outputRelPath = o.optString("outRel", "").ifEmpty { null },
+                duplicateOf = o.optString("dupOf", "").ifEmpty { null },
+                leftFolderAt = if (o.has("leftAt")) o.optLong("leftAt") else null
             )
         }
         val batches = mutableListOf<SnapBatch>()

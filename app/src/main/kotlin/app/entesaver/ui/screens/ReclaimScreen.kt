@@ -67,12 +67,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.entesaver.R
 import app.entesaver.core.logic.Evidence
+import app.entesaver.core.logic.FreeUpFlow
 import app.entesaver.core.logic.KnownClouds
 import app.entesaver.core.logic.ListFilters
 import app.entesaver.core.logic.ProofLine
 import app.entesaver.core.logic.ReclaimRules
 import app.entesaver.core.logic.Suggestions
 import app.entesaver.data.EnteApp
+import app.entesaver.engine.ReclaimEngine
 import app.entesaver.ui.AppViewModel
 import app.entesaver.ui.ReclaimViewModel
 import app.entesaver.ui.Routes
@@ -112,6 +114,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     val selected by rvm.selected.collectAsStateWithLifecycle()
     val mode by rvm.mode.collectAsStateWithLifecycle()
     val loading by rvm.loading.collectAsStateWithLifecycle()
+    // A batch is under way: light copies being made, or Android's dialog
+    // open. Every button that could start another one waits for it.
+    val working by rvm.busy.collectAsStateWithLifecycle()
     val result by rvm.lastResult.collectAsStateWithLifecycle()
     val dry by rvm.dryRun.collectAsStateWithLifecycle()
     val pending by rvm.pendingIntent.collectAsStateWithLifecycle()
@@ -135,7 +140,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { r -> rvm.onDialogResult(r.resultCode == Activity.RESULT_OK) }
+    ) { r -> rvm.onSystemDialogResult(r.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
         pending?.let { if (rvm.takeDialog(it)) launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
@@ -201,8 +206,21 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             )
         }
 
-        if (loading) {
+        // Preparing a batch can take minutes on a slow phone, and a screen
+        // that looked idle meanwhile was tapped again.
+        if (loading || working) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        // A light copy is being remade, and the background run is finishing
+        // the file it was on first: said, so the wait does not look stuck.
+        val waitingForStage by rvm.waitingForStage.collectAsStateWithLifecycle()
+        if (working && waitingForStage) {
+            Text(
+                stringResource(R.string.freeup_waiting_for_stage),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
         }
 
         // Arrived from "Remove from phone" with a file this screen cannot
@@ -376,7 +394,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                                     .heightIn(min = Dimens.TouchTarget)
                                     .toggleable(
                                         value = rows.all { it.id in selected },
-                                        onValueChange = { rvm.selectGroup(key) },
+                                        // The new value, not a fixed "add":
+                                        // a ticked group's box unticks it.
+                                        onValueChange = { tick -> rvm.tickGroup(key, tick) },
                                         role = Role.Checkbox
                                     )
                             ) {
@@ -503,7 +523,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     ) {
                         OutlinedButton(
                             onClick = { rvm.previewResult() },
-                            enabled = actionable > 0
+                            enabled = actionable > 0 && !working
                         ) {
                             Text(
                                 stringResource(R.string.reclaim_preview),
@@ -513,7 +533,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         }
                         OutlinedButton(
                             onClick = { exportLauncher.launch("entesaver-free-up.csv") },
-                            enabled = actionable > 0
+                            enabled = actionable > 0 && !working
                         ) {
                             Text(
                                 stringResource(R.string.reclaim_export),
@@ -559,19 +579,19 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                                     rvm.start(permanent = false)
                                 }
                             },
-                            enabled = actionable > 0 && understood
+                            enabled = actionable > 0 && understood && !working
                         ) {
                             // On a phone with no trash this button deletes for good,
                             // so it says so rather than promising a recovery that
-                            // does not exist.
+                            // does not exist. Copies-only deletes the app's own
+                            // copies outright and touches no original, so it
+                            // promises neither a trash nor a removed original.
                             Text(
                                 stringResource(
-                                    if (rvm.canUndoRemoval ||
-                                        mode == ReclaimRules.Mode.COPIES_ONLY
-                                    ) {
-                                        R.string.reclaim_trash
-                                    } else {
-                                        R.string.reclaim_delete
+                                    when (FreeUpFlow.buttonWording(mode, rvm.canUndoRemoval)) {
+                                        FreeUpFlow.Wording.REMOVE_COPIES -> R.string.reclaim_remove_copies
+                                        FreeUpFlow.Wording.TRASH -> R.string.reclaim_trash
+                                        FreeUpFlow.Wording.DELETE -> R.string.reclaim_delete
                                     }
                                 ),
                                 maxLines = 2,
@@ -581,7 +601,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         if (mode != ReclaimRules.Mode.COPIES_ONLY && rvm.canUndoRemoval) {
                             TextButton(
                                 onClick = { confirmBig = true },
-                                enabled = actionable > 0 && understood
+                                enabled = actionable > 0 && understood && !working
                             ) {
                                 Text(
                                     stringResource(R.string.reclaim_delete),
@@ -626,13 +646,21 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     }
 
     confirmBig?.let { permanent ->
+        // Copies-only opens this sheet for a large batch too, and it used to
+        // read "Remove N originals" and "Move these to the trash?" over a
+        // batch that permanently deletes copies and touches no original.
+        val wording = FreeUpFlow.sheetWording(mode, permanent)
+        val copiesOnly = wording == FreeUpFlow.Wording.REMOVE_COPIES
         AlertDialog(
             onDismissRequest = { confirmBig = null },
             title = {
                 Text(
                     stringResource(
-                        if (permanent) R.string.reclaim_confirm_delete_title
-                        else R.string.reclaim_confirm_title
+                        when (wording) {
+                            FreeUpFlow.Wording.REMOVE_COPIES -> R.string.reclaim_confirm_copies_title
+                            FreeUpFlow.Wording.DELETE -> R.string.reclaim_confirm_delete_title
+                            FreeUpFlow.Wording.TRASH -> R.string.reclaim_confirm_title
+                        }
                     )
                 )
             },
@@ -660,7 +688,8 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     // already counted the right way; the rest now matches it.
                     Text(
                         stringResource(
-                            R.string.reclaim_confirm_body,
+                            if (copiesOnly) R.string.reclaim_confirm_copies_body
+                            else R.string.reclaim_confirm_body,
                             Formats.count(selectedEntries.size),
                             Formats.bytes(freed)
                         )
@@ -689,23 +718,27 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     // Z1.4: what will still exist afterwards, and who holds
                     // it. Proof belongs to the app the file was sent to, so
                     // the sheet names that app even if the selection changed.
+                    // Not said over copies-only: that batch removes no
+                    // original, so "every file removed here" would be wrong.
                     val holders = selectedEntries
                         .mapNotNull { it.row.batchId?.let { id -> holdingApps[id] } }
                         .distinct()
                         .map { pkg -> KnownClouds.labelOf(pkg) }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (holders.isNotEmpty()) {
-                            stringResource(
-                                R.string.reclaim_confirm_keeps,
-                                holders.joinToString(", ")
-                            )
-                        } else {
-                            stringResource(R.string.reclaim_confirm_keeps_generic)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    if (!copiesOnly) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (holders.isNotEmpty()) {
+                                stringResource(
+                                    R.string.reclaim_confirm_keeps,
+                                    holders.joinToString(", ")
+                                )
+                            } else {
+                                stringResource(R.string.reclaim_confirm_keeps_generic)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                     // The blind spot, said at the moment it matters: every
                     // proof this app holds was measured from outside the
                     // cloud app. The one direct check - opening the cloud
@@ -748,10 +781,13 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    confirmBig = null
-                    rvm.start(permanent = permanent)
-                }) { Text(stringResource(R.string.reclaim_continue)) }
+                TextButton(
+                    onClick = {
+                        confirmBig = null
+                        rvm.start(permanent = permanent)
+                    },
+                    enabled = !working
+                ) { Text(stringResource(R.string.reclaim_continue)) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmBig = null }) {
@@ -1163,6 +1199,7 @@ private fun skipReasonLabel(reason: String?): String = when (reason) {
     "integrity_failed" -> stringResource(R.string.skip_integrity_failed)
     "original_changed" -> stringResource(R.string.skip_original_changed)
     "not_confirmed" -> stringResource(R.string.skip_not_confirmed)
+    ReclaimEngine.STAGE_BUSY -> stringResource(R.string.skip_stage_busy)
     else -> stringResource(R.string.skip_generic)
 }
 

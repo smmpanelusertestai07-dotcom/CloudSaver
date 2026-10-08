@@ -97,16 +97,50 @@ object Pacing {
      *
      * Per-file proof needs the cloud app's byte counter, so where the user has
      * not granted Usage Access there is nothing to be gained by holding files
-     * back at all.
+     * back at all. [pacingPossible] is false there, and while a copy timed
+     * out without a grade (see [releaseLimit]).
      */
     fun releaseSlots(
         slotsFree: Int,
         stagedWaiting: Int,
-        perFileProofPossible: Boolean
+        pacingPossible: Boolean
     ): Int? = when {
-        !perFileProofPossible -> null
+        !pacingPossible -> null
         stagedWaiting > BACKLOG_BURST_ITEMS -> null
         else -> slotsFree
+    }
+
+    /**
+     * The release limit for this pass, from every released copy still
+     * [EvidenceRules.Waiting] for per-file proof.
+     *
+     * A copy without a grade holds a slot until it times out, and a VERIFIED
+     * one until its own window after verification ends: then the next copy
+     * goes out. Nothing beside a graded copy can be proved by traffic, but
+     * the queue does not wait for it to leave. An AGED copy holds no slot -
+     * it may sit there for weeks. Neither graded kind ever lifts the limit:
+     * copies released in bulk beside them would only become the next
+     * blockers.
+     *
+     * The limit is lifted only while a copy without a grade has timed out.
+     * That copy will not leave for days, and nothing released beside it can
+     * be proved, so holding the queue for it would only stall it.
+     */
+    fun releaseLimit(
+        waiting: List<EvidenceRules.Waiting>,
+        now: Long,
+        canMeasure: Boolean,
+        cloudHasFreeUpOracle: Boolean,
+        cleanStreak: Int,
+        stagedWaiting: Int
+    ): Int? {
+        val held = waiting.mapNotNull { if (it.graded) it.verifiedAt else it.releasedAt }
+        val stalled = waiting.any { !it.graded && isTimedOut(it.releasedAt, now) }
+        return releaseSlots(
+            slotsFree = slotsFree(held, now, cloudHasFreeUpOracle, cleanStreak),
+            stagedWaiting = stagedWaiting,
+            pacingPossible = canMeasure && !stalled
+        )
     }
 
     /**
@@ -166,6 +200,11 @@ object Pacing {
     /**
      * How many more copies may go out now: the limit, minus those still
      * waiting, ignoring any that have already timed out.
+     *
+     * A timed-out copy frees its slot, but it is still in the folder, so
+     * nothing released beside it can be proved alone. [releaseLimit] drops
+     * the per-item limit while one is there: releases go on, and no paced
+     * proof is claimed.
      */
     fun slotsFree(
         inFlightReleasedAt: List<Long>,

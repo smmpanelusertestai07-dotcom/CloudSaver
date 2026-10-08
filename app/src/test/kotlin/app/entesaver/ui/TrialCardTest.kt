@@ -60,7 +60,8 @@ class TrialCardTest {
         // stayed inside it with nothing left that could remove them.
         assertTrue(vm.contains("viewModelScope.launch(Dispatchers.IO) { ids.value = TrialRecord.read(ctx) }"))
         val run = vm.substringAfter("fun startTestRun()").substringBefore("\n    }\n")
-        assertTrue(run.contains("TrialRecord.write(ctx, ids)"))
+        val trial = vm.substringAfter("private suspend fun runTrial()").substringBefore("\n    }\n")
+        assertTrue(trial.contains("TrialRecord.write(ctx, ids)"))
         assertTrue(
             "a second trial would orphan the first one's copies",
             run.contains("if (testRunning.value || trialIds.value.isNotEmpty()) return")
@@ -75,5 +76,23 @@ class TrialCardTest {
         val setup = File(main, "screens/OnboardingScreen.kt").readText()
         assertTrue("setup opens a result too", setup.contains("onOpen = { item -> compare = item.row }"))
         assertTrue("and can remove the copies it made", setup.contains("onDiscard = { vm.discardTrial() }"))
+    }
+
+    @Test
+    fun `a trial tapped during a long encode says so instead of waiting it out`() {
+        // Both the scan's retire step and the encode wait on Locks.stage, and
+        // a run on one video holds it for up to twenty minutes: the card sat
+        // on "Trying" all that time, then often had nothing left to try.
+        val vm = File(main, "AppViewModel.kt").readText()
+        val run = vm.substringAfter("fun startTestRun()").substringBefore("\n    }\n")
+        assertTrue("the lock is asked for without waiting", run.contains("if (!Locks.stage.tryLock()) {"))
+        assertTrue("and a refusal is said", run.contains("testBusy.value = true"))
+        assertTrue("and always given back", run.contains("Locks.stage.unlock()"))
+        val trial = vm.substringAfter("private suspend fun runTrial()").substringBefore("\n    }\n")
+        assertTrue("the scan does not wait on the lock it already holds", trial.contains("scan(stageHeld = true)"))
+        assertTrue("nor does the encode", trial.contains("stager.stageHeld(it, o)"))
+        assertTrue(card.contains("R.string.trial_busy"))
+        assertTrue(home.contains("busy = testBusy,"))
+        assertTrue(File(main, "screens/OnboardingScreen.kt").readText().contains("busy = testBusy,"))
     }
 }

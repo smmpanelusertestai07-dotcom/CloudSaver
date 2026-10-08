@@ -51,10 +51,52 @@ object FormatResolver {
         )
     }
 
+    /**
+     * The format for a decoded photo whose colour space is or is not sRGB.
+     *
+     * The HEIC encoder takes the pixel values as they are and labels them
+     * sRGB, so a Display P3 photo comes out paler than it was. JPEG and WebP
+     * carry the photo's own colour profile, so such a photo goes as JPEG.
+     */
+    fun forColourSpace(format: PhotoFormat, srgb: Boolean): PhotoFormat =
+        if (format == PhotoFormat.HEIC && !srgb) PhotoFormat.JPEG else format
+
+    /**
+     * True when any of the first [count] ARGB pixels is less than fully
+     * opaque. JPEG and HEIC have no alpha, so such a picture would be
+     * flattened onto black; it is copied as it is instead.
+     */
+    fun anyTransparent(argb: IntArray, count: Int = argb.size): Boolean {
+        for (i in 0 until count) {
+            if ((argb[i] ushr 24) != 0xFF) return true
+        }
+        return false
+    }
+
     /** The file extension a format is written with. */
     fun extensionOf(format: PhotoFormat): String = when (format) {
         PhotoFormat.HEIC -> "heic"
         PhotoFormat.WEBP -> "webp"
         else -> "jpg"
     }
+
+    /**
+     * The MIME type of a file with this name, for every format this app
+     * writes or copies. MediaProvider makes a file's extension agree with the
+     * type it is given, so a HEIC copy declared as JPEG lands as
+     * "name.heic.jpg" - a name nothing that looks for the copy afterwards
+     * recognises. One table for every insert, so no writer falls behind the
+     * encoders.
+     */
+    fun mimeOf(name: String, fallback: String): String =
+        when (name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "mp4" -> "video/mp4"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "heic", "heif" -> "image/heic"
+            "dng" -> "image/x-adobe-dng"
+            else -> fallback
+        }
 }

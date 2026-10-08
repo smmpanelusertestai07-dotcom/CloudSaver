@@ -36,6 +36,29 @@ class EncoderChoiceTest {
         }
     }
 
+    /**
+     * MediaProvider makes a file's extension agree with the type it is given.
+     * The kept light copy used a table that knew only JPEG and MP4, so a HEIC
+     * or WebP copy of a JPEG original was declared JPEG and landed as
+     * "name.heic.jpg" - a name nothing that tracks the copy could recognise.
+     */
+    @Test
+    fun `every format the app writes has its own MIME type`() {
+        val sentinel = "application/x-not-mapped"
+        for (format in PhotoFormat.entries) {
+            val ext = FormatResolver.extensionOf(format)
+            assertTrue(
+                "$ext has no MIME type of its own",
+                FormatResolver.mimeOf("IMG_0001__0123456789abcdef.$ext", sentinel) != sentinel
+            )
+        }
+        assertEquals("image/heic", FormatResolver.mimeOf("a.heic", "image/jpeg"))
+        assertEquals("image/webp", FormatResolver.mimeOf("a.WEBP", "image/jpeg"))
+        assertEquals("video/mp4", FormatResolver.mimeOf("a.mp4", "video/quicktime"))
+        // Anything unknown keeps what the original said it was.
+        assertEquals("video/quicktime", FormatResolver.mimeOf("a.mov", "video/quicktime"))
+    }
+
     @Test
     fun `HEVC needs a hardware encoder, whatever was asked`() {
         val chip = VideoCodecResolver.Hardware(hevcFits = true)
@@ -80,5 +103,113 @@ class EncoderChoiceTest {
 
         val plain = "an ordinary photo".toByteArray(Charsets.ISO_8859_1)
         assertEquals(MediaTraits.PhotoTraits(null, false), MediaTraits.traitsOf(plain))
+    }
+
+    private fun ascii(s: String) = s.toByteArray(Charsets.ISO_8859_1)
+
+    private fun be32(v: Int) = byteArrayOf((v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte())
+
+    private fun le32(v: Int) = byteArrayOf(v.toByte(), (v ushr 8).toByte(), (v ushr 16).toByte(), (v ushr 24).toByte())
+
+    private fun pngChunk(type: String, size: Int) = be32(size) + ascii(type) + ByteArray(size) + ByteArray(4)
+
+    private val pngSignature = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+
+    @Test
+    fun `an animated picture is copied as it is, a still one is not`() {
+        // APNG: the animation chunk comes before the picture data.
+        val apng = pngSignature + pngChunk("IHDR", 13) + pngChunk("acTL", 8) + pngChunk("IDAT", 20)
+        assertEquals("animated", MediaTraits.traitsOf(apng).asIsReason)
+        val png = pngSignature + pngChunk("IHDR", 13) + pngChunk("IDAT", 20) + pngChunk("IEND", 0)
+        assertFalse(MediaTraits.isAnimated(png))
+        // A chunk length that runs off the end is not read as anything.
+        assertFalse(MediaTraits.isAnimated(pngSignature + be32(Int.MAX_VALUE) + ascii("tEXt")))
+
+        // WebP: the extended header's animation flag.
+        fun webp(flags: Int) = ascii("RIFF") + le32(100) + ascii("WEBPVP8X") + le32(10) +
+            byteArrayOf(flags.toByte()) + ByteArray(9)
+        assertTrue(MediaTraits.isAnimated(webp(0x02)))
+        assertFalse("a WebP with alpha only is a still", MediaTraits.isAnimated(webp(0x10)))
+
+        // AVIF and HEIF: a sequence brand in the file-type box.
+        fun ftyp(vararg brands: String) = be32(16 + 4 * (brands.size - 1)) + ascii("ftyp") +
+            ascii(brands[0]) + be32(0) + brands.drop(1).fold(ByteArray(0)) { acc, b -> acc + ascii(b) }
+        assertTrue(MediaTraits.isAnimated(ftyp("avis", "avif", "msf1")))
+        assertTrue(MediaTraits.isAnimated(ftyp("heic", "mif1", "msf1")))
+        assertFalse(MediaTraits.isAnimated(ftyp("heic", "mif1", "heic")))
+        assertFalse(MediaTraits.isAnimated(ftyp("avif", "mif1")))
+
+        assertFalse(MediaTraits.isAnimated(ascii("an ordinary photo")))
+    }
+
+    @Test
+    fun `a Samsung motion photo is found by the trailer at the end of the file`() {
+        // SEFH, version, count, then one 12-byte entry per block; then the
+        // directory length and SEFT.
+        fun trailer(type: Int): ByteArray {
+            val entry = byteArrayOf(0, 0, type.toByte(), (type ushr 8).toByte()) + le32(4_000_000) + le32(3_900_000)
+            val dir = ascii("SEFH") + le32(0x6B) + le32(1) + entry
+            return ByteArray(1000) + dir + le32(dir.size) + ascii("SEFT")
+        }
+        assertEquals("motion_photo", MediaTraits.tailReason(trailer(0x0A30)))
+        // A trailer that holds only a timestamp is an ordinary photo.
+        assertNull(MediaTraits.tailReason(trailer(0x0A01)))
+        // The block's own name, when it sits close enough to the end.
+        assertEquals("motion_photo", MediaTraits.tailReason(ascii("xx MotionPhoto_Data xx")))
+        assertNull(MediaTraits.tailReason(ascii("an ordinary photo")))
+        // A directory length that points outside the tail is not trusted.
+        assertNull(MediaTraits.tailReason(ByteArray(20) + le32(5000) + ascii("SEFT")))
+    }
+
+    @Test
+    fun `a HEIC motion photo is found by its video box, however long the clip`() {
+        fun box(type: String, payload: ByteArray) = be32(8 + payload.size) + ascii(type) + payload
+        fun wideBox(type: String, payload: ByteArray) =
+            be32(1) + ascii(type) + be32(0) + be32(16 + payload.size) + payload
+        val ftyp = box("ftyp", ascii("heic") + be32(0) + ascii("mif1") + ascii("heic"))
+        val meta = box("meta", be32(0) + box("hdlr", ByteArray(24)) + box("iloc", ByteArray(40)))
+        // Picture tiles past the 512 KB head, then Google's layout: the whole
+        // MP4 inside one top-level "mpvd" box, longer than the 64 KB tail.
+        val mdat = box("mdat", ByteArray(600_000))
+        val clip = box("ftyp", ascii("mp42") + be32(0) + ascii("isom")) +
+            box("mdat", ByteArray(150_000) { (it % 251).toByte() }) + box("moov", ByteArray(4_000))
+        val mpvd = box("mpvd", clip)
+        fun reader(file: ByteArray): (Long, Int) -> ByteArray? = { at, n ->
+            file.copyOfRange(at.toInt(), minOf(file.size, at.toInt() + n))
+        }
+        fun has(file: ByteArray) = MediaTraits.hasTopLevelBox(file.size.toLong(), ascii("mpvd"), reader(file))
+
+        val motion = ftyp + meta + mdat + mpvd
+        assertTrue(MediaTraits.isIsoMedia(motion))
+        assertTrue(has(motion))
+        // Neither the head nor the tail names the video: only the walk finds it.
+        assertNull(MediaTraits.traitsOf(motion.copyOf(512 * 1024)).asIsReason)
+        assertNull(MediaTraits.tailReason(motion.copyOfRange(motion.size - 64 * 1024, motion.size)))
+        // Picture data written with a 64-bit size.
+        assertTrue(has(ftyp + meta + wideBox("mdat", ByteArray(70_000)) + mpvd))
+
+        // An ordinary HEIC, and boxes whose sizes cannot be right, are not motion photos.
+        assertFalse(has(ftyp + meta + mdat))
+        assertFalse(has(ftyp + be32(0) + ascii("mdat") + ByteArray(100) + mpvd))
+        assertFalse(has(ftyp + be32(4) + ascii("mdat") + ByteArray(100) + mpvd))
+        assertFalse(has(ftyp + be32(Int.MAX_VALUE) + ascii("mdat") + ByteArray(100) + mpvd))
+        assertFalse(has(ftyp + ByteArray(5)))
+        assertFalse(MediaTraits.isIsoMedia(ascii("an ordinary photo")))
+    }
+
+    @Test
+    fun `a wide-gamut photo is not written as HEIC, and see-through pixels are found`() {
+        assertEquals(PhotoFormat.JPEG, FormatResolver.forColourSpace(PhotoFormat.HEIC, srgb = false))
+        assertEquals(PhotoFormat.HEIC, FormatResolver.forColourSpace(PhotoFormat.HEIC, srgb = true))
+        assertEquals(PhotoFormat.WEBP, FormatResolver.forColourSpace(PhotoFormat.WEBP, srgb = false))
+        assertEquals(PhotoFormat.JPEG, FormatResolver.forColourSpace(PhotoFormat.JPEG, srgb = false))
+
+        val opaque = IntArray(64) { 0xFF336699.toInt() }
+        assertFalse(FormatResolver.anyTransparent(opaque))
+        val clear = opaque.copyOf().also { it[40] = 0x00000000 }
+        assertTrue(FormatResolver.anyTransparent(clear))
+        val halfClear = opaque.copyOf().also { it[3] = 0x80336699.toInt() }
+        assertTrue(FormatResolver.anyTransparent(halfClear))
+        assertFalse("only the pixels counted are read", FormatResolver.anyTransparent(clear, count = 40))
     }
 }

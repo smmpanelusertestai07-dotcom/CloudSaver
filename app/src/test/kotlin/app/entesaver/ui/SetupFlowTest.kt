@@ -147,7 +147,7 @@ class SetupFlowTest {
         assertFalse(trial.contains("if (size > 0) {\n            OutlinedButton"))
         val vm = src("ui/AppViewModel.kt")
         val run = vm.substringAfter("fun startTestRun").substringBefore("// ---- Free-up")
-        assertTrue("the trial must scan before it picks", run.contains("MediaScanner(ctx, db).scan()"))
+        assertTrue("the trial must scan before it picks", run.contains("MediaScanner(ctx, db).scan("))
         // The card promises photos "from the albums you chose", and the scan
         // just inventoried the whole phone - so the pick must carry the
         // exclusion set. Shipped without it, the trial optimised three photos

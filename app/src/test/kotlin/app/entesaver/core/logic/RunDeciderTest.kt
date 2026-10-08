@@ -269,6 +269,59 @@ class RunDeciderTest {
     }
 
     @Test
+    fun `a video cut short by the run waits for a longer one, never goes out full size`() {
+        val full = 20 * 60_000L
+        // Five minutes was all the run had left: a later run gives more, so
+        // the clip waits instead of being copied across as it is for good.
+        assertTrue(RunDecider.outOfTimeWaits(5 * 60_000L, full))
+        // Out of the whole budget: no run gives more, so it is copied as before.
+        assertFalse(RunDecider.outOfTimeWaits(full, full))
+        // A ten-minute clip needs about sixteen minutes: not started with
+        // five left, started with the whole budget.
+        assertTrue(RunDecider.videoWaitsForLongerRun(10 * 60_000L, 5 * 60_000L, full))
+        assertFalse(RunDecider.videoWaitsForLongerRun(10 * 60_000L, full, full))
+        // A short clip still fits what is left, and an unknown length is tried.
+        assertFalse(RunDecider.videoWaitsForLongerRun(60_000L, 5 * 60_000L, full))
+        assertFalse(RunDecider.videoWaitsForLongerRun(0L, 5 * 60_000L, full))
+        // A clip longer than any run is never held back for good.
+        assertFalse(RunDecider.videoWaitsForLongerRun(60 * 60_000L, full, full))
+    }
+
+    @Test
+    fun `a file is asked again whether it fits once the encoder is free`() {
+        val min = 5 * 60_000L
+        val full = 20 * 60_000L
+        fun budget(left: Long) = maxOf(min, minOf(full, left))
+        // A plain run admitted a 3-minute clip with 6 minutes left, then
+        // waited 4 minutes for a Free-up remake: 2 minutes do not fit it.
+        assertTrue(RunDecider.canStart(true, 3 * 60_000L, 6 * 60_000L, false, budget(6 * 60_000L), min, full))
+        assertFalse(RunDecider.canStart(true, 3 * 60_000L, 2 * 60_000L, false, budget(2 * 60_000L), min, full))
+        // With a foreground service: a clip a later run would give more time.
+        assertTrue(RunDecider.canStart(true, 5 * 60_000L, 15 * 60_000L, true, budget(15 * 60_000L), min, full))
+        assertFalse(RunDecider.canStart(true, 10 * 60_000L, 6 * 60_000L, true, budget(6 * 60_000L), min, full))
+        // A photo fits while the run has time; nothing starts past the deadline.
+        assertTrue(RunDecider.canStart(false, 0L, 1_000L, false, budget(1_000L), min, full))
+        assertFalse(RunDecider.canStart(false, 0L, 0L, true, budget(0L), min, full))
+        assertFalse(RunDecider.canStart(false, 0L, -60_000L, false, budget(-60_000L), min, full))
+    }
+
+    @Test
+    fun `a video that did not finish on battery is still charged to the day`() {
+        // A clip that ran out of time spent the encoder all the same; left
+        // uncharged, it could drain every run on battery for ever.
+        assertEquals(RunDecider.Budget(6 * 60_000L, 0), RunDecider.batteryCost(false, true, false, 6 * 60_000L))
+        assertEquals(RunDecider.Budget(6 * 60_000L, 0), RunDecider.batteryCost(false, true, true, 6 * 60_000L))
+        // A photo counts once it is made; on the charger nothing is charged.
+        assertEquals(RunDecider.Budget(0L, 1), RunDecider.batteryCost(false, false, true, 2_000L))
+        assertEquals(RunDecider.Budget(0L, 0), RunDecider.batteryCost(false, false, false, 2_000L))
+        assertEquals(RunDecider.Budget(0L, 0), RunDecider.batteryCost(true, true, false, 6 * 60_000L))
+        // Charged on the plain-run path, the day's video limit then stops it.
+        val spent = RunDecider.batteryCost(false, true, false, 60 * 60_000L)
+        val plan = RunDecider.decide(SpeedMode.SMART, power(pct = 90), spent)
+        assertFalse(plan.videos)
+    }
+
+    @Test
     fun `the smallest phones make videos only while charging`() {
         val battery = RunDecider.Power(
             plugged = false, batteryPct = 90, saverOn = false, thermalThrottled = false,

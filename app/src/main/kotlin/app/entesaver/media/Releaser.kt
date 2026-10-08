@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import android.provider.MediaStore
 import app.entesaver.R
+import app.entesaver.core.logic.FormatResolver
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputPaths
@@ -17,6 +18,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.BatchRow
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.LedgerRow
+import app.entesaver.data.db.record
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
@@ -192,7 +194,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
 
     private suspend fun recordDeliveredLocked(row: ItemRow, evidence: String, now: Long) {
         val sha = row.outputSha256 ?: return
-        db.ledger().insert(
+        db.ledger().record(
             LedgerRow(
                 outputSha256 = sha,
                 fingerprint = row.fingerprint,
@@ -354,6 +356,8 @@ class Releaser(private val context: Context, private val db: AppDb) {
                     outputName = actualName,
                     outputRelPath = OutputRoots.normalize(actualPath),
                     releasedAt = now,
+                    // Out again: an earlier leave says nothing about this copy.
+                    leftFolderAt = null,
                     batchId = batchId,
                     stagePath = null,
                     appDeletedCopy = false,
@@ -369,17 +373,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
     }
 
     companion object {
-        fun mimeFor(name: String, fallback: String): String {
-            return when (name.substringAfterLast('.', "").lowercase()) {
-                "jpg", "jpeg" -> "image/jpeg"
-                "mp4" -> "video/mp4"
-                "png" -> "image/png"
-                "gif" -> "image/gif"
-                "webp" -> "image/webp"
-                "heic", "heif" -> "image/heic"
-                "dng" -> "image/x-adobe-dng"
-                else -> fallback
-            }
-        }
+        fun mimeFor(name: String, fallback: String): String = FormatResolver.mimeOf(name, fallback)
     }
 }

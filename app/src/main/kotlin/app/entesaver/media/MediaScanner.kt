@@ -12,9 +12,12 @@ import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.KeptCopies
 import app.entesaver.core.logic.KnownClouds
 import app.entesaver.core.logic.ScanSources
+import app.entesaver.core.logic.StageRules
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
+import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Scans MediaStore images + videos on every external volume (incl. SD card) -
@@ -37,8 +40,14 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         val isVideo: Boolean
     )
 
-    /** Upserts everything into the DB; returns the number of new items. */
-    suspend fun scan(): Int {
+    /**
+     * Upserts everything into the DB; returns the number of new items.
+     *
+     * [stageHeld] is for a caller already holding [Locks.stage] - the Home
+     * trial, which takes it without waiting so it never queues behind a long
+     * encode. The lock is not re-entrant.
+     */
+    suspend fun scan(stageHeld: Boolean = false): Int {
         // Under partial access ("Select photos") MediaStore answers every
         // query as if the handful the user picked were the whole gallery.
         // Scanning would record that handful as a complete inventory, and
@@ -70,11 +79,13 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         val keptById = kept.mapNotNull { r ->
             r.keptUri?.substringAfterLast('/')?.toLongOrNull()?.let { it to r }
         }.toMap()
+        // What each address holds now, for retireReplaced below.
+        val onPhone = HashMap<String, String>()
         for (f in found) {
             val keptRow = keptByUri[f.uri] ?: keptById[f.mediaStoreId]
             if (keptRow != null &&
-                KeptCopies.belongsTo(
-                    f.displayName, keptRow.displayName, keptRow.fingerprint
+                KeptCopies.isRowsCopy(
+                    f.displayName, f.sizeBytes, keptRow.displayName, keptRow.fingerprint, keptRow.outputBytes
                 )
             ) continue
             // Z4.1: a file named like the app's own output is a copy that
@@ -87,6 +98,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 continue
             }
             val fp = Fingerprint.fp16(f.displayName, f.sizeBytes, f.dateModified)
+            onPhone[f.uri] = fp
             val existing = db.items().byFingerprint(fp)
             if (existing == null) {
                 val row = ItemRow(
@@ -135,7 +147,25 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 )
             }
         }
+        retireReplaced(onPhone, now, stageHeld)
         return newItems
+    }
+
+    /**
+     * A photo edited in place keeps its address and gets a new fingerprint,
+     * so the loop above gave it a row of its own - and the old row, still
+     * waiting, pointed at the same file. Both were encoded from the edited
+     * bytes and both copies went to Ente. The old row describes bytes that
+     * are gone, so it is retired here. Under [Locks.stage], so a row being
+     * staged right now finishes first and is then left alone.
+     */
+    private suspend fun retireReplaced(onPhone: Map<String, String>, now: Long, stageHeld: Boolean) {
+        if (onPhone.isEmpty()) return
+        suspend fun retire() {
+            val stale = StageRules.replaced(db.items().waitingAddresses(), onPhone)
+            for (chunk in stale.chunked(500)) db.items().retireReplaced(chunk, now)
+        }
+        if (stageHeld) retire() else Locks.stage.withLock { retire() }
     }
 
     /**

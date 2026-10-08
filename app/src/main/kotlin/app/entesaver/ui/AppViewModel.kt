@@ -20,10 +20,12 @@ import app.entesaver.core.logic.DeviceDefaults
 import app.entesaver.core.logic.EvidenceRules
 import app.entesaver.core.logic.Fingerprint
 import app.entesaver.core.logic.FolderName
+import app.entesaver.core.logic.FreeUpFlow
 import app.entesaver.core.logic.GoneReason
 import app.entesaver.core.logic.ItemState
 import app.entesaver.core.logic.KeptCopies
 import app.entesaver.core.logic.KnownClouds
+import app.entesaver.core.logic.LeftoverRules
 import app.entesaver.core.logic.MediaProfile
 import app.entesaver.core.logic.OutFolder
 import app.entesaver.core.logic.OutputMode
@@ -48,6 +50,7 @@ import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.RatioSample
 import app.entesaver.data.db.Search
+import app.entesaver.data.db.leftFolderAtAfter
 import app.entesaver.data.prefs.Options
 import app.entesaver.data.prefs.OptionsRepo
 import app.entesaver.engine.ActivityLog
@@ -73,6 +76,7 @@ import app.entesaver.util.Locks
 import app.entesaver.util.Permissions
 import app.entesaver.util.PowerPages
 import app.entesaver.util.SpaceLimits
+import app.entesaver.util.SqlChunks
 import app.entesaver.util.Storage
 import app.entesaver.util.TamperCheck
 import app.entesaver.util.TrialRecord
@@ -83,10 +87,12 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -128,6 +134,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * nothing while Home's counter said thousands.
          */
         const val FILES_PAGE = 500
+
+        /**
+         * How long a second "Confirm uploads" tap is ignored after Ente was
+         * asked to open, if this screen is neither left nor returned to.
+         */
+        const val ENTE_LAUNCH_GRACE_MS = 10_000L
 
     }
 
@@ -226,6 +238,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 db.items().bucketedItemCountFlow()
             ) { inScope, known -> known > 0 && inScope == 0 }
         }
+        .stateIn(viewModelScope, screenLocal, false)
+
+    /**
+     * True while an AGED or VERIFIED copy waits in the folder. Nothing beside
+     * it can be proved by Ente's traffic, so Home offers Ente's own free-up,
+     * which is the one route to proof left - for the graded copies too: the
+     * return pass credits every copy without per-file proof that Ente took
+     * (EvidenceRules.collectedByFreeUp).
+     */
+    val gradedInFolder: StateFlow<Boolean> = db.items().gradedInFolderCountFlow()
+        .map { it > 0 }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, screenLocal, false)
 
     /**
@@ -990,8 +1014,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Counted as the history screen lists them: a batch whose trash Android
+    // has emptied is not history anyone can act on.
     val reclaimHistoryCount: StateFlow<Int> = db.reclaim().recentBatchesFlow(50)
-        .map { it.size }
+        .map { batches ->
+            val now = System.currentTimeMillis()
+            batches.count { !FreeUpFlow.trashExpired(it.atMs, now) }
+        }
         .stateIn(viewModelScope, screenLocal, 0)
 
     val keptBytes: StateFlow<Long> =
@@ -1022,21 +1051,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch
             val now = System.currentTimeMillis()
-            db.items().update(
-                row.copy(
-                    state = ItemState.NEW.name,
-                    skipReason = null,
-                    attempts = 0,
-                    // Ask for the jump, do not fake the date. captureAt is
-                    // what the camera recorded: it is shown in the details
-                    // dialog, stamped onto the copy so the cloud files it
-                    // chronologically, and used by the Newest sort. Writing
-                    // `now` into it bought one run's queue position at the
-                    // cost of the file's real date, for good.
-                    priorityAt = now,
-                    updatedAt = now
-                )
-            )
+            // Ask for the jump, do not fake the date. captureAt is what the
+            // camera recorded: it is shown in the details dialog, stamped
+            // onto the copy so the cloud files it chronologically, and used
+            // by the Newest sort. Writing `now` into it bought one run's
+            // queue position at the cost of the file's real date, for good.
+            db.items().update(Stager.askedFirst(row, now))
         }
     }
 
@@ -1045,11 +1065,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch
             val now = System.currentTimeMillis()
+            val state = if (never) ItemState.SKIP.name else ItemState.NEW.name
             db.items().update(
                 row.copy(
                     neverOptimise = never,
-                    state = if (never) ItemState.SKIP.name else ItemState.NEW.name,
+                    state = state,
                     skipReason = if (never) "user_excluded" else null,
+                    leftFolderAt = row.leftFolderAtAfter(state, now),
                     updatedAt = now
                 )
             )
@@ -1082,13 +1104,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (TamperCheck.isModified(ctx)) return
         viewModelScope.launch(Dispatchers.IO) {
             val uri = keptCopyUri(row)
-            if (uri != null) runCatching { ctx.contentResolver.delete(uri, null, null) }
+            val gone = uri != null &&
+                runCatching { ctx.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
+            // An in-place row stood for the copy itself, so with that file
+            // gone it describes nothing on the phone - and says so, rather
+            // than an address a restore would take for the original's.
+            val inPlace = row.contentUri != null && row.contentUri == row.keptUri
             db.items().update(
                 row.copy(
                     keptUri = null,
-                    // Still reclaimed, just without the local copy now. It
-                    // must not go back in the queue: the cloud has it.
-                    state = ItemState.FREED.name,
+                    state = KeptCopies.stateAfterRemoval(row.state),
+                    originalMissing = row.originalMissing || (inPlace && gone),
                     updatedAt = System.currentTimeMillis()
                 )
             )
@@ -1104,12 +1130,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun keptCopyUri(row: ItemRow): Uri? {
         val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
-        val name = runCatching {
+        val (name, size) = runCatching {
             ctx.contentResolver.query(
-                uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
-            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                uri,
+                arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE),
+                null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0)?.let { it to c.getLong(1) } else null }
         }.getOrNull() ?: return null
-        return if (KeptCopies.belongsTo(name, row.displayName, row.fingerprint)) uri else null
+        return if (KeptCopies.isRowsCopy(name, size, row.displayName, row.fingerprint, row.outputBytes)) uri else null
     }
 
 
@@ -1222,13 +1250,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- confirm-uploads flow ----------------------------------------------
 
     val confirmResult = MutableStateFlow<Int?>(null)
-    private var confirmPending = false
+
+    /**
+     * The tap being turned into a window, or the return pass running. A
+     * second tap meanwhile is ignored rather than queued, and a resume in
+     * the middle of a tap - the notification shade, say - does not spend the
+     * window before Ente has even opened.
+     */
+    private var confirmJob: Job? = null
+
+    /** Whether this screen is in front: Ente is opened only from the front. */
+    private var inFront = false
+
+    /**
+     * When Ente was last asked to open, until the next return to this screen.
+     * The tap's job ends once the launch is handed off, but the screen takes
+     * taps until Ente covers it. A second tap then would replace the stored
+     * window, find the screen gone, and drop it - and the first tap's window
+     * with it. Bounded, so a launch that never came up leaves no dead button.
+     */
+    private var enteLaunchedAt = 0L
 
     fun startConfirmFlow() {
-        viewModelScope.launch {
-            repo.setLong(OptionsRepo.K.CONFIRM_STARTED_AT, System.currentTimeMillis())
-            confirmPending = true
-            EnteApp.launch(ctx)
+        val tappedAt = System.currentTimeMillis()
+        if (confirmJob?.isActive == true || !inFront) return
+        if (tappedAt - enteLaunchedAt in 0 until ENTE_LAUNCH_GRACE_MS) return
+        confirmJob = viewModelScope.launch {
+            // One read of the folders, not a pass: it does not wait behind
+            // one, so Ente opens at once. The window is on disk before Ente
+            // opens, so a return to a new process still counts it. Copies
+            // already missing are left out and judged by the normal rules.
+            val engine = MaintainEngine(ctx)
+            val window = withContext(Dispatchers.IO) {
+                runCatching { engine.openConfirmWindow(tappedAt) }.getOrNull()
+            }
+            // Noted before the launch, on this thread, so no later tap can
+            // slip in between.
+            val opened = inFront && run {
+                enteLaunchedAt = System.currentTimeMillis()
+                EnteApp.launch(ctx).also { if (!it) enteLaunchedAt = 0L }
+            }
+            // A window whose Ente never came up would credit, on the next
+            // return, whatever the person cleared by hand meanwhile.
+            if (!opened && window != null) {
+                withContext(Dispatchers.IO) { runCatching { engine.dropConfirmWindow(window.openedAt) } }
+            }
         }
     }
 
@@ -1243,17 +1309,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun onPaused() {
+        inFront = false
+    }
+
     fun onResumed() {
         // The battery rows are re-read on every return to the app, so a
         // switch flipped on the system page shows as Allowed the moment the
         // person is back - not, as before, only after the next tap.
         refreshPowerRequirements()
         noteScreenOn()
-        if (confirmPending) {
-            confirmPending = false
-            viewModelScope.launch(Dispatchers.Default) {
-                val n = runCatching { MaintainEngine(ctx).confirmPass() }.getOrDefault(0)
-                confirmResult.value = n
+        inFront = true
+        enteLaunchedAt = 0L
+        // The first return after "Confirm uploads" judges what Ente took, in
+        // this process or a new one: the window is read from where the tap
+        // stored it, and spent by that one pass.
+        if (confirmJob?.isActive != true) {
+            confirmJob = viewModelScope.launch(Dispatchers.Default) {
+                if (repo.current().confirmWindow == null) return@launch
+                val n = runCatching { MaintainEngine(ctx).returnPass() }.getOrNull()
+                if (n != null) confirmResult.value = n
             }
         }
         refreshHealth()
@@ -1830,6 +1905,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val testRunning = MutableStateFlow(false)
 
+    /** The last tap found a run making a copy, so the trial did not start. */
+    val testBusy = MutableStateFlow(false)
+
     fun startTestRun() {
         // One trial at a time: a second run would pick three more photos and
         // leave the first three copies with nothing that could remove them.
@@ -1838,29 +1916,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         testRunning.value = true
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                val o = repo.current()
-                MediaScanner(ctx, db).scan()
-                val stager = Stager(ctx, db)
-                // The card promises photos "from the albums you chose". The
-                // scan above just inventoried the whole phone, so the pick
-                // must not read from beyond the ticked albums.
-                val picked = db.items().newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)
-                val staged = picked.filter { stager.stageOne(it, o) }
-                val ids = staged.map { it.id }.toSet()
-                TrialRecord.write(ctx, ids)
-                trialIds.value = ids
-                if (staged.isNotEmpty()) {
-                    val rows = db.items().byIds(ids.toList())
-                    activityLog.record(
-                        ActivityLog.Kind.OPTIMISED,
-                        detail = ctx.getString(R.string.trial_activity),
-                        count = rows.size,
-                        bytes = rows.sumOf { (it.sizeBytes - (it.outputBytes ?: it.sizeBytes)).coerceAtLeast(0) }
-                    )
+                // One copy is made at a time (Locks.stage), and a run in the
+                // middle of a video holds that for up to twenty minutes - all
+                // of it with this card on "Trying". Asked without waiting, and
+                // held for the whole trial, scan included.
+                if (!Locks.stage.tryLock()) {
+                    testBusy.value = true
+                    return@launch
+                }
+                testBusy.value = false
+                try {
+                    runTrial()
+                } finally {
+                    Locks.stage.unlock()
                 }
             } finally {
                 testRunning.value = false
             }
+        }
+    }
+
+    /** The trial itself; the caller holds [Locks.stage]. */
+    private suspend fun runTrial() {
+        val o = repo.current()
+        MediaScanner(ctx, db).scan(stageHeld = true)
+        val stager = Stager(ctx, db)
+        // The card promises photos "from the albums you chose". The scan
+        // above just inventoried the whole phone, so the pick must not read
+        // from beyond the ticked albums.
+        val picked = db.items().newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)
+        val staged = picked.filter { stager.stageHeld(it, o) }
+        val ids = staged.map { it.id }.toSet()
+        TrialRecord.write(ctx, ids)
+        trialIds.value = ids
+        if (staged.isNotEmpty()) {
+            val rows = SqlChunks.read(ids) { db.items().byIds(it) }
+            activityLog.record(
+                ActivityLog.Kind.OPTIMISED,
+                detail = ctx.getString(R.string.trial_activity),
+                count = rows.size,
+                bytes = rows.sumOf { (it.sizeBytes - (it.outputBytes ?: it.sizeBytes)).coerceAtLeast(0) }
+            )
         }
     }
 
@@ -1882,7 +1978,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             Locks.release.withLock {
                 val now = System.currentTimeMillis()
-                for (current in db.items().byIds(ids.toList())) {
+                for (current in SqlChunks.read(ids) { db.items().byIds(it) }) {
                     val path = current.stagePath
                     if (current.state != ItemState.STAGED.name || path == null) continue
                     runCatching { File(path).delete() }
@@ -2128,8 +2224,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .map { o -> o.copiesNeedConsent.mapNotNull { it.toLongOrNull() } }
         .distinctUntilChanged()
         .map { ids ->
-            if (ids.isEmpty()) emptyList() else db.items().byIds(ids).filter { it.outputUri != null }
+            // Nothing bounds how many ids collect here, so they are read a
+            // slice at a time (SqlChunks), and a failed read shows no card
+            // rather than closing the app every time Home opens.
+            SqlChunks.read(ids) { db.items().byIds(it) }.filter { it.outputUri != null }
         }
+        .catch { emit(emptyList()) }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, screenLocal, emptyList())
 
@@ -2170,6 +2270,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             state = ItemState.DONE.name,
                             goneReason = GoneReason.APP_DELETED.name,
                             outputUri = null,
+                            leftFolderAt = current.leftFolderAtAfter(ItemState.DONE.name, now),
                             updatedAt = now
                         )
                     )
@@ -2206,8 +2307,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // A copy whose original the ledger knows is never a leftover,
             // whatever its state: one restored from a history file may still
             // be waiting for Ente, and removing it would mean Ente never gets it.
-            val known = named.map { it.second }.distinct().chunked(500)
-                .flatMap { db.items().knownFingerprints(it) }.toHashSet()
+            val known = SqlChunks.read(named.map { it.second }.distinct()) { db.items().knownFingerprints(it) }
+                .toHashSet()
             leftoverUris.value = named.filter { it.second !in known }.map { it.first.uri }
         }
     }
@@ -2217,6 +2318,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             repo.setBool(OptionsRepo.K.OLD_FILES_CLEANED, true)
             leftoverUris.value = emptyList()
         }
+    }
+
+    /**
+     * Android's answer to Remove. Cancel, or a partly approved delete, leaves
+     * the card up for the files still there instead of hiding it for good.
+     */
+    fun onLeftoversRemoveResult(asked: List<Uri>, deleted: List<Uri>) {
+        if (LeftoverRules.allRemoved(asked, deleted)) onLeftoversCleaned() else detectLeftoverFiles()
     }
 
     // ---- encrypted backup / restore -----------------------------------------
@@ -2270,6 +2379,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 SnapshotStore.ImportResult.Unreadable -> {
                     pendingImportUri.value = null
                     transferMessage.value = failLabel
+                }
+                SnapshotStore.ImportResult.TooLarge -> {
+                    pendingImportUri.value = null
+                    transferMessage.value = ctx.getString(R.string.transfer_too_large)
                 }
             }
         }

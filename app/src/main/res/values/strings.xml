@@ -62,6 +62,7 @@
     <string name="skip_out_of_memory">Too big for this phone\'s memory</string>
     <string name="skip_process_died">The app was stopped while making it</string>
     <string name="skip_encode_failed">Could not be made smaller</string>
+    <string name="skip_out_of_time">Too long to make smaller in the time Android gives</string>
     <string name="skip_user_excluded_one">You chose to skip this file</string>
     <string name="skip_other">Skipped to be safe</string>
     <string name="skip_user_excluded">You chose to skip these</string>
@@ -133,7 +134,7 @@
     <string name="confirm_none_title">Nothing confirmed yet</string>
     <string name="note_freeable_title">%1$s of space can be freed</string>
     <string name="note_freeable_text">Ente has these photos and videos. Tap to see them and free up space on your phone.</string>
-    <string name="confirm_none_text">No copy has left the Ente Saver folder yet. In Ente Photos, open Settings \u203a Free up space \u203a Free up device space and let it finish, then tap Confirm uploads in Ente again.</string>
+    <string name="confirm_none_text">No copy left the Ente Saver folder while you were in Ente. Tap Confirm uploads in Ente first. Then, in Ente Photos, open Settings \u203a Free up space \u203a Free up device space, let it finish, and come back here.</string>
     <plurals name="confirm_result_line">
         <item quantity="one">%1$d file confirmed as backed up</item>
         <item quantity="other">%1$d files confirmed as backed up</item>
@@ -205,6 +206,8 @@
     <string name="asis_motion_photo">Motion photo - the moving part only survives in the original file</string>
     <string name="asis_depth_photo">Portrait/depth photo - the depth data only survives in the original file</string>
     <string name="asis_multi_picture">Multi-picture file - it holds more than one image</string>
+    <string name="asis_animated">Animated picture - only the original keeps every frame</string>
+    <string name="asis_transparency">See-through picture - only the original keeps the clear areas</string>
     <string name="asis_format">This format is kept as it is</string>
     <string name="asis_already_small">Already small enough</string>
     <string name="asis_not_smaller">Optimising would not have made it smaller</string>
@@ -252,6 +255,8 @@
     <string name="activity_removed_early">%1$s kept disappearing before upload</string>
     <string name="activity_pending_repaired">Finished publishing files a previous run left half-written</string>
     <string name="activity_reclaim_skipped">%1$s was left alone - Ente Saver could not confirm it was safe</string>
+    <string name="activity_restore_unmatched">%1$s came back from the trash, but Ente Saver could not match it to its record. It may be optimised again.</string>
+    <string name="activity_reclaim_unrecorded">Ente Saver could not save the last Free up to History.</string>
     <string name="activity_cloud_ok">Ente Photos is uploading again</string>
 
     <!-- cloud health -->
@@ -299,6 +304,7 @@
     <string name="reclaim_export_failed">Could not save the list.</string>
     <string name="reclaim_trash">Move to trash</string>
     <string name="reclaim_delete">Delete permanently</string>
+    <string name="reclaim_remove_copies">Remove copies</string>
     <string name="reclaim_continue">Continue</string>
     <string name="reclaim_why_android_asks">Android asks you to confirm because these files belong to your gallery, not to Ente Saver.</string>
     <string name="reclaim_compare">Compare</string>
@@ -319,6 +325,8 @@
     <string name="reclaim_mode_replace_body">The original goes, and the optimised copy stays in your gallery at optimised quality. Saves most of the space.</string>
     <string name="reclaim_mode_replace_note">If the optimised copy is no longer on this phone, Ente Saver remakes it from the original at the current quality setting and checks it before asking to remove anything. A file whose copy cannot be made and checked is left out, and the original stays.</string>
     <string name="skip_light_copy_failed">its light copy could not be made and checked, so the original stays</string>
+    <string name="skip_stage_busy">another file was being optimised, so the original stays \u2014 try again in a few minutes</string>
+    <string name="freeup_waiting_for_stage">Ente Saver is finishing the file it is optimising. This takes up to a minute.</string>
     <string name="kept_in_place_title">Keep it in the same album</string>
     <string name="kept_in_place_body">The smaller copy takes the original\'s place: same album, same name, same date, so your gallery timeline does not move. Off, it goes to Pictures/Light copies instead.</string>
     <string name="kept_in_place_warning">The copy carries the original\'s date, camera details and location. Two things do change: the copy keeps the format it was optimised to, so a HEIC photo can come back as .jpg; and the file in your album is the optimised version, not the byte-for-byte original. The copy in Ente is untouched. If you put an original back from the gallery\'s trash later, it returns beside the smaller copy rather than replacing it.</string>
@@ -334,6 +342,8 @@
     <string name="reclaim_confirm_title">Move these to the trash?</string>
     <string name="reclaim_confirm_delete_title">Delete these permanently?</string>
     <string name="reclaim_confirm_body">Remove %1$s originals and free %2$s?</string>
+    <string name="reclaim_confirm_copies_title">Remove these copies?</string>
+    <string name="reclaim_confirm_copies_body">Delete %1$s Ente Saver copies and free %2$s? Your originals stay. Deleted copies skip the trash.</string>
     <string name="reclaim_confirm_keeps">%1$s keeps the optimised copy of every file removed here.</string>
     <string name="reclaim_confirm_keeps_generic">Ente Photos keeps the optimised copy of every file removed here.</string>
     <string name="reclaim_preview_title">What would happen</string>
@@ -436,6 +446,7 @@
     <string name="history_trashed">In your gallery\'s trash until %1$s</string>
     <string name="history_permanent">Deleted permanently - cannot be restored</string>
     <string name="history_restore">Restore these</string>
+    <string name="history_trash_emptied">Android emptied its trash of these on %1$s</string>
     <string name="history_unknown">Check your gallery\'s trash</string>
     <string name="history_show_files">Show files</string>
     <string name="history_hide_files">Hide files</string>
@@ -835,6 +846,7 @@
     <string name="transfer_export_ok">Backup saved</string>
     <string name="transfer_import_ok">Settings restored</string>
     <string name="transfer_failed">That is not an Ente Saver backup file, so nothing was changed. Pick the file you saved from Settings, Backup and restore \u2014 its name ends in .json or .csb.</string>
+    <string name="transfer_too_large">That file is too big to be a backup, so nothing was changed.</string>
     <string name="options_footer">No setting ever touches your originals. Quality and format apply to new copies only, and lowering the space Ente Saver may use only clears its own copies sooner.</string>
 
     <!-- cloud calculator (13.C) -->
@@ -1114,6 +1126,7 @@
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
     <string name="optimise_working">Working\u2026</string>
     <string name="verify_link_hint">Opens Ente: there, Settings \u203a Free up space \u203a Free up device space, then come back and Ente Saver counts what Ente took. Or turn on usage access and it confirms uploads by itself.</string>
+    <string name="verify_link_hint_graded">Some copies cannot be confirmed from Ente\u2019s traffic. Opens Ente: there, Settings \u203a Free up space \u203a Free up device space. Then come back, and Ente Saver counts what Ente took.</string>
     <string name="activity_started_by_you">Started by you</string>
     <string name="storage_group_phone">Your phone</string>
     <!-- Held for the moment between the screen opening and the phone's own
@@ -1383,6 +1396,7 @@
     <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. The copies stay inside the app until you start, and your originals are never touched.</string>
     <string name="trial_choose_albums">Choose albums</string>
     <string name="trial_run">Try it on a few photos</string>
+    <string name="trial_busy">Ente Saver is optimising a file right now. Try again when it has finished.</string>
 
     <!-- About: requirements and technical facts, stated plainly -->
     <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>

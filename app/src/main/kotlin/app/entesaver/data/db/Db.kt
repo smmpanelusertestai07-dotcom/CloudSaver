@@ -17,6 +17,9 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import app.entesaver.core.logic.Defaults
+import app.entesaver.core.logic.Evidence
+import app.entesaver.core.logic.ItemState
+import app.entesaver.core.logic.StageRules
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -88,6 +91,18 @@ data class ItemRow(
     val batchId: Long? = null,
     val releasedAt: Long? = null,
     val confirmedAt: Long? = null,
+    /**
+     * When the copy last left the upload folder: the write that took the row
+     * out of RELEASED, whatever it went to - gone, finished, freed, skipped
+     * or sent back to the queue. Written there and nowhere else, so no later
+     * bookkeeping on the row moves it, and kept when [releasedAt] is cleared.
+     * Cleared when the row is released again. A row that left before 12.2
+     * carries its last change at the upgrade, never earlier than it left; a
+     * restored copy the reattach pass did not find, the time of that pass.
+     * Null for a row that never left, or one whose copy may still be in the
+     * folder (restored, not yet looked for).
+     */
+    val leftFolderAt: Long? = null,
     val attempts: Int = 0,
     val lastError: String? = null,
     val originalMissing: Boolean = false,
@@ -127,6 +142,14 @@ data class ItemRow(
     val predictedBytes: Long = 0,
     val updatedAt: Long = 0
 )
+
+/**
+ * The [ItemRow.leftFolderAt] a write taking this row to [state] at [now]
+ * carries: [now] when the write takes it out of RELEASED, what it had
+ * otherwise. For writers that do not know the state they found the row in.
+ */
+fun ItemRow.leftFolderAtAfter(state: String, now: Long): Long? =
+    if (this.state == ItemState.RELEASED.name && state != ItemState.RELEASED.name) now else leftFolderAt
 
 /**
  * One reclaim batch, so "what did I delete last week" has an answer.
@@ -277,6 +300,12 @@ data class BatchRow(
 
 data class StateCount(val state: String, val cnt: Int)
 
+/**
+ * A released copy that has left the folder since: when its row last changed,
+ * and what it was proved with.
+ */
+data class LeftRow(val id: Long, val leftAt: Long, val evidence: String, val confirmedAt: Long?)
+
 /** How many released copies wait in one folder. */
 data class FolderCount(val outputRelPath: String, val cnt: Int)
 
@@ -331,6 +360,18 @@ private const val RECLAIMABLE_BYTES =
         "AND (evidence IN ('CONFIRMED_EXACT', 'CONFIRMED', 'CONFIRMED_PACED') " +
         "OR (:includeVerified AND evidence = 'VERIFIED'))"
 
+/**
+ * When a row that is not RELEASED left the folder: [ItemRow.leftFolderAt],
+ * or for a released row without one - restored, its copy perhaps still in
+ * the folder - its last change. Null - never matched - for a row that was
+ * never released. Until the reattach pass has matched restored rows to the
+ * folder, MaintainEngine counts each as there throughout (see
+ * [ItemDao.restoredUnmatched]); the pass dates those it did not find to
+ * itself ([ItemDao.stampRestoredLeft]).
+ */
+private const val LEFT_AT =
+    "COALESCE(leftFolderAt, CASE WHEN releasedAt IS NOT NULL THEN updatedAt END)"
+
 @Dao
 interface ItemDao {
 
@@ -342,6 +383,67 @@ interface ItemDao {
 
     @Query("SELECT * FROM items WHERE fingerprint = :fp LIMIT 1")
     suspend fun byFingerprint(fp: String): ItemRow?
+
+    /**
+     * Rows still waiting that nothing has been made from, by address - what
+     * the scan checks for files edited in place (StageRules.replaced). Three
+     * columns, not whole rows: on a first scan this is the whole gallery.
+     */
+    @Query(
+        "SELECT id, fingerprint, contentUri FROM items WHERE state = 'NEW' " +
+            "AND contentUri IS NOT NULL AND stagePath IS NULL AND outputUri IS NULL " +
+            "AND releasedAt IS NULL"
+    )
+    suspend fun waitingAddresses(): List<StageRules.Waiting>
+
+    /**
+     * Retires waiting rows whose file was replaced under their address, the
+     * way Free up retires a changed original. The conditions are repeated so
+     * a row staged since it was read is left alone.
+     */
+    @Query(
+        "UPDATE items SET state = 'DONE', originalMissing = 1, mediaStoreId = NULL, " +
+            "contentUri = NULL, updatedAt = :now WHERE id IN (:ids) AND state = 'NEW' " +
+            "AND stagePath IS NULL AND outputUri IS NULL AND releasedAt IS NULL"
+    )
+    suspend fun retireReplaced(ids: List<Long>, now: Long): Int
+
+    /**
+     * The one-time repair of rows a 12.1 restore wrote (StartupRecovery).
+     *
+     * That restore gave a waiting row the history's "never optimise" and
+     * evidence without settling it: the photo stayed in the queue and was
+     * sent anyway, and its new copy, already "proven", was never watched.
+     * It also restored waiting rows with no address, which no scan can ever
+     * match, and duplicates without the original they belong to.
+     */
+    @Query("SELECT * FROM items WHERE neverOptimise = 1 AND state IN ('NEW', 'STAGED')")
+    suspend fun waitingButExcluded(): List<ItemRow>
+
+    /** Parks those rows as setNeverOptimise does; their staged files go first. */
+    @Query(
+        "UPDATE items SET state = 'SKIP', skipReason = 'user_excluded', stagePath = NULL, " +
+            "outputName = NULL, outputBytes = NULL, outputSha256 = NULL, outputFolder = NULL, " +
+            "updatedAt = :now WHERE neverOptimise = 1 AND state IN ('NEW', 'STAGED')"
+    )
+    suspend fun parkWaitingExcluded(now: Long): Int
+
+    /** A row still waiting has no copy Ente could have, so no evidence either. */
+    @Query(
+        "UPDATE items SET evidence = 'NONE', confirmedAt = NULL, updatedAt = :now " +
+            "WHERE state IN ('NEW', 'STAGED') AND evidence IS NOT NULL " +
+            "AND evidence NOT IN ('', 'NONE')"
+    )
+    suspend fun clearWaitingEvidence(now: Long): Int
+
+    /** Restored rows nothing can ever match or explain; a scan rebuilds the real ones. */
+    @Query(
+        "DELETE FROM items WHERE fromImport = 1 AND contentUri IS NULL AND mediaStoreId IS NULL " +
+            "AND neverOptimise = 0 AND keptUri IS NULL AND outputSha256 IS NULL " +
+            "AND (state = 'NEW' OR (state = 'SKIP' AND skipReason = 'no_uri') " +
+            "OR (state = 'SKIP' AND skipReason = 'duplicate' AND duplicateOf IS NULL))"
+    )
+    suspend fun deleteRestoredGhosts(): Int
 
     @Query("SELECT * FROM items WHERE id = :id LIMIT 1")
     suspend fun byId(id: Long): ItemRow?
@@ -447,8 +549,49 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = 'STAGED'")
     suspend fun staged(): List<ItemRow>
 
+    /**
+     * Self-heal for a staged row whose file is gone: back to the queue. Only
+     * while it is still staged on that same file - a restore may have taken
+     * it over or parked it since it was read (and deleted the file as it
+     * did), and the row read before that must not be written back over it.
+     */
+    @Query(
+        "UPDATE items SET state = 'NEW', stagePath = NULL, outputBytes = NULL, " +
+            "outputSha256 = NULL, updatedAt = :now WHERE id = :id AND state = 'STAGED' " +
+            "AND stagePath IS :path"
+    )
+    suspend fun unstageIfStill(id: Long, path: String?, now: Long): Int
+
     @Query("SELECT * FROM items WHERE state = 'RELEASED'")
     suspend fun released(): List<ItemRow>
+
+    /**
+     * Copies that left the folder at or after [since], whatever they are now,
+     * with when they left: [ItemRow.leftFolderAt], kept by every way out of
+     * RELEASED - a copy sent back to the queue too, whose release time is
+     * cleared. A row that left before that was recorded falls back to what
+     * was read before: a released row's last change, which is never earlier
+     * than the copy leaving.
+     */
+    @Query(
+        "SELECT id, $LEFT_AT AS leftAt, evidence, confirmedAt FROM items " +
+            "WHERE state != 'RELEASED' AND $LEFT_AT >= :since"
+    )
+    suspend fun leftReleasedSince(since: Long): List<LeftRow>
+
+    /**
+     * Copies in the folder that carry AGED or VERIFIED, or have no release
+     * time. While any is there, nothing beside it can be proved by traffic.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE state = 'RELEASED' AND " +
+            "(evidence IN ('AGED', 'VERIFIED') OR releasedAt IS NULL)"
+    )
+    fun gradedInFolderCountFlow(): Flow<Int>
+
+    /** Batches some row belongs to. A batch no row names has nothing to verify. */
+    @Query("SELECT DISTINCT batchId FROM items WHERE batchId IS NOT NULL")
+    suspend fun linkedBatchIds(): List<Long>
 
     /** Every folder a copy still waits in. */
     @Query(
@@ -463,6 +606,24 @@ interface ItemDao {
             "WHERE state = 'UNKNOWN' AND outputRelPath IS NOT NULL"
     )
     suspend fun restoredRoots(): List<String>
+
+    /**
+     * Rows restored from a history file whose copy may still be in the
+     * folder: until the reattach pass has looked, nothing says it is not.
+     */
+    @Query("SELECT id FROM items WHERE state = 'UNKNOWN' AND releasedAt IS NOT NULL")
+    suspend fun restoredUnmatched(): List<Long>
+
+    /**
+     * Dates every restored copy the reattach pass did not find as having left
+     * at [now], when the pass looked: until then nothing said it was not in
+     * the folder. Never earlier than a time it already carries.
+     */
+    @Query(
+        "UPDATE items SET leftFolderAt = :now WHERE state = 'UNKNOWN' AND releasedAt IS NOT NULL " +
+            "AND (leftFolderAt IS NULL OR leftFolderAt < :now)"
+    )
+    suspend fun stampRestoredLeft(now: Long): Int
 
     /** Rows restored from a history file that came with some upload evidence. */
     @Query(
@@ -498,11 +659,19 @@ interface ItemDao {
      * Recent photos are what the user is thinking about, so they go first;
      * after that, the biggest files free the most space per minute of work,
      * which beats grinding through a thousand old screenshots.
+     *
+     * [holdOverrun] leaves out a clip that already ran out of time once
+     * (Stager.overran: a counted try, or a plain run's hold with its date).
+     * A run without a foreground service asks for the queue that way first,
+     * so such a clip is no longer first in every one of those runs, burning
+     * their whole window; it is taken when nothing else is left, or by a run
+     * with the whole budget.
      */
     @Query(
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
             "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1 " +
-            "AND (:videoMaxMs < 0 OR durationMs BETWEEN 1 AND :videoMaxMs))) " +
+            "AND (:videoMaxMs < 0 OR durationMs BETWEEN 1 AND :videoMaxMs) " +
+            "AND (:holdOverrun = 0 OR lastError IS NULL OR lastError NOT GLOB 'out_of_time*'))) " +
             "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
             "AND id NOT IN (:skipIds) " +
             "ORDER BY priorityAt DESC, (captureAt >= :freshAfter) DESC, " +
@@ -519,7 +688,9 @@ interface ItemDao {
         /** The longest video to take, in ms; negative for any length. */
         videoMaxMs: Long,
         /** Rows this run has already passed over. */
-        skipIds: Collection<Long>
+        skipIds: Collection<Long>,
+        /** Leave out clips that already ran out of time once. */
+        holdOverrun: Boolean
     ): List<ItemRow>
 
     @Query(
@@ -857,6 +1028,13 @@ interface BatchDao {
     @Query("UPDATE batches SET verifiedAt = :at WHERE id = :id")
     suspend fun markVerified(id: Long, at: Long)
 
+    /** Verified batches that a VERIFIED copy still in its folder belongs to. */
+    @Query(
+        "SELECT * FROM batches WHERE verifiedAt IS NOT NULL AND id IN " +
+            "(SELECT batchId FROM items WHERE state = 'RELEASED' AND evidence = 'VERIFIED')"
+    )
+    suspend fun verifiedOfReleased(): List<BatchRow>
+
     @Query("UPDATE batches SET totalBytes = :bytes WHERE id = :id")
     suspend fun setTotalBytes(id: Long, bytes: Long)
 
@@ -904,10 +1082,27 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger WHERE outputSha256 = :sha LIMIT 1")
     suspend fun bySha(sha: String): LedgerRow?
 
-
+    /** Sets the entry for [sha] to [evidence] where it holds one of [weaker]. */
+    @Query(
+        "UPDATE ledger SET evidence = :evidence, confirmedAt = :at " +
+            "WHERE outputSha256 = :sha AND evidence IN (:weaker)"
+    )
+    suspend fun raise(sha: String, evidence: String, at: Long, weaker: List<String>): Int
 
     @Query("SELECT * FROM ledger")
     suspend fun all(): List<LedgerRow>
+}
+
+/**
+ * Records a delivered copy, or raises the entry it already has when [row]
+ * proves more: a copy verified with its batch and proven on its own later
+ * keeps one entry, with its best proof. Never lowers one.
+ */
+suspend fun LedgerDao.record(row: LedgerRow) {
+    if (insert(row) != -1L) return
+    val grade = Evidence.parse(row.evidence)
+    val weaker = Evidence.entries.filter { it.ordinal < grade.ordinal }.map { it.name }
+    if (weaker.isNotEmpty()) raise(row.outputSha256, grade.name, row.confirmedAt, weaker)
 }
 
 @Dao
@@ -1006,7 +1201,7 @@ interface CloudCapabilityDao {
         LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
         ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -1249,6 +1444,26 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v9 records when each copy left the upload folder, so a copy that
+         * shared Ente's traffic with another is known by when it left - not
+         * by its row's last change, which any bookkeeping moves, and not only
+         * while it keeps a release time, which a copy sent back to the queue
+         * loses. A row that had already left gets its last change now - what
+         * it was read by until today, never earlier than it left - so later
+         * bookkeeping no longer moves it. A restored row (UNKNOWN), whose copy
+         * may still be in the folder, stays empty and is read as before.
+         */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `leftFolderAt` INTEGER")
+                connection.execSQL(
+                    "UPDATE `items` SET `leftFolderAt` = `updatedAt` " +
+                        "WHERE `state` NOT IN ('RELEASED', 'UNKNOWN') AND `releasedAt` IS NOT NULL"
+                )
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
@@ -1256,7 +1471,7 @@ abstract class AppDb : RoomDatabase() {
          */
         val MIGRATIONS = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9
         )
 
         @Volatile

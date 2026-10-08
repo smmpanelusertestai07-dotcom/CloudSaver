@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.entesaver.data.db.AppDb
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.db.LedgerRow
+import app.entesaver.media.Stager
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -274,6 +275,34 @@ class ScopeQueriesTest {
             "only the original the screen would actually offer may be counted",
             10L * 1024 * 1024, sum
         )
+    }
+
+    @Test
+    fun aClipThatRanOutOfTimeIsHeldBackOnlyWhenAsked() = runBlocking {
+        // The biggest clip in the backlog, which a plain run already tried
+        // and ran out of time on; first in line, it held up everything.
+        db.items().insert(
+            photo("long.mp4", "Camera", 6_000).copy(
+                mimeType = "video/mp4", isVideo = true, durationMs = 3 * 60_000L,
+                sizeBytes = 900_000_000, lastError = "out_of_time"
+            )
+        )
+        suspend fun next(hold: Boolean) = db.items().nextByPriority(
+            photos = true, videos = true, excludedBuckets = listOf("-"), freshAfter = 0L,
+            limit = 10, videoMaxMs = 4 * 60_000L, skipIds = listOf(-1L), holdOverrun = hold
+        ).map { it.displayName }
+        assertEquals("long.mp4", next(hold = false).first())
+        val held = next(hold = true)
+        assertTrue("held back, and the photos behind it still come: $held", "long.mp4" !in held)
+        assertEquals(5, held.size)
+
+        // A plain run's own overrun, uncounted and dated, is held the same way.
+        val clip = db.items().all().first { it.displayName == "long.mp4" }
+        db.items().update(Stager.heldBack(clip, now = 1_000L))
+        assertTrue("long.mp4" !in next(hold = true))
+        // "Optimise first" puts it first in a plain run too.
+        db.items().update(Stager.askedFirst(db.items().byId(clip.id)!!, now = 2_000L))
+        assertEquals("long.mp4", next(hold = true).first())
     }
 
     private fun ledgerRow(sha: String, fingerprint: String) = LedgerRow(
