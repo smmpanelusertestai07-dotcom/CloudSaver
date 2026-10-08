@@ -57,7 +57,12 @@ jobs:
       #   .github/signing/ente-saver.lineage when there is one; otherwise the
       #   original key (KEYSTORE_B64) signs it here, in this run.
       # - original: only KEYSTORE_B64 is set - the key every release before
-      #   the rotation was signed with.
+      #   the rotation was signed with. Refused once the lineage is committed:
+      #   phones then hold the new key and take nothing signed by the
+      #   original alone.
+      # Each key is checked against its certificate (ORIGINAL_CERT_SHA256,
+      # NEXT_CERT_SHA256) before it signs anything, so a secret in the wrong
+      # slot fails here, with its name, not on people's phones.
       # - throwaway: no secrets (a fork). A key that lives for this run only;
       #   the release step refuses to publish with it.
       - name: Prepare signing keystore
@@ -131,6 +136,12 @@ jobs:
             MODE=rotated
             echo "generated=false" >> "$GITHUB_OUTPUT"
           elif [ -n "${KEYSTORE_B64:-}" ]; then
+            # Once the handover is published, phones hold the new key, and
+            # Android takes nothing signed by the original key alone over it.
+            if [ -f "$COMMITTED_LINEAGE" ]; then
+              echo "::error title=Releases are signed with the new key now::Since the key rotation every Ente Saver is signed with the new key ($NEXT_CERT_SHA256), and Android refuses an update signed only by the original key over it. Set NEW_KEYSTORE_B64 and NEW_KEYSTORE_PASSWORD."
+              exit 1
+            fi
             echo "$KEYSTORE_B64" | base64 -d > release.jks
             KS_PASS="$SECRET_KEYSTORE_PASSWORD"
             # The alias inside the release key, under the name it was made
