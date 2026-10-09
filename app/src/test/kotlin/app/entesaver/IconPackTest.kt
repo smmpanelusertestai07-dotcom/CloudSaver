@@ -170,7 +170,7 @@ class IconPackTest {
         // Adaptive-icon layers: the 108 dp canvas the launcher masks.
         for (layer in listOf(
             "ic_launcher_background", "ic_launcher_foreground", "ic_launcher_monochrome",
-            "shortcut_photos_background", "shortcut_photos_foreground",
+            "shortcut_photos_background", "shortcut_photos_foreground", "shortcut_photos_monochrome",
             "shortcut_glyph_background", "shortcut_free_up_foreground", "shortcut_activity_foreground"
         )) {
             val v = vector(layer)
