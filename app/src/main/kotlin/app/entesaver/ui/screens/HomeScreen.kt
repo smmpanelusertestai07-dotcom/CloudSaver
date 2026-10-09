@@ -1021,7 +1021,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             freeBytes = health.freeBytes,
             minFreeBytes = options.minFreeBytes,
             waitReason = runCatching { RunDecider.Wait.valueOf(options.waitReason) }
-                .getOrDefault(RunDecider.Wait.NONE)
+                .getOrDefault(RunDecider.Wait.NONE),
+            earlierApp = health.earlierInstall
         )
 
         Spacer(Modifier.height(16.dp))
@@ -1077,6 +1078,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             )
                         HomeAction.Blocker.NOT_ENOUGH_SPACE ->
                             stringResource(R.string.optimise_blocked_space)
+                        HomeAction.Blocker.EARLIER_APP ->
+                            stringResource(R.string.optimise_blocked_earlier)
                         // CC7.2: when the button bypasses a scheduling rule,
                         // say which one. "Even though the schedule is waiting"
                         // is true of all of them and useful about none.
@@ -1428,6 +1431,7 @@ private fun statusLine(
             RunDecider.Wait.LONG_VIDEOS -> stringResource(R.string.wait_long_videos)
             RunDecider.Wait.NEXT_TOO_BIG -> stringResource(R.string.wait_next_too_big)
             RunDecider.Wait.VIDEOS_CHARGING -> stringResource(R.string.wait_videos_charging)
+            RunDecider.Wait.EARLIER_APP -> stringResource(R.string.wait_earlier_app)
         }
         return reason ?: pluralStringResource(R.plurals.status_working, waiting, waiting)
     }

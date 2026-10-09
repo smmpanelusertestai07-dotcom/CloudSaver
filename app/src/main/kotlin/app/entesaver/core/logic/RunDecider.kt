@@ -49,7 +49,12 @@ object RunDecider {
         /** The next files would take the phone below the free space it keeps. */
         NEXT_TOO_BIG,
         /** On the smallest phones videos are made only while charging. */
-        VIDEOS_CHARGING
+        VIDEOS_CHARGING,
+        /**
+         * The earlier Ente Saver (until 12.2) is still installed: it would
+         * make copies of the same photos, so this one waits until it is gone.
+         */
+        EARLIER_APP
     }
 
     /**
@@ -65,6 +70,7 @@ object RunDecider {
         "extra_full", "stage_full" -> Wait.SPACE_FULL
         "low_space" -> Wait.LOW_SPACE
         "volume_missing" -> Wait.VOLUME_MISSING
+        "earlier_app" -> Wait.EARLIER_APP
         else -> Wait.NONE
     }
 

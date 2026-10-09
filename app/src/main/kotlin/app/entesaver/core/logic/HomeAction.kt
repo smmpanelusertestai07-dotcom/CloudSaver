@@ -31,7 +31,7 @@ object HomeAction {
     }
 
     /** A guard the user cannot override, named so the reason can be shown. */
-    enum class Blocker { NONE, TOO_HOT, BATTERY_LOW, NOT_ENOUGH_SPACE }
+    enum class Blocker { NONE, TOO_HOT, BATTERY_LOW, NOT_ENOUGH_SPACE, EARLIER_APP }
 
     /** The one line under the button. */
     enum class Note {
@@ -55,7 +55,8 @@ object HomeAction {
     /**
      * [waitReason] is the scheduler's current answer, used only to choose the
      * wording: the button runs regardless of anything the scheduler is
-     * waiting for.
+     * waiting for. [earlierApp]: the earlier Ente Saver is still installed,
+     * and no run starts until it is gone (Gates.resourceGate).
      */
     fun decide(
         queued: Int,
@@ -66,7 +67,8 @@ object HomeAction {
         plugged: Boolean,
         freeBytes: Long,
         minFreeBytes: Long,
-        waitReason: RunDecider.Wait
+        waitReason: RunDecider.Wait,
+        earlierApp: Boolean = false
     ): State {
         if (running) {
             return State(Visibility.WORKING, enabled = false, Blocker.NONE, Note.JUST_STARTS_IT)
@@ -78,6 +80,7 @@ object HomeAction {
         }
 
         val blocker = when {
+            earlierApp -> Blocker.EARLIER_APP
             thermalThrottled -> Blocker.TOO_HOT
             // A charger makes a low battery a non-issue.
             !plugged && batteryPct in 1 until BATTERY_FLOOR_PCT -> Blocker.BATTERY_LOW

@@ -1,5 +1,6 @@
 package app.entesaver
 
+import app.entesaver.core.logic.RunDecider
 import app.entesaver.data.EarlierInstall
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -40,6 +41,19 @@ class AppIdTest {
         val e2e = File(root, ".github/scripts/emulator-e2e.sh").readText()
         assertTrue(e2e.contains("\nPKG=$appId\n"))
         assertTrue(e2e.contains("\nEARLIER_PKG=${EarlierInstall.PACKAGE}\n"))
+    }
+
+    @Test
+    fun `nothing is made, and nothing offered for removal, while the earlier app is installed`() {
+        // Both apps would make a copy of every new photo.
+        val gates = File("src/main/kotlin/app/entesaver/work/Gates.kt").readText()
+        val gate = gates.substringAfter("fun resourceGate(").substringBefore("\n    }\n")
+        assertTrue(gate.contains("if (EarlierInstall.isInstalled(context)) return \"earlier_app\""))
+        assertEquals(RunDecider.Wait.EARLIER_APP, RunDecider.waitForResource("earlier_app"))
+        // Its copies are its own, still waiting for Ente: never "leftovers".
+        val vm = File("src/main/kotlin/app/entesaver/ui/AppViewModel.kt").readText()
+        val leftovers = vm.substringAfter("fun detectLeftoverFiles()").substringBefore("\n    fun ")
+        assertTrue(leftovers.contains("EarlierInstall.isInstalled(ctx)"))
     }
 
     @Test

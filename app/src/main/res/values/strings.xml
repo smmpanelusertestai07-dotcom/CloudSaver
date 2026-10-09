@@ -615,6 +615,7 @@
     <string name="wait_next_too_big">Waiting: the next files need more room than the phone has above the free space Ente Saver keeps</string>
     <string name="wait_videos_charging">Waiting for charger: on this phone videos are made only while charging</string>
     <string name="wait_volume_missing">Waiting: the storage location you chose is not available right now</string>
+    <string name="wait_earlier_app">Waiting: the earlier Ente Saver is still on this phone - remove it first, as the card above says</string>
     <string name="opt_daily_cap">Daily limit for new copies</string>
     <string name="opt_daily_cap_hint">How much Ente Saver adds to the upload folder each day.</string>
     <string name="unlimited">Unlimited</string>
@@ -1120,6 +1121,7 @@
     <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
+    <string name="optimise_blocked_earlier">Remove the earlier Ente Saver first, as the card above says.</string>
     <string name="optimise_working">Working\u2026</string>
     <string name="verify_link_hint">Opens Ente: there, Settings \u203a Free up space \u203a Free up device space, then come back and Ente Saver counts what Ente took. Or turn on usage access and it confirms uploads by itself.</string>
     <string name="verify_link_hint_graded">Some copies cannot be confirmed from Ente\u2019s traffic. Opens Ente: there, Settings \u203a Free up space \u203a Free up device space. Then come back, and Ente Saver counts what Ente took.</string>

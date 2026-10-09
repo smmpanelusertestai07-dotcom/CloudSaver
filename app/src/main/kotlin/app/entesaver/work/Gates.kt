@@ -7,6 +7,7 @@ import android.os.BatteryManager
 import android.os.PowerManager
 import app.entesaver.core.logic.Defaults
 import app.entesaver.core.logic.RunDecider
+import app.entesaver.data.EarlierInstall
 import app.entesaver.data.prefs.Options
 import app.entesaver.util.Storage
 import app.entesaver.util.Volumes
@@ -72,6 +73,9 @@ object Gates {
         stageBytes: Long,
         releasedBytes: Long
     ): String? {
+        // Two Ente Savers would each make a copy of every new photo; this one
+        // waits while the earlier one is installed, and Home says why.
+        if (EarlierInstall.isInstalled(context)) return "earlier_app"
         if (o.storageVolume.isNotEmpty() && Volumes.byName(context, o.storageVolume) == null) {
             return "volume_missing"
         }

@@ -16,11 +16,22 @@ class HomeActionTest {
         plugged: Boolean = false,
         freeBytes: Long = 20_000_000_000L,
         minFreeBytes: Long = 1_500_000_000L,
-        waitReason: RunDecider.Wait = RunDecider.Wait.NONE
+        waitReason: RunDecider.Wait = RunDecider.Wait.NONE,
+        earlierApp: Boolean = false
     ) = HomeAction.decide(
         queued, running, paused, thermalThrottled, batteryPct, plugged,
-        freeBytes, minFreeBytes, waitReason
+        freeBytes, minFreeBytes, waitReason, earlierApp
     )
+
+    @Test
+    fun `blocked while the earlier Ente Saver is installed`() {
+        // Every run stops at that gate; an enabled button would do nothing.
+        val s = decide(earlierApp = true, waitReason = RunDecider.Wait.EARLIER_APP)
+        assertEquals(HomeAction.Visibility.BUTTON, s.visibility)
+        assertFalse(s.enabled)
+        assertEquals(HomeAction.Blocker.EARLIER_APP, s.blocker)
+        assertEquals(HomeAction.Note.BLOCKED, s.note)
+    }
 
     @Test
     fun `offered when there is something to do`() {

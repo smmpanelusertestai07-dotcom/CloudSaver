@@ -2283,6 +2283,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 leftoverUris.value = emptyList()
                 return@launch
             }
+            // While the earlier Ente Saver is installed, its copies are its
+            // own, still waiting for Ente.
+            if (EarlierInstall.isInstalled(ctx)) {
+                leftoverUris.value = emptyList()
+                return@launch
+            }
             // Only a file named the way this pipeline names its output can be
             // an earlier install's leftover. Anything else in the folder is
             // the user's own file: this card used to sweep those up too, and
