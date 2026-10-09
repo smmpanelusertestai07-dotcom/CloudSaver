@@ -9,10 +9,8 @@ import app.entesaver.engine.StartupRecovery
 import app.entesaver.util.DeviceTier
 import app.entesaver.util.FirstFrame
 import app.entesaver.util.Formats
-import app.entesaver.util.LauncherEntry
 import app.entesaver.util.Notifications
 import app.entesaver.work.Scheduler
-import app.entesaver.work.WorkerNames
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,9 +39,6 @@ class EnteSaverApp : Application(), Configuration.Provider {
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {
-            // Never a phone with Ente Saver installed and no icon to open it
-            // by. Package-manager calls, so off the main thread.
-            LauncherEntry.ensureVisible(this@EnteSaverApp)
             // Recovery first: after clear-data or a reinstall the database is
             // empty and the hidden snapshot is the only state there is, so it
             // has to be back before anything schedules work against it.
@@ -70,8 +65,7 @@ class EnteSaverApp : Application(), Configuration.Provider {
 
     /**
      * WorkManager starts on first use with this configuration (the library's
-     * own start-up hook is removed in the manifest), so work an older version
-     * scheduled under its old class names still runs (WorkerNames).
+     * own start-up hook is removed in the manifest).
      *
      * When internal storage is full or damaged, WorkManager cannot open or
      * tidy its own database and, with no handler, throws on its own thread -
@@ -82,7 +76,6 @@ class EnteSaverApp : Application(), Configuration.Provider {
      */
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
-            .setWorkerFactory(WorkerNames)
             .setInitializationExceptionHandler { }
             .setSchedulingExceptionHandler { }
             .build()

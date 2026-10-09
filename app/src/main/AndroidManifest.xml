@@ -42,11 +42,14 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Ente Photos, in its three builds: needed to find it, open it and
-         measure its uploads. No other app is looked up. -->
+         measure its uploads. And the earlier Ente Saver (app.cloudsaver,
+         until 12.2), only to say it is still installed and offer to remove
+         it. No other app is looked up. -->
     <queries>
         <package android:name="io.ente.photos" />
         <package android:name="io.ente.photos.independent" />
         <package android:name="io.ente.photos.fdroid" />
+        <package android:name="app.cloudsaver" />
     </queries>
 
     <!-- Android's own Auto Backup would copy this app's database and settings
@@ -88,8 +91,8 @@
              such a lock on large screens, with the opt-out gone at API 37.
 
              It has no launcher entry of its own: the home-screen icon is the
-             alias below, which keeps the component name launchers know from
-             version 1. -->
+             alias below, so the component launchers know never depends on
+             the class's name. -->
         <activity
             android:name=".HostActivity"
             android:exported="true"
@@ -97,75 +100,11 @@
             android:screenOrientation="fullUser"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- The components launchers remember. A launcher keeps a home-screen
-             icon, a pinned shortcut or a chosen icon pack by the component's
-             full name, so these keep the names they were first published
-             under - in the app's permanent id (app/build.gradle.kts), not the
-             code's package - and an update never leaves an icon behind.
-
-             The one icon, named Ente Saver: same component name since
-             version 1, so the home-screen icon and its shortcuts survive the
-             update. -->
+        <!-- The home-screen icon, named Ente Saver. Launchers keep an icon,
+             its shortcuts and a chosen icon-pack icon by this name, so it
+             stays MainActivity whatever the activity behind it is called. -->
         <activity-alias
-            android:name="app.cloudsaver.MainActivity"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <!-- The names 11.0-12.2 let a person pick for the home screen, each
-             its own entry that switched the one above off. The choice is gone,
-             but an install that made it still opens through that entry -
-             Android keeps a component's on/off state across an update - so
-             each stays declared, off by default, and reads Ente Saver with the
-             Ente Saver icon. Nothing switches any of them anymore: the
-             home-screen icon stays where the person put it, and no timing of
-             the update (a force-stopped app gets no update broadcast) can
-             leave a phone without an icon. Their names are permanent. -->
-        <activity-alias
-            android:name="app.entesaver.AliasStorageSaver"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name="app.cloudsaver.AliasSaver"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".HostActivity">
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name="app.entesaver.AliasPhotoSaver"
-            android:enabled="false"
+            android:name=".MainActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
@@ -188,27 +127,16 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-        <!-- The same, under the name a "Photos" shortcut pinned before 12.0
-             points at. -->
-        <activity-alias
-            android:name="app.cloudsaver.OpenEnteActivity"
-            android:exported="true"
-            android:targetActivity=".OpenEnteActivity" />
 
         <!-- Ente Saver's icon pack. The pack itself is res/xml/appfilter.xml;
-             this screen shows nothing. Launchers find it through the actions
-             on the alias below, which keeps the name it was first published
-             under, so a pack icon chosen before 12.0 stays chosen. -->
+             this screen shows nothing. Launchers find it through these
+             actions. -->
         <activity
             android:name=".IconPackActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.NoDisplay" />
-        <activity-alias
-            android:name="app.cloudsaver.IconPackActivity"
-            android:exported="true"
             android:icon="@drawable/iconpack_photos"
             android:label="@string/icon_pack_name"
-            android:targetActivity=".IconPackActivity">
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="org.adw.launcher.THEMES" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -229,7 +157,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="com.anddoes.launcher.THEME" />
             </intent-filter>
-        </activity-alias>
+        </activity>
 
         <!-- WorkManager foreground service used while compressing.
              mediaProcessing on API 35+, dataSync on API 34, no type needed below. -->
@@ -238,8 +166,8 @@
             android:foregroundServiceType="dataSync|mediaProcessing"
             tools:node="merge" />
 
-        <!-- WorkManager is started by the app itself (EnteSaverApp), with a
-             worker factory that knows the workers' names from before 12.0. -->
+        <!-- WorkManager is started by the app itself (EnteSaverApp), whose
+             configuration keeps a full or damaged phone from crashing it. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

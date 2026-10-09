@@ -44,6 +44,7 @@ import app.entesaver.core.logic.Stops
 import app.entesaver.core.logic.ThemeMode
 import app.entesaver.core.logic.VideoCodec
 import app.entesaver.core.logic.VideoSettings
+import app.entesaver.data.EarlierInstall
 import app.entesaver.data.EnteApp
 import app.entesaver.data.db.ActivityRow
 import app.entesaver.data.db.AppDb
@@ -592,6 +593,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val batterySaverOn: Boolean = false,
         val usageAccessOff: Boolean = false,
         val cloudMissing: Boolean = false,
+        /** The Ente Saver of 12.2 and before is still installed beside this one. */
+        val earlierInstall: Boolean = false,
         /**
          * No cloud app of any kind is installed. The pipeline still runs -
          * copies are made on schedule - but nothing will ever collect them,
@@ -758,6 +761,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 batterySaverOn = power.saverOn,
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !EnteApp.isInstalled(ctx),
+                earlierInstall = EarlierInstall.isInstalled(ctx),
                 spaceLow = free < o.minFreeBytes,
                 thermalThrottled = power.thermalThrottled ||
                     power.batteryTempTenthsC >= Defaults.BATTERY_MAX_TEMP_TENTHS_C,

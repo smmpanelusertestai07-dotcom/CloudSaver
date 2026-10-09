@@ -24,6 +24,13 @@ class StartupResilienceTest {
         val app = File(main, "EnteSaverApp.kt").readText()
         assertTrue(app.contains(".setInitializationExceptionHandler"))
         assertTrue(app.contains(".setSchedulingExceptionHandler"))
+        // The handlers live in the app's own configuration, which WorkManager
+        // reads only when the library's own start-up hook is removed.
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val removed = Regex(
+            """<meta-data\s+android:name="androidx\.work\.WorkManagerInitializer"[^>]*tools:node="remove""""
+        )
+        assertTrue(removed.containsMatchIn(manifest))
     }
 
     @Test

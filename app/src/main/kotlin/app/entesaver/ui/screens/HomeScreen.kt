@@ -84,6 +84,7 @@ import app.entesaver.core.logic.OutputPaths
 import app.entesaver.core.logic.OutputRoots
 import app.entesaver.core.logic.Projection
 import app.entesaver.core.logic.RunDecider
+import app.entesaver.data.EarlierInstall
 import app.entesaver.data.EnteApp
 import app.entesaver.data.db.ItemRow
 import app.entesaver.data.prefs.Options
@@ -212,6 +213,28 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        // The Ente Saver of 12.2 and before is a different app to Android, so
+        // it can stay installed beside this one, and both would then work on
+        // the same photos. Shown for as long as it is there.
+        if (health.earlierInstall) {
+            AppCard(modifier = Modifier.padding(top = 10.dp)) {
+                Text(
+                    stringResource(R.string.earlier_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.earlier_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                TextButton(onClick = { OemPages.openAppInfoOf(context, EarlierInstall.PACKAGE) }) {
+                    Text(stringResource(R.string.earlier_button))
+                }
             }
         }
 

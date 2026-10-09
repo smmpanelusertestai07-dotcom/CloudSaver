@@ -11,8 +11,10 @@
 
 set -uo pipefail
 
-# The app's permanent id (app/build.gradle.kts), not its name.
-PKG=app.cloudsaver
+# The app's id on Android (app/build.gradle.kts), not its name.
+PKG=app.entesaver
+# The id Ente Saver had until 12.2: a different app to Android.
+EARLIER_PKG=app.cloudsaver
 SHOTS_ON_DEVICE=/sdcard/Pictures/CSTestShots
 OUT=artifacts
 mkdir -p "$OUT/screenshots"
@@ -82,66 +84,34 @@ fi
 
 BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
 
-# Android must take an APK signed with a rotated key as an update to one
-# signed with the key before it - the promise behind replacing the release
-# key. Proven here on every Android this app supports, with two throwaway
-# keys and the release's own signing recipe (sign-apk.sh), so it holds
-# before the real keys are ever switched. The reverse must be refused: the
-# old key keeps no right to replace the new one.
-echo "::group::Key rotation: a rotated key's APK updates the old key's"
-ROT=$(mktemp -d)
-export ROT_OLD_PASS ROT_NEW_PASS
-ROT_OLD_PASS=$(openssl rand -hex 16)
-ROT_NEW_PASS=$(openssl rand -hex 16)
-rot_step() { "$@" || { echo "::error::Could not prepare the test-signed APKs: $1 failed"; exit 1; }; }
-rot_step keytool -genkeypair -keystore "$ROT/old.jks" -storetype JKS -alias old \
-  -keyalg RSA -keysize 2048 -validity 3650 -storepass "$ROT_OLD_PASS" -keypass "$ROT_OLD_PASS" \
-  -dname "CN=Rotation check old"
-rot_step keytool -genkeypair -keystore "$ROT/new.p12" -storetype PKCS12 -alias new \
-  -keyalg RSA -keysize 2048 -validity 3650 -storepass "$ROT_NEW_PASS" -keypass "$ROT_NEW_PASS" \
-  -dname "CN=Rotation check new"
-rot_step "$BT/apksigner" rotate --out "$ROT/lineage" \
-  --old-signer --ks "$ROT/old.jks" --ks-key-alias old --ks-pass env:ROT_OLD_PASS --key-pass env:ROT_OLD_PASS \
-  --new-signer --ks "$ROT/new.p12" --ks-key-alias new --ks-pass env:ROT_NEW_PASS
-SIGN_KS="$ROT/old.jks" SIGN_KS_ALIAS=old KEYSTORE_PASSWORD="$ROT_OLD_PASS" KEY_PASSWORD="$ROT_OLD_PASS" SIGN_LINEAGE="" \
-  rot_step bash .github/scripts/sign-apk.sh EnteSaver-release.apk "$ROT/old-key.apk"
-SIGN_KS="$ROT/new.p12" SIGN_KS_ALIAS=new KEYSTORE_PASSWORD="$ROT_NEW_PASS" KEY_PASSWORD="$ROT_NEW_PASS" SIGN_LINEAGE="$ROT/lineage" \
-  rot_step bash .github/scripts/sign-apk.sh EnteSaver-release.apk "$ROT/rotated.apk"
-adb uninstall "$PKG" > /dev/null 2>&1 || true
-adb install "$ROT/old-key.apk" > "$ROT/one.log" 2>&1
-if ! grep -q "^Success" "$ROT/one.log"; then
-  echo "::error::The old-key APK of the rotation check did not install"
-  cat "$ROT/one.log"
-  exit 1
-fi
-adb install -r "$ROT/rotated.apk" > "$ROT/two.log" 2>&1
-if ! grep -q "^Success" "$ROT/two.log"; then
-  echo "::error::Android refused an APK signed with a rotated key as an update to the old key's"
-  cat "$ROT/two.log"
-  exit 1
-fi
-adb install -r "$ROT/old-key.apk" > "$ROT/three.log" 2>&1
-if grep -q "^Success" "$ROT/three.log"; then
-  echo "::error::An APK signed with the old key replaced the rotated one; the old key must have no say once it has handed over"
-  exit 1
-fi
-adb uninstall "$PKG" > /dev/null 2>&1 || true
-echo "Rotation check passed: rotated key accepted as an update, old key refused afterwards."
-echo "::endgroup::"
-
 # The last published release: what every phone with Ente Saver updates from.
 PREV_DIR=$(mktemp -d)
 PREV=""
+EARLIER=""
 if gh release download --repo "$GITHUB_REPOSITORY" --pattern 'EnteSaver-v*-release.apk' --dir "$PREV_DIR" > /dev/null 2>&1; then
   PREV=$(ls "$PREV_DIR"/*.apk 2> /dev/null | head -1)
 fi
 if [ -z "$PREV" ]; then
   echo "::notice::No published release to update from."
 else
-  code_of() { "$BT/aapt2" dump badging "$1" 2> /dev/null | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1; }
+  badging() { "$BT/aapt2" dump badging "$1" 2> /dev/null; }
+  pkg_of() { badging "$1" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1; }
+  code_of() { badging "$1" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1; }
+  PREV_PKG=$(pkg_of "$PREV")
+  NEW_PKG=$(pkg_of EnteSaver-release.apk)
   PREV_CODE=$(code_of "$PREV")
   NEW_CODE=$(code_of EnteSaver-release.apk)
-  if [ -z "$PREV_CODE" ] || [ -z "$NEW_CODE" ] || [ "$PREV_CODE" -gt "$NEW_CODE" ]; then
+  if [ "$NEW_PKG" != "$PKG" ]; then
+    echo "::error::This build's package is '$NEW_PKG', not $PKG"
+    exit 1
+  fi
+  if [ "$PREV_PKG" != "$PKG" ]; then
+    # Until the first release under this id, the last one is the earlier
+    # app: a different app to Android, which this build installs next to.
+    echo "::notice::The last release is the earlier app ($PREV_PKG); there is no update to check until a release of $PKG is published."
+    EARLIER="$PREV"
+    PREV=""
+  elif [ -z "$PREV_CODE" ] || [ -z "$NEW_CODE" ] || [ "$PREV_CODE" -gt "$NEW_CODE" ]; then
     echo "::notice::The last release ($PREV_CODE) is newer than this build ($NEW_CODE); no update to check."
     PREV=""
   fi
@@ -152,10 +122,19 @@ fi
 # the other the way a phone updates.
 echo "::group::Update over the last published release: the app"
 if [ -n "$PREV" ]; then
-  SIGN_KS="$ROT/old.jks" SIGN_KS_ALIAS=old KEYSTORE_PASSWORD="$ROT_OLD_PASS" KEY_PASSWORD="$ROT_OLD_PASS" SIGN_LINEAGE="" \
-    rot_step bash .github/scripts/sign-apk.sh "$PREV" "$ROT/prev.apk"
+  TK=$(mktemp -d)
+  export TEST_KEY_PASS
+  TEST_KEY_PASS=$(openssl rand -hex 16)
+  step() { "$@" || { echo "::error::Could not prepare the test-signed APKs: $1 failed"; exit 1; }; }
+  step keytool -genkeypair -keystore "$TK/test.p12" -storetype PKCS12 -alias test \
+    -keyalg RSA -keysize 2048 -validity 3650 -storepass "$TEST_KEY_PASS" -keypass "$TEST_KEY_PASS" \
+    -dname "CN=Update check"
+  for apk in prev:"$PREV" new:EnteSaver-release.apk; do
+    SIGN_KS="$TK/test.p12" SIGN_KS_ALIAS=test KEYSTORE_PASSWORD="$TEST_KEY_PASS" KEY_PASSWORD="$TEST_KEY_PASS" \
+      step bash .github/scripts/sign-apk.sh "${apk#*:}" "$TK/${apk%%:*}.apk"
+  done
   adb uninstall "$PKG" > /dev/null 2>&1 || true
-  adb install -g "$ROT/prev.apk" > "$PREV_DIR/one.log" 2>&1
+  adb install -g "$TK/prev.apk" > "$PREV_DIR/one.log" 2>&1
   if ! grep -q "^Success" "$PREV_DIR/one.log"; then
     echo "::error::The last published release did not install"
     cat "$PREV_DIR/one.log"
@@ -164,44 +143,29 @@ if [ -n "$PREV" ]; then
   # Opened once, so the update meets an app that has started.
   adb shell am start -n "$PKG/.MainActivity" > /dev/null 2>&1 || true
   sleep 8
-  # As on a phone that picked another home-screen name in 11.0-12.2: that
-  # name's entry on, the main one off.
-  OTHER_NAME=""
-  if adb shell su root pm enable "$PKG/app.entesaver.AliasStorageSaver" 2> /dev/null | grep -q "new state: enabled" \
-     && adb shell su root pm disable "$PKG/app.cloudsaver.MainActivity" 2> /dev/null | grep -q "new state: disabled"; then
-    OTHER_NAME=yes
-  else
-    echo "::notice::No other home-screen name staged (the last release has none, or this image cannot switch it)."
-  fi
   # As after Force stop or an OEM cleaner: the update then reaches an app
   # that no broadcast wakes, so the icon must not depend on any code running.
   adb shell am force-stop "$PKG" > /dev/null 2>&1 || true
-  adb install -r -g "$ROT/old-key.apk" > "$PREV_DIR/two.log" 2>&1
+  adb install -r -g "$TK/new.apk" > "$PREV_DIR/two.log" 2>&1
   if ! grep -q "^Success" "$PREV_DIR/two.log"; then
     echo "::error::This build does not install as an update over the last published release ($(basename "$PREV"))"
     cat "$PREV_DIR/two.log"
     exit 1
   fi
-  # Exactly one home-screen entry after the update: the one this phone had,
-  # the picked name's when there was one, so its icon stays where it was.
+  # Exactly one home-screen entry after the update, the one launchers know.
   launchers=$(adb shell cmd package query-activities -a android.intent.action.MAIN \
     -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r')
   count=$(printf '%s\n' "$launchers" | sed -n 's/^\([0-9][0-9]*\) activities found.*/\1/p' | head -1)
   entry=$(printf '%s\n' "$launchers" | sed -n 's/^ *name=\(.*\)$/\1/p' | head -1)
-  if [ "${count:-0}" != 1 ] || [ -z "$entry" ]; then
-    echo "::error::After the update the app has ${count:-no} home-screen entries; it must have exactly one"
+  if [ "${count:-0}" != 1 ] || [ "$entry" != "$PKG.MainActivity" ]; then
+    echo "::error::After the update the app's home-screen entries are not exactly $PKG.MainActivity (${count:-no} found)"
     printf '%s\n' "$launchers" | head -20
     exit 1
   fi
-  if [ -n "$OTHER_NAME" ] && [ "$entry" != "app.entesaver.AliasStorageSaver" ]; then
-    echo "::error::After the update the picked name's entry is gone ($entry is on instead); the person's home-screen icon would go with it"
-    exit 1
-  fi
-  echo "After the update the app has one home-screen entry: $entry."
   # The updated app, opened from that entry on the data the last release
   # left, starts and stays up.
   adb logcat -c || true
-  adb shell am start -n "$PKG/$entry" > /dev/null 2>&1 || true
+  adb shell am start -n "$PKG/.MainActivity" > /dev/null 2>&1 || true
   sleep 8
   if ! adb shell pidof "$PKG" > /dev/null 2>&1 || adb logcat -d -b crash | grep -q "$PKG"; then
     echo "::error::The update installed, but the updated app did not start cleanly"
@@ -209,6 +173,7 @@ if [ -n "$PREV" ]; then
     exit 1
   fi
   adb uninstall "$PKG" > /dev/null 2>&1 || true
+  rm -rf "$TK"
   echo "This build updates $(basename "$PREV") and starts on its data."
 fi
 echo "::endgroup::"
@@ -236,7 +201,41 @@ elif [ -n "$PREV" ]; then
   fi
   echo "As signed, this build installs over $(basename "$PREV") as an update."
 fi
-rm -rf "$ROT" "$PREV_DIR"
+echo "::endgroup::"
+
+# The move from the earlier app: this build goes on next to it, both are
+# there, and it starts cleanly with the earlier one installed.
+echo "::group::Next to the earlier Ente Saver ($EARLIER_PKG)"
+if [ -n "$EARLIER" ]; then
+  adb uninstall "$PKG" > /dev/null 2>&1 || true
+  adb uninstall "$EARLIER_PKG" > /dev/null 2>&1 || true
+  adb install -g "$EARLIER" > "$PREV_DIR/five.log" 2>&1
+  if ! grep -q "^Success" "$PREV_DIR/five.log"; then
+    echo "::error::The earlier release did not install"
+    cat "$PREV_DIR/five.log"
+    exit 1
+  fi
+  adb install -g EnteSaver-release.apk > "$PREV_DIR/six.log" 2>&1
+  if ! grep -q "^Success" "$PREV_DIR/six.log"; then
+    echo "::error::This build does not install next to the earlier Ente Saver"
+    cat "$PREV_DIR/six.log"
+    exit 1
+  fi
+  adb logcat -c || true
+  adb shell am start -n "$PKG/.MainActivity" > /dev/null 2>&1 || true
+  sleep 8
+  if ! adb shell pidof "$PKG" > /dev/null 2>&1 || adb logcat -d -b crash | grep -q "$PKG"; then
+    echo "::error::With the earlier Ente Saver installed, this build did not start cleanly"
+    adb logcat -d -b crash | tail -80
+    exit 1
+  fi
+  adb uninstall "$PKG" > /dev/null 2>&1 || true
+  adb uninstall "$EARLIER_PKG" > /dev/null 2>&1 || true
+  echo "This build installs next to $(basename "$EARLIER") and starts cleanly beside it."
+else
+  echo "::notice::No earlier release to install next to."
+fi
+rm -rf "$PREV_DIR"
 echo "::endgroup::"
 
 echo "::group::Install the signed release APK and launch it"

@@ -7,9 +7,9 @@ import org.junit.Test
 
 /**
  * The app is called Ente Saver everywhere: on the phone, and in every file of
- * the repository. The old name survives only where it is a permanent
- * identifier that phones already hold - renaming one of those would stop an
- * update from installing, leave an icon behind, or lose what the app knows.
+ * the repository. The old name survives only where it names something that
+ * exists outside this app - the earlier app it replaces, and the folders and
+ * files older versions left on phones.
  */
 class BrandingTest {
 
@@ -20,29 +20,17 @@ class BrandingTest {
 
     /** Every place the old name may stay, and why. */
     private val permanent = listOf(
-        // The app's id, and the launcher components published under it.
-        Regex("""applicationId = "app\.cloudsaver""""),
-        Regex("""PKG=app\.cloudsaver\b"""),
-        Regex("""targetPackage="app\.cloudsaver""""),
-        Regex("""\bapp\.cloudsaver\.(MainActivity|AliasSaver|OpenEnteActivity|IconPackActivity)\b"""),
-        // Work that WorkManager already holds on updated phones.
-        Regex("""\bapp\.cloudsaver\.work\.(CompressWorker|MaintainWorker)\b"""),
-        Regex("""\bcloudsaver\.(compress|maintain|trigger|now)\b"""),
-        // The database file every install keeps its records in.
-        Regex("""\bcloudsaver\.db\b"""),
+        // The earlier app's id (until 12.2), by which this one finds it -
+        // the id alone, never a component of this app under it.
+        Regex("""\bapp\.cloudsaver\b(?!\.)"""),
         // Folders and files older versions wrote, still watched or read -
         // and, in tests, the look-alike folder names that must not match them.
         Regex("""(?i)\bpictures/cloudsaver\w*"""),
         Regex("""\bDocuments/CloudSaver\b"""),
         Regex("""\.cloudsaver\b"""),
         Regex("""\bcloudsaver_keep\b"""),
-        // The old name as a name: the "Cloud Saver" home-screen choice, and
-        // old folder names.
+        // Old folder names as names.
         Regex(""""CloudSaver\w*""""),
-        Regex(""""Cloud Saver""""),
-        Regex(""">Cloud Saver</string>"""),
-        // The alias inside the release key, which is part of the key.
-        Regex("""SECRET_KEY_ALIAS:-cloudsaver\b"""),
     )
 
     @Test
@@ -59,9 +47,7 @@ class BrandingTest {
             if (git.waitFor() != 0) null else names.split('\u0000').filter { it.isNotEmpty() }
         }.getOrNull()
         assertTrue("git must be able to list the repository", tracked != null)
-        // A key-rotation lineage holds the original certificate, whose name
-        // is the old one; it is binary, and part of the key.
-        val binary = setOf("png", "jpg", "webp", "jar", "jks", "keystore", "lineage", "ttf", "otf", "so")
+        val binary = setOf("png", "jpg", "webp", "jar", "jks", "keystore", "ttf", "otf", "so")
         val oldName = Regex("(?i)cloud\\s*saver")
         val offenders = tracked!!
             .filterNot { it.substringAfterLast('.').lowercase() in binary || it.endsWith("/BrandingTest.kt") }

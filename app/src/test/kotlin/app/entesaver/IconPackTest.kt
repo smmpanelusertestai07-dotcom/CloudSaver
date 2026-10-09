@@ -1,6 +1,5 @@
 package app.entesaver
 
-import app.entesaver.util.LauncherEntry
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.File
@@ -30,77 +29,52 @@ class IconPackTest {
 
     private val manifest = xml("src/main/AndroidManifest.xml")
 
-    /** The app's permanent id: launchers know its components under this prefix. */
+    /** The app's id on Android. */
     private val appId = Regex("""applicationId = "([^"]+)"""")
         .find(File("build.gradle.kts").readText())!!.groupValues[1]
 
+    private val activities = manifest.children("activity")
     private val aliases = manifest.children("activity-alias")
 
     private fun Element.isLauncher(): Boolean =
         children("category").any { it.getAttribute("android:name") == "android.intent.category.LAUNCHER" }
 
     @Test
-    fun `a fresh install has one home-screen icon, under the name launchers know from version 1`() {
-        val launchers = (manifest.children("activity") + aliases).filter { it.isLauncher() }
-        val entry = launchers.single { it.getAttribute("android:enabled") != "false" }
-        // The old activity name: home-screen icons and shortcuts made before
-        // any update keep pointing at something that exists.
-        assertEquals("$appId.MainActivity", entry.getAttribute("android:name"))
-        assertEquals(LauncherEntry.COMPONENT, entry.getAttribute("android:name"))
+    fun `the home screen has one icon, Ente Saver, under the name launchers keep`() {
+        val entry = (activities + aliases).filter { it.isLauncher() }.single()
+        // An alias, so the component launchers keep an icon and its
+        // shortcuts by never depends on the activity class's name.
+        assertEquals(".MainActivity", entry.getAttribute("android:name"))
         assertEquals(".HostActivity", entry.getAttribute("android:targetActivity"))
+        assertTrue(entry.getAttribute("android:enabled") != "false")
         assertEquals("@string/app_name", entry.getAttribute("android:label"))
         assertEquals("@mipmap/ic_launcher", entry.getAttribute("android:icon"))
         assertEquals("@mipmap/ic_launcher_round", entry.getAttribute("android:roundIcon"))
-
-        // Every other entry is a name 11.0-12.2 let a person pick: off by
-        // default, and on a phone that picked it, Ente Saver with the Ente
-        // Saver icon and the same long-press shortcuts.
-        val old = launchers - entry
-        assertEquals(LauncherEntry.OLD_NAMES.toSet(), old.map { it.getAttribute("android:name") }.toSet())
-        for (alias in old) {
-            val name = alias.getAttribute("android:name")
-            assertEquals(name, "false", alias.getAttribute("android:enabled"))
-            assertEquals(name, ".HostActivity", alias.getAttribute("android:targetActivity"))
-            assertEquals(name, "@string/app_name", alias.getAttribute("android:label"))
-            assertEquals(name, "@mipmap/ic_launcher", alias.getAttribute("android:icon"))
-            assertEquals(name, "@mipmap/ic_launcher_round", alias.getAttribute("android:roundIcon"))
-            assertTrue(name, alias.children("meta-data").any { it.getAttribute("android:name") == "android.app.shortcuts" })
-        }
+        assertTrue(entry.children("meta-data").any { it.getAttribute("android:name") == "android.app.shortcuts" })
+        // Nothing declared switched off, waiting to be switched on.
+        assertTrue((activities + aliases).none { it.getAttribute("android:enabled") == "false" })
     }
 
     @Test
-    fun `an install that picked another name keeps its icon, whatever the update's timing`() {
-        // Android keeps an entry's on/off state across an update, and the
-        // manifest keeps every old name declared, so nothing has to run after
-        // the update - a force-stopped app gets no update broadcast at all.
-        assertTrue(manifest.children("receiver").none { it.getAttribute("android:name").contains("LauncherEntry") })
-        // The safety net at every start only ever switches the main entry on,
-        // never an entry off: switching would take an icon off the home screen.
-        val source = File("src/main/kotlin/app/entesaver/util/LauncherEntry.kt").readText()
-        assertTrue(!source.contains("COMPONENT_ENABLED_STATE_DISABLED"))
-        val app = File("src/main/kotlin/app/entesaver/EnteSaverApp.kt").readText()
-        assertTrue(app.contains("LauncherEntry.ensureVisible(this@EnteSaverApp)"))
-    }
-
-    @Test
-    fun `launchers can find the icon pack, under the name it was first published with`() {
-        val packs = (manifest.children("activity") + aliases).filter { component ->
+    fun `launchers can find the icon pack`() {
+        val packs = (activities + aliases).filter { component ->
             component.children("action").any { it.getAttribute("android:name") == "org.adw.launcher.THEMES" }
         }
         // One component answers, or a launcher would list the pack twice.
         val pack = packs.single()
-        assertEquals("$appId.IconPackActivity", pack.getAttribute("android:name"))
-        assertEquals(".IconPackActivity", pack.getAttribute("android:targetActivity"))
+        assertEquals(".IconPackActivity", pack.getAttribute("android:name"))
         assertEquals("true", pack.getAttribute("android:exported"))
+        assertEquals("@drawable/iconpack_photos", pack.getAttribute("android:icon"))
+        assertEquals("@string/icon_pack_name", pack.getAttribute("android:label"))
         val actions = pack.children("action").map { it.getAttribute("android:name") }
         assertTrue(actions.containsAll(listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME")))
     }
 
     @Test
-    fun `a Photos shortcut pinned before 12_0 still opens Ente`() {
-        val old = aliases.single { it.getAttribute("android:name") == "$appId.OpenEnteActivity" }
-        assertEquals(".OpenEnteActivity", old.getAttribute("android:targetActivity"))
-        assertTrue(manifest.children("activity").any { it.getAttribute("android:name") == ".OpenEnteActivity" })
+    fun `the Photos shortcut opens through a screen of its own`() {
+        val open = activities.single { it.getAttribute("android:name") == ".OpenEnteActivity" }
+        assertEquals("true", open.getAttribute("android:noHistory"))
+        assertTrue(!open.isLauncher())
     }
 
     @Test
@@ -136,9 +110,8 @@ class IconPackTest {
         assertTrue(filter.children("item").none { it.getAttribute("component").contains(appId) })
         // The pack is found through its own actions and is never a second
         // icon on the home screen.
-        val pack = aliases.single { it.getAttribute("android:name") == "$appId.IconPackActivity" }
-        val screen = manifest.children("activity").single { it.getAttribute("android:name") == ".IconPackActivity" }
-        assertTrue(!pack.isLauncher() && !screen.isLauncher())
+        val pack = activities.single { it.getAttribute("android:name") == ".IconPackActivity" }
+        assertTrue(!pack.isLauncher())
     }
 
     @Test
@@ -184,12 +157,9 @@ class IconPackTest {
         assertTrue(strings.contains("""<string name="app_name" translatable="false">Ente Saver</string>"""))
         assertTrue("no other home-screen names", !Regex("""name="app_name_""").containsMatchIn(strings))
         val sources = File("src/main/kotlin").walkTopDown().filter { it.extension == "kt" }.map { it.readText() }.toList()
-        // Only LauncherEntry touches a component's enabled state, and only to
-        // put the one icon back.
-        val switchers = File("src/main/kotlin").walkTopDown()
-            .filter { it.extension == "kt" && it.readText().contains("setComponentEnabledSetting") }
-            .map { it.name }.toList()
-        assertEquals(listOf("LauncherEntry.kt"), switchers)
+        // Nothing switches a component on or off: the one icon is always the
+        // one in the manifest.
+        assertTrue(sources.none { it.contains("setComponentEnabledSetting") })
         assertTrue(sources.none { it.contains("AppLooks") })
         assertTrue(File("src/main/res/mipmap-anydpi/ic_shortcut_photos.xml").isFile)
     }
