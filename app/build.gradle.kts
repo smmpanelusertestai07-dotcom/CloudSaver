@@ -12,11 +12,13 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        // The app's identity on every phone and in Android's eyes, fixed since
-        // the first install. It can never change: a different id is a different
-        // app - it would not install over this one, and everything the app
-        // knows would stay behind. Only Android sees it; people see the name.
-        applicationId = "app.cloudsaver"
+        // The application ID (the package name): the app's identity on every
+        // phone and in Android's eyes. It can never change again: a different
+        // application ID is a different app - it would not install over this
+        // one, and everything the app knows would stay behind. Only Android
+        // sees it; people see the name. (Until 12.2 it was app.cloudsaver,
+        // which 12.3 replaced once, with the name.)
+        applicationId = "app.entesaver"
         minSdk = 29
         targetSdk = 36
         // Semantic version, and a versionCode derived from it rather than
@@ -24,7 +26,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "12.2.0"
+        versionName = "12.3.0"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }

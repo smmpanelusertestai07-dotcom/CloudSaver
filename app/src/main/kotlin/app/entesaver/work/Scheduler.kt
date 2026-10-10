@@ -26,13 +26,13 @@ import kotlinx.coroutines.flow.Flow
  */
 object Scheduler {
 
-    // Names WorkManager stores on the phone, unchanged since before 12.0:
-    // renamed, the work already scheduled under them would run beside the new.
-    private const val W_COMPRESS = "cloudsaver.compress"
-    private const val W_MAINTAIN = "cloudsaver.maintain"
-    private const val W_TRIGGER = "cloudsaver.trigger"
-    private const val W_NOW = "cloudsaver.now"
-    private const val W_MAINTAIN_NOW = "cloudsaver.maintain.now"
+    // Names WorkManager stores on the phone: renamed in an update, the work
+    // already scheduled under them would run beside the new.
+    private const val W_COMPRESS = "entesaver.compress"
+    private const val W_MAINTAIN = "entesaver.maintain"
+    private const val W_TRIGGER = "entesaver.trigger"
+    private const val W_NOW = "entesaver.now"
+    private const val W_MAINTAIN_NOW = "entesaver.maintain.now"
 
     /**
      * Every unique work name this object enqueues under.

@@ -1097,7 +1097,6 @@ fun HelpGalleryScreen(nav: NavHostController) {
         GalleryBlock(R.string.gallery_rename_t, R.string.gallery_rename_b)
         GalleryBlock(R.string.gallery_ml_t, R.string.gallery_ml_b)
         GalleryBlock(R.string.gallery_freeup_t, R.string.gallery_freeup_b)
-        GalleryBlock(R.string.gallery_saver_t, R.string.gallery_saver_b)
     }
     if (adding) ShortcutDialog(onDone = { adding = false })
 }

@@ -1,5 +1,6 @@
 package app.entesaver.core.logic
 
+import app.entesaver.data.EarlierInstall
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,11 +17,11 @@ class EnteOnlyTest {
     private val main = File("src/main/kotlin/app/entesaver")
 
     @Test
-    fun `the phone is asked about Ente's three builds and nothing else`() {
+    fun `the phone is asked about Ente's three builds and the earlier Ente Saver, nothing else`() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val queries = manifest.substringAfter("<queries>").substringBefore("</queries>")
         val packages = Regex("""android:name="([^"]+)"""").findAll(queries).map { it.groupValues[1] }.toList()
-        assertEquals(KnownClouds.ENTE, packages)
+        assertEquals(KnownClouds.ENTE + EarlierInstall.PACKAGE, packages)
         assertFalse("no picker of other apps is left", File(main, "data/CloudApps.kt").exists())
     }
 

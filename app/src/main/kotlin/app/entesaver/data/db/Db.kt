@@ -1481,9 +1481,9 @@ abstract class AppDb : RoomDatabase() {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDb::class.java,
-                // The file every install has kept its records in since the
-                // first version; a new name would start from an empty one.
-                "cloudsaver.db"
+                // The file every install keeps its records in; a new name in
+                // an update would start from an empty one.
+                "entesaver.db"
             ).addMigrations(*MIGRATIONS).build().also { instance = it }
         }
     }

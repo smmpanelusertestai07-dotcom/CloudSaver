@@ -5,8 +5,8 @@
   still asks for the unlock first and a route that needs state still waits
   for it - the shortcuts add doors, not paths around anything.
 
-  targetPackage is the app's permanent id (app/build.gradle.kts); the
-  class is where the code lives today.
+  targetPackage is the application ID (package name, app/build.gradle.kts);
+  the class is where the code lives.
 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
@@ -17,7 +17,7 @@
         android:shortcutLongLabel="@string/shortcut_free_up">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="app.cloudsaver"
+            android:targetPackage="app.entesaver"
             android:targetClass="app.entesaver.HostActivity">
             <extra android:name="app.entesaver.route" android:value="free_space_hub" />
         </intent>
@@ -30,7 +30,7 @@
         android:shortcutLongLabel="@string/shortcut_activity">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="app.cloudsaver"
+            android:targetPackage="app.entesaver"
             android:targetClass="app.entesaver.HostActivity">
             <extra android:name="app.entesaver.route" android:value="activity" />
         </intent>

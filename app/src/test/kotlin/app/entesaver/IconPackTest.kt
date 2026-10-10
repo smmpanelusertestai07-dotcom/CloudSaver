@@ -1,6 +1,5 @@
 package app.entesaver
 
-import app.entesaver.util.AppLooks
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.File
@@ -13,8 +12,8 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The home screen's side of the app: the name and icon a person picks, the
- * icon pack that dresses Ente up as a gallery, and the pictures both use.
+ * The home screen's side of the app: Ente Saver's one icon and name, the icon
+ * pack that dresses Ente up as a gallery, and the pictures both use.
  * Launchers read these by name, from outside the app, so nothing at build
  * time notices when one goes missing.
  */
@@ -30,58 +29,52 @@ class IconPackTest {
 
     private val manifest = xml("src/main/AndroidManifest.xml")
 
-    /** The app's permanent id: launchers know its components under this prefix. */
+    /** The application ID (package name). */
     private val appId = Regex("""applicationId = "([^"]+)"""")
         .find(File("build.gradle.kts").readText())!!.groupValues[1]
 
+    private val activities = manifest.children("activity")
     private val aliases = manifest.children("activity-alias")
-    private val lookAliases = aliases.filter { it.getAttribute("android:targetActivity") == ".HostActivity" }
 
     private fun Element.isLauncher(): Boolean =
         children("category").any { it.getAttribute("android:name") == "android.intent.category.LAUNCHER" }
 
     @Test
-    fun `every look is a launcher alias of the one real activity`() {
-        assertEquals(
-            AppLooks.Look.entries.map { it.component }.toSet(),
-            lookAliases.map { it.getAttribute("android:name") }.toSet()
-        )
-        for (alias in lookAliases) {
-            assertEquals(".HostActivity", alias.getAttribute("android:targetActivity"))
-            assertTrue("${alias.getAttribute("android:name")} must be on the home screen", alias.isLauncher())
-        }
-        val host = manifest.children("activity").single { it.getAttribute("android:name") == ".HostActivity" }
-        assertTrue("the real activity has no icon of its own, or there would be two", !host.isLauncher())
+    fun `the home screen has one icon, Ente Saver, under the name launchers keep`() {
+        val entry = (activities + aliases).filter { it.isLauncher() }.single()
+        // An alias, so the component launchers keep an icon and its
+        // shortcuts by never depends on the activity class's name.
+        assertEquals(".MainActivity", entry.getAttribute("android:name"))
+        assertEquals(".HostActivity", entry.getAttribute("android:targetActivity"))
+        assertTrue(entry.getAttribute("android:enabled") != "false")
+        assertEquals("@string/app_name", entry.getAttribute("android:label"))
+        assertEquals("@mipmap/ic_launcher", entry.getAttribute("android:icon"))
+        assertEquals("@mipmap/ic_launcher_round", entry.getAttribute("android:roundIcon"))
+        assertTrue(entry.children("meta-data").any { it.getAttribute("android:name") == "android.app.shortcuts" })
+        // Nothing declared switched off, waiting to be switched on.
+        assertTrue((activities + aliases).none { it.getAttribute("android:enabled") == "false" })
     }
 
     @Test
-    fun `a fresh install shows exactly one icon - the default look, under the old name`() {
-        val enabled = lookAliases.filter { it.getAttribute("android:enabled") != "false" }
-        assertEquals(listOf(AppLooks.DEFAULT.component), enabled.map { it.getAttribute("android:name") })
-        // The old activity name: home screen icons and shortcuts made before
-        // the update keep pointing at something that exists.
-        assertEquals("$appId.MainActivity", AppLooks.DEFAULT.component)
-    }
-
-    @Test
-    fun `launchers can find the icon pack, under the name it was first published with`() {
-        val packs = (manifest.children("activity") + aliases).filter { component ->
+    fun `launchers can find the icon pack`() {
+        val packs = (activities + aliases).filter { component ->
             component.children("action").any { it.getAttribute("android:name") == "org.adw.launcher.THEMES" }
         }
         // One component answers, or a launcher would list the pack twice.
         val pack = packs.single()
-        assertEquals("$appId.IconPackActivity", pack.getAttribute("android:name"))
-        assertEquals(".IconPackActivity", pack.getAttribute("android:targetActivity"))
+        assertEquals(".IconPackActivity", pack.getAttribute("android:name"))
         assertEquals("true", pack.getAttribute("android:exported"))
+        assertEquals("@drawable/iconpack_photos", pack.getAttribute("android:icon"))
+        assertEquals("@string/icon_pack_name", pack.getAttribute("android:label"))
         val actions = pack.children("action").map { it.getAttribute("android:name") }
         assertTrue(actions.containsAll(listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME")))
     }
 
     @Test
-    fun `a Photos shortcut pinned before 12_0 still opens Ente`() {
-        val old = aliases.single { it.getAttribute("android:name") == "$appId.OpenEnteActivity" }
-        assertEquals(".OpenEnteActivity", old.getAttribute("android:targetActivity"))
-        assertTrue(manifest.children("activity").any { it.getAttribute("android:name") == ".OpenEnteActivity" })
+    fun `the Photos shortcut opens through a screen of its own`() {
+        val open = activities.single { it.getAttribute("android:name") == ".OpenEnteActivity" }
+        assertEquals("true", open.getAttribute("android:noHistory"))
+        assertTrue(!open.isLauncher())
     }
 
     @Test
@@ -103,6 +96,22 @@ class IconPackTest {
             keys += inner.substringBefore('/')
         }
         assertEquals("Realme and Oppo show (keys - 1) icons: exactly one", 2, keys.size)
+    }
+
+    @Test
+    fun `the pack restyles Ente Photos and no other app`() {
+        val filter = xml("src/main/res/xml/appfilter.xml")
+        // iconback, iconmask, iconupon and scale make a launcher restyle
+        // every app the pack does not list. Plain items only, so applying the
+        // pack touches Ente and nothing else - Ente Saver included.
+        val tags = (0 until filter.childNodes.length).map { filter.childNodes.item(it) }
+            .filterIsInstance<Element>().map { it.tagName }.toSet()
+        assertEquals(setOf("item"), tags)
+        assertTrue(filter.children("item").none { it.getAttribute("component").contains(appId) })
+        // The pack is found through its own actions and is never a second
+        // icon on the home screen.
+        val pack = activities.single { it.getAttribute("android:name") == ".IconPackActivity" }
+        assertTrue(!pack.isLauncher())
     }
 
     @Test
@@ -143,17 +152,15 @@ class IconPackTest {
     }
 
     @Test
-    fun `Ente Saver has one icon, and only its name can change`() {
-        assertEquals(
-            listOf(R.string.app_name, R.string.app_name_storage, R.string.app_name_cloud, R.string.app_name_photo),
-            AppLooks.Look.entries.map { it.nameRes }
-        )
-        // A name chosen before 12.1 keeps its component: "CloudSaver" became "Cloud Saver".
-        assertEquals("$appId.AliasSaver", AppLooks.Look.CLOUD_SAVER.component)
-        for (alias in lookAliases) {
-            assertEquals("@mipmap/ic_launcher", alias.getAttribute("android:icon"))
-            assertEquals("@mipmap/ic_launcher_round", alias.getAttribute("android:roundIcon"))
-        }
+    fun `Ente Saver has one name and nothing in it changes its own icon`() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        assertTrue(strings.contains("""<string name="app_name" translatable="false">Ente Saver</string>"""))
+        assertTrue("no other home-screen names", !Regex("""name="app_name_""").containsMatchIn(strings))
+        val sources = File("src/main/kotlin").walkTopDown().filter { it.extension == "kt" }.map { it.readText() }.toList()
+        // Nothing switches a component on or off: the one icon is always the
+        // one in the manifest.
+        assertTrue(sources.none { it.contains("setComponentEnabledSetting") })
+        assertTrue(sources.none { it.contains("AppLooks") })
         assertTrue(File("src/main/res/mipmap-anydpi/ic_shortcut_photos.xml").isFile)
     }
 
@@ -163,7 +170,7 @@ class IconPackTest {
         // Adaptive-icon layers: the 108 dp canvas the launcher masks.
         for (layer in listOf(
             "ic_launcher_background", "ic_launcher_foreground", "ic_launcher_monochrome",
-            "shortcut_photos_background", "shortcut_photos_foreground",
+            "shortcut_photos_background", "shortcut_photos_foreground", "shortcut_photos_monochrome",
             "shortcut_glyph_background", "shortcut_free_up_foreground", "shortcut_activity_foreground"
         )) {
             val v = vector(layer)

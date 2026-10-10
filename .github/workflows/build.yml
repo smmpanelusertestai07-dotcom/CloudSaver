@@ -10,16 +10,27 @@ on:
 permissions:
   contents: write
 
+env:
+  # The Ente Saver release certificate (public). Every release is signed by
+  # this key and only this key: Android installs an update only from the key
+  # the app was first installed with.
+  RELEASE_CERT_SHA256: 71e76aa0076e4c28a098c6d1c400001661516505f92fe2d810fc9e46d478041b
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # A named image, not ubuntu-latest: "latest" moves to a newer Ubuntu
+    # (24.04 to 26.04 from 19 October 2026) with other preinstalled tools,
+    # and a release build should change only when this file does. 26.04 is
+    # the newest LTS, so this label stays supported the longest.
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
       throwaway_key: ${{ steps.keystore.outputs.generated }}
+      sign_mode: ${{ steps.keystore.outputs.mode }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -35,6 +46,12 @@ jobs:
 
       # Keystore first: the signing-cert SHA-256 is embedded into the APK
       # (tamper evidence), so it must exist before the build.
+      #
+      # - release: the four signing secrets are set. The key is checked against
+      #   RELEASE_CERT_SHA256 before it signs anything, so a wrong secret fails
+      #   here, with its name, not on people's phones.
+      # - throwaway: no secrets (a fork). A key that lives for this run only;
+      #   the release step refuses to publish with it.
       - name: Prepare signing keystore
         id: keystore
         env:
@@ -44,24 +61,35 @@ jobs:
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -eu
+          cert_of() {
+            keytool -exportcert -keystore "$1" -alias "$2" -storepass "$3" -rfc \
+              | openssl x509 -noout -fingerprint -sha256 \
+              | cut -d= -f2 | tr -d ':' | tr 'A-F' 'a-f'
+          }
           if [ -n "${KEYSTORE_B64:-}" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > release.jks
+            echo "$KEYSTORE_B64" | base64 -d > release.p12
             KS_PASS="$SECRET_KEYSTORE_PASSWORD"
-            # The alias inside the release key, under the name it was made
-            # with; it is part of the key and cannot be renamed.
-            KEY_ALIAS="${SECRET_KEY_ALIAS:-cloudsaver}"
+            KEY_ALIAS="${SECRET_KEY_ALIAS:-entesaver}"
             KEY_PASS="${SECRET_KEY_PASSWORD:-$KS_PASS}"
+            CERT_SHA=$(cert_of release.p12 "$KEY_ALIAS" "$KS_PASS" || true)
+            if [ "$CERT_SHA" != "$RELEASE_CERT_SHA256" ]; then
+              echo "::error title=KEYSTORE_B64 is not the Ente Saver release key::It holds certificate '$CERT_SHA' (empty: KEYSTORE_PASSWORD or KEY_ALIAS does not open it), but releases are signed with $RELEASE_CERT_SHA256. Use the four values from the secrets file."
+              exit 1
+            fi
+            MODE=release
             echo "generated=false" >> "$GITHUB_OUTPUT"
-            echo "Using keystore from repository secrets."
+            echo "Using the release key from repository secrets."
           else
             KS_PASS=$(openssl rand -hex 16)
             echo "::add-mask::$KS_PASS"
             KEY_ALIAS=entesaver
             KEY_PASS="$KS_PASS"
-            keytool -genkeypair -v -keystore release.jks -alias "$KEY_ALIAS" \
+            keytool -genkeypair -v -keystore release.p12 -storetype PKCS12 -alias "$KEY_ALIAS" \
               -keyalg RSA -keysize 4096 -validity 9125 \
               -storepass "$KS_PASS" -keypass "$KEY_PASS" \
               -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"
+            CERT_SHA=$(cert_of release.p12 "$KEY_ALIAS" "$KS_PASS")
+            MODE=throwaway
             echo "generated=true" >> "$GITHUB_OUTPUT"
             echo "No signing secrets found - minted a throwaway key for THIS RUN only."
             echo "It is not written anywhere but this runner, and the release step will refuse to publish with it."
@@ -70,12 +98,12 @@ jobs:
             echo "KEYSTORE_PASSWORD=$KS_PASS"
             echo "KEY_ALIAS=$KEY_ALIAS"
             echo "KEY_PASSWORD=$KEY_PASS"
+            echo "SIGN_KS=release.p12"
+            echo "SIGN_MODE=$MODE"
+            echo "CERT_SHA256=$CERT_SHA"
           } >> "$GITHUB_ENV"
-          CERT_SHA=$(keytool -exportcert -keystore release.jks -alias "$KEY_ALIAS" \
-              -storepass "$KS_PASS" -rfc \
-            | openssl x509 -noout -fingerprint -sha256 \
-            | cut -d= -f2 | tr -d ':' | tr 'A-F' 'a-f')
-          echo "CERT_SHA256=$CERT_SHA" >> "$GITHUB_ENV"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Signing mode: $MODE"
           echo "Signing cert SHA-256: $CERT_SHA"
 
       - name: Lint, unit tests, release build
@@ -83,7 +111,7 @@ jobs:
           ./gradlew --no-daemon lint testDebugUnitTest assembleRelease
           -PsigningCertSha256=${{ env.CERT_SHA256 }}
 
-      - name: Sign APK (apksigner, v2+v3)
+      - name: Sign APK (apksigner - v2+v3)
         run: |
           set -eu
           VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
@@ -102,18 +130,18 @@ jobs:
           # and produces no file - caught by signing a real APK by hand
           # rather than by reading the flag name and assuming.
           "$BT/zipalign" -f -P 16 4 "$UNSIGNED" EnteSaver-aligned.apk
-          "$BT/apksigner" sign \
-            --ks release.jks \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --ks-key-alias "$KEY_ALIAS" \
-            --key-pass env:KEY_PASSWORD \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            --out "$APK_NAME" \
-            EnteSaver-aligned.apk
+          # The one signing recipe (sign-apk.sh).
+          SIGN_KS_ALIAS="$KEY_ALIAS" bash .github/scripts/sign-apk.sh EnteSaver-aligned.apk "$APK_NAME"
           "$BT/apksigner" verify --print-certs "$APK_NAME"
           # The emulator job installs a fixed name, so keep one alongside it.
           cp "$APK_NAME" EnteSaver-release.apk
+
+      # Every release must be signed by the release key and nothing else, or
+      # it would not install over the Ente Saver already on phones. (A
+      # throwaway-key build never publishes; the release job refuses it.)
+      - name: The APK is signed by the release key
+        if: steps.keystore.outputs.mode != 'throwaway'
+        run: bash .github/scripts/check-signer.sh "$APK_NAME" "$RELEASE_CERT_SHA256"
 
       - name: Alignment gate (16 KiB pages, Android 16)
         run: |
@@ -153,23 +181,29 @@ jobs:
           set -eu
           KEYSTORE_NOTE=""
           if [ "${{ steps.keystore.outputs.generated }}" = "true" ]; then
-            KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other Ente Saver build - Android refuses an update whose signer differs. Generate one key on your own machine and add it as repository secrets; the release step refuses to publish until you do."
+            KEYSTORE_NOTE="This build was signed with a throwaway key that existed only inside its CI run, because no signing secrets are configured. It therefore CANNOT be installed over any other Ente Saver build. The release step refuses to publish it until the four signing secrets are set."
           fi
           cat > RELEASE_NOTES.md <<EOF
-          Ente Saver, made for Ente Photos. It installs over every earlier
-          version and keeps everything it knew. Only the owner's own device
-          findings may ever be patched.
+          Ente Saver, made for Ente Photos.
 
-          Offline storage saver. Light copies go to one folder (Pictures/EnteSaver
-          for a new install; an older install keeps its old folder until you
-          tap Move); Ente Photos backs up only that folder. Photos and videos
-          have their own settings. Originals are never touched automatically.
-          Everything else is explained inside the app (Help).
+          Offline storage saver. Light copies go to one folder (Pictures/EnteSaver);
+          Ente Photos backs up only that folder. Photos and videos have their own
+          settings. Originals are never touched automatically. Everything else is
+          explained inside the app (Help).
 
-          Built to last without maintenance: no server, no account, no analytics,
-          no internet permission, nothing that expires, and a database that can
-          only be migrated - never rebuilt - so the record of what already
-          reached Ente cannot be lost.
+          From 12.3 Ente Saver has its own application ID (package name),
+          app.entesaver; until 12.2 it was app.cloudsaver. To Android that is a
+          different app, so it installs next to an earlier Ente Saver, not over
+          it. Moving is once, and takes a minute:
+          1. Install this one, open it, and on the first screen tap "Restore
+             from a backup file". Choose history.json in Documents > Ente Saver.
+          2. Uninstall the earlier Ente Saver. The new one shows a button for it
+             for as long as the earlier one is on the phone.
+          Your photos, the copies waiting for Ente and your Ente account are not
+          touched.
+
+          No server, no account, no analytics, no internet permission, nothing
+          that expires.
 
           Needs Android 10 or newer. Install: download ${APK_NAME} below and
           open it on your phone.
@@ -190,30 +224,16 @@ jobs:
             echo "- APK size: ${APK_SIZE} bytes"
             echo "- APK SHA-256: \`${APK_SHA256}\`"
             echo "- Signing cert SHA-256: \`${CERT_SHA256}\`"
+            echo "- Signing: ${SIGN_MODE}"
             if [ "${{ steps.keystore.outputs.generated }}" = "true" ]; then
               echo ""
               echo "### No signing key is configured, so this build cannot be published"
               echo ""
               echo "This run signed the APK with a key it invented and then threw away, so the"
               echo "APK cannot install over any other Ente Saver build. The release step refuses"
-              echo "to publish it. Generate ONE key, on your own machine - never in CI, and never"
-              echo "into an artifact - then add it as repository secrets:"
-              echo ""
-              echo '```'
-              echo 'keytool -genkeypair -v -keystore entesaver-release.jks -alias entesaver \\'
-              echo '  -keyalg RSA -keysize 4096 -validity 9125 \\'
-              echo '  -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"'
-              echo 'base64 -w0 entesaver-release.jks   # this string is KEYSTORE_B64'
-              echo '```'
-              echo ""
-              echo "Then in Settings -> Secrets and variables -> Actions add:"
-              echo "   - \`KEYSTORE_B64\` - the base64 string printed above"
-              echo "   - \`KEYSTORE_PASSWORD\` - the store password you chose"
-              echo "   - \`KEY_ALIAS\` - entesaver"
-              echo "   - \`KEY_PASSWORD\` - the key password you chose"
-              echo ""
-              echo "Back up the .jks file itself somewhere private. Lose it and no future build"
-              echo "can ever update an installed Ente Saver again."
+              echo "to publish it. Add the four values from the Ente Saver secrets file in"
+              echo "Settings -> Secrets and variables -> Actions -> New repository secret:"
+              echo "\`KEYSTORE_B64\`, \`KEYSTORE_PASSWORD\`, \`KEY_ALIAS\`, \`KEY_PASSWORD\`."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -239,7 +259,7 @@ jobs:
     # nothing about the phones the other rows describe.
     name: end-to-end on Android ${{ matrix.api }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # the build's image (see there)
     timeout-minutes: 75
     # Android 17 (API 37) runs ahead of the target, to see early what the
     # next version changes; until it is the target it may fail without
@@ -307,8 +327,11 @@ jobs:
       - name: Install the system image
         run: |
           image="android-${{ matrix.image || matrix.api }}"
+          # cmdline-tools/latest where the image has it, else its newest
+          # numbered copy.
+          sdkmanager=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
           for try in 1 2 3; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            if yes | "$sdkmanager" --install \
                  "system-images;$image;google_apis;x86_64" > /dev/null \
                && [ -d "$ANDROID_HOME/system-images/$image/google_apis/x86_64" ]; then
               exit 0
@@ -320,6 +343,10 @@ jobs:
 
       - name: Run instrumented suite + live install on a real emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # The update-over-the-last-release check downloads that release.
+          GH_TOKEN: ${{ github.token }}
+          THROWAWAY_KEY: ${{ needs.build.outputs.throwaway_key }}
         with:
           api-level: ${{ matrix.image || matrix.api }}
           target: google_apis
@@ -360,7 +387,7 @@ jobs:
     name: publish release
     needs: [build, emulator]
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # the build's image (see there)
     steps:
       # A release nobody can install as an update is not a release.
       #
@@ -376,22 +403,9 @@ jobs:
           echo "::error title=No signing key configured::This APK was signed with a key that existed only inside this run, so it cannot install over any other Ente Saver build. Refusing to publish it."
           cat >&2 <<'MSG'
 
-          Generate ONE key on your own machine - never in CI, never into an
-          artifact - and add it as repository secrets:
-
-            keytool -genkeypair -v -keystore entesaver-release.jks \
-              -alias entesaver -keyalg RSA -keysize 4096 -validity 9125 \
-              -dname "CN=Ente Saver Release, OU=Ente Saver, O=Ente Saver"
-            base64 -w0 entesaver-release.jks
-
-          Then add them in Settings -> Secrets and variables -> Actions:
-            KEYSTORE_B64        the base64 string
-            KEYSTORE_PASSWORD   the store password
-            KEY_ALIAS           entesaver
-            KEY_PASSWORD        the key password
-
-          Keep the .jks file somewhere private and backed up. Lose it and no
-          future build can ever update an installed Ente Saver again.
+          Add the four values from the Ente Saver secrets file in
+          Settings -> Secrets and variables -> Actions -> New repository secret:
+            KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
           MSG
           exit 1
 

@@ -44,6 +44,7 @@ import app.entesaver.core.logic.Stops
 import app.entesaver.core.logic.ThemeMode
 import app.entesaver.core.logic.VideoCodec
 import app.entesaver.core.logic.VideoSettings
+import app.entesaver.data.EarlierInstall
 import app.entesaver.data.EnteApp
 import app.entesaver.data.db.ActivityRow
 import app.entesaver.data.db.AppDb
@@ -67,7 +68,6 @@ import app.entesaver.media.OutputInventory
 import app.entesaver.media.PlannedEncode
 import app.entesaver.media.Stager
 import app.entesaver.ui.components.AccessNotice
-import app.entesaver.util.AppLooks
 import app.entesaver.util.DeviceTier
 import app.entesaver.util.Errand
 import app.entesaver.util.FirstFrame
@@ -593,6 +593,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val batterySaverOn: Boolean = false,
         val usageAccessOff: Boolean = false,
         val cloudMissing: Boolean = false,
+        /** The Ente Saver of 12.2 and before is still installed beside this one. */
+        val earlierInstall: Boolean = false,
         /**
          * No cloud app of any kind is installed. The pipeline still runs -
          * copies are made on schedule - but nothing will ever collect them,
@@ -759,6 +761,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 batterySaverOn = power.saverOn,
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !EnteApp.isInstalled(ctx),
+                earlierInstall = EarlierInstall.isInstalled(ctx),
                 spaceLow = free < o.minFreeBytes,
                 thermalThrottled = power.thermalThrottled ||
                     power.batteryTempTenthsC >= Defaults.BATTERY_MAX_TEMP_TENTHS_C,
@@ -1394,21 +1397,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissEnteOnlyNotice() {
         viewModelScope.launch(Dispatchers.IO) {
             repo.setString(OptionsRepo.K.CLOUD_SINGLE, EnteApp.ID)
-        }
-    }
-
-    // ---- Ente Saver's own name and icon -----------------------------------------
-
-    val look = MutableStateFlow(AppLooks.DEFAULT)
-
-    fun refreshLook() {
-        viewModelScope.launch(Dispatchers.IO) { look.value = AppLooks.chosen(ctx) }
-    }
-
-    fun chooseLook(choice: AppLooks.Look) {
-        viewModelScope.launch(Dispatchers.IO) {
-            AppLooks.choose(ctx, choice)
-            look.value = AppLooks.chosen(ctx)
         }
     }
 
@@ -2292,6 +2280,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // copy of an earlier install looks like a leftover - including the
             // ones still waiting for Ente.
             if (o.oldFilesCleaned || !o.copiesReattached) {
+                leftoverUris.value = emptyList()
+                return@launch
+            }
+            // While the earlier Ente Saver is installed, its copies are its
+            // own, still waiting for Ente.
+            if (EarlierInstall.isInstalled(ctx)) {
                 leftoverUris.value = emptyList()
                 return@launch
             }

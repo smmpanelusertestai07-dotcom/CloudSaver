@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Ente Saver</string>
-    <string name="app_name_storage" translatable="false">Storage Saver</string>
-    <string name="app_name_cloud" translatable="false">Cloud Saver</string>
-    <string name="app_name_photo" translatable="false">Photo Saver</string>
 
     <!-- common -->
     <string name="ok">OK</string>
@@ -584,9 +581,6 @@
     </plurals>
     <string name="folder_change_note">After saving, turn the new folder on in Ente: Settings, Backup, Backed up folders. The old folder is watched until Ente has every copy in it.</string>
     <string name="folder_save">Save</string>
-    <string name="opt_looks">Home-screen name</string>
-    <string name="opt_looks_hint">The name under Ente Saver\'s icon on your home screen.</string>
-    <string name="looks_note">Changes when you leave the app. The home screen may take a minute to show it.</string>
     <string name="icon_pack_name">Ente Saver icons</string>
     <string name="shortcut_label_title">Name</string>
     <string name="shortcut_label_photos">Photos</string>
@@ -621,6 +615,7 @@
     <string name="wait_next_too_big">Waiting: the next files need more room than the phone has above the free space Ente Saver keeps</string>
     <string name="wait_videos_charging">Waiting for charger: on this phone videos are made only while charging</string>
     <string name="wait_volume_missing">Waiting: the storage location you chose is not available right now</string>
+    <string name="wait_earlier_app">Waiting: the earlier Ente Saver is still on this phone - remove it first, as the card above says</string>
     <string name="opt_daily_cap">Daily limit for new copies</string>
     <string name="opt_daily_cap_hint">How much Ente Saver adds to the upload folder each day.</string>
     <string name="unlimited">Unlimited</string>
@@ -919,6 +914,10 @@
     <string name="onb0_title">Welcome!</string>
     <string name="onb0_text">Ente Saver makes smaller copies of your photos and videos in one folder. Ente Photos backs up that folder - your originals stay exactly where they are.</string>
     <string name="onb0_import">Restore from a backup file</string>
+    <!-- Home: the Ente Saver of 12.2 and before, still installed beside this one -->
+    <string name="earlier_title">Remove the earlier Ente Saver</string>
+    <string name="earlier_body">The Ente Saver you used before is still on this phone. Android counts it as a separate app, so both would work on the same photos. If you have not yet, bring its history here first: Settings \u203a Backup &amp; restore settings \u203a Restore, and choose history.json in Documents \u203a Ente Saver. Then open its App info below and tap Uninstall. A Photos shortcut or pack icon it gave Ente goes with it; set it again from Help \u203a Make Ente your gallery.</string>
+    <string name="earlier_button">Open its App info</string>
     <string name="onb1_title">Photo and video access</string>
     <string name="onb1_text">Ente Saver needs to read your gallery to find photos and videos. Choose \&quot;Allow all\&quot;.</string>
     <string name="onb1_grant">Grant permission</string>
@@ -986,7 +985,7 @@
     <string name="gallery_icon_t">Ente\'s own icons</string>
     <string name="gallery_icon_b">Ente can change its own icon. In Ente, open Settings \u203a General \u203a Advanced \u203a App icon and pick one of several looks.</string>
     <string name="gallery_pack_t">Ente Saver\'s icon pack</string>
-    <string name="gallery_pack_b">Ente Saver includes one icon for Ente: a photo with Ente\'s green heart, the same one the shortcut below uses. On Realme, Oppo and OnePlus phones, long-press Ente Photos on the home screen \u203a Edit, tap its icon and pick it under Ente Saver icons. Nova, Lawnchair and other launchers have their own icon pack or edit-icon setting. Keep Ente\'s own app icon on its green look, so every launcher finds it. The launcher may take a moment to update. The icon lives inside Ente Saver: uninstall it, and Ente gets its own icon back.</string>
+    <string name="gallery_pack_b">Ente Saver includes one icon, made for Ente alone: the familiar photo symbol with Ente\'s green heart on its corner, in Ente Photos\' own style, the same one the shortcut below uses. On Realme, Oppo and OnePlus phones, long-press Ente Photos on the home screen \u203a Edit, tap its icon and pick it under Ente Saver icons. Nova, Lawnchair and other launchers have their own icon pack or edit-icon setting. With Ente from the Play Store, applying the pack changes Ente\'s icon and no other app\'s; with Ente from F-Droid or ente.com, pick it for Ente in the launcher\'s edit-icon screen. A launcher\'s edit screen may also offer it when you edit some other app; that list is the launcher\'s, so just pick it for Ente. Keep Ente\'s own app icon on its green look, so every launcher finds it. The launcher may take a moment to update. The icon lives inside Ente Saver: uninstall it, and Ente gets its own icon back.</string>
     <string name="gallery_shortcut_t">A Photos shortcut</string>
     <string name="gallery_shortcut_b">Add a shortcut to your home screen that opens Ente, with a Photos icon and the name you pick: Photos, Gallery, Cloud Photos, or your own name of up to 12 letters. Some launchers show a small badge on shortcuts. Uninstalling Ente Saver removes the shortcut too; Ente and your photos stay.</string>
     <string name="gallery_shortcut_button">Add Photos to home screen</string>
@@ -996,8 +995,6 @@
     <string name="gallery_ml_b">Turn on machine learning in Ente (Settings \u203a Machine learning) for face recognition and magic search. It runs on the phone itself, and it works on Ente Saver\'s copies too.</string>
     <string name="gallery_freeup_t">When copies leave the folder</string>
     <string name="gallery_freeup_b">Ente\'s Free up device space also removes Ente Saver\'s copies once they are uploaded. That is expected \u2014 it is exactly how Ente Saver knows they arrived.</string>
-    <string name="gallery_saver_t">Ente Saver\'s home-screen name</string>
-    <string name="gallery_saver_b">Ente Saver can also show on your home screen under the name earlier versions had. Here, open Settings \u203a Appearance \u203a Home-screen name. The icon stays the same.</string>
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>
@@ -1124,6 +1121,7 @@
     <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
+    <string name="optimise_blocked_earlier">Remove the earlier Ente Saver first, as the card above says.</string>
     <string name="optimise_working">Working\u2026</string>
     <string name="verify_link_hint">Opens Ente: there, Settings \u203a Free up space \u203a Free up device space, then come back and Ente Saver counts what Ente took. Or turn on usage access and it confirms uploads by itself.</string>
     <string name="verify_link_hint_graded">Some copies cannot be confirmed from Ente\u2019s traffic. Opens Ente: there, Settings \u203a Free up space \u203a Free up device space. Then come back, and Ente Saver counts what Ente took.</string>
@@ -1261,7 +1259,7 @@
     <string name="faq_q13">Why is there an Optimise now button if everything is automatic?</string>
     <string name="faq_a13" formatted="false">The schedule waits for good moments \u2014 charging, screen off, the day\u2019s allowance. The button skips the waiting, never the safety limits: it will not run when the phone is too hot, the battery is under 15%, or free space is below the reserve. The run is listed in Activity as \u201cStarted by you\u201d.</string>
     <string name="faq_q14">What is the Ente Saver folder in Documents?</string>
-    <string name="faq_a14">It holds one small text file, history.json: a list of file names, dates, sizes and short codes \u2014 never photos. It is rewritten every day, and it is what lets a reinstall or a new phone pick up where you left off: tap Restore from a backup file on the first screen and choose it. Deleting it is safe; the app writes it again within a day. Older versions kept this list in folders called .cloudsaver or _.cloudsaver. Ente Saver clears out the ones it made, and any left over can be deleted. The Backup and restore buttons in Settings make an extra copy you keep somewhere else, like a computer.</string>
+    <string name="faq_a14">It holds one small text file, history.json: a list of file names, dates, sizes and short codes \u2014 never photos. It is rewritten every day, and it is what lets a reinstall or a new phone pick up where you left off: tap Restore from a backup file on the first screen and choose it. Deleting it is safe; the app writes it again within a day. Older versions kept this list in folders called .cloudsaver or _.cloudsaver; any left over can be deleted. The Backup and restore buttons in Settings make an extra copy you keep somewhere else, like a computer.</string>
     <string name="faq_q15">Where do the “Recommended for this phone” figures come from?</string>
     <string name="faq_a15">From this phone, measured on the spot: how much storage it has in total, and how much of it is free right now. A 64 GB phone and a 512 GB phone should not hold back the same headroom, so the app works out a reserve of about a twentieth of the phone (never under 1.5 GB), a daily limit that drops to the cautious figure on a small or nearly full phone, and a ceiling on its own working space of about a tenth of what is free, capped at 5 GB and never so low that the pipeline jams against it. Nothing is measured off the phone and no usage is sent anywhere. It is only ever an offer: the figure sits under the setting with a Use recommended button, your own value is never overwritten, and the line turns into a warning only when what is stored has drifted more than three times away from it.</string>
     <string name="faq_q16">Can the smaller copy stay in the same album instead of a new folder?</string>

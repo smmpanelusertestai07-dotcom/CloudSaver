@@ -40,12 +40,12 @@ object OemPages {
         go(context, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) ||
             openAppInfo(context)
 
-    fun openAppInfo(context: Context): Boolean = go(
+    fun openAppInfo(context: Context): Boolean = openAppInfoOf(context, context.packageName)
+
+    /** Another app's App info page: its Uninstall button is there. */
+    fun openAppInfoOf(context: Context, pkg: String): Boolean = go(
         context,
-        Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.parse("package:${context.packageName}")
-        )
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
     )
 
     /** The system page that holds this app's notification switch. */

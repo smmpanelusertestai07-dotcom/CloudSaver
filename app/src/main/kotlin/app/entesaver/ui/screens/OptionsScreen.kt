@@ -33,7 +33,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Bolt
@@ -372,10 +371,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         ) { vm.setPauseAll(it) }
 
         SectionHeader(stringResource(R.string.opt_group_appearance))
-        // Ente Saver's own name and icon on the home screen.
-        val look by vm.look.collectAsStateWithLifecycle()
-        LaunchedEffect(Unit) { vm.refreshLook() }
-        LooksCard(chosen = look, icon = IconLooks, onChoose = { vm.chooseLook(it) })
         // Theme
         OptionCard(
             stringResource(R.string.opt_theme),
@@ -1278,7 +1273,6 @@ private val IconFree = Icons.Outlined.PhoneAndroid
 private val IconOwnSpace = Icons.Outlined.Storage
 private val IconVolume = Icons.Outlined.SdCard
 private val IconQuality = Icons.Outlined.Tune
-private val IconLooks = Icons.Outlined.Apps
 private val IconCodec = Icons.Outlined.Movie
 private val IconTheme = Icons.Outlined.Palette
 private val IconLock = Icons.Outlined.Lock
