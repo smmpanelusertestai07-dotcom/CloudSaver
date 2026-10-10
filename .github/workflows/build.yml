@@ -370,6 +370,7 @@ jobs:
           name: emulator-screenshots-api${{ matrix.api }}
           path: |
             artifacts/screenshots
+            artifacts/logcat.txt
             artifacts/logcat-crash.txt
           if-no-files-found: warn
 

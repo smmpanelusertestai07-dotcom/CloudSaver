@@ -110,6 +110,32 @@ class CiRuntimeTest {
     }
 
     @Test
+    fun `the emulator harness closes an error dialog raised before it hid them`() {
+        // Hiding stops only the dialogs raised after it. Run 550 lost nine
+        // API 35 tests to a Pixel Launcher dialog raised while the emulator
+        // booted, before the harness ran: the runner's unlock key took 6.6 s
+        // where it takes 0.1 s. The harness now ends the app any dialog
+        // already on screen is about, and Android takes the dialog down with
+        // the app's process. The full logcat is kept, because the "ANR in"
+        // line that names such an app is in no test's own log.
+        val root = repoRoot()
+        assertTrue("repository root not found from app/", root != null)
+        val script = File(root, ".github/scripts/emulator-e2e.sh").readText()
+        val hide = script.indexOf("settings put global hide_error_dialogs 1")
+        val find = script.indexOf("Application (Not Responding|Error)")
+        val close = script.indexOf("am force-stop", find)
+        val suite = script.indexOf("connectedDebugAndroidTest")
+        assertTrue("the harness must look for error dialogs already on screen", find > hide)
+        assertTrue("and end the app each one is about", close > find)
+        assertTrue("before the instrumented suite starts", suite > close)
+        val workflow = File(root, ".github/workflows/build.yml").readText()
+        assertTrue(
+            "each leg's full logcat must be uploaded with its screenshots",
+            workflow.contains("artifacts/logcat.txt")
+        )
+    }
+
+    @Test
     fun `a release is tagged at the commit its APK was built from`() {
         // Without --target GitHub creates a missing tag at the branch head at
         // the moment of the call. The release job waits for every emulator

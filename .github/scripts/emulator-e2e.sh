@@ -34,6 +34,31 @@ adb shell settings put global animator_duration_scale 0
 # own assertions, the crash buffer collected below and the process checks
 # after the release install still report every failure that is the app's.
 adb shell settings put global hide_error_dialogs 1
+# The setting stops dialogs raised from now on; one already up stays up. The
+# emulator can hang its own launcher while it boots, before this script runs
+# (run 550, API 35: the runner's unlock key took 6.6 s instead of 0.1 s, and
+# the launcher's dialog then sat over the whole suite). End the app such a
+# dialog is about, as the setting does for later ones: Android takes an
+# app's error dialogs down with its process. Nothing of Ente Saver's is
+# installed yet, so whatever this finds is the emulator's own. The pause
+# lets a dialog that was already on its way reach the screen first.
+sleep 5
+for proc in $(adb shell dumpsys window windows | tr -d '\r' \
+    | grep -o -E 'Application (Not Responding|Error): [^} ]+' \
+    | sed 's/^.*: //' | sort -u); do
+  # The dialog names a process. Its package is that name, or the name with
+  # a ":part" or ".part" taken off (com.google.android.gms.persistent).
+  pkg=${proc%%:*}
+  until [ -z "$pkg" ] || adb shell pm path "$pkg" > /dev/null 2>&1; do
+    case "$pkg" in *.*) pkg=${pkg%.*} ;; *) pkg= ;; esac
+  done
+  if [ -n "$pkg" ]; then
+    echo "::warning::Android was showing an error dialog about $proc before the suite started; closing $pkg."
+    adb shell am force-stop "$pkg"
+  else
+    echo "::warning::Android was showing an error dialog about $proc before the suite started, and no installed package matches it."
+  fi
+done
 
 echo "::group::Instrumented end-to-end tests"
 tests_failed=0
@@ -74,6 +99,10 @@ fi
 ls -la "$OUT/screenshots" || true
 adb logcat -d > "$OUT/logcat.txt" 2>/dev/null || true
 adb logcat -d -b crash > "$OUT/logcat-crash.txt" 2>/dev/null || true
+# Which apps Android found hung during this leg, and why. The report's
+# logcats cover only the time each test ran, and the emulator can hang an
+# app of its own before the first one: this is where that shows.
+grep -E 'ActivityManager: (ANR in |Reason: )' "$OUT/logcat.txt" | head -20 || true
 echo "::endgroup::"
 
 if [ "$tests_failed" -ne 0 ]; then
