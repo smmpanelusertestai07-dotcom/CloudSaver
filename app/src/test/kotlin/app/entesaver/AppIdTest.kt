@@ -8,9 +8,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The app's id on Android is app.entesaver. Everything that names the app
- * from outside its code - the long-press shortcuts, the CI harness - has to
- * name that id, or it silently opens nothing. And a phone that still has the
+ * The application ID (package name) is app.entesaver. Everything that names
+ * the app from outside its code - the long-press shortcuts, the CI harness -
+ * has to name that ID, or it silently opens nothing. And a phone that still has the
  * earlier app (app.cloudsaver, until 12.2) is told to remove it, since both
  * would work on the same photos.
  */
@@ -23,7 +23,7 @@ class AppIdTest {
         .first { File(it, ".github/workflows/build.yml").isFile }
 
     @Test
-    fun `the app is Ente Saver's own id, not the earlier app's`() {
+    fun `the application ID is Ente Saver's own, not the earlier app's`() {
         assertEquals("app.entesaver", appId)
         assertTrue(appId != EarlierInstall.PACKAGE)
     }

@@ -29,7 +29,7 @@ class IconPackTest {
 
     private val manifest = xml("src/main/AndroidManifest.xml")
 
-    /** The app's id on Android. */
+    /** The application ID (package name). */
     private val appId = Regex("""applicationId = "([^"]+)"""")
         .find(File("build.gradle.kts").readText())!!.groupValues[1]
 

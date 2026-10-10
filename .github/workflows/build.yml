@@ -191,9 +191,10 @@ jobs:
           settings. Originals are never touched automatically. Everything else is
           explained inside the app (Help).
 
-          From 12.3 Ente Saver is its own app on Android (app.entesaver; until
-          12.2 it was app.cloudsaver), so it installs next to an earlier Ente
-          Saver, not over it. Moving is once, and takes a minute:
+          From 12.3 Ente Saver has its own application ID (package name),
+          app.entesaver; until 12.2 it was app.cloudsaver. To Android that is a
+          different app, so it installs next to an earlier Ente Saver, not over
+          it. Moving is once, and takes a minute:
           1. Install this one, open it, and on the first screen tap "Restore
              from a backup file". Choose history.json in Documents > Ente Saver.
           2. Uninstall the earlier Ente Saver. The new one shows a button for it

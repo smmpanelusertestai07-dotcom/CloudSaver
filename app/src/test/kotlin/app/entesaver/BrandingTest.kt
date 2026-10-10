@@ -20,7 +20,7 @@ class BrandingTest {
 
     /** Every place the old name may stay, and why. */
     private val permanent = listOf(
-        // The earlier app's id (until 12.2), by which this one finds it -
+        // The earlier app's application ID (until 12.2), by which this one finds it -
         // the id alone, never a component of this app under it.
         Regex("""\bapp\.cloudsaver\b(?!\.)"""),
         // Folders and files older versions wrote, still watched or read -

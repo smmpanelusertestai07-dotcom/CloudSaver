@@ -5,8 +5,8 @@
   still asks for the unlock first and a route that needs state still waits
   for it - the shortcuts add doors, not paths around anything.
 
-  targetPackage is the app's id (app/build.gradle.kts); the class is where
-  the code lives.
+  targetPackage is the application ID (package name, app/build.gradle.kts);
+  the class is where the code lives.
 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut

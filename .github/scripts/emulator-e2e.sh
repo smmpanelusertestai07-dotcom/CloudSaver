@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-# The app's id on Android (app/build.gradle.kts), not its name.
+# The application ID (package name) from app/build.gradle.kts, not the app's name.
 PKG=app.entesaver
-# The id Ente Saver had until 12.2: a different app to Android.
+# The application ID Ente Saver had until 12.2: a different app to Android.
 EARLIER_PKG=app.cloudsaver
 SHOTS_ON_DEVICE=/sdcard/Pictures/CSTestShots
 OUT=artifacts
